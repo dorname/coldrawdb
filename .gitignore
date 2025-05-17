@@ -23,3 +23,9 @@ dist-ssr
 *.sln
 *.sw?
 .env
+# SpecStory explanation file
+.specstory/.what-is-this.md
+
+.cursor*
+.gitignore
+*.lock
