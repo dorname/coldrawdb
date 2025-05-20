@@ -1,54 +1,42 @@
 pub trait Model {
-    fn new(table_name: String, columns: String, values: String) -> Self {
-        Self { table_name, columns, values }
-    }
-    fn get_sql(&self) -> String;
+    fn get_insert_sql(&self) -> String;
+    fn get_update_sql(&self) -> String;
+    fn get_delete_sql(&self) -> String;
+    fn get_select_sql(&self) -> String;
 }
 
-pub struct InsertModel {
+
+// 增删改查的通用模型
+pub struct CommonModel {
     pub table_name: String,
     pub columns: String,
     pub values: String,
+    pub where_clause: String,
 }
 
-impl Model for InsertModel {
-    fn get_sql(&self) -> String {
+impl CommonModel {
+    pub fn new(table_name: String, columns: String, values: String, where_clause: String) -> Self {
+        Self { table_name, columns, values, where_clause }
+    }
+}
+
+impl Model for CommonModel {
+    fn get_insert_sql(&self) -> String {
         format!("INSERT INTO {} ({}) VALUES ({})", self.table_name, self.columns, self.values)
     }
-}
-
-pub struct UpdateModel {
-    pub table_name: String,
-    pub columns: String,
-    pub values: String,
-}
-
-impl Model for UpdateModel {
-    fn get_sql(&self) -> String {
+    fn get_update_sql(&self) -> String {
         format!("UPDATE {} SET {} WHERE {}", self.table_name, self.columns, self.values)
     }
-}
-
-pub struct DeleteModel {        
-    pub table_name: String,
-    pub where_clause: String,
-}
-
-impl Model for DeleteModel {
-    fn get_sql(&self) -> String {
+    fn get_delete_sql(&self) -> String {
         format!("DELETE FROM {} WHERE {}", self.table_name, self.where_clause)
     }
-}
-
-pub struct SelectModel {
-    pub table_name: String,
-    pub columns: String,
-    pub where_clause: String,
-}
-
-impl Model for SelectModel {
-    fn get_sql(&self) -> String {
+    fn get_select_sql(&self) -> String {
         format!("SELECT {} FROM {} WHERE {}", self.columns, self.table_name, self.where_clause)
     }
 }
 
+/// 业务公共特征
+pub trait BusinessModel {
+    fn get_columns(&self) -> String;
+    fn get_values(&self) -> String;
+}
