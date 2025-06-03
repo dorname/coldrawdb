@@ -1,3 +1,10 @@
+// 这个文件是应用的主要工作区组件，负责：
+// 管理图表的状态（保存、加载、更新）
+// 处理用户界面布局
+// 协调各个子组件的工作
+// 实现自动保存功能
+// 处理数据库选择
+// 管理撤销/重做功能
 import { useState, useEffect, useCallback, createContext } from "react";
 import ControlPanel from "./EditorHeader/ControlPanel";
 import Canvas from "./EditorCanvas/Canvas";
@@ -26,29 +33,36 @@ import { isRtl } from "../i18n/utils/rtl";
 import { useSearchParams } from "react-router-dom";
 import { get } from "../api/gists";
 
+// 导入 tauri 指令
+import { invoke } from '@tauri-apps/api/core';
+// 创建上下文用于管理 Gist ID
 export const IdContext = createContext({ gistId: "", setGistId: () => {} });
 
+// 侧边栏最小宽度
 const SIDEPANEL_MIN_WIDTH = 384;
 
 export default function WorkSpace() {
-  const [id, setId] = useState(0);
-  const [gistId, setGistId] = useState("");
-  const [loadedFromGistId, setLoadedFromGistId] = useState("");
-  const [title, setTitle] = useState("Untitled Diagram");
-  const [resize, setResize] = useState(false);
-  const [width, setWidth] = useState(SIDEPANEL_MIN_WIDTH);
-  const [lastSaved, setLastSaved] = useState("");
-  const [showSelectDbModal, setShowSelectDbModal] = useState(false);
-  const [selectedDb, setSelectedDb] = useState("");
-  const { layout } = useLayout();
-  const { settings } = useSettings();
-  const { types, setTypes } = useTypes();
-  const { areas, setAreas } = useAreas();
-  const { tasks, setTasks } = useTasks();
-  const { notes, setNotes } = useNotes();
-  const { saveState, setSaveState } = useSaveState();
-  const { transform, setTransform } = useTransform();
-  const { enums, setEnums } = useEnums();
+  // 状态管理
+  const [id, setId] = useState(0);                    // 当前图表ID
+  const [gistId, setGistId] = useState("");          // Gist ID
+  const [loadedFromGistId, setLoadedFromGistId] = useState(""); // 从Gist加载的ID
+  const [title, setTitle] = useState("Untitled Diagram"); // 图表标题
+  const [resize, setResize] = useState(false);        // 是否正在调整大小
+  const [width, setWidth] = useState(SIDEPANEL_MIN_WIDTH); // 侧边栏宽度
+  const [lastSaved, setLastSaved] = useState("");     // 最后保存时间
+  const [showSelectDbModal, setShowSelectDbModal] = useState(false); // 是否显示数据库选择模态框
+  const [selectedDb, setSelectedDb] = useState("");   // 选中的数据库
+
+  // 使用各种自定义Hook
+  const { layout } = useLayout();                     // 布局状态
+  const { settings } = useSettings();                 // 设置状态
+  const { types, setTypes } = useTypes();            // 类型管理
+  const { areas, setAreas } = useAreas();            // 区域管理
+  const { tasks, setTasks } = useTasks();            // 代办事项管理
+  const { notes, setNotes } = useNotes();            // 笔记管理
+  const { saveState, setSaveState } = useSaveState(); // 保存状态
+  const { transform, setTransform } = useTransform(); // 变换状态
+  const { enums, setEnums } = useEnums();            // 枚举管理
   const {
     tables,
     relationships,
@@ -56,27 +70,33 @@ export default function WorkSpace() {
     setRelationships,
     database,
     setDatabase,
-  } = useDiagram();
-  const { undoStack, redoStack, setUndoStack, setRedoStack } = useUndoRedo();
+  } = useDiagram();                                  // 图表数据管理
+  const { undoStack, redoStack, setUndoStack, setRedoStack } = useUndoRedo(); // 撤销重做管理
+
   const { t, i18n } = useTranslation();
   let [searchParams, setSearchParams] = useSearchParams();
+
+  // 处理侧边栏调整大小
   const handleResize = (e) => {
     if (!resize) return;
     const w = isRtl(i18n.language) ? window.innerWidth - e.clientX : e.clientX;
     if (w > SIDEPANEL_MIN_WIDTH) setWidth(w);
   };
 
+  // 保存图表
   const save = useCallback(async () => {
     if (saveState !== State.SAVING) return;
 
     const name = window.name.split(" ");
     const op = name[0];
     const saveAsDiagram = window.name === "" || op === "d" || op === "lt";
-
+    console.log(">>>>>>>>>>>>>>>>>>",saveAsDiagram);
     if (saveAsDiagram) {
+      // 保存为图表
       searchParams.delete("shareId");
       setSearchParams(searchParams);
       if ((id === 0 && window.name === "") || op === "lt") {
+        // 新增图表
         await db.diagrams
           .add({
             database: database,
@@ -101,6 +121,7 @@ export default function WorkSpace() {
             setLastSaved(new Date().toLocaleString());
           });
       } else {
+        // 更新现有图表
         await db.diagrams
           .update(id, {
             database: database,
@@ -122,8 +143,9 @@ export default function WorkSpace() {
             setSaveState(State.SAVED);
             setLastSaved(new Date().toLocaleString());
           });
-      }
+      } 
     } else {
+      // 更新模板
       await db.templates
         .update(id, {
           database: database,
@@ -166,12 +188,20 @@ export default function WorkSpace() {
     saveState,
   ]);
 
+  // 加载图表
   const load = useCallback(async () => {
+    // 调用 tauri 指令
+    const invoke = window.__TAURI__.core.invoke;
+    const result = await invoke("query_task");
+    console.log(">>>>>>>>>>>>>>>>>>",result);
+
+    // 加载最新图表
     const loadLatestDiagram = async () => {
       await db.diagrams
         .orderBy("lastModified")
         .last()
         .then((d) => {
+          console.log(">>>>>>>>>>>>>>>>>>",d);
           if (d) {
             if (d.database) {
               setDatabase(d.database);
@@ -205,6 +235,7 @@ export default function WorkSpace() {
         });
     };
 
+    // 加载指定图表
     const loadDiagram = async (id) => {
       await db.diagrams
         .get(id)
@@ -246,6 +277,7 @@ export default function WorkSpace() {
         });
     };
 
+    // 加载模板
     const loadTemplate = async (id) => {
       await db.templates
         .get(id)
@@ -285,6 +317,7 @@ export default function WorkSpace() {
         });
     };
 
+    // 从Gist加载
     const loadFromGist = async (shareId) => {
       try {
         const res = await get(shareId);
@@ -312,6 +345,7 @@ export default function WorkSpace() {
       }
     };
 
+    // 根据URL参数和窗口名称决定加载方式
     const shareId = searchParams.get("shareId");
     if (shareId) {
       const existingDiagram = await db.diagrams.get({
@@ -367,6 +401,7 @@ export default function WorkSpace() {
     searchParams,
   ]);
 
+  // 自动保存效果
   useEffect(() => {
     if (
       tables?.length === 0 &&
@@ -396,16 +431,18 @@ export default function WorkSpace() {
     setSaveState,
   ]);
 
+  // 保存效果
   useEffect(() => {
     save();
   }, [saveState, save]);
 
+  // 初始加载效果
   useEffect(() => {
     document.title = "Editor | drawDB";
-
     load();
   }, [load]);
 
+  // 渲染组件
   return (
     <div className="h-full flex flex-col overflow-hidden theme">
       <IdContext.Provider value={{ gistId, setGistId }}>

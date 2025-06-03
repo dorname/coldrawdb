@@ -1,3 +1,6 @@
+use rusqlite::Row;
+
+
 pub trait Model {
     fn get_insert_sql(&self) -> String;
     fn get_update_sql(&self) -> String;
@@ -39,4 +42,17 @@ impl Model for CommonModel {
 pub trait BusinessModel {
     fn get_columns(&self) -> String;
     fn get_values(&self) -> String;
+    fn from_raw(row: &Row) -> Self;
+}
+
+
+/// 任意实现了BusinessModel的类型可以 转化为 CommonModel
+pub trait ToCommonModel {
+    fn to_common_model(self,table_name: String,where_clause: String) -> CommonModel;
+}
+
+impl<T: BusinessModel> ToCommonModel for T {
+    fn to_common_model(self,table_name: String,where_clause: String) -> CommonModel {
+        CommonModel::new(table_name, self.get_columns(), self.get_values(), where_clause)
+    }
 }

@@ -1,11 +1,8 @@
 mod init;
-mod models;
-
+pub mod models;
 pub use init::init_db;
-pub use models::*;
 use rusqlite::{Connection, Params};
 use std::sync::{Arc, Mutex, MutexGuard};
-
 pub struct DB {
     conn: Arc<Mutex<Connection>>,
 }
@@ -22,9 +19,21 @@ impl DB {
         self.conn.lock().expect("Failed to lock DB connection")
     }
 
+    /// 获取数据库连接的互斥锁 Guard
+    pub fn get_conn_sync(&self) -> MutexGuard<'_, Connection> {
+        self.conn.lock().expect("Failed to lock DB connection")
+    }
+
     /// 执行 SQL 语句
     pub async fn execute<P: Params>(&self, sql: &str,params:P) -> Result<(), rusqlite::Error> {
         let conn = self.get_conn().await;
+        conn.execute(sql, params)?;
+        Ok(())
+    }
+
+    /// 执行 SQL 语句
+    pub fn execute_sync<P: Params>(&self, sql: &str,params:P) -> Result<(), rusqlite::Error> {
+        let conn = self.get_conn_sync();
         conn.execute(sql, params)?;
         Ok(())
     }

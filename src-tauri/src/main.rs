@@ -2,7 +2,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-  app_lib::init_db()?;
-  app_lib::run();
+  app_lib::run()?;
   Ok(())
 }
