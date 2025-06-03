@@ -32,11 +32,10 @@ import { databases } from "../data/databases";
 import { isRtl } from "../i18n/utils/rtl";
 import { useSearchParams } from "react-router-dom";
 import { get } from "../api/gists";
+import { invoke } from "@tauri-apps/api/core";
 
-// 导入 tauri 指令
-import { invoke } from '@tauri-apps/api/core';
 // 创建上下文用于管理 Gist ID
-export const IdContext = createContext({ gistId: "", setGistId: () => {} });
+export const IdContext = createContext({ gistId: "", setGistId: () => { } });
 
 // 侧边栏最小宽度
 const SIDEPANEL_MIN_WIDTH = 384;
@@ -90,7 +89,7 @@ export default function WorkSpace() {
     const name = window.name.split(" ");
     const op = name[0];
     const saveAsDiagram = window.name === "" || op === "d" || op === "lt";
-    console.log(">>>>>>>>>>>>>>>>>>",saveAsDiagram);
+    console.log(">>>>>>>>>>>>>>>>>>", saveAsDiagram);
     if (saveAsDiagram) {
       // 保存为图表
       searchParams.delete("shareId");
@@ -143,7 +142,7 @@ export default function WorkSpace() {
             setSaveState(State.SAVED);
             setLastSaved(new Date().toLocaleString());
           });
-      } 
+      }
     } else {
       // 更新模板
       await db.templates
@@ -191,9 +190,8 @@ export default function WorkSpace() {
   // 加载图表
   const load = useCallback(async () => {
     // 调用 tauri 指令
-    const invoke = window.__TAURI__.core.invoke;
     const result = await invoke("query_task");
-    console.log(">>>>>>>>>>>>>>>>>>",result);
+    console.log(">>>>>>>>>>>>>>>>>>", result);
 
     // 加载最新图表
     const loadLatestDiagram = async () => {
@@ -201,7 +199,7 @@ export default function WorkSpace() {
         .orderBy("lastModified")
         .last()
         .then((d) => {
-          console.log(">>>>>>>>>>>>>>>>>>",d);
+          console.log(">>>>>>>>>>>>>>>>>>", d);
           if (d) {
             if (d.database) {
               setDatabase(d.database);
@@ -501,11 +499,10 @@ export default function WorkSpace() {
             <div
               key={x.name}
               onClick={() => setSelectedDb(x.label)}
-              className={`space-y-3 p-3 rounded-md border-2 select-none ${
-                settings.mode === "dark"
-                  ? "bg-zinc-700 hover:bg-zinc-600"
-                  : "bg-zinc-100 hover:bg-zinc-200"
-              } ${selectedDb === x.label ? "border-zinc-400" : "border-transparent"}`}
+              className={`space-y-3 p-3 rounded-md border-2 select-none ${settings.mode === "dark"
+                ? "bg-zinc-700 hover:bg-zinc-600"
+                : "bg-zinc-100 hover:bg-zinc-200"
+                } ${selectedDb === x.label ? "border-zinc-400" : "border-transparent"}`}
             >
               <div className="flex items-center justify-between">
                 <div className="font-semibold">{x.name}</div>
