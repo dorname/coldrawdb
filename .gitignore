@@ -29,3 +29,8 @@ dist-ssr
 .cursor*
 .gitignore
 *.lock
+
+src-tauri/target/*
+src-tauri/gen/*
+*.sqlite
+package-lock.json

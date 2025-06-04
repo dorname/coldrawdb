@@ -190,7 +190,11 @@ export default function WorkSpace() {
   // 加载图表
   const load = useCallback(async () => {
     // 调用 tauri 指令
-    const result = await invoke("query_task");
+    const result = await invoke("query_task", {
+      whereClause: "1=1",
+      params: [],
+      task: { id: 1, title: "xxx", compele: false, details: "test", task_order: 1, priority: 1 }
+    });
     console.log(">>>>>>>>>>>>>>>>>>", result);
 
     // 加载最新图表

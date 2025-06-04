@@ -3,9 +3,10 @@ pub mod task;
 mod common;
 
 use diagram::*;
+use serde_json::Value;
 use task::*;
 pub use common::*;
-use rusqlite::Params;
+use rusqlite::ToSql;
 use crate::db::DB;
 
 const DIAGRAM_TABLE_NAME: &str = "diagram";
@@ -101,16 +102,15 @@ pub fn init_task(id: i64, compele: bool, details: String, order: i64, priority: 
 
 
 // select
-pub async fn query<M, P>(
+pub async fn query<M>(
     db: &DB,
     where_clause: &str,
-    params: P,
+    params: Value,
     model: M,
     table_type: TableType,
 ) -> Result<Vec<M>, rusqlite::Error>
 where
-    M: BusinessModel + Send + Sync + 'static,
-    P: Params,
+    M: BusinessModel + Send + Sync + 'static
 {
     // 先根据 model.get_columns() 和 table_type 生成 SELECT 语句
     let common_model = CommonModel::new(
@@ -119,12 +119,15 @@ where
         model.get_values(),
         where_clause.to_string(),
     );
-
+    
     let rows: Vec<M> = db
         .with_connection(move |conn| {
             let mut stmt = conn.prepare(common_model.get_select_sql().as_str())?;
+            let params_temp = params.clone();
+            let params_boxed = json_value_to_params(&params_temp).map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?;
+            let params_refs: Vec<&dyn ToSql> = params_boxed.iter().map(|b| b.as_ref() as &dyn ToSql).collect();
             // 这里直接调用 trait 里的 from_raw
-            let iter = stmt.query_map(params, |row| Ok(M::from_raw(row)))?;
+            let iter = stmt.query_map(&params_refs[..], |row| Ok(M::from_raw(row)))?;
             Ok(iter.collect::<Result<Vec<_>, _>>()?)
         })
         .await?;
@@ -156,5 +159,34 @@ pub async fn delete(db: &DB, model: impl BusinessModel, table_type: TableType,wh
     Ok(())
 }
 
+
+
+
+fn json_value_to_params(value: &serde_json::Value) -> Result<Vec<Box<dyn ToSql>>, String> {
+    match value {
+        serde_json::Value::Array(arr) => {
+            let mut params: Vec<Box<dyn ToSql>> = Vec::new();
+            for v in arr {
+                match v {
+                    serde_json::Value::String(s) => params.push(Box::new(s.clone())),
+                    serde_json::Value::Number(n) => {
+                        if let Some(i) = n.as_i64() {
+                            params.push(Box::new(i));
+                        } else if let Some(f) = n.as_f64() {
+                            params.push(Box::new(f));
+                        } else {
+                            return Err("不支持的数字类型".to_string());
+                        }
+                    }
+                    serde_json::Value::Bool(b) => params.push(Box::new(*b as i32)),
+                    serde_json::Value::Null => params.push(Box::new(None::<i32>)),
+                    _ => return Err("不支持的参数类型".to_string()),
+                }
+            }
+            Ok(params)
+        }
+        _ => Err("params 必须是数组".to_string()),
+    }
+}
 
 

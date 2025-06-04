@@ -7,6 +7,8 @@ use db::models::task::Task;
 use db::models::BusinessModel;
 use db::models::TableType;
 use serde_json::Value;
+
+
 #[tauri::command]
 async fn insert_diagram(state: State<'_, DB>, diagram: Diagram) -> Result<i64, String> {
     let conn = state;
@@ -29,7 +31,7 @@ async fn insert_task(state: State<'_, DB>, task: Task) -> Result<i64, String> {
 async fn query_diagram(
     state: State<'_, DB>,
     where_clause: String,
-    params: impl Params,
+    params: Value,
     diagram: Diagram,
 ) -> Result<Vec<Diagram>, String> {
     let conn = state;
@@ -49,7 +51,7 @@ async fn query_diagram(
 async fn query_task(
     state: State<'_, DB>,
     where_clause: String,
-    params: impl Params,
+    params: Value,
     task: Task,
 ) -> Result<Vec<Task>, String> {
     let conn = state;
