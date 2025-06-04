@@ -1,10 +1,8 @@
 use db::models::diagram::Diagram;
 use db::{models, DB};
-use rusqlite::Params;
 use tauri::State;
 mod db;
 use db::models::task::Task;
-use db::models::BusinessModel;
 use db::models::TableType;
 use serde_json::Value;
 
