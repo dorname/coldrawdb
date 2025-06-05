@@ -1,20 +1,24 @@
 pub mod diagram;
 pub mod task;
+pub mod template;
 mod common;
 
 use diagram::*;
 use serde_json::Value;
 use task::*;
+use template::*;
 pub use common::*;
 use rusqlite::ToSql;
 use crate::db::DB;
 
 const DIAGRAM_TABLE_NAME: &str = "diagram";
+const DIAGRAMS_TABLE_NAME: &str = "diagrams";
 const NOTE_TABLE_NAME: &str = "note";
 const TASK_TABLE_NAME: &str = "task";
 const AREA_TABLE_NAME: &str = "area";
 const TYPE_TABLE_NAME: &str = "type";
 const ENUM_TABLE_NAME: &str = "enum";
+const TEMPLATES_TABLE_NAME: &str = "templates";
 
 pub enum TableType {
     Diagram,
@@ -23,6 +27,8 @@ pub enum TableType {
     Area,
     Type,
     Enum,
+    Diagrams,
+    Templates,
 }
 
 impl TableType {
@@ -34,6 +40,8 @@ impl TableType {
             TableType::Area => AREA_TABLE_NAME,
             TableType::Type => TYPE_TABLE_NAME,
             TableType::Enum => ENUM_TABLE_NAME,
+            TableType::Diagrams => DIAGRAMS_TABLE_NAME,
+            TableType::Templates => TEMPLATES_TABLE_NAME,
         }
     }
     pub fn from_num(num: i64) -> TableType {
@@ -44,6 +52,8 @@ impl TableType {
             3 => TableType::Area,
             4 => TableType::Type,
             5 => TableType::Enum,
+            6 => TableType::Diagrams,
+            7 => TableType::Templates,
             _ => panic!("Invalid table type"),
         }
     }
@@ -87,6 +97,36 @@ pub fn create_type_table(db: &DB)->Result<(), rusqlite::Error>{
 pub fn create_enum_table(db: &DB)->Result<(), rusqlite::Error>{
     let sql = format!("CREATE TABLE IF NOT EXISTS {} (id INTEGER PRIMARY KEY AUTOINCREMENT, last_modified INTEGER, loaded_from_gist_id INTEGER)", ENUM_TABLE_NAME);
     db.execute_sync(&sql, [])?;
+    Ok(())
+}
+
+pub fn create_diagrams_table(db: &DB) -> Result<(), rusqlite::Error> {
+    let sql = format!(
+        "CREATE TABLE IF NOT EXISTS {} (id INTEGER PRIMARY KEY AUTOINCREMENT, last_modified INTEGER NOT NULL, loaded_from_gist_id TEXT, content TEXT NOT NULL)",
+        DIAGRAMS_TABLE_NAME
+    );
+    db.execute_sync(&sql, [])?;
+    Ok(())
+}
+
+pub fn create_templates_table(db: &DB) -> Result<(), rusqlite::Error> {
+    let sql = format!(
+        "CREATE TABLE IF NOT EXISTS {} (id INTEGER PRIMARY KEY AUTOINCREMENT, custom BOOLEAN NOT NULL, content TEXT NOT NULL)",
+        TEMPLATES_TABLE_NAME
+    );
+    db.execute_sync(&sql, [])?;
+    Ok(())
+}
+
+pub fn init_tables(db: &DB) -> Result<(), rusqlite::Error> {
+    create_diagram_table(db)?;
+    create_note_table(db)?;
+    create_task_table(db)?;
+    create_area_table(db)?;
+    create_type_table(db)?;
+    create_enum_table(db)?;
+    create_diagrams_table(db)?;
+    create_templates_table(db)?;
     Ok(())
 }
 
