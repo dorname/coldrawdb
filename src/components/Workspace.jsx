@@ -191,9 +191,8 @@ export default function WorkSpace() {
   const load = useCallback(async () => {
     // 调用 tauri 指令
     const result = await invoke("query_task", {
-      whereClause: "1=1",
-      params: [],
-      task: { id: 1, title: "xxx", compele: false, details: "test", task_order: 1, priority: 1 }
+      whereClause: "1=?",
+      params: [1],
     });
     console.log(">>>>>>>>>>>>>>>>>>", result);
 
@@ -218,7 +217,7 @@ export default function WorkSpace() {
             setRelationships(d.references);
             setNotes(d.notes);
             setAreas(d.areas);
-            setTasks(d.todos ?? []);
+            setTasks(result?? []);
             setTransform({ pan: d.pan, zoom: d.zoom });
             if (databases[database].hasTypes) {
               setTypes(d.types ?? []);
@@ -256,7 +255,7 @@ export default function WorkSpace() {
             setRelationships(diagram.references);
             setAreas(diagram.areas);
             setNotes(diagram.notes);
-            setTasks(diagram.todos ?? []);
+            setTasks(result ?? []);
             setTransform({
               pan: diagram.pan,
               zoom: diagram.zoom,
@@ -295,7 +294,7 @@ export default function WorkSpace() {
             setTables(diagram.tables);
             setRelationships(diagram.relationships);
             setAreas(diagram.subjectAreas);
-            setTasks(diagram.todos ?? []);
+            setTasks(result ?? []);
             setNotes(diagram.notes);
             setTransform({
               zoom: 1,

@@ -98,6 +98,12 @@ export default function Modal({
   };
 
   const loadDiagram = async (id) => {
+       // 调用 tauri 指令
+    const result = await invoke("query_task", {
+        whereClause: "1=?",
+        params: [1],
+      });
+      console.log(">>>>>>>>>>>>>>>>>>", result);
     await db.diagrams
       .get(id)
       .then((diagram) => {
@@ -113,7 +119,7 @@ export default function Modal({
           setRelationships(diagram.references);
           setAreas(diagram.areas);
           setNotes(diagram.notes);
-          setTasks(diagram.todos ?? []);
+          setTasks(result ?? []);
           setTransform({
             pan: diagram.pan,
             zoom: diagram.zoom,
