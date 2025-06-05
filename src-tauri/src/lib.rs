@@ -5,6 +5,7 @@ mod db;
 use db::models::task::Task;
 use db::models::TableType;
 use serde_json::Value;
+use futures::future::join_all;
 
 
 #[tauri::command]
@@ -21,6 +22,18 @@ async fn insert_task(state: State<'_, DB>, task: Task) -> Result<i64, String> {
     let conn = state;
     models::insert(&conn, task, TableType::from_num(2))
         .await
+        .map_err(|e| e.to_string())?;
+    Ok(0)
+}
+
+//批量插入
+#[tauri::command]
+async fn insert_tasks(state: State<'_, DB>, tasks: Vec<Task>) -> Result<i64, String> {
+    let conn = state;
+    let futures = tasks.into_iter().map(|task| {
+        models::insert(&conn, task, TableType::from_num(2))
+    });
+    join_all(futures).await.into_iter().collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
     Ok(0)
 }
@@ -109,6 +122,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         .manage(db)
         .invoke_handler(tauri::generate_handler![
             insert_task,
+            insert_tasks,
             query_task,
             update_task,
             delete_task,

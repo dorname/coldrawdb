@@ -53,8 +53,8 @@ impl Model for CommonModel {
 
 /// 业务公共特征
 pub trait BusinessModel {
-    fn get_columns(&self) -> String;
-    fn get_values(&self) -> String;
+    fn get_columns(&self,action: &str) -> String;
+    fn get_values(&self,action: &str) -> String;
     fn from_raw(row: &Row) -> Self;
     fn get_order_by(&self) -> String;
 }
@@ -62,11 +62,11 @@ pub trait BusinessModel {
 
 /// 任意实现了BusinessModel的类型可以 转化为 CommonModel
 pub trait ToCommonModel {
-    fn to_common_model(self,table_name: String,where_clause: String) -> CommonModel;
+    fn to_common_model(self,table_name: String,where_clause: String,action: &str) -> CommonModel;
 }
 
 impl<T: BusinessModel> ToCommonModel for T {
-    fn to_common_model(self,table_name: String,where_clause: String) -> CommonModel {
-        CommonModel::new(table_name, self.get_columns(), self.get_values(), where_clause, self.get_order_by())
+    fn to_common_model(self,table_name: String,where_clause: String,action: &str) -> CommonModel {
+        CommonModel::new(table_name, self.get_columns(action), self.get_values(action), where_clause, self.get_order_by())
     }
 }

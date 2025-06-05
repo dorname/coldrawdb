@@ -63,7 +63,8 @@ pub fn create_note_table(db: &DB)->Result<(), rusqlite::Error>{
 
 pub fn create_task_table(db: &DB)->Result<(), rusqlite::Error>{
     let sql = format!("CREATE TABLE IF NOT EXISTS {} (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-    compele BOOLEAN, 
+    diagram_id INTEGER,
+    complete BOOLEAN, 
     details STRING,
     task_order INTEGER,
     priority INTEGER,
@@ -96,8 +97,8 @@ pub fn init_diagram(id: i64, last_modified: i64, loaded_from_gist_id: Option<i64
 } 
 
 /// 初始化task
-pub fn init_task(id: i64, compele: bool, details: String, order: i64, priority: i64, title: String) -> Task {
-    Task::new(id, compele, details, order, priority, title)
+pub fn init_task(id: i64, complete: bool, details: String, order: i64, priority: i64, title: String, diagram_id: i64) -> Task {
+    Task::new(id, complete, details, order, priority, title, diagram_id)
 }
 
 
@@ -115,8 +116,8 @@ where
     // 先根据 model.get_columns() 和 table_type 生成 SELECT 语句
     let common_model = CommonModel::new(
         table_type.get_table_name().to_string(),
-        model.get_columns(),
-        model.get_values(),
+        model.get_columns("select"),
+        model.get_values("select"),
         where_clause.to_string(),
         model.get_order_by(),
     );
@@ -138,7 +139,8 @@ where
 
 // insert
 pub async fn insert(db: &DB, model: impl BusinessModel, table_type: TableType) -> Result<(), rusqlite::Error> {
-    let common_model = model.to_common_model(table_type.get_table_name().to_string(),"".to_string());
+    let common_model = model.to_common_model(table_type.get_table_name().to_string(),"".to_string(),"insert");
+    println!("insert sql: {}", common_model.get_insert_sql());
     db.execute(common_model.get_insert_sql().as_str(), [])
         .await?;
     Ok(())
@@ -146,7 +148,7 @@ pub async fn insert(db: &DB, model: impl BusinessModel, table_type: TableType) -
 
 // update
 pub async fn update(db: &DB, model: impl BusinessModel, table_type: TableType,where_clause: String) -> Result<(), rusqlite::Error> {
-    let common_model = model.to_common_model(table_type.get_table_name().to_string(),where_clause);
+    let common_model = model.to_common_model(table_type.get_table_name().to_string(),where_clause,"update");
     db.execute(common_model.get_update_sql().as_str(), [])
         .await?;
     Ok(())
@@ -154,7 +156,7 @@ pub async fn update(db: &DB, model: impl BusinessModel, table_type: TableType,wh
 
 // delete
 pub async fn delete(db: &DB, model: impl BusinessModel, table_type: TableType,where_clause: String) -> Result<(), rusqlite::Error> {
-    let common_model = model.to_common_model(table_type.get_table_name().to_string(),where_clause);
+    let common_model = model.to_common_model(table_type.get_table_name().to_string(),where_clause,"delete");
     db.execute(common_model.get_delete_sql().as_str(), [])
         .await?;
     Ok(())

@@ -15,25 +15,25 @@ impl DB {
         })
     }
     /// 获取数据库连接的互斥锁 Guard
-    pub async fn get_conn(&self) -> MutexGuard<'_, Connection> {
-        self.conn.lock().expect("Failed to lock DB connection")
+    pub async fn get_conn(&self) -> Result<MutexGuard<'_, Connection>, String> {
+        self.conn.lock().map_err(|e| format!("Failed to lock DB connection: {}", e))
     }
 
     /// 获取数据库连接的互斥锁 Guard
-    pub fn get_conn_sync(&self) -> MutexGuard<'_, Connection> {
-        self.conn.lock().expect("Failed to lock DB connection")
+    pub fn get_conn_sync(&self) -> Result<MutexGuard<'_, Connection>, String> {
+        self.conn.lock().map_err(|e| format!("Failed to lock DB connection: {}", e))
     }
 
     /// 执行 SQL 语句
-    pub async fn execute<P: Params>(&self, sql: &str,params:P) -> Result<(), rusqlite::Error> {
-        let conn = self.get_conn().await;
+    pub async fn execute<P: Params>(&self, sql: &str, params: P) -> Result<(), rusqlite::Error> {
+        let conn = self.get_conn().await.map_err(|e| rusqlite::Error::InvalidParameterName(e))?;
         conn.execute(sql, params)?;
         Ok(())
     }
 
     /// 执行 SQL 语句
-    pub fn execute_sync<P: Params>(&self, sql: &str,params:P) -> Result<(), rusqlite::Error> {
-        let conn = self.get_conn_sync();
+    pub fn execute_sync<P: Params>(&self, sql: &str, params: P) -> Result<(), rusqlite::Error> {
+        let conn = self.get_conn_sync().map_err(|e| rusqlite::Error::InvalidParameterName(e))?;
         conn.execute(sql, params)?;
         Ok(())
     }
@@ -44,7 +44,7 @@ impl DB {
     where
         F: FnOnce(&Connection) -> Result<T, rusqlite::Error>,
     {
-        let conn = self.get_conn().await;
+        let conn = self.get_conn().await.map_err(|e| rusqlite::Error::InvalidParameterName(e))?;
         f(&conn)
     }
 

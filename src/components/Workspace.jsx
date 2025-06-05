@@ -89,12 +89,25 @@ export default function WorkSpace() {
     const name = window.name.split(" ");
     const op = name[0];
     const saveAsDiagram = window.name === "" || op === "d" || op === "lt";
-    console.log(">>>>>>>>>>>>>>>>>>", saveAsDiagram);
+    // console.log(">>>>>>>>>>>>>>>>>>", saveAsDiagram);
     if (saveAsDiagram) {
       // 保存为图表
       searchParams.delete("shareId");
       setSearchParams(searchParams);
       if ((id === 0 && window.name === "") || op === "lt") {
+        // 处理tasks 为每一个子项添加 diagram_id
+        tasks.forEach(task => {
+          task.diagram_id = id;
+          task.id = 0;
+          task.task_order = task.order;
+        });
+        await invoke("insert_tasks", {
+          tasks: tasks,
+        }).then((res) => {
+          console.log("4>>>>>>>>>>>>>>>>>>", res);
+        }).catch((err) => {
+          console.log("5>>>>>>>>>>>>>>>>>>", err);
+        });
         // 新增图表
         await db.diagrams
           .add({
@@ -120,6 +133,18 @@ export default function WorkSpace() {
             setLastSaved(new Date().toLocaleString());
           });
       } else {
+        tasks.forEach(task => {
+          task.diagram_id = id;
+          task.id = 0;
+          task.task_order = task.order;
+        });
+        await invoke("insert_tasks", {
+          tasks: tasks,
+        }).then((res) => {
+          console.log("4>>>>>>>>>>>>>>>>>>", res);
+        }).catch((err) => {
+          console.log("5>>>>>>>>>>>>>>>>>>", err);
+        });
         // 更新现有图表
         await db.diagrams
           .update(id, {
@@ -144,6 +169,19 @@ export default function WorkSpace() {
           });
       }
     } else {
+      tasks.forEach(task => {
+        task.diagram_id = id;
+        task.id = 0;
+        task.task_order = task.order;
+      });
+      await invoke("insert_tasks", {
+        tasks: tasks,
+      }).then((res) => {
+        console.log("4>>>>>>>>>>>>>>>>>>", res);
+      }).catch((err) => {
+        console.log("5>>>>>>>>>>>>>>>>>>", err);
+      });
+
       // 更新模板
       await db.templates
         .update(id, {
@@ -190,14 +228,21 @@ export default function WorkSpace() {
   // 加载图表
   const load = useCallback(async () => {
     // 调用 tauri 指令
-    const result = await invoke("query_task", {
-      whereClause: "1=?",
-      params: [1],
-    });
-    console.log(">>>>>>>>>>>>>>>>>>", result);
+    // const result = await invoke("query_task", {
+    //   whereClause: "1=?",
+    //   params: [1],
+    // });
+    // console.log(">>>>>>>>>>>>>>>>>>", result);
 
     // 加载最新图表
     const loadLatestDiagram = async () => {
+      await invoke("query_task", {
+        whereClause: "diagram_id=?",
+        params: [id],
+      }).then((res) => {
+        console.log("1>>>>>>>>>>>>>>>>>>", res);
+        return res;
+      });
       await db.diagrams
         .orderBy("lastModified")
         .last()
@@ -217,7 +262,7 @@ export default function WorkSpace() {
             setRelationships(d.references);
             setNotes(d.notes);
             setAreas(d.areas);
-            setTasks(result?? []);
+            setTasks(d.todos ?? []);
             setTransform({ pan: d.pan, zoom: d.zoom });
             if (databases[database].hasTypes) {
               setTypes(d.types ?? []);
@@ -238,6 +283,13 @@ export default function WorkSpace() {
 
     // 加载指定图表
     const loadDiagram = async (id) => {
+      await invoke("query_task", {
+        whereClause: "diagram_id=?",
+        params: [id],
+      }).then((res) => {
+        console.log("2>>>>>>>>>>>>>>>>>>", res);
+        return res;
+      });
       await db.diagrams
         .get(id)
         .then((diagram) => {
@@ -255,7 +307,7 @@ export default function WorkSpace() {
             setRelationships(diagram.references);
             setAreas(diagram.areas);
             setNotes(diagram.notes);
-            setTasks(result ?? []);
+            setTasks(diagram.todos ?? []);
             setTransform({
               pan: diagram.pan,
               zoom: diagram.zoom,
@@ -294,7 +346,7 @@ export default function WorkSpace() {
             setTables(diagram.tables);
             setRelationships(diagram.relationships);
             setAreas(diagram.subjectAreas);
-            setTasks(result ?? []);
+            setTasks(diagram.todos ?? []);
             setNotes(diagram.notes);
             setTransform({
               zoom: 1,

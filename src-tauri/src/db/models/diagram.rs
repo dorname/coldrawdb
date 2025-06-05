@@ -11,14 +11,22 @@ pub struct Diagram {
 }
 
 impl BusinessModel for Diagram {
-    fn get_columns(&self) -> String {
-        "id, last_modified, loaded_from_gist_id".to_string()
+    fn get_columns(&self,action: &str) -> String {
+        match action {
+            "insert" => "last_modified, loaded_from_gist_id".to_string(),
+            _ => "id, last_modified, loaded_from_gist_id".to_string(),
+        }
     }
-    fn get_values(&self) -> String {
-        format!("{}, {}, {}",
-        self.id, 
-        self.last_modified, 
-        self.loaded_from_gist_id.map_or("null".to_string(), |nll| nll.to_string()))
+    fn get_values(&self,action: &str) -> String {
+        match action {
+            "insert" => format!("{}, {}",
+            self.last_modified, 
+            self.loaded_from_gist_id.map_or("null".to_string(), |nll| nll.to_string())),
+            _ => format!("{}, {}, {}",
+            self.id, 
+            self.last_modified, 
+            self.loaded_from_gist_id.map_or("null".to_string(), |nll| nll.to_string()))
+        }
     }
     fn from_raw(row: &Row) -> Self {
        let (id, last_modified, loaded_from_gist_id) = 
