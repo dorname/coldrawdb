@@ -27,6 +27,9 @@ impl BusinessModel for Diagram {
        row.get::<_, Option<i64>>(2).expect("Failed to parse diagram from row"));
        Self::new(id, last_modified, loaded_from_gist_id)
     }
+    fn get_order_by(&self) -> String {
+        "id".to_string()
+    }
 }
 
 impl Diagram{
@@ -36,5 +39,8 @@ impl Diagram{
 
     pub fn from_tuple(tuple: (i64, i64, Option<i64>)) -> Self {
         Self { id: tuple.0, last_modified: tuple.1, loaded_from_gist_id: tuple.2 }
+    }
+    fn get_order_by(&self) -> String {
+        "id".to_string()
     }
 }

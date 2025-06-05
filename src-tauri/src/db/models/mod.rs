@@ -118,6 +118,7 @@ where
         model.get_columns(),
         model.get_values(),
         where_clause.to_string(),
+        model.get_order_by(),
     );
     
     let rows: Vec<M> = db

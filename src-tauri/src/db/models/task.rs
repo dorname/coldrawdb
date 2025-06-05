@@ -3,17 +3,31 @@ use rusqlite::Row;
 use serde::{Serialize, Deserialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
+    /// 主键字段
     id: i64,
+    /// 完成字段
     compele: bool,
+    /// 详情字段
     details: String,
+    /// 排序字段
     task_order: i64,
+    /// 优先级字段
+    /// 0 无 
+    /// 1 低
+    /// 2 中
+    /// 3 高
     priority: i64,
+    /// 标题字段
     title: String,
 }
 
 impl Task {
     pub fn new(id: i64, compele: bool, details: String, task_order: i64, priority: i64, title: String) -> Self {
         Self { id, compele, details, task_order, priority, title }
+    }
+
+    pub fn empty_task() -> Self {
+        Self { id: 0, compele: false, details: "".to_string(), task_order: 0, priority: 0, title: "".to_string() }
     }
 
     pub fn from_tuple(tuple: (i64, bool, String, i64, i64, String)) -> Self {
@@ -39,5 +53,9 @@ impl BusinessModel for Task {
         row.get::<_, i64>(4).expect("Failed to parse task from row"), 
         row.get::<_, String>(5).expect("Failed to parse task from row"));
         Self::new(id, compele, details, task_order, priority, title)
+    }
+
+    fn get_order_by(&self) -> String {
+        "task_order".to_string()
     }
 }

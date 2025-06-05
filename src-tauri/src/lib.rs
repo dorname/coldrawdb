@@ -50,9 +50,9 @@ async fn query_task(
     state: State<'_, DB>,
     where_clause: String,
     params: Value,
-    task: Task,
 ) -> Result<Vec<Task>, String> {
     let conn = state;
+    let task = Task::empty_task();
     let result = models::query(&conn, &where_clause, params, task, TableType::from_num(2))
         .await
         .map_err(|e| e.to_string())?;

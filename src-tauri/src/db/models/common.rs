@@ -15,11 +15,12 @@ pub struct CommonModel {
     pub columns: String,
     pub values: String,
     pub where_clause: String,
+    pub order_by: String,
 }
 
 impl CommonModel {
-    pub fn new(table_name: String, columns: String, values: String, where_clause: String) -> Self {
-        Self { table_name, columns, values, where_clause }
+    pub fn new(table_name: String, columns: String, values: String, where_clause: String, order_by: String) -> Self {
+        Self { table_name, columns, values, where_clause, order_by }
     }
 }
 
@@ -31,10 +32,22 @@ impl Model for CommonModel {
         format!("UPDATE {} SET {} WHERE {}", self.table_name, self.columns, self.values)
     }
     fn get_delete_sql(&self) -> String {
-        format!("DELETE FROM {} WHERE {}", self.table_name, self.where_clause)
+        let mut where_clause = self.where_clause.clone();
+        if where_clause.is_empty() {
+            where_clause = "1=1".to_string();
+        }
+        format!("DELETE FROM {} WHERE {}", self.table_name, where_clause)
     }
     fn get_select_sql(&self) -> String {
-        format!("SELECT {} FROM {} WHERE {}", self.columns, self.table_name, self.where_clause)
+        let mut where_clause = self.where_clause.clone();
+        if where_clause.is_empty() {
+            where_clause = "1=1".to_string();
+        }
+        let mut order_by = self.order_by.clone();
+        if order_by.is_empty() {
+            order_by = "id".to_string();
+        }
+        format!("SELECT {} FROM {} WHERE {} ORDER BY {}", self.columns, self.table_name, where_clause, order_by)
     }
 }
 
@@ -43,6 +56,7 @@ pub trait BusinessModel {
     fn get_columns(&self) -> String;
     fn get_values(&self) -> String;
     fn from_raw(row: &Row) -> Self;
+    fn get_order_by(&self) -> String;
 }
 
 
@@ -53,6 +67,6 @@ pub trait ToCommonModel {
 
 impl<T: BusinessModel> ToCommonModel for T {
     fn to_common_model(self,table_name: String,where_clause: String) -> CommonModel {
-        CommonModel::new(table_name, self.get_columns(), self.get_values(), where_clause)
+        CommonModel::new(table_name, self.get_columns(), self.get_values(), where_clause, self.get_order_by())
     }
 }
