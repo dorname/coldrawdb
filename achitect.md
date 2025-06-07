@@ -12,6 +12,7 @@ const task = {
   details: "'test'",
   task_order: 1,
   priority: 1,
+  diagram_id: 1
 };
 
 

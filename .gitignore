@@ -24,7 +24,7 @@ dist-ssr
 *.sw?
 .env
 # SpecStory explanation file
-.specstory/.what-is-this.md
+.specstory/*
 
 .cursor*
 .gitignore
