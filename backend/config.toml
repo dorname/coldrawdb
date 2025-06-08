@@ -1,0 +1,10 @@
+[database]
+path = "db.sqlite"
+init_sql_path = "init.sql"
+
+[server]
+port = 8083
+host = "127.0.0.1"
+
+[options]
+init_db = false

@@ -22,4 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-.env
+./node_modules
+.specstory/*
+backend/.specstory/*
+backend/target/*
+backend/.cursor*
+backend/*.lock
+backend/*.sqlite
+.cursor*
