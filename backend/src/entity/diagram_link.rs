@@ -21,7 +21,11 @@ pub enum Relation {
         to = "diagram::Column::Id"
     )]
     Diagram,
-    #[sea_orm(belongs_to = "Task", from = "Column::TaskId", to = "task::Column::Id")]
+    #[sea_orm(
+        belongs_to = "Task",
+        from = "Column::TaskId",
+        to = "task::Column::Id"
+    )]
     Task,
 }
 
