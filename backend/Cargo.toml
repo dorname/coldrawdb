@@ -14,3 +14,5 @@ sea-orm = { version = "0.12", features = ["runtime-tokio-rustls", "sqlx-sqlite",
 tokio = { version = "1.0", features = ["full"] }
 lazy_static = "1.4"
 rs-snowflake = "0.6.0"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }

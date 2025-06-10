@@ -6,9 +6,11 @@ mod init;
 mod todos;
 use error::DrawDBError;
 use init::{get_config, init};
+use tracing_subscriber::fmt;
 use std::result::Result;
 use snowflake::{SnowflakeIdGenerator};
 use std::sync::Mutex;
+use tracing_subscriber::EnvFilter;
 
 // 全局单例生成器，假设机器 ID 为 1
 lazy_static::lazy_static! {
@@ -24,8 +26,23 @@ pub fn next_id() -> String {
 }
 
 
+/// 初始化日志
+fn init_log() {
+    // 1) 初始化 env filter
+    // 2) 初始化 fmt subscriber
+    fmt()
+    .with_env_filter(EnvFilter::try_from_default_env()
+    .unwrap_or_else(|_| EnvFilter::new("info")))
+    .with_file(true)
+    .with_line_number(true)
+    .compact()
+    .pretty()
+    .init();
+}
+
 #[actix_web::main]
 async fn main() -> Result<(), DrawDBError> {
+    init_log();
     let db = init().await?;
     let server_config = get_config();
     let config = server_config
