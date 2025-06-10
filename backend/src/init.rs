@@ -83,7 +83,13 @@ pub async fn init() -> Result<Option<DatabaseConnection>, DrawDBError> {
         // 创建数据库文件
         std::fs::File::create(&config.database.path)?;
     }
-    let db = Database::connect(format!("sqlite://{}", &config.database.path)).await?;
+    
+    // 配置连接池
+    let db = Database::connect(format!(
+        "sqlite://{}?",
+        &config.database.path,
+    )).await?;
+    
     // 如果初始化开关为true，则初始化数据库
     if config.options.init_db {
         init_table(&config.database.init_sql_path, &db).await?;
@@ -93,4 +99,14 @@ pub async fn init() -> Result<Option<DatabaseConnection>, DrawDBError> {
         std::fs::write("config.toml", toml::to_string(&config).unwrap())?;
     }
     Ok(Some(db))
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[actix_web::test]
+    async fn test_init() {
+        let db = Database::connect(format!("sqlite://{}", "test.sqlite")).await.unwrap();
+        init_table("init.sql", &db).await.unwrap();
+    }
 }

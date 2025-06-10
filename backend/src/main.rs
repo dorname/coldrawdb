@@ -7,6 +7,22 @@ mod todos;
 use error::DrawDBError;
 use init::{get_config, init};
 use std::result::Result;
+use snowflake::{SnowflakeIdGenerator};
+use std::sync::Mutex;
+
+// 全局单例生成器，假设机器 ID 为 1
+lazy_static::lazy_static! {
+    static ref ID_GEN: Mutex<SnowflakeIdGenerator> = Mutex::new(
+       SnowflakeIdGenerator::new(1, 1)
+    );
+}
+
+/// 取一个雪花 ID
+pub fn next_id() -> String {
+    let mut g = ID_GEN.lock().unwrap();
+    g.generate().to_string()
+}
+
 
 #[actix_web::main]
 async fn main() -> Result<(), DrawDBError> {
@@ -20,7 +36,7 @@ async fn main() -> Result<(), DrawDBError> {
 
     HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(db.clone()))
+            .app_data(web::Data::new(db.clone().unwrap()))
             .service(hello)
             .route("/", web::get().to(index))
             .service(web::scope("/todos").configure(todos::todos_routes))

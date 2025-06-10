@@ -15,7 +15,10 @@ pub struct Model {
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    #[sea_orm(has_many = "DiagramLink")]
+    DiagramLink,
+}
 
 impl Related<Diagram> for Entity {
     /// diagram_link -> diagram
@@ -31,7 +34,7 @@ impl Related<Diagram> for Entity {
 impl Related<DiagramLink> for Entity {
     /// diagram_link -> task
     fn to() -> RelationDef {
-        diagram_link::Relation::Task.def()
+        Relation::DiagramLink.def()
     }
 }
 impl ActiveModelBehavior for ActiveModel {}

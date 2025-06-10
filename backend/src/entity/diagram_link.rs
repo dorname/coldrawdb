@@ -14,6 +14,12 @@ pub struct Model {
     pub table_id: Option<String>,
 }
 
+impl Model {
+    pub fn new(id: String, diagram_id: Option<String>, task_id: Option<String>, table_id: Option<String>) -> Self {
+        Self { id, diagram_id: diagram_id, task_id: task_id, table_id: table_id}
+    }
+}
+
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
