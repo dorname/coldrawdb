@@ -5,6 +5,7 @@ use sea_orm::DatabaseConnection;
 use sea_orm::EntityTrait;
 use sea_orm::Iterable;
 use sea_orm::QueryFilter;
+use sea_orm::QueryOrder;
 use sea_orm::QuerySelect;
 use sea_orm::TransactionTrait;
 
@@ -39,12 +40,19 @@ async fn hello_todos_example() -> impl Responder {
 /// 根据diagram_id获取关联的task
 /// 参数：diagram_id
 /// 返回：所有关联的task
-#[get("/query_all_todos/{diagram_id}")]
+#[get("/query_all_todos/{diagram_id}/{order_field}")]
 async fn query_all_todos(
-    db: web::Data<DatabaseConnection>,
+    db: web::Data<DatabaseConnection>,  
     diagram_id: web::Path<String>,
+    order_field: web::Path<String>,
 ) -> Result<CommonResponse, DrawDBError> {
     let diagram_id = diagram_id.into_inner();
+    let order_field = order_field.into_inner();
+    let order_column = match order_field.as_str() {
+        _ => task::Column::Order,
+        "1" => task::Column::Complete,
+        "2" => task::Column::Title
+    };
     let conn = db.get_ref();
     // select * from task as t
     //inner join diagram_link as link
@@ -55,6 +63,7 @@ async fn query_all_todos(
     .columns(task::Column::iter())
         .inner_join(DiagramLink)
         .filter(diagram_link::Column::DiagramId.eq(diagram_id))
+        .order_by_desc(order_column)
     .all(conn)
         .await?;
     Ok(CommonResponse::new(
