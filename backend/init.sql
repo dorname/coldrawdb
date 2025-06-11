@@ -13,8 +13,15 @@ CREATE TABLE IF NOT EXISTS "task" (
 	PRIMARY KEY("id")
 );
 
+/* 图表数据结构 */
 CREATE TABLE IF NOT EXISTS "diagram" (
 	"id" VARCHAR NOT NULL UNIQUE,
+	-- 空间缩放比例
+	"zoom" VARCHAR,
+	-- 设计名称
+	"name" VARCHAR,
+	-- 数据库名称
+	"database" VARCHAR,
 	PRIMARY KEY("id")
 );
 

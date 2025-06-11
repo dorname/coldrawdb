@@ -43,15 +43,13 @@ async fn hello_todos_example() -> impl Responder {
 #[get("/query_all_todos/{diagram_id}/{order_field}")]
 async fn query_all_todos(
     db: web::Data<DatabaseConnection>,  
-    diagram_id: web::Path<String>,
-    order_field: web::Path<String>,
+    diagram_id: web::Path<(String, String)>
 ) -> Result<CommonResponse, DrawDBError> {
-    let diagram_id = diagram_id.into_inner();
-    let order_field = order_field.into_inner();
+    let (diagram_id, order_field) = diagram_id.into_inner();
     let order_column = match order_field.as_str() {
-        _ => task::Column::Order,
         "1" => task::Column::Complete,
-        "2" => task::Column::Title
+        "2" => task::Column::Title,
+        _ => task::Column::Order
     };
     let conn = db.get_ref();
     // select * from task as t
@@ -173,7 +171,7 @@ mod test {
 
         // 创建测试请求
         let req = test::TestRequest::get()
-            .uri("/query_all_todos/1")
+            .uri("/query_all_todos/1/1")
             .to_request();
 
         // 发送请求并获取响应

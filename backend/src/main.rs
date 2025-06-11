@@ -4,6 +4,7 @@ mod entity;
 mod error;
 mod init;
 mod todos;
+mod diagrams;
 use error::DrawDBError;
 use init::{get_config, init};
 use tracing_subscriber::fmt;
@@ -57,6 +58,7 @@ async fn main() -> Result<(), DrawDBError> {
             .service(hello)
             .route("/", web::get().to(index))
             .service(web::scope("/todos").configure(todos::todos_routes))
+            .service(web::scope("/diagrams").configure(diagrams::diagrams_routes))
     })
     .bind(format!("{}:{}", host, port))?
     .run()
