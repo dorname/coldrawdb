@@ -92,6 +92,9 @@ async fn add_todo(
         diagram_link_id, 
         Some(todo.diagram_id.clone()),
         Some(task_id), 
+        None,
+        None,
+        None,
         None
     );
     let diagram_link_active_model = diagram_link::ActiveModel::from(diagram_link);

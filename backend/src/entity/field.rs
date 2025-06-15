@@ -2,6 +2,8 @@
 
 use sea_orm::entity::prelude::*;
 
+use crate::entity::prelude::{IndiceLink, TableLink};
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
 #[sea_orm(table_name = "field")]
 pub struct Model {
@@ -23,6 +25,24 @@ pub struct Model {
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    #[sea_orm(has_many = "TableLink")]
+    TableLink,
+
+    #[sea_orm(has_many= "IndiceLink")]
+    IndiceLink
+}
+
+impl Related<TableLink> for Entity {
+    fn to() -> RelationDef {
+        Relation::TableLink.def()
+    }
+}
+
+impl Related<IndiceLink> for Entity {
+    fn to() -> RelationDef {
+        Relation::IndiceLink.def()
+    }
+}
 
 impl ActiveModelBehavior for ActiveModel {}

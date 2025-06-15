@@ -5,6 +5,12 @@ mod error;
 mod init;
 mod todos;
 mod diagrams;
+mod references;
+mod areas;
+mod notes;
+mod tables;
+mod indices;
+mod fields;
 use error::DrawDBError;
 use init::{get_config, init};
 use tracing_subscriber::fmt;
@@ -59,6 +65,7 @@ async fn main() -> Result<(), DrawDBError> {
             .route("/", web::get().to(index))
             .service(web::scope("/todos").configure(todos::todos_routes))
             .service(web::scope("/diagrams").configure(diagrams::diagrams_routes))
+            .service(web::scope("/tables")).configure(tables::tables_routes)
     })
     .bind(format!("{}:{}", host, port))?
     .run()

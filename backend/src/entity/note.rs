@@ -2,6 +2,8 @@
 
 use sea_orm::entity::prelude::*;
 
+use crate::entity::prelude::DiagramLink;
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
 #[sea_orm(table_name = "note")]
 pub struct Model {
@@ -19,6 +21,15 @@ pub struct Model {
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    #[sea_orm(has_many = "DiagramLink")]
+    DiagramLink,
+}
+
+impl Related<DiagramLink> for Entity {
+    fn to() -> RelationDef {
+        Relation::DiagramLink.def()
+    }
+}
 
 impl ActiveModelBehavior for ActiveModel {}

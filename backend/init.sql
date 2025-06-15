@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS "diagram_link" (
 	"diagram_id" VARCHAR,
 	"task_id" VARCHAR,
 	"table_id" VARCHAR,
+	"area_id" VARCHAR,
+	"note_id" VARCHAR,
+	"reference_id" VARCHAR,
 	PRIMARY KEY("id")
 );
 
