@@ -2,7 +2,7 @@
 
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
-use crate::entity::{prelude::*, table_link};
+use crate::entity::{prelude::*, table_link, diagram_link};
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq,Serialize,Deserialize)]
 #[sea_orm(table_name = "table")]
 pub struct Model {
@@ -33,6 +33,18 @@ impl Related<DiagramLink> for Entity {
         Relation::DiagramLink.def()
     }
 }
+
+impl Related<Diagram> for Entity {
+    /// diagram_link -> table
+    fn to() -> RelationDef {
+        Relation::DiagramLink.def()
+    }
+    /// diagram -> diagram_link
+    fn via() -> Option<RelationDef> {
+        Some(diagram_link::Relation::Diagram.def().rev())
+    }
+}
+
 
 impl Related<TableLink> for Entity {
     // table_link -> table

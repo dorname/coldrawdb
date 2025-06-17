@@ -13,6 +13,9 @@ use crate::{common::CommonResponse, error::DrawDBError};
 /// 图表模块
 pub fn diagrams_routes(config: &mut web::ServiceConfig) {
     config.service(query_all_diagrams);
+    config.service(add_diagram);
+    config.service(update_diagram);
+    config.service(delete_diagram);
 }
 
 /// 查询所有图表

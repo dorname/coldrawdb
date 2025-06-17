@@ -64,8 +64,9 @@ async fn main() -> Result<(), DrawDBError> {
             .service(hello)
             .route("/", web::get().to(index))
             .service(web::scope("/todos").configure(todos::todos_routes))
+            .service(web::scope("/tables").configure(tables::tables_routes))
             .service(web::scope("/diagrams").configure(diagrams::diagrams_routes))
-            .service(web::scope("/tables")).configure(tables::tables_routes)
+     
     })
     .bind(format!("{}:{}", host, port))?
     .run()

@@ -27,5 +27,14 @@ impl Related<Task> for Entity {
         Some(diagram_link::Relation::Diagram.def().rev())
     }
 }
-
+impl Related<Table> for Entity {
+    /// diagram_link -> table
+    fn to() -> RelationDef {
+        diagram_link::Relation::Table.def()
+    }
+    /// diagram -> diagram_link
+    fn via() -> Option<RelationDef> {
+        Some(diagram_link::Relation::Diagram.def().rev())
+    }
+}
 impl ActiveModelBehavior for ActiveModel {}
