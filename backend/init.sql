@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS "table" (
 
 /* 字段报表 */
 CREATE TABLE IF NOT EXISTS "field" (
-	"id" NUMERIC NOT NULL UNIQUE,
+	"id" VARCHAR NOT NULL UNIQUE,
 	-- 检查表达式字段
 	"check" VARCHAR,
 	-- 注释字段
@@ -76,6 +76,8 @@ CREATE TABLE IF NOT EXISTS "field" (
 	"type" VARCHAR,
 	-- 索引标记
 	"unique" BOOLEAN,
+	-- 字段名称
+	"name" VARCHAR,
 	PRIMARY KEY("id")
 );
 

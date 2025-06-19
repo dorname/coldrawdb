@@ -9,8 +9,7 @@ use crate::entity::prelude::{IndiceLink, TableLink};
 pub struct Model {
     #[sea_orm(
         primary_key,
-        auto_increment = false,
-        column_type = "custom(\"NUMERIC\")"
+        auto_increment = false
     )]
     pub id: String,
     pub check: Option<String>,
@@ -22,6 +21,7 @@ pub struct Model {
     pub size: Option<i32>,
     pub r#type: Option<String>,
     pub unique: Option<bool>,
+    pub name: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
