@@ -1,10 +1,14 @@
 use std::collections::HashMap;
 
-use actix_web::{get, web};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, Iterable, JoinType, QueryFilter, QuerySelect, RelationTrait};
+use actix_web::middleware::Next;
+use actix_web::web::Json;
+use actix_web::{get, post, web};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, Iterable, JoinType, ModelTrait, QueryFilter, QuerySelect, RelationTrait, TransactionTrait};
+use tracing_subscriber::registry::Data;
 use crate::entity::dto::FieldWithTable;
-use crate::entity::prelude::*;
+use crate::entity::{prelude::*, table};
 use crate::entity::vo::{FieldVo, TableVo};
+use crate::next_id;
 use crate::{common::{CommonResponse, ResponseCode, ResponseMessage}, error::DrawDBError};
 use crate::entity::{table::Relation as TableRelation,diagram_link,field,table_link};
 use itertools::Itertools;
@@ -56,5 +60,31 @@ async fn query_tables(
         ResponseCode::Success,
         ResponseMessage::Success,
         Some(serde_json::to_value(table_vos).unwrap()),
+    ))
+}
+
+/// 新增tables
+#[post("/add")]
+async fn add(
+   db: web::Data<DatabaseConnection>,
+   table_vo: web::Json<TableVo>
+)->Result<CommonResponse, DrawDBError> {
+    //1、开启事务
+    let tx = db.begin().await?;
+    let  table_id = next_id();
+    let mut table_add = table_vo.into_inner().convert_to_table();
+    table_add.id = table_id; 
+    let table_am = table::ActiveModel::from(table_add);
+    let insert_rsult = Table::insert(table_am).exec(&tx).await?;
+    //2、TODO 插入默认的Id字段
+
+    //3、TODO 插入默认的关联关系
+
+    //4、提交事务
+    tx.commit().await?;
+    Ok(CommonResponse::new(
+        ResponseCode::Success,
+        ResponseMessage::Success,
+        Some(serde_json::to_value(insert_rsult.last_insert_id).unwrap()),
     ))
 }

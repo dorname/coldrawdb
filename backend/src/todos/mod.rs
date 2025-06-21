@@ -23,9 +23,9 @@ pub fn todos_routes(config: &mut web::ServiceConfig) {
     config.route("/test", web::get().to(get_todos_example));
     config.service(hello_todos_example);
     config.service(query_all_todos);
-    config.service(add_todo);
-    config.service(update_todo);
-    config.service(delete_todo);
+    config.service(add);
+    config.service(update);
+    config.service(delete);
 }
 
 async fn get_todos_example() -> impl Responder {
@@ -40,7 +40,7 @@ async fn hello_todos_example() -> impl Responder {
 /// 根据diagram_id获取关联的task
 /// 参数：diagram_id
 /// 返回：所有关联的task
-#[get("/query_all_todos/{diagram_id}/{order_field}")]
+#[get("/query/{diagram_id}/{order_field}")]
 async fn query_all_todos(
     db: web::Data<DatabaseConnection>,  
     diagram_id: web::Path<(String, String)>
@@ -72,8 +72,8 @@ async fn query_all_todos(
 }
 
 /// 新增todo
-#[post("/add_todo")]
-async fn add_todo(
+#[post("/add")]
+async fn add(
     db: web::Data<DatabaseConnection>,
     todo: web::Json<TaskAddVo>,
 ) -> Result<CommonResponse, DrawDBError> {
@@ -110,8 +110,8 @@ async fn add_todo(
     ))
 }
 /// 更新todo
-#[post("/update_todo")]
-async fn update_todo(
+#[post("/update")]
+async fn update(
     db: web::Data<DatabaseConnection>,
     todo: web::Json<TaskUpdateVo>,
 ) -> Result<CommonResponse, DrawDBError> {    // 开始事务
@@ -129,8 +129,8 @@ async fn update_todo(
     ))
 }
 /// 删除todo
-#[delete("/delete_todo/{id}")]
-async fn delete_todo(
+#[delete("/delete/{id}")]
+async fn delete(
     db: web::Data<DatabaseConnection>,
     id: web::Path<String>,
 ) -> Result<CommonResponse, DrawDBError> {
@@ -174,7 +174,7 @@ mod test {
 
         // 创建测试请求
         let req = test::TestRequest::get()
-            .uri("/query_all_todos/1/1")
+            .uri("/query/1/1")
             .to_request();
 
         // 发送请求并获取响应
@@ -198,7 +198,7 @@ mod test {
                 .configure(todos_routes)
         ).await;
         let req = test::TestRequest::post()
-            .uri("/add_todo")
+            .uri("/add")
             .set_json(json!({
                 "diagram_id": "1",
                 "complete": false,
@@ -225,7 +225,7 @@ mod test {
                 .configure(todos_routes)
         ).await;
         let req = test::TestRequest::post()
-            .uri("/update_todo")
+            .uri("/update")
             .set_json(json!({
                 "id": "7338216606830563329",
                 "complete": true,
@@ -252,7 +252,7 @@ mod test {
                 .configure(todos_routes)
         ).await;
         let req = test::TestRequest::delete()
-            .uri("/delete_todo/7338216606830563329")
+            .uri("/delete/7338216606830563329")
             .to_request();
         let resp = test::call_service(&app, req).await;
         println!("Status: {:?}", resp.status());

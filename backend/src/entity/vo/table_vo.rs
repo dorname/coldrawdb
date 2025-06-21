@@ -1,7 +1,9 @@
+use sea_orm::ActiveValue;
 use serde::{Deserialize, Serialize};    
 use crate::entity::dto::FieldWithTable;
 use crate::entity::field::Model as FieldModel;
 use crate::entity::table::Model as TableModel;
+use crate::entity::table::ActiveModel as TableActiveModel;
 
 #[derive(Serialize, Deserialize)]
 pub struct TableVo {
@@ -38,6 +40,15 @@ impl TableVo {
             x: table.x.clone(),
             y: table.y.clone(),
         }
+    }
+
+    pub fn convert_to_active_model(&self) -> TableActiveModel{
+        let id = ActiveValue::Set(self.id.clone());
+        let am:TableActiveModel = TableActiveModel{
+            id,
+            ..Default::default()
+        };
+        am
     }
 }
 
