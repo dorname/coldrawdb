@@ -30,3 +30,4 @@ backend/.cursor*
 backend/*.lock
 backend/*.sqlite
 .cursor*
+./package-lock.json
