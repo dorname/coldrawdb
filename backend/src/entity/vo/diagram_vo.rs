@@ -1,13 +1,15 @@
 use sea_orm::ActiveValue;
 use serde::{Serialize,Deserialize};
 use crate::entity::diagram::{Model as DiagramModel,ActiveModel as Diagram};
-
+use crate::entity::vo::table_vo::TableVo;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiagramVo{
     pub id: String,
     pub zoom: Option<String>,
     pub database: Option<String>,
-    pub name: Option<String> 
+    pub name: Option<String> ,
+    // todo 新增、删除、修改表时，都是通过这个表来操作的
+    pub tables: Option<Vec<TableVo>>
 }
 
 impl DiagramVo {

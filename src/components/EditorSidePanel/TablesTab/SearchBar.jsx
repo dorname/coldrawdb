@@ -39,6 +39,7 @@ export default function SearchBar({ tables }) {
       emptyContent={<div className="p-3 popover-theme">{t("not_found")}</div>}
       filterTreeNode
       placeholder={t("search")}
+      autoFocus={false}
       onChange={(node) => {
         const { tableId, id, children } = node;
 

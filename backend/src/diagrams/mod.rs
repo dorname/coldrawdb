@@ -32,6 +32,22 @@ async fn query_all_diagrams(
     ))
 }
 
+/// 查询图表
+#[get("/query/{id}")]
+async fn query_diagram(
+    db: web::Data<DatabaseConnection>,
+    id: web::Path<String>
+) -> Result<CommonResponse, DrawDBError> {
+    let conn = db.get_ref();
+    let id = id.into_inner();
+    let diagram = Diagram::find_by_id(id).one(conn).await?;
+    Ok(CommonResponse::new(
+        ResponseCode::Success,
+        ResponseMessage::Success,
+        Some(serde_json::to_value(diagram).unwrap()),
+    ))
+}
+
 /// 新增图表
 #[post("/add")]
 async fn add_diagram(

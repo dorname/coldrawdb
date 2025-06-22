@@ -5,7 +5,7 @@ use crate::entity::field::Model as FieldModel;
 use crate::entity::table::Model as TableModel;
 use crate::entity::table::ActiveModel as TableActiveModel;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize,Clone,Debug,PartialEq,Eq)]
 pub struct TableVo {
     pub id: String,
     pub color: Option<String>,
@@ -14,7 +14,7 @@ pub struct TableVo {
     pub name: Option<String>,
     pub x: Option<String>,
     pub y: Option<String>,
-    fields: Vec<FieldVo>,
+    pub fields: Vec<FieldVo>,
 }
 
 impl TableVo {
@@ -52,7 +52,7 @@ impl TableVo {
     }
 }
 
-#[derive(Serialize, Deserialize,Clone)]
+#[derive(Serialize, Deserialize,Clone,Debug,PartialEq,Eq)]
 pub struct FieldVo {
     pub id: String,
     pub table_id: String,

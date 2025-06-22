@@ -24,7 +24,9 @@ import { useTranslation } from "react-i18next";
 import { databases } from "../data/databases";
 import { isRtl } from "../i18n/utils/rtl";
 import { useSearchParams } from "react-router-dom";
-import { get } from "../api/gists";
+import { get as getGist } from "../api/gists";
+
+import { get } from "../utils/requestApi";
 
 export const IdContext = createContext({ gistId: "", setGistId: () => {} });
 
@@ -172,6 +174,7 @@ export default function WorkSpace() {
         .orderBy("lastModified")
         .last()
         .then((d) => {
+          // console.log("load latest:>>>>>>>>>>>>>>>>", d);
           if (d) {
             if (d.database) {
               setDatabase(d.database);
@@ -203,13 +206,17 @@ export default function WorkSpace() {
         .catch((error) => {
           console.log(error);
         });
+        console.log("load latest:>>>>>>>>>>>>>>>>");
     };
 
     const loadDiagram = async (id) => {
+      const res = await get(`/tables/queryTables/${id}`);
+      console.log("load diagram:>>>>>>>>>>>>>>>>", res);
       await db.diagrams
         .get(id)
         .then((diagram) => {
           if (diagram) {
+            console.log("load diagram:>>>>>>>>>>>>>>>>", diagram);
             if (diagram.database) {
               setDatabase(diagram.database);
             } else {
@@ -244,6 +251,7 @@ export default function WorkSpace() {
         .catch((error) => {
           console.log(error);
         });
+        console.log("load diagram:>>>>>>>>>>>>>>>>");
     };
 
     const loadTemplate = async (id) => {
@@ -283,11 +291,12 @@ export default function WorkSpace() {
           console.log(error);
           if (selectedDb === "") setShowSelectDbModal(true);
         });
+        console.log("load template:>>>>>>>>>>>>>>>>");
     };
 
     const loadFromGist = async (shareId) => {
       try {
-        const res = await get(shareId);
+        const res = await getGist(shareId);
         const diagramSrc = res.data.files["share.json"].content;
         const d = JSON.parse(diagramSrc);
         setUndoStack([]);
