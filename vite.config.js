@@ -7,12 +7,12 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8083', // 您的后端地址
+        target: 'http://localhost:6666', // 您的后端地址
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '')
       },
       '/tables': {
-        target: 'http://localhost:8083', // 您的后端地址
+        target: 'http://localhost:6666', // 您的后端地址
         changeOrigin: true
       }
     }
