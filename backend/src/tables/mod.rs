@@ -138,5 +138,5 @@ pub async fn add_table(
      TableLink::insert_many(table_link_ams).exec(&tx).await?;
     //4、提交事务
     tx.commit().await?;
-    Ok(CommonResponse::new(ResponseCode::Success, ResponseMessage::Success, None))
+    Ok(CommonResponse::new(ResponseCode::Success, ResponseMessage::Success, Some(serde_json::to_value(true).unwrap())))
 }
