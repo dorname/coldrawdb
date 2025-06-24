@@ -10,7 +10,16 @@ services:
     command: sh -c "npm install && npm run dev -- --host"
     networks:
       - default
-
+  backend:
+    image: rust:1.83.0-slim
+    ports:
+      - 6666:6666
+    working_dir: /app
+    volumes:
+      - ./backend/target/debug/:/app
+    command: sh -c "bash backend.d"
+    networks:
+      - default
 networks:
   default:
     driver: bridge
