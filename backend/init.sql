@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS "diagram" (
 	"name" VARCHAR,
 	-- 数据库名称
 	"database" VARCHAR,
+	-- 最近修改日期
+	"lastModified" TIME,
 	PRIMARY KEY("id")
 );
 
@@ -34,10 +36,12 @@ CREATE TABLE IF NOT EXISTS "diagram_link" (
 	"table_id" VARCHAR,
 	"area_id" VARCHAR,
 	"note_id" VARCHAR,
-	"reference_id" VARCHAR,
+	"reference" VARCHAR,
 	PRIMARY KEY("id")
 );
 
+CREATE INDEX IF NOT EXISTS "diagram_link_index_0"
+ON "diagram_link" ("diagram_id", "task_id", "table_id");
 /* 表的存储结构 */
 CREATE TABLE IF NOT EXISTS "table" (
 	"id" VARCHAR NOT NULL UNIQUE,
@@ -71,12 +75,11 @@ CREATE TABLE IF NOT EXISTS "field" (
 	"not_null" BOOLEAN,
 	"primary" BOOLEAN,
 	-- 字段大小
-	"size" INTEGER,
+	"size" VARCHAR,
 	-- 类型字段
 	"type" VARCHAR,
 	-- 索引标记
 	"unique" BOOLEAN,
-	-- 字段名称
 	"name" VARCHAR,
 	PRIMARY KEY("id")
 );
@@ -153,5 +156,5 @@ CREATE TABLE IF NOT EXISTS "note" (
 	"x" NUMERIC,
 	-- 注释在画布的纵坐标
 	"y" NUMERIC,
-	PRIMARY KEY("id")
+	PRIMARY KEY("id") 
 );

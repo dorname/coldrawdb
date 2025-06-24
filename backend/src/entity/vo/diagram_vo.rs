@@ -2,6 +2,11 @@ use sea_orm::ActiveValue;
 use serde::{Serialize,Deserialize};
 use crate::entity::diagram::{Model as DiagramModel,ActiveModel as Diagram};
 use crate::entity::vo::table_vo::TableVo;
+use crate::entity::vo::area_vo::AreaVo;
+use crate::entity::vo::reference_vo::ReferenceVo;
+use crate::entity::vo::indice_vo::IndiceVo;
+use crate::entity::vo::note_vo::NoteVo;
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiagramVo{
     pub id: String,
@@ -9,7 +14,15 @@ pub struct DiagramVo{
     pub database: Option<String>,
     pub name: Option<String> ,
     // todo 新增、删除、修改表时，都是通过这个表来操作的
-    pub tables: Option<Vec<TableVo>>
+    pub tables: Option<Vec<TableVo>>,
+    // todo 新增、删除、修改区域时，都是通过这个表来操作的
+    pub areas: Option<Vec<AreaVo>>,
+    // todo 新增、删除、修改关联关系时，都是通过这个表来操作的
+    pub references: Option<Vec<ReferenceVo>>,
+    // todo 新增、删除、修改索引时，都是通过这个表来操作的
+    pub indices: Option<Vec<IndiceVo>>,
+    // todo 新增、删除、修改任务时，都是通过这个表来操作的
+    pub notes: Option<Vec<NoteVo>>
 }
 
 impl DiagramVo {

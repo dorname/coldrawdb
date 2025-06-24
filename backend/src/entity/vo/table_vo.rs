@@ -4,6 +4,8 @@ use crate::entity::dto::FieldWithTable;
 use crate::entity::field::Model as FieldModel;
 use crate::entity::table::Model as TableModel;
 use crate::entity::table::ActiveModel as TableActiveModel;
+use crate::entity::table_link::Model as TableLinkModel;
+
 
 #[derive(Serialize, Deserialize,Clone,Debug,PartialEq,Eq)]
 pub struct TableVo {
@@ -14,7 +16,7 @@ pub struct TableVo {
     pub name: Option<String>,
     pub x: Option<String>,
     pub y: Option<String>,
-    pub fields: Vec<FieldVo>,
+    pub fields: Option<Vec<FieldVo>>,
 }
 
 impl TableVo {
@@ -29,7 +31,7 @@ impl TableVo {
             y: self.y.clone(),
         }
     }
-    pub fn build_from_table(table: TableModel,fields: Vec<FieldVo>) -> Self {
+    pub fn build_from_table(table: TableModel,fields: Option<Vec<FieldVo>>) -> Self {
         Self {
             id: table.id.clone(),
             name: table.name.clone(),
@@ -103,6 +105,13 @@ impl FieldVo {
             name: field.name.clone(),
         }
     }
-    
 }
 
+pub fn build_table_link(id: String,table_id: String,field_id: String) -> TableLinkModel {
+    TableLinkModel {
+        id,
+        table_id: Some(table_id),
+        field_id: Some(field_id),
+        
+    }
+}

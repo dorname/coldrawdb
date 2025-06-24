@@ -32,6 +32,12 @@ pub fn next_id() -> String {
     g.generate().to_string()
 }
 
+/// 批量生成雪花 ID
+pub fn next_ids(count: usize) -> Vec<String> {
+    let mut g = ID_GEN.lock().unwrap();
+    (0..count).map(|_| g.generate().to_string()).collect()
+}
+
 
 /// 初始化日志
 fn init_log() {
