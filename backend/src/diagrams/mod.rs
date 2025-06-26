@@ -78,6 +78,13 @@ async fn update_diagram(
     let tx = db.begin().await?;
     let diagram_model = diagram.convert_to_active_model();
     let result = diagram_model.update(&tx).await?;
+    // TODO：
+    // 1、删除与表的关联关系
+    // 2、删除与引用的关联关系
+    // 3、重新构建与表的关联关系
+    // 4、重新构建与引用的关联关系
+    // 5、更新图表
+    // 6、更新引用
     tx.commit().await?;
     Ok(CommonResponse::new(ResponseCode::Success,
         ResponseMessage::Success,
