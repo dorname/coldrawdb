@@ -82,8 +82,8 @@
     {
       "id": "oo4clHdeMloYIQWWfSw2I",
       "name": "diagram",
-      "x": 223.5,
-      "y": -314.50000000000006,
+      "x": 498.11445350647,
+      "y": -291.3474646720886,
       "locked": false,
       "fields": [
         {
@@ -141,7 +141,7 @@
         {
           "id": "bOwsYsDnYwLtCXLfkLGrT",
           "name": "lastModified",
-          "type": "VARCHAR",
+          "type": "TIME",
           "default": "",
           "check": "",
           "primary": false,
@@ -149,7 +149,7 @@
           "notNull": false,
           "increment": false,
           "comment": "最近修改日期",
-          "size": 255,
+          "size": "",
           "values": []
         }
       ],
@@ -275,8 +275,8 @@
     {
       "id": "iLV6OgrO5ycPNJMUDw8ns",
       "name": "table",
-      "x": 262.74906893754724,
-      "y": 624.210839586191,
+      "x": 20.9341081907819,
+      "y": 901.397800943308,
       "locked": false,
       "fields": [
         {
@@ -348,28 +348,26 @@
         {
           "id": "jVljv9BVmTh92cfhySCtI",
           "name": "x",
-          "type": "VARCHAR",
+          "type": "NUMERIC",
           "default": "",
           "check": "",
           "primary": false,
           "unique": false,
           "notNull": false,
           "increment": false,
-          "comment": "无限画布上横向的位置",
-          "size": 255
+          "comment": "无限画布上横向的位置"
         },
         {
           "id": "4eWxa_U-nstuUuU-7clgN",
           "name": "y",
-          "type": "VARCHAR",
+          "type": "NUMERIC",
           "default": "",
           "check": "",
           "primary": false,
           "unique": false,
           "notNull": false,
           "increment": false,
-          "comment": "无限画布上的纵向位置",
-          "size": 255
+          "comment": "无限画布上的纵向位置"
         }
       ],
       "comment": "表的存储结构",
@@ -693,8 +691,8 @@
     {
       "id": "gZdVpQX-hd_WeKuupdoI-",
       "name": "reference",
-      "x": 563.5315465182339,
-      "y": 72.42853136877596,
+      "x": -523.362829651929,
+      "y": 837.6299093972023,
       "locked": false,
       "fields": [
         {
@@ -823,8 +821,8 @@
     {
       "id": "Ybw0RrIGjfQl9BjkPCmWm",
       "name": "area",
-      "x": 868.0385107725484,
-      "y": -277.7756878814518,
+      "x": 505.95907296737244,
+      "y": -8.306320732098698,
       "locked": false,
       "fields": [
         {
@@ -922,8 +920,8 @@
     {
       "id": "Du0AigiiLiWJWZoez2anC",
       "name": "note",
-      "x": 567.9149893661964,
-      "y": 484.528766585691,
+      "x": 519.0375521713726,
+      "y": 407.99692298827875,
       "locked": false,
       "fields": [
         {
@@ -1130,6 +1128,50 @@
       "deleteConstraint": "No action",
       "name": "fk_reference_id_diagram_link",
       "id": 9
+    },
+    {
+      "startTableId": "gZdVpQX-hd_WeKuupdoI-",
+      "startFieldId": "BMXFt4DAAbfvHD4CjADZc",
+      "endTableId": "8VYaTKMLJ774x8XGLrlKf",
+      "endFieldId": "0LxEYPCGM4PXZcT0kCQ_x",
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "No action",
+      "name": "fk_reference_endFieldId_field",
+      "id": 10
+    },
+    {
+      "startTableId": "gZdVpQX-hd_WeKuupdoI-",
+      "startFieldId": "tfmve-s4CT3lnwKa9dvic",
+      "endTableId": "iLV6OgrO5ycPNJMUDw8ns",
+      "endFieldId": "3Nl1VubA2qHGtIzyxKUx5",
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "No action",
+      "name": "fk_reference_endTableId_table",
+      "id": 11
+    },
+    {
+      "startTableId": "gZdVpQX-hd_WeKuupdoI-",
+      "startFieldId": "1k-Uo_wskr14buE64w4-K",
+      "endTableId": "8VYaTKMLJ774x8XGLrlKf",
+      "endFieldId": "0LxEYPCGM4PXZcT0kCQ_x",
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "No action",
+      "name": "fk_reference_startFieldId_field",
+      "id": 12
+    },
+    {
+      "startTableId": "gZdVpQX-hd_WeKuupdoI-",
+      "startFieldId": "8JtkpMy9XOQTdxcwfr3BK",
+      "endTableId": "iLV6OgrO5ycPNJMUDw8ns",
+      "endFieldId": "3Nl1VubA2qHGtIzyxKUx5",
+      "cardinality": "many_to_one",
+      "updateConstraint": "No action",
+      "deleteConstraint": "No action",
+      "name": "fk_reference_startTableId_table",
+      "id": 13
     }
   ],
   "notes": [],
@@ -1137,10 +1179,10 @@
     {
       "id": 0,
       "name": "drawdb表结构设计",
-      "x": -602.6364501414726,
-      "y": -365.19460355716075,
-      "width": 1777.8028714974723,
-      "height": 1375.8730179493086,
+      "x": -632.3557081156258,
+      "y": -365.19460355716046,
+      "width": 1470.8269652824404,
+      "height": 1616.303258490322,
       "color": "#1c7a17",
       "locked": false
     }
