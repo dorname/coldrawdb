@@ -14,6 +14,10 @@ pub enum DrawDBError {
     #[error("配置错误: {0}")]
     ConfigError(#[from] toml::de::Error),
 
+    #[allow(dead_code)]
+    #[error("解构错误：{0}")]
+    DeconstructError(String),
+    
     /// 其他错误
     #[error("其他错误: {0}")]
     OtherError(String),
@@ -32,6 +36,9 @@ impl ResponseError for DrawDBError {
             }
             DrawDBError::OtherError(e) => {
                 HttpResponse::InternalServerError().json(format!("其他错误: {}", e))
+            }
+            DrawDBError::DeconstructError(e) => {
+                HttpResponse::InternalServerError().json(format!("解构错误: {}", e))
             }
         }
     }
