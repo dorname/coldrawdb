@@ -41,7 +41,11 @@ pub async fn query_tables(
 
     let field_map: HashMap<String, Vec<FieldVo>> = fields.into_iter()
     .map(FieldVo::build_from_field_with_table)
-    .into_group_map_by(|vo| vo.table_id.clone());
+    .filter_map(|vo| vo.table_id.clone().map(|table_id| (table_id, vo)))
+    .into_group_map_by(|(table_id, _)| table_id.clone())
+    .into_iter()
+    .map(|(table_id, pairs)| (table_id, pairs.into_iter().map(|(_, vo)| vo).collect()))
+    .collect();
 
     let table_vos = table_models.iter().map(|table|{
         let binding = vec![];
@@ -90,54 +94,54 @@ pub async fn add_table(
 }
 
 /// 批量新增方法
-pub async fn batch_add_table(
-    tx: &DatabaseTransaction,
-    table_vos: Vec<TableVo>
-)->Result<Vec<String>,DrawDBError>{
-    fn take_and_remove(vec: &mut Vec<String>, count: usize) -> Vec<String> {
-        let actual_count = count.min(vec.len()); // 确保不超过集合长度
-        vec.drain(0..actual_count).collect()
-    }
-    fn get_fields(table_vos: Vec<TableVo>)->(Vec<field::ActiveModel>,Vec<table_link::ActiveModel>){
-        // 1、处理一个元组（tableId,fields_count）
-        let count_map = table_vos.iter().map(|table_vo|{
-            (table_vo.id.clone(),table_vo.fields.clone().unwrap_or(vec![]).len())
-        }).collect::<HashMap<String,usize>>();
-        let field_count = count_map.values().sum();
-        let field_ids = next_ids(field_count);
-        let link_ids = next_ids(field_count);
-        // 先处理成一个hashMap类型 key: tableId value:Vec<String> field_ids
-        let mut field_ids_map = count_map.iter().map(|(table_id,fields_count)|{
-            (table_id.clone(),take_and_remove(&mut field_ids, *fields_count))
-        }).collect::<HashMap<String,Vec<String>>>();
-        let link_ids_map = count_map.iter().map(|(table_id,fields_count)|{
-            (table_id.clone(),take_and_remove(&mut link_ids, *fields_count))
-        }).collect::<HashMap<String,Vec<String>>>();
-        // 2、hashMap key:tableId value:Vec<fieldVo>
-        let field_vo_map = table_vos.iter().map(|table_vo|{
-            (table_vo.id.clone(),table_vo.fields.clone().unwrap_or(vec![]))
-        }).collect::<HashMap<String,Vec<FieldVo>>>();
-        // 3、收集fields 设置field_ids 生成field_ams
-        let field_ams = field_vo_map.iter().map(|(table_id,field_vos)|{
-            field_vos.iter().enumerate().map(|(index,field_vo)|{
-                let mut field_am = field::ActiveModel::from(field_vo.convert_to_field());
-                field_am.id = ActiveValue::Set(field_ids_map.get(table_id).unwrap()[index].clone());
-                field_am
-            }).collect::<Vec<field::ActiveModel>>()
-        }).collect::<Vec<Vec<field::ActiveModel>>>();
-        // 4、收集table_link_ams
-        let table_link_ams = 
-        (field_ams,table_link_ams)
-    }
-    let table_ids = next_ids(table_vos.len());
-    let table_ams = table_vos.iter().enumerate().map(|(index,table_vo)|{
-        let mut table_am = table::ActiveModel::from(table_vo.convert_to_table());
-        table_am.id = ActiveValue::Set(table_ids[index].clone());
-        table_am
-    }).collect::<Vec<table::ActiveModel>>();
-    Table::insert_many(table_ams).exec(tx).await?;
-    Ok(vec![])
-}
+// pub async fn batch_add_table(
+//     tx: &DatabaseTransaction,
+//     table_vos: Vec<TableVo>
+// )->Result<Vec<String>,DrawDBError>{
+//     fn take_and_remove(vec: &mut Vec<String>, count: usize) -> Vec<String> {
+//         let actual_count = count.min(vec.len()); // 确保不超过集合长度
+//         vec.drain(0..actual_count).collect()
+//     }
+//     fn get_fields(table_vos: Vec<TableVo>)->(Vec<field::ActiveModel>,Vec<table_link::ActiveModel>){
+//         // 1、处理一个元组（tableId,fields_count）
+//         let count_map = table_vos.iter().map(|table_vo|{
+//             (table_vo.id.clone(),table_vo.fields.clone().unwrap_or(vec![]).len())
+//         }).collect::<HashMap<String,usize>>();
+//         let field_count = count_map.values().sum();
+//         let field_ids = next_ids(field_count);
+//         let link_ids = next_ids(field_count);
+//         // 先处理成一个hashMap类型 key: tableId value:Vec<String> field_ids
+//         let mut field_ids_map = count_map.iter().map(|(table_id,fields_count)|{
+//             (table_id.clone(),take_and_remove(&mut field_ids, *fields_count))
+//         }).collect::<HashMap<String,Vec<String>>>();
+//         let link_ids_map = count_map.iter().map(|(table_id,fields_count)|{
+//             (table_id.clone(),take_and_remove(&mut link_ids, *fields_count))
+//         }).collect::<HashMap<String,Vec<String>>>();
+//         // 2、hashMap key:tableId value:Vec<fieldVo>
+//         let field_vo_map = table_vos.iter().map(|table_vo|{
+//             (table_vo.id.clone(),table_vo.fields.clone().unwrap_or(vec![]))
+//         }).collect::<HashMap<String,Vec<FieldVo>>>();
+//         // 3、收集fields 设置field_ids 生成field_ams
+//         let field_ams = field_vo_map.iter().map(|(table_id,field_vos)|{
+//             field_vos.iter().enumerate().map(|(index,field_vo)|{
+//                 let mut field_am = field::ActiveModel::from(field_vo.convert_to_field());
+//                 field_am.id = ActiveValue::Set(field_ids_map.get(table_id).unwrap()[index].clone());
+//                 field_am
+//             }).collect::<Vec<field::ActiveModel>>()
+//         }).collect::<Vec<Vec<field::ActiveModel>>>();
+//         // 4、收集table_link_ams
+//         let table_link_ams = 
+//         (field_ams,table_link_ams)
+//     }
+//     let table_ids = next_ids(table_vos.len());
+//     let table_ams = table_vos.iter().enumerate().map(|(index,table_vo)|{
+//         let mut table_am = table::ActiveModel::from(table_vo.convert_to_table());
+//         table_am.id = ActiveValue::Set(table_ids[index].clone());
+//         table_am
+//     }).collect::<Vec<table::ActiveModel>>();
+//     Table::insert_many(table_ams).exec(tx).await?;
+//     Ok(vec![])
+// }
 
 /// 更新表结构
 pub async fn update_table(
