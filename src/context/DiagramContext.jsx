@@ -43,6 +43,7 @@ export default function DiagramContextProvider({ children }) {
               notNull: true,
               increment: true,
               comment: "",
+              table_id: id,
               id: nanoid(),
             },
           ],

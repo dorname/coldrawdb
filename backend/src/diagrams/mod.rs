@@ -61,6 +61,8 @@ async fn add_diagram(
     // 新增图表
     let active_model = ActiveModel::from(diagram_model);
     let result = active_model.insert(&tx).await?;
+    // 新增图表与表的关联关系
+
     // 提交事务
     tx.commit().await?;
     Ok(CommonResponse::new(ResponseCode::Success,

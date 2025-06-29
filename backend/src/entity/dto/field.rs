@@ -14,6 +14,6 @@ pub struct FieldWithTable {
     pub size: Option<i32>,
     pub r#type: Option<String>,
     pub unique: Option<bool>,
-    pub table_id: String,
+    pub table_id: Option<String>,
     pub name: Option<String>,
 }

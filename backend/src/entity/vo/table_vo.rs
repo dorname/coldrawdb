@@ -1,5 +1,6 @@
 use sea_orm::ActiveValue;
 use serde::{Deserialize, Serialize};    
+use crate::entity::diagram;
 use crate::entity::dto::FieldWithTable;
 use crate::entity::field::Model as FieldModel;
 use crate::entity::table::Model as TableModel;
@@ -17,6 +18,7 @@ pub struct TableVo {
     pub x: Option<String>,
     pub y: Option<String>,
     pub fields: Option<Vec<FieldVo>>,
+    pub diagram_id: String
 }
 
 impl TableVo {
@@ -31,7 +33,7 @@ impl TableVo {
             y: self.y.clone(),
         }
     }
-    pub fn build_from_table(table: TableModel,fields: Option<Vec<FieldVo>>) -> Self {
+    pub fn build_from_table(table: TableModel,fields: Option<Vec<FieldVo>>,diagram_id:String) -> Self {
         Self {
             id: table.id.clone(),
             name: table.name.clone(),
@@ -41,6 +43,7 @@ impl TableVo {
             locked: table.locked.clone(),
             x: table.x.clone(),
             y: table.y.clone(),
+            diagram_id: diagram_id
         }
     }
 
@@ -57,7 +60,7 @@ impl TableVo {
 #[derive(Serialize, Deserialize,Clone,Debug,PartialEq,Eq)]
 pub struct FieldVo {
     pub id: String,
-    pub table_id: String,
+    pub table_id: Option<String>,
     pub check: Option<String>,
     pub comment: Option<String>,
     pub default: Option<String>,
