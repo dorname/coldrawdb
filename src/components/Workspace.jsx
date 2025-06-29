@@ -68,6 +68,42 @@ export default function WorkSpace() {
     if (w > SIDEPANEL_MIN_WIDTH) setWidth(w);
   };
 
+  /// 保存图表
+  const saveDiagram = useCallback(async () => {
+    const name = window.name.split(" ");
+    const op = name[0];
+    const saveAsDiagram = window.name === "" || op === "d" || op === "lt";
+    if (saveAsDiagram) {
+      searchParams.delete("shareId");
+      setSearchParams(searchParams);
+      if ((id === 0 && window.name === "") || op === "lt") {
+      // 调用后端接口保存图表
+      const res = await post(`/diagrams/add`, {
+        id: id,
+        database: database,
+        name: title,
+        pan: transform.pan,
+        zoom: transform.zoom,
+        loadedFromGistId: loadedFromGistId,
+        ...(databases[database].hasEnums && { enums: enums }),
+        ...(databases[database].hasTypes && { types: types }),
+      });
+    } else {
+      const res = await post(`/diagrams/update`, {
+        id: id,
+        database: database,
+        name: title,
+        pan: transform.pan,
+        zoom: transform.zoom,
+        loadedFromGistId: loadedFromGistId,
+        ...(databases[database].hasEnums && { enums: enums }),
+        ...(databases[database].hasTypes && { types: types }),
+      });
+    } 
+  }
+  }, []);
+
+
   const save = useCallback(async () => {
     if (saveState !== State.SAVING) return;
 

@@ -104,7 +104,5 @@ async fn delete_diagram(
     Ok(CommonResponse::new(ResponseCode::Success,
         ResponseMessage::Success,
          Some(serde_json::to_value(id).unwrap())))
-    }
-
-
+}
 

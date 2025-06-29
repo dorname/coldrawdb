@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS "diagram" (
 	"database" VARCHAR,
 	-- 最近修改日期
 	"lastModified" TIME,
+	"pan" VARCHAR,
 	PRIMARY KEY("id")
 );
 
@@ -156,5 +157,5 @@ CREATE TABLE IF NOT EXISTS "note" (
 	"x" NUMERIC,
 	-- 注释在画布的纵坐标
 	"y" NUMERIC,
-	PRIMARY KEY("id") 
+	PRIMARY KEY("id")
 );

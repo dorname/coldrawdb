@@ -12,6 +12,8 @@ pub struct Model {
     pub database: Option<String>,
     pub zoom: Option<String>,
     pub name: Option<String>,
+    pub pan: Option<String>,
+    pub last_modified: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

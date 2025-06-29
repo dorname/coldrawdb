@@ -22,7 +22,9 @@ pub struct DiagramVo{
     // todo 新增、删除、修改索引时，都是通过这个表来操作的
     pub indices: Option<Vec<IndiceVo>>,
     // todo 新增、删除、修改任务时，都是通过这个表来操作的
-    pub notes: Option<Vec<NoteVo>>
+    pub notes: Option<Vec<NoteVo>>,
+    pub pan: Option<String>,
+    pub last_modified: Option<String>
 }
 
 impl DiagramVo {
@@ -32,7 +34,9 @@ impl DiagramVo {
             id,
             database: self.database.clone(),
             zoom: self.zoom.clone(),
-            name: self.name.clone()
+            name: self.name.clone(),
+            pan: self.pan.clone(),
+            last_modified: self.last_modified.clone()
         }
     }
 
@@ -52,6 +56,12 @@ impl DiagramVo {
         }
         if let Some(_) = &self.zoom{
             am.zoom = ActiveValue::Set(self.zoom.clone());
+        }
+        if let Some(_) = &self.pan{
+            am.pan = ActiveValue::Set(self.pan.clone());
+        }
+        if let Some(_) = &self.last_modified{
+            am.last_modified = ActiveValue::Set(self.last_modified.clone());
         }
         am
     }

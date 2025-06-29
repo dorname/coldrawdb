@@ -118,7 +118,7 @@ pub async fn add_table(
     table_add.id = table_id.clone(); 
     let table_am = table::ActiveModel::from(table_add);
     Table::insert(table_am).exec(&tx).await?;
-    //2、TODO 插入默认的field
+    //2、插入默认的field
     let field_size = temp_table_vo.fields.clone().unwrap_or(vec![]).len();
     let field_ids = next_ids(field_size);
     let mut fields = temp_table_vo.fields.clone().unwrap_or(vec![]).iter().map( |field|{
@@ -131,7 +131,7 @@ pub async fn add_table(
     .map(|item|field::ActiveModel::from(item.clone()))
     .collect::<Vec<field::ActiveModel>>(); 
      Field::insert_many(field_ams).exec(&tx).await?;
-    //3、TODO 插入默认的关联关系
+    //3、插入默认的关联关系
     let table_link_ams = fields.iter().map(|field|{
         table_link::ActiveModel::from(build_table_link(next_id(), table_id.clone(),field.id.clone()))
     }).collect::<Vec<table_link::ActiveModel>>();
