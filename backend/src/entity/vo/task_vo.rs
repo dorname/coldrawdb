@@ -1,6 +1,30 @@
-use crate::entity::task::{ActiveModel as Task, Model as TaskModel};
+use crate::entity::{diagram, task::{ActiveModel as Task, Model as TaskModel}};
 use sea_orm::ActiveValue;
 use serde::{Deserialize, Serialize};
+
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskVo {
+    pub id: String,
+    pub complete: Option<bool>,
+    pub order: Option<i32>,
+    pub details: Option<String>,
+    pub title: Option<String>,
+    pub diagram_id: String
+}
+
+impl TaskVo {
+    pub fn from_option(task: &TaskModel,diagram_id: String) -> Self {
+        Self {
+            id: task.id.clone(),
+            complete: task.complete.clone(),
+            order: task.order,
+            details: task.details.clone(),
+            title: task.title.clone(),
+            diagram_id:diagram_id
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskAddVo {

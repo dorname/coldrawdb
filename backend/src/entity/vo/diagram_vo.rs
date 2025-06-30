@@ -6,6 +6,7 @@ use crate::entity::vo::area_vo::AreaVo;
 use crate::entity::vo::reference_vo::ReferenceVo;
 use crate::entity::vo::indice_vo::IndiceVo;
 use crate::entity::vo::note_vo::NoteVo;
+use crate::entity::vo::TaskVo;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiagramVo{
@@ -23,7 +24,10 @@ pub struct DiagramVo{
     pub indices: Option<Vec<IndiceVo>>,
     // todo 新增、删除、修改任务时，都是通过这个表来操作的
     pub notes: Option<Vec<NoteVo>>,
+    // tasks 
+    pub tasks: Option<Vec<TaskVo>>,
     pub pan: Option<String>,
+    #[serde(rename = "lastModified")]
     pub last_modified: Option<String>
 }
 
@@ -37,6 +41,23 @@ impl DiagramVo {
             name: self.name.clone(),
             pan: self.pan.clone(),
             last_modified: self.last_modified.clone()
+        }
+    }
+
+    pub fn from(diagram: &DiagramModel) -> Self {
+        Self {
+            id: diagram.id.clone(),
+            database: diagram.database.clone(),
+            zoom: diagram.zoom.clone(),
+            name: diagram.name.clone(),
+            tables: None,
+            areas: None,
+            references: None,
+            indices: None,
+            notes: None,
+            tasks:None,
+            pan: diagram.pan.clone(),
+            last_modified: diagram.last_modified.clone()
         }
     }
 

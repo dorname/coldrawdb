@@ -46,6 +46,7 @@ pub struct Config {
 pub struct DatabaseConfig {
     pub path: String,
     pub init_sql_path: String,
+    pub test_path: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -72,22 +73,28 @@ pub fn get_config() -> &'static RwLock<ServerConfig> {
 }
 
 /// 初始化全局配置
-pub async fn init() -> Result<Option<DatabaseConnection>, DrawDBError> {
+/// mode: true 测试模式，false 生产模式
+pub async fn init(mode: bool) -> Result<Option<DatabaseConnection>, DrawDBError> {
     let mut config = read_config("config.toml");
     let server_config = config.server.clone();
     SERVER_CONFIG
         .set(RwLock::new(server_config))
         .expect("Failed to initialize config");
-    // 如果数据库文件不存在，则创建数据库文件
-    if !std::path::Path::new(&config.database.path).exists() {
+    let path = if mode {
+        config.database.test_path.clone()
+    } else {
+        config.database.path.clone()
+    };
+    // 如果数据库文件不存在或者初始化开关为true，则创建数据库文件
+    if !std::path::Path::new(&path).exists() || config.options.init_db {
         // 创建数据库文件
-        std::fs::File::create(&config.database.path)?;
+        std::fs::File::create(&path)?;
     }
     
     // 配置连接池
     let db = Database::connect(format!(
         "sqlite://{}?",
-        &config.database.path,
+        &path,
     )).await?;
     
     // 如果初始化开关为true，则初始化数据库
@@ -106,7 +113,6 @@ mod test {
     use super::*;
     #[actix_web::test]
     async fn test_init() {
-        let db = Database::connect(format!("sqlite://{}", "test.sqlite")).await.unwrap();
-        init_table("init.sql", &db).await.unwrap();
+        init(true).await.unwrap();
     }
 }

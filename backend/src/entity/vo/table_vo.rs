@@ -18,7 +18,7 @@ pub struct TableVo {
     pub x: Option<String>,
     pub y: Option<String>,
     pub fields: Option<Vec<FieldVo>>,
-    pub diagram_id: String
+    pub diagram_id:String
 }
 
 impl TableVo {
@@ -33,6 +33,21 @@ impl TableVo {
             y: self.y.clone(),
         }
     }
+
+    pub fn from(table: &TableModel,diagram_id:String,fields:Option<Vec<FieldVo>>) -> Self {
+        Self {
+            id: table.id.clone(),
+            name: table.name.clone(),
+            color: table.color.clone(),
+            comment: table.comment.clone(),
+            locked: table.locked.clone(),
+            x: table.x.clone(),
+            y: table.y.clone(),
+            fields: fields,
+            diagram_id: diagram_id,   
+        }
+    }
+
     pub fn build_from_table(table: TableModel,fields: Option<Vec<FieldVo>>,diagram_id:String) -> Self {
         Self {
             id: table.id.clone(),
@@ -91,6 +106,7 @@ impl FieldVo {
             name: self.name.clone(),
         }
     }
+    
 
     pub fn build_from_field_with_table(field: FieldWithTable) -> Self {
         Self {

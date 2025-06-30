@@ -56,7 +56,7 @@ fn init_log() {
 #[actix_web::main]
 async fn main() -> Result<(), DrawDBError> {
     init_log();
-    let db = init().await?;
+    let db = init(false).await?;
     let server_config = get_config();
     let config = server_config
         .read()

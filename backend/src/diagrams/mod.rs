@@ -25,10 +25,13 @@ async fn query_all_diagrams(
 ) -> Result<CommonResponse, DrawDBError> {
     let conn = db.get_ref();
     let diagrams = Diagram::find().all(conn).await?;
+    let diagram_vos:Vec<DiagramVo> = diagrams
+    .iter()
+    .map(|diagram| DiagramVo::from(diagram)).collect();
     Ok(CommonResponse::new(
         ResponseCode::Success,
         ResponseMessage::Success,
-        Some(serde_json::to_value(diagrams).unwrap()),
+        Some(serde_json::to_value(diagram_vos).unwrap()),
     ))
 }
 
@@ -112,8 +115,10 @@ async fn delete_diagram(
 #[cfg(test)]
 mod tests{
     use super::*;
-    use crate::entity::{prelude::*, table, task};
-    use sea_orm::{Database, Related};
+    use std::collections::HashMap;
+    use itertools::{self, Itertools};
+    use crate::entity::{prelude::*, table, task,vo::TableVo,vo::TaskVo};
+    use sea_orm::{Database, PaginatorTrait, QueryTrait, Related};
 
     #[actix_web::test]
     async fn test_query_related(){
@@ -121,19 +126,46 @@ mod tests{
         let db = web::Data::new(db);
         let tx = db.get_ref();
 
-        // 查询与Diagram关联的Task
-        let query_todos  = Diagram::find().find_also_related(Task)
-            .all(tx)
-            .await
-            .unwrap();
+        // 查询与Diagram关联的Task、查询与Diagram关联的Table
+       let tasks_map = Diagram::find()
+       .find_also_related(Task)
+       .all(tx)
+       .await.unwrap()
+       .iter()
+       .filter_map(|(diagram, task)| {
+           task.as_ref().map(|task| TaskVo::from_option(task, diagram.id.clone()))
+       })
+       .collect::<Vec<TaskVo>>()
+       .into_iter()
+       .into_group_map_by(|t| t.diagram_id.clone());
 
-        // 查询与Diagram关联的Table
-        let query_tables = Diagram::find().find_also_related(Table)
+
+        let tables_map = Diagram::find()
+        .find_also_related(Table)
         .all(tx)
-        .await
-        .unwrap();
-        println!("todos:{:?}",query_todos);
-        println!("tables:{:?}",query_tables);
+        .await.unwrap()
+        .iter()
+        .filter_map(|(diagram, table)| {
+            table.as_ref().map(|table| TableVo::from(table, diagram.id.clone(),None))
+        })
+        .collect::<Vec<TableVo>>()
+        .into_iter()
+        .into_group_map_by(|t|{
+            t.diagram_id.clone()
+        });
 
+
+        let diagrams = Diagram::find()
+        .paginate(tx , 5)
+        .fetch().await.unwrap()
+        .into_iter()
+        .map(|d|{
+            let mut dia = DiagramVo::from(&d);
+            dia.tables = tables_map.get(&dia.id).cloned();
+            dia.tasks = tasks_map.get(&dia.id).cloned();
+            dia
+        }).collect::<Vec<DiagramVo>>();
+
+        println!("{:?}",diagrams);
     }
 }

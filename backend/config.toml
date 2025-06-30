@@ -1,6 +1,7 @@
 [database]
 path = "db.sqlite"
 init_sql_path = "init.sql"
+test_path = "test.sqlite"
 
 [server]
 port = 6666
