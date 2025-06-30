@@ -82,6 +82,7 @@ impl Related<Task> for Entity {
 }
 
 impl Related<Diagram> for Entity {
+    // diagram_link -> diagram
     fn to() -> RelationDef {
         Relation::Diagram.def()
     }

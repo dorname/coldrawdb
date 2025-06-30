@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS "diagram" (
 	-- 数据库名称
 	"database" VARCHAR,
 	-- 最近修改日期
-	"lastModified" TIME,
+	"last_modified" TIME,
 	"pan" VARCHAR,
 	PRIMARY KEY("id")
 );

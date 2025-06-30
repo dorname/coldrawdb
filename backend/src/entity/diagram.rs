@@ -19,6 +19,7 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
 
+// 通过diagram直接查询出关联的task
 impl Related<Task> for Entity {
     /// diagram_link -> task
     fn to() -> RelationDef {

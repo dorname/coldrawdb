@@ -108,3 +108,32 @@ async fn delete_diagram(
          Some(serde_json::to_value(id).unwrap())))
 }
 
+
+#[cfg(test)]
+mod tests{
+    use super::*;
+    use crate::entity::{prelude::*, table, task};
+    use sea_orm::{Database, Related};
+
+    #[actix_web::test]
+    async fn test_query_related(){
+        let db = Database::connect("sqlite://test.sqlite").await.unwrap();
+        let db = web::Data::new(db);
+        let tx = db.get_ref();
+
+        // 查询与Diagram关联的Task
+        let query_todos  = Diagram::find().find_also_related(Task)
+            .all(tx)
+            .await
+            .unwrap();
+
+        // 查询与Diagram关联的Table
+        let query_tables = Diagram::find().find_also_related(Table)
+        .all(tx)
+        .await
+        .unwrap();
+        println!("todos:{:?}",query_todos);
+        println!("tables:{:?}",query_tables);
+
+    }
+}
