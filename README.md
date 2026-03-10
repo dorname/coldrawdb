@@ -36,13 +36,69 @@ DrawDB is a robust and user-friendly database entity relationship (DBER) editor 
 
 ## Getting Started
 
+> 当前仓库已完成 **初版里程碑（后端范围）**：数据库迁移、`/api/v1` 核心接口与迁移桥接能力。里程碑总览见 `docs/MILESTONE_V1_INITIAL.md`。
+
+### Prerequisites
+
+- Node.js 18+
+- npm 9+
+- Rust stable (建议通过 `rustup` 安装)
+- Cargo
+
+可选：
+- SQLite CLI（便于本地查看 `backend/db.sqlite`）
+
 ### Local Development
+
+#### 1) 启动后端（Rust + SQLite）
+
+后端默认监听 `127.0.0.1:6666`，配置文件为 `backend/config.toml`。
+
+```bash
+cd backend
+cargo run
+```
+
+首次启动说明：
+- `init` 会读取 `backend/config.toml`。
+- 若数据库不存在或未初始化，会先执行 `backend/init.sql` 基线建表。
+- 然后自动执行 `backend/migrations/*.up.sql`（幂等，版本记录在 `schema_migrations`）。
+
+后端健康检查：
+
+```bash
+curl http://127.0.0.1:6666/
+# 预期返回: Hello, world!
+```
+
+#### 2) 启动前端（Vite + React）
+
+在新的终端窗口中执行：
 
 ```bash
 git clone https://github.com/drawdb-io/drawdb
 cd drawdb
 npm install
 npm run dev
+```
+
+默认访问地址：`http://localhost:5173`
+
+前后端联调说明（当前里程碑阶段）：
+- 前端通过 `vite.config.js` 代理 `/api` 与 `/tables` 到 `http://localhost:6666`。
+- 当前仓库后端核心新接口位于 `/api/v1/*`（如 diagrams v1、bridge）。
+- 若要直接验证后端 v1 能力，建议优先使用 `curl`/Postman 访问 `http://127.0.0.1:6666/api/v1/*`。
+
+#### 3) 常用后端接口快速验证
+
+```bash
+# 创建 diagram
+curl -X POST http://127.0.0.1:6666/api/v1/diagrams \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"demo","engine":"mysql"}'
+
+# 查询 bridge 配置
+curl http://127.0.0.1:6666/api/v1/bridge/config
 ```
 
 ### Build
@@ -52,6 +108,13 @@ git clone https://github.com/drawdb-io/drawdb
 cd drawdb
 npm install
 npm run build
+```
+
+后端构建：
+
+```bash
+cd backend
+cargo build
 ```
 
 ### Docker Build
