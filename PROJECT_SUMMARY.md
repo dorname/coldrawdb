@@ -4,7 +4,7 @@
 
 ## Overview
 
-drawDB 是一个免费、简洁、直观的数据库 ER 图编辑器和 SQL 生成器，可直接在浏览器中使用。前端基于 React + Vite 构建，后端正在从纯前端本地存储方案迁移至 Rust (Actix-web + SeaORM + SQLite) 后端持久化方案。当前已完成 V1 后端初版里程碑（Phase 0-3），下一步将进行 Phase 4 Rust Web MVP。
+drawDB 是一个免费、简洁、直观的数据库 ER 图编辑器和 SQL 生成器，可直接在浏览器中使用。前端基于 React + Vite 构建，后端为 Rust (Actix-web + SeaORM + SQLite)。当前分支仅保留 Legacy 后端接口（/diagrams、/tables、/todos、/references、/templates）。
 
 ## Tech Stack
 
@@ -35,8 +35,6 @@ coldrawdb/
 │   ├── src/
 │   │   ├── main.rs           # 入口：HTTP 服务器 + snowflake ID
 │   │   ├── init.rs           # 数据库初始化、配置加载、迁移
-│   │   ├── diagrams_v1.rs    # v1 Diagrams API (JSON + revision)
-│   │   ├── phase3_bridge.rs  # Bridge 配置 + 本地草稿导入
 │   │   ├── common/           # 共享 HTTP 响应类型
 │   │   ├── error/            # 错误类型定义
 │   │   ├── entity/           # SeaORM 实体 + VO + DTO
@@ -48,7 +46,7 @@ coldrawdb/
 │   │   ├── templates/        # Templates 路由（模板 CRUD）
 │   │   ├── notes/            # Notes 内部 API（当前未挂载路由）
 │   │   └── indices/          # Indices 内部 API（当前未挂载路由）
-│   ├── migrations/           # SQL 迁移文件 (0001/0002/0003_frontend_integration + template 表)
+│   ├── migrations/           # SQL 迁移 (0001_phase1_schema, 0003_frontend_integration)
 │   ├── config.toml           # 服务器配置
 │   ├── init.sql              # 基线建表脚本
 │   └── Cargo.toml            # Rust 依赖
@@ -75,12 +73,7 @@ coldrawdb/
 │   ├── animations/           # 动画组件 (FadeIn, SlideIn)
 │   ├── templates/            # 预置模板数据
 │   └── assets/               # 静态资源 (图片、logo)
-├── docs/                     # 项目文档
-│   ├── MILESTONE_V1_INITIAL.md
-│   ├── phase0/               # ERD、OpenAPI、迁移策略、执行计划
-│   ├── phase1/               # Phase 1 验证文档
-│   ├── phase2/               # Phase 2 验证文档
-│   └── phase3/               # Phase 3 验证文档
+├── docs/                     # 项目文档 (phase0/phase1 等)
 ├── public/                   # 公共静态文件
 ├── .github/workflows/        # CI/CD 流水线
 ├── package.json              # 前端依赖
@@ -97,8 +90,7 @@ coldrawdb/
 项目采用前后端分离架构，正处于从「纯前端本地存储」向「Rust 后端持久化」的迁移过程中：
 
 - **前端**：React SPA，使用 Context + Hooks 管理状态，Dexie (IndexedDB) 本地持久化，通过 Vite 代理将 `/api` 请求转发到后端。
-- **后端**：Actix-web HTTP 服务器，SeaORM 操作 SQLite，支持 legacy 和 v1 两套 API。
-- **迁移桥接**：Phase 3 Bridge 提供配置开关和本地草稿导入能力，支持渐进式迁移。
+- **后端**：Actix-web HTTP 服务器，SeaORM 操作 SQLite，仅提供 Legacy API（/diagrams、/tables、/todos、/references、/templates）。
 
 ### 数据流
 
@@ -112,8 +104,7 @@ Browser (React) → Vite Proxy (/api → :6666) → Actix-web → SeaORM → SQL
 
 ```
 HTTP Routes (main.rs)
-  ├── Legacy API (/diagrams, /tables, /todos)
-  ├── V1 API (/api/v1/diagrams, /api/v1/bridge)
+  ├── Legacy API (/diagrams, /tables, /todos, /references, /templates)
   ↓
 Handler Functions
   ↓
@@ -153,13 +144,8 @@ LayoutContext
 - **Purpose**: 加载 config.toml 配置，创建/初始化数据库，执行 SQL 迁移。
 - **Key exports**: `init()`, `get_config()`, `init_table()`, `apply_migrations()`
 
-#### `diagrams_v1.rs` — V1 Diagrams API
-- **Purpose**: 新版 Diagram CRUD，支持 JSON 存储和 revision 冲突检测。
-- **Endpoints**: `POST/GET/PUT/DELETE /api/v1/diagrams`, `POST /api/v1/diagrams/import`
-
-#### `phase3_bridge.rs` — Bridge 迁移桥接
-- **Purpose**: 提供迁移配置管理和本地草稿导入能力。
-- **Endpoints**: `GET/PUT /api/v1/bridge/config`, `POST /api/v1/bridge/import/local`, `GET /api/v1/bridge/import/local/logs`, `POST /api/v1/bridge/import/local/retry/{id}`
+#### `diagrams/mod.rs` — Legacy 图表 API
+- **Purpose**: 图表 CRUD（queryAll、query、queryLatest、add、update、delete），响应格式 CommonResponse。
 
 #### `templates/mod.rs` — 模板 API
 - **Purpose**: 模板 CRUD，对应 migration 0003 的 template 表；启动时可选初始化默认模板。
@@ -230,21 +216,8 @@ Indice (1) ──── (N) IndiceLink ──── (1) Field
 | POST | `/diagrams/add` | 新增 Diagram |
 | POST | `/diagrams/update` | 更新 Diagram |
 | DELETE | `/diagrams/delete/{id}` | 删除 Diagram |
-
-### V1 API
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/v1/diagrams` | 创建 Diagram (JSON) |
-| GET | `/api/v1/diagrams/{id}` | 获取 Diagram |
-| PUT | `/api/v1/diagrams/{id}` | 保存 Diagram (revision 检查) |
-| DELETE | `/api/v1/diagrams/{id}` | 删除 Diagram |
-| POST | `/api/v1/diagrams/import` | 导入 Diagram |
-| GET | `/api/v1/bridge/config` | 获取 Bridge 配置 |
-| PUT | `/api/v1/bridge/config` | 更新 Bridge 配置 |
-| POST | `/api/v1/bridge/import/local` | 导入本地草稿 |
-| GET | `/api/v1/bridge/import/local/logs` | 查询导入日志 |
-| POST | `/api/v1/bridge/import/local/retry/{id}` | 重试导入 |
+| GET | `/references/*` | References 相关 |
+| GET/POST/PUT/DELETE | `/templates/*` | 模板 CRUD |
 
 ### Frontend Routes
 

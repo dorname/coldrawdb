@@ -1,7 +1,7 @@
 # Phase 1 数据库落地校验结果
 
 ## 校验基准
-依据 `docs/phase0/EXECUTION_PLAN.md` 中 Phase 1 产出与 DoD：
+依据迁移脚本与 DoD：
 
 1. migration 与 schema 完成
 2. repository 代码与事务封装

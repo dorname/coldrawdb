@@ -36,7 +36,7 @@ DrawDB is a robust and user-friendly database entity relationship (DBER) editor 
 
 ## Getting Started
 
-> 当前仓库已完成 **初版里程碑（后端范围）**：数据库迁移、`/api/v1` 核心接口与迁移桥接能力。里程碑总览见 `docs/MILESTONE_V1_INITIAL.md`。详细技术栈与架构见 [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)。
+> 当前分支仅保留 **Legacy 后端接口**（`/diagrams`、`/tables`、`/todos`、`/references`、`/templates`）。详细技术栈与架构见 [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)。
 
 ### Prerequisites
 
@@ -84,22 +84,10 @@ npm run dev
 
 默认访问地址：`http://localhost:5173`
 
-前后端联调说明（当前里程碑阶段）：
-- 前端通过 `vite.config.js` 代理 `/api` 与 `/tables` 到 `http://localhost:6666`。
-- 当前仓库后端核心新接口位于 `/api/v1/*`（如 diagrams v1、bridge）。
-- 若要直接验证后端 v1 能力，建议优先使用 `curl`/Postman 访问 `http://127.0.0.1:6666/api/v1/*`。
-
-#### 3) 常用后端接口快速验证
-
-```bash
-# 创建 diagram
-curl -X POST http://127.0.0.1:6666/api/v1/diagrams \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"demo","engine":"mysql"}'
-
-# 查询 bridge 配置
-curl http://127.0.0.1:6666/api/v1/bridge/config
-```
+前后端联调说明：
+- 前端通过 `vite.config.js` 代理 `/api` 与 `/tables` 等到 `http://localhost:6666`。
+- 后端提供 Legacy 接口：`/diagrams`、`/tables`、`/todos`、`/references`、`/templates`。
+- 可用 `curl` 或 Postman 访问 `http://127.0.0.1:6666/diagrams/queryAll` 等验证。
 
 ### Build
 

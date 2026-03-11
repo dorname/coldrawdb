@@ -6,12 +6,8 @@ mod init;
 mod todos;
 mod diagrams;
 mod references;
-mod notes;
 mod tables;
-mod indices;
 mod repository;
-mod diagrams_v1;
-mod phase3_bridge;
 mod templates;
 use error::DrawDBError;
 use init::{get_config, init};
@@ -75,8 +71,6 @@ async fn main() -> Result<(), DrawDBError> {
             .service(web::scope("/tables").configure(tables::tables_routes))
             .service(web::scope("/diagrams").configure(diagrams::diagrams_routes))
             .service(web::scope("/references").configure(references::references_routes))
-            .service(web::scope("/api/v1").configure(diagrams_v1::diagrams_v1_routes))
-            .service(web::scope("/api/v1").configure(phase3_bridge::phase3_bridge_routes))
             .service(web::scope("/templates").configure(templates::templates_routes))
      
     })

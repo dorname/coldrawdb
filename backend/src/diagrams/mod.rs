@@ -199,8 +199,8 @@ mod tests{
         .into_iter()
         .map(|d|{
             let mut dia = DiagramVo::from(&d);
-            dia.tables = tables_map.get(&dia.id).cloned();
-            dia.tasks = tasks_map.get(&dia.id).cloned();
+            dia.tables = tables_map.get(&dia.id).and_then(|v| serde_json::to_value(v).ok());
+            dia.tasks = tasks_map.get(&dia.id).and_then(|v| serde_json::to_value(v).ok());
             dia
         }).collect::<Vec<DiagramVo>>();
 
