@@ -162,19 +162,16 @@ mod test {
 
     #[actix_web::test]
     async fn test_query_all_todos() {
-        // 创建测试数据库连接
-        let db = Database::connect("sqlite://test.sqlite").await.unwrap();
+        let db = crate::init::setup_test_db_memory().await.unwrap();
         let db = web::Data::new(db);
-        // 创建测试应用
         let app = test::init_service(
             App::new()
                 .app_data(db.clone())
                 .configure(todos_routes)
         ).await;
 
-        // 创建测试请求
         let req = test::TestRequest::get()
-            .uri("/query/1/1")
+            .uri("/query/some-diagram-id/1")
             .to_request();
 
         // 发送请求并获取响应
@@ -187,20 +184,33 @@ mod test {
         println!("Response body: {:?}", String::from_utf8(body.to_vec()));
     }
 
-    /// 新增todo
+    /// 新增todo（使用内存 DB，先创建 diagram 再 add todo）
     #[actix_web::test]
     async fn test_add_todo() {
-        let db = Database::connect("sqlite://test.sqlite").await.unwrap();
+        let db = crate::init::setup_test_db_memory().await.unwrap();
         let db = web::Data::new(db);
         let app = test::init_service(
             App::new()
                 .app_data(db.clone())
-                .configure(todos_routes)
+                .configure(crate::app_config)
         ).await;
+        let diagram_payload = json!({
+            "id": "", "database": "generic", "name": "D",
+            "tables": [], "areas": [], "references": [], "notes": [], "tasks": []
+        });
         let req = test::TestRequest::post()
-            .uri("/add")
+            .uri("/diagrams/add")
+            .set_json(&diagram_payload)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+        let body = test::read_body(resp).await;
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let diagram_id = json["data"]["id"].as_str().unwrap();
+        let req = test::TestRequest::post()
+            .uri("/todos/add")
             .set_json(json!({
-                "diagram_id": "1",
+                "diagram_id": diagram_id,
                 "complete": false,
                 "order": 0,
                 "details": "test",
@@ -208,56 +218,99 @@ mod test {
             }))
             .to_request();
         let resp = test::call_service(&app, req).await;
-        println!("Status: {:?}", resp.status());
         assert!(resp.status().is_success());
-        let body = test::read_body(resp).await;
-        println!("Response body: {:?}", String::from_utf8(body.to_vec()));
     }
 
-    /// 更新todo
+    /// 更新todo（使用内存 DB，先创建 diagram 和 todo 再更新）
     #[actix_web::test]
     async fn test_update_todo() {
-        let db = Database::connect("sqlite://test.sqlite").await.unwrap();
+        let db = crate::init::setup_test_db_memory().await.unwrap();
         let db = web::Data::new(db);
         let app = test::init_service(
             App::new()
                 .app_data(db.clone())
-                .configure(todos_routes)
+                .configure(crate::app_config)
         ).await;
+        let diagram_payload = json!({
+            "id": "", "database": "generic", "name": "D",
+            "tables": [], "areas": [], "references": [], "notes": [], "tasks": []
+        });
         let req = test::TestRequest::post()
-            .uri("/update")
+            .uri("/diagrams/add")
+            .set_json(&diagram_payload)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+        let body = test::read_body(resp).await;
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let diagram_id = json["data"]["id"].as_str().unwrap().to_string();
+        let req = test::TestRequest::post()
+            .uri("/todos/add")
+            .set_json(json!({ "diagram_id": diagram_id, "title": "t", "complete": false, "order": 0 }))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+        let req = test::TestRequest::get()
+            .uri(&format!("/todos/query/{}/0", diagram_id))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        let body = test::read_body(resp).await;
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let task_id = json["data"][0]["id"].as_str().unwrap().to_string();
+        let req = test::TestRequest::post()
+            .uri("/todos/update")
             .set_json(json!({
-                "id": "7338216606830563329",
+                "id": task_id,
                 "complete": true,
                 "order": 1,
                 "details": "test66",
-                "title": "test1122" 
+                "title": "test1122"
             }))
             .to_request();
         let resp = test::call_service(&app, req).await;
-        println!("Status: {:?}", resp.status());
         assert!(resp.status().is_success());
-        let body = test::read_body(resp).await; 
-        println!("Response body: {:?}", String::from_utf8(body.to_vec()));
     }
 
-    /// 删除todo
+    /// 删除todo（使用内存 DB，先创建 diagram 和 todo 再删除）
     #[actix_web::test]
     async fn test_delete_todo() {
-        let db = Database::connect("sqlite://test.sqlite").await.unwrap();
+        let db = crate::init::setup_test_db_memory().await.unwrap();
         let db = web::Data::new(db);
         let app = test::init_service(
             App::new()
                 .app_data(db.clone())
-                .configure(todos_routes)
+                .configure(crate::app_config)
         ).await;
-        let req = test::TestRequest::delete()
-            .uri("/delete/7338216606830563329")
+        let diagram_payload = json!({
+            "id": "", "database": "generic", "name": "D",
+            "tables": [], "areas": [], "references": [], "notes": [], "tasks": []
+        });
+        let req = test::TestRequest::post()
+            .uri("/diagrams/add")
+            .set_json(&diagram_payload)
             .to_request();
         let resp = test::call_service(&app, req).await;
-        println!("Status: {:?}", resp.status());
         assert!(resp.status().is_success());
         let body = test::read_body(resp).await;
-        println!("Response body: {:?}", String::from_utf8(body.to_vec()));
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let diagram_id = json["data"]["id"].as_str().unwrap().to_string();
+        let req = test::TestRequest::post()
+            .uri("/todos/add")
+            .set_json(json!({ "diagram_id": diagram_id, "title": "t", "complete": false, "order": 0 }))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+        let req = test::TestRequest::get()
+            .uri(&format!("/todos/query/{}/0", diagram_id))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        let body = test::read_body(resp).await;
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let task_id = json["data"][0]["id"].as_str().unwrap().to_string();
+        let req = test::TestRequest::delete()
+            .uri(&format!("/todos/delete/{}", task_id))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
     }
 }

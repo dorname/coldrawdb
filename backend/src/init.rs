@@ -210,6 +210,18 @@ pub async fn init_templates(_db: &DatabaseConnection) -> Result<(), DrawDBError>
     Ok(())
 }
 
+/// 测试用内存数据库初始化，不依赖 config.toml，供集成测试使用
+pub async fn setup_test_db_memory() -> Result<DatabaseConnection, DrawDBError> {
+    let base = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let db = Database::connect("sqlite::memory:?").await?;
+    let init_path = base.join("init.sql");
+    init_table(init_path.to_str().unwrap(), &db).await?;
+    let migrations_dir = base.join("migrations");
+    apply_migrations(migrations_dir.to_str().unwrap(), &db).await?;
+    init_templates(&db).await?;
+    Ok(db)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
