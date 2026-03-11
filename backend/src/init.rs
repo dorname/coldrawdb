@@ -198,7 +198,16 @@ pub async fn init(mode: bool) -> Result<Option<DatabaseConnection>, DrawDBError>
         apply_migrations("migrations", &db).await?;
     }
 
+    // 初始化内置模板（如果需要）
+    init_templates(&db).await?;
+
     Ok(Some(db))
+}
+
+/// 初始化内置模板（目前仅占位，保留从前端迁移种子的扩展点）
+pub async fn init_templates(_db: &DatabaseConnection) -> Result<(), DrawDBError> {
+    // 后续可在此从后端内置 JSON 或迁移脚本加载默认模板
+    Ok(())
 }
 
 #[cfg(test)]

@@ -1,12 +1,34 @@
-import { db } from "../../../data/db";
 import { Banner } from "@douyinfe/semi-ui";
-import { useLiveQuery } from "dexie-react-hooks";
 import { useTranslation } from "react-i18next";
 import { databases } from "../../../data/databases";
+import { useEffect, useState } from "react";
+import { diagramService } from "../../../services/diagramService";
 
 export default function Open({ selectedDiagramId, setSelectedDiagramId }) {
-  const diagrams = useLiveQuery(() => db.diagrams.toArray());
+  const [diagrams, setDiagrams] = useState(null);
   const { t } = useTranslation();
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const list = await diagramService.list();
+        if (!mounted) return;
+        setDiagrams(
+          list.map((d) => ({
+            ...d,
+            lastModified: d.lastModified ? new Date(d.lastModified) : new Date(),
+          }))
+        );
+      } catch (e) {
+        console.error(e);
+        if (mounted) setDiagrams([]);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const getDiagramSize = (d) => {
     const size = JSON.stringify(d).length;

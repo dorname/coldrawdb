@@ -11,3 +11,4 @@ pub use super::reference::Entity as Reference;
 pub use super::table::Entity as Table;
 pub use super::table_link::Entity as TableLink;
 pub use super::task::Entity as Task;
+pub use super::template::Entity as Template;

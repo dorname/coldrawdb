@@ -4,7 +4,6 @@ import Canvas from "./EditorCanvas/Canvas";
 import { CanvasContextProvider } from "../context/CanvasContext";
 import SidePanel from "./EditorSidePanel/SidePanel";
 import { DB, State } from "../data/constants";
-import { db } from "../data/db";
 import {
   useLayout,
   useSettings,
@@ -27,6 +26,8 @@ import { useSearchParams } from "react-router-dom";
 import { get as getGist } from "../api/gists";
 
 import { get } from "../utils/requestApi";
+import { diagramService } from "../services/diagramService";
+import { templateService } from "../services/templateService";
 
 export const IdContext = createContext({ gistId: "", setGistId: () => {} });
 
@@ -68,42 +69,6 @@ export default function WorkSpace() {
     if (w > SIDEPANEL_MIN_WIDTH) setWidth(w);
   };
 
-  /// 保存图表
-  const saveDiagram = useCallback(async () => {
-    const name = window.name.split(" ");
-    const op = name[0];
-    const saveAsDiagram = window.name === "" || op === "d" || op === "lt";
-    if (saveAsDiagram) {
-      searchParams.delete("shareId");
-      setSearchParams(searchParams);
-      if ((id === 0 && window.name === "") || op === "lt") {
-      // 调用后端接口保存图表
-      const res = await post(`/diagrams/add`, {
-        id: id,
-        database: database,
-        name: title,
-        pan: transform.pan,
-        zoom: transform.zoom,
-        loadedFromGistId: loadedFromGistId,
-        ...(databases[database].hasEnums && { enums: enums }),
-        ...(databases[database].hasTypes && { types: types }),
-      });
-    } else {
-      const res = await post(`/diagrams/update`, {
-        id: id,
-        database: database,
-        name: title,
-        pan: transform.pan,
-        zoom: transform.zoom,
-        loadedFromGistId: loadedFromGistId,
-        ...(databases[database].hasEnums && { enums: enums }),
-        ...(databases[database].hasTypes && { types: types }),
-      });
-    } 
-  }
-  }, []);
-
-
   const save = useCallback(async () => {
     if (saveState !== State.SAVING) return;
 
@@ -111,78 +76,59 @@ export default function WorkSpace() {
     const op = name[0];
     const saveAsDiagram = window.name === "" || op === "d" || op === "lt";
 
-    if (saveAsDiagram) {
-      searchParams.delete("shareId");
-      setSearchParams(searchParams);
-      if ((id === 0 && window.name === "") || op === "lt") {
-        await db.diagrams
-          .add({
-            database: database,
-            name: title,
-            gistId: gistId ?? "",
-            lastModified: new Date(),
-            tables: tables,
-            references: relationships,
-            notes: notes,
-            areas: areas,
-            todos: tasks,
-            pan: transform.pan,
-            zoom: transform.zoom,
-            loadedFromGistId: loadedFromGistId,
-            ...(databases[database].hasEnums && { enums: enums }),
-            ...(databases[database].hasTypes && { types: types }),
-          })
-          .then((id) => {
-            setId(id);
-            window.name = `d ${id}`;
-            setSaveState(State.SAVED);
-            setLastSaved(new Date().toLocaleString());
-          });
+    const basePayload = {
+      id,
+      database,
+      title,
+      tables,
+      relationships,
+      notes,
+      areas,
+      todos: tasks,
+      pan: transform.pan,
+      zoom: transform.zoom,
+      gistId: gistId ?? "",
+      loadedFromGistId,
+      ...(databases[database].hasEnums && { enums }),
+      ...(databases[database].hasTypes && { types }),
+    };
+
+    try {
+      if (saveAsDiagram) {
+        searchParams.delete("shareId");
+        setSearchParams(searchParams);
+
+        if ((id === 0 && window.name === "") || op === "lt") {
+          const created = await diagramService.create(basePayload);
+          const newId = created.id;
+          setId(newId);
+          window.name = `d ${newId}`;
+        } else {
+          await diagramService.update(basePayload);
+        }
       } else {
-        await db.diagrams
-          .update(id, {
-            database: database,
-            name: title,
-            lastModified: new Date(),
-            tables: tables,
-            references: relationships,
-            notes: notes,
-            areas: areas,
-            todos: tasks,
-            gistId: gistId ?? "",
-            pan: transform.pan,
-            zoom: transform.zoom,
-            loadedFromGistId: loadedFromGistId,
-            ...(databases[database].hasEnums && { enums: enums }),
-            ...(databases[database].hasTypes && { types: types }),
-          })
-          .then(() => {
-            setSaveState(State.SAVED);
-            setLastSaved(new Date().toLocaleString());
+        if (!id) {
+          const created = await templateService.create({
+            ...basePayload,
+            subjectAreas: areas,
+            custom: 1,
           });
+          const newId = created.id;
+          setId(newId);
+          window.name = `t ${newId}`;
+        } else {
+          await templateService.update({
+            ...basePayload,
+            subjectAreas: areas,
+            custom: 1,
+          });
+        }
       }
-    } else {
-      await db.templates
-        .update(id, {
-          database: database,
-          title: title,
-          tables: tables,
-          relationships: relationships,
-          notes: notes,
-          subjectAreas: areas,
-          todos: tasks,
-          pan: transform.pan,
-          zoom: transform.zoom,
-          ...(databases[database].hasEnums && { enums: enums }),
-          ...(databases[database].hasTypes && { types: types }),
-        })
-        .then(() => {
-          setSaveState(State.SAVED);
-          setLastSaved(new Date().toLocaleString());
-        })
-        .catch(() => {
-          setSaveState(State.ERROR);
-        });
+      setSaveState(State.SAVED);
+      setLastSaved(new Date().toLocaleString());
+    } catch (e) {
+      console.error(e);
+      setSaveState(State.ERROR);
     }
   }, [
     searchParams,
@@ -205,129 +151,102 @@ export default function WorkSpace() {
   ]);
 
   const load = useCallback(async () => {
+    const applyDiagram = (d) => {
+      if (!d) return;
+      if (d.database) {
+        setDatabase(d.database);
+      } else {
+        setDatabase(DB.GENERIC);
+      }
+      setId(d.id);
+      setGistId(d.gistId);
+      setLoadedFromGistId(d.loadedFromGistId);
+      setTitle(d.title);
+      setTables(d.tables);
+      setRelationships(d.relationships);
+      setNotes(d.notes);
+      setAreas(d.areas);
+      setTasks(d.todos ?? []);
+      setTransform({ pan: d.pan, zoom: d.zoom });
+      if (databases[d.database || database].hasTypes) {
+        setTypes(d.types ?? []);
+      }
+      if (databases[d.database || database].hasEnums) {
+        setEnums(d.enums ?? []);
+      }
+    };
+
     const loadLatestDiagram = async () => {
-      await db.diagrams
-        .orderBy("lastModified")
-        .last()
-        .then((d) => {
-          // console.log("load latest:>>>>>>>>>>>>>>>>", d);
-          if (d) {
-            if (d.database) {
-              setDatabase(d.database);
-            } else {
-              setDatabase(DB.GENERIC);
-            }
-            setId(d.id);
-            setGistId(d.gistId);
-            setLoadedFromGistId(d.loadedFromGistId);
-            setTitle(d.name);
-            setTables(d.tables);
-            setRelationships(d.references);
-            setNotes(d.notes);
-            setAreas(d.areas);
-            setTasks(d.todos ?? []);
-            setTransform({ pan: d.pan, zoom: d.zoom });
-            if (databases[database].hasTypes) {
-              setTypes(d.types ?? []);
-            }
-            if (databases[database].hasEnums) {
-              setEnums(d.enums ?? []);
-            }
-            window.name = `d ${d.id}`;
-          } else {
-            window.name = "";
-            if (selectedDb === "") setShowSelectDbModal(true);
-          }
-        })
-        .catch((error) => {
-          console.log(error);
-        });
-        console.log("load latest:>>>>>>>>>>>>>>>>");
+      try {
+        const d = await diagramService.getLatest();
+        if (d) {
+          applyDiagram(d);
+          window.name = `d ${d.id}`;
+        } else {
+          window.name = "";
+          if (selectedDb === "") setShowSelectDbModal(true);
+        }
+      } catch (error) {
+        console.log(error);
+      }
     };
 
     const loadDiagram = async (id) => {
-      const res = await get(`/tables/queryTables/${id}`);
-      console.log("load diagram:>>>>>>>>>>>>>>>>", res);
-      await db.diagrams
-        .get(id)
-        .then((diagram) => {
-          if (diagram) {
-            console.log("load diagram:>>>>>>>>>>>>>>>>", diagram);
-            if (diagram.database) {
-              setDatabase(diagram.database);
-            } else {
-              setDatabase(DB.GENERIC);
-            }
-            setId(diagram.id);
-            setGistId(diagram.gistId);
-            setLoadedFromGistId(diagram.loadedFromGistId);
-            setTitle(diagram.name);
-            setTables(diagram.tables);
-            setRelationships(diagram.references);
-            setAreas(diagram.areas);
-            setNotes(diagram.notes);
-            setTasks(diagram.todos ?? []);
-            setTransform({
-              pan: diagram.pan,
-              zoom: diagram.zoom,
-            });
-            setUndoStack([]);
-            setRedoStack([]);
-            if (databases[database].hasTypes) {
-              setTypes(diagram.types ?? []);
-            }
-            if (databases[database].hasEnums) {
-              setEnums(diagram.enums ?? []);
-            }
-            window.name = `d ${diagram.id}`;
-          } else {
-            window.name = "";
-          }
-        })
-        .catch((error) => {
-          console.log(error);
-        });
-        console.log("load diagram:>>>>>>>>>>>>>>>>");
+      try {
+        await get(`/tables/queryTables/${id}`);
+      } catch (e) {
+        console.log(e);
+      }
+      try {
+        const d = await diagramService.getById(id);
+        if (d) {
+          applyDiagram(d);
+          setUndoStack([]);
+          setRedoStack([]);
+          window.name = `d ${d.id}`;
+        } else {
+          window.name = "";
+        }
+      } catch (error) {
+        console.log(error);
+      }
     };
 
     const loadTemplate = async (id) => {
-      await db.templates
-        .get(id)
-        .then((diagram) => {
-          if (diagram) {
-            if (diagram.database) {
-              setDatabase(diagram.database);
-            } else {
-              setDatabase(DB.GENERIC);
-            }
-            setId(diagram.id);
-            setTitle(diagram.title);
-            setTables(diagram.tables);
-            setRelationships(diagram.relationships);
-            setAreas(diagram.subjectAreas);
-            setTasks(diagram.todos ?? []);
-            setNotes(diagram.notes);
-            setTransform({
-              zoom: 1,
-              pan: { x: 0, y: 0 },
-            });
-            setUndoStack([]);
-            setRedoStack([]);
-            if (databases[database].hasTypes) {
-              setTypes(diagram.types ?? []);
-            }
-            if (databases[database].hasEnums) {
-              setEnums(diagram.enums ?? []);
-            }
+      try {
+        const t = await templateService.getById(id);
+        if (t) {
+          if (t.database) {
+            setDatabase(t.database);
           } else {
-            if (selectedDb === "") setShowSelectDbModal(true);
+            setDatabase(DB.GENERIC);
           }
-        })
-        .catch((error) => {
-          console.log(error);
+          setId(t.id);
+          setTitle(t.title);
+          setTables(t.tables);
+          setRelationships(t.relationships);
+          setAreas(t.subjectAreas);
+          setTasks(t.todos ?? []);
+          setNotes(t.notes);
+          setTransform({
+            zoom: 1,
+            pan: { x: 0, y: 0 },
+          });
+          setUndoStack([]);
+          setRedoStack([]);
+          if (databases[t.database || database].hasTypes) {
+            setTypes(t.types ?? []);
+          }
+          if (databases[t.database || database].hasEnums) {
+            setEnums(t.enums ?? []);
+          }
+        } else {
           if (selectedDb === "") setShowSelectDbModal(true);
-        });
-        console.log("load template:>>>>>>>>>>>>>>>>");
+        }
+      } catch (error) {
+        console.log(error);
+        if (selectedDb === "") setShowSelectDbModal(true);
+      }
     };
 
     const loadFromGist = async (shareId) => {
@@ -359,17 +278,9 @@ export default function WorkSpace() {
 
     const shareId = searchParams.get("shareId");
     if (shareId) {
-      const existingDiagram = await db.diagrams.get({
-        loadedFromGistId: shareId,
-      });
-
-      if (existingDiagram) {
-        window.name = "d " + existingDiagram.id;
-        setId(existingDiagram.id);
-      } else {
-        window.name = "";
-        setId(0);
-      }
+      // 目前后端暂未支持通过 loadedFromGistId 查询，仍只做 Gist 加载
+      window.name = "";
+      setId(0);
       await loadFromGist(shareId);
       return;
     }

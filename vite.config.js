@@ -14,6 +14,22 @@ export default defineConfig({
       '/tables': {
         target: 'http://localhost:6666', // 您的后端地址
         changeOrigin: true
+      },
+      '/diagrams': {
+        target: 'http://localhost:6666',
+        changeOrigin: true
+      },
+      '/templates': {
+        target: 'http://localhost:6666',
+        changeOrigin: true
+      },
+      '/todos': {
+        target: 'http://localhost:6666',
+        changeOrigin: true
+      },
+      '/references': {
+        target: 'http://localhost:6666',
+        changeOrigin: true
       }
     }
   }

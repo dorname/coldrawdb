@@ -1,13 +1,30 @@
-import { db } from "../../../data/db";
 import { useSettings } from "../../../hooks";
-import { useLiveQuery } from "dexie-react-hooks";
 import Thumbnail from "../../Thumbnail";
 import { useTranslation } from "react-i18next";
+import { useEffect, useState } from "react";
+import { templateService } from "../../../services/templateService";
 
 export default function New({ selectedTemplateId, setSelectedTemplateId }) {
   const { settings } = useSettings();
   const { t } = useTranslation();
-  const templates = useLiveQuery(() => db.templates.toArray());
+  const [templates, setTemplates] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const list = await templateService.list();
+        if (!mounted) return;
+        setTemplates(list);
+      } catch (e) {
+        console.error(e);
+        if (mounted) setTemplates([]);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   return (
     <div className="grid grid-cols-3 gap-2 overflow-auto px-1">

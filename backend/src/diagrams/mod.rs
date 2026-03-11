@@ -1,6 +1,6 @@
 use actix_web::{delete, post};
 use actix_web::{get, web};
-use sea_orm::{ActiveModelTrait, DatabaseConnection, TransactionTrait};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, QueryOrder, TransactionTrait};
 use sea_orm::EntityTrait;
 use crate::common::ResponseCode;
 use crate::common::ResponseMessage;
@@ -13,6 +13,8 @@ use crate::{common::CommonResponse, error::DrawDBError};
 /// 图表模块
 pub fn diagrams_routes(config: &mut web::ServiceConfig) {
     config.service(query_all_diagrams);
+    config.service(query_diagram);
+    config.service(query_latest_diagram);
     config.service(add_diagram);
     config.service(update_diagram);
     config.service(delete_diagram);
@@ -25,9 +27,10 @@ async fn query_all_diagrams(
 ) -> Result<CommonResponse, DrawDBError> {
     let conn = db.get_ref();
     let diagrams = Diagram::find().all(conn).await?;
-    let diagram_vos:Vec<DiagramVo> = diagrams
-    .iter()
-    .map(|diagram| DiagramVo::from(diagram)).collect();
+    let diagram_vos: Vec<DiagramVo> = diagrams
+        .iter()
+        .map(|diagram| DiagramVo::from(diagram))
+        .collect();
     Ok(CommonResponse::new(
         ResponseCode::Success,
         ResponseMessage::Success,
@@ -44,11 +47,46 @@ async fn query_diagram(
     let conn = db.get_ref();
     let id = id.into_inner();
     let diagram = Diagram::find_by_id(id).one(conn).await?;
-    Ok(CommonResponse::new(
-        ResponseCode::Success,
-        ResponseMessage::Success,
-        Some(serde_json::to_value(diagram).unwrap()),
-    ))
+    if let Some(model) = diagram {
+        let vo = DiagramVo::from(&model);
+        Ok(CommonResponse::new(
+            ResponseCode::Success,
+            ResponseMessage::Success,
+            Some(serde_json::to_value(vo).unwrap()),
+        ))
+    } else {
+        Ok(CommonResponse::new(
+            ResponseCode::NotFound,
+            ResponseMessage::NotFound,
+            None,
+        ))
+    }
+}
+
+/// 查询最新图表
+#[get("/latest")]
+async fn query_latest_diagram(
+    db: web::Data<DatabaseConnection>,
+) -> Result<CommonResponse, DrawDBError> {
+    let conn = db.get_ref();
+    let diagram = Diagram::find()
+        .order_by_desc(diagram::Column::LastModified)
+        .one(conn)
+        .await?;
+    if let Some(model) = diagram {
+        let vo = DiagramVo::from(&model);
+        Ok(CommonResponse::new(
+            ResponseCode::Success,
+            ResponseMessage::Success,
+            Some(serde_json::to_value(vo).unwrap()),
+        ))
+    } else {
+        Ok(CommonResponse::new(
+            ResponseCode::NotFound,
+            ResponseMessage::NotFound,
+            None,
+        ))
+    }
 }
 
 /// 新增图表
@@ -97,7 +135,7 @@ async fn update_diagram(
 }
 
 ///删除图表
-#[delete("/detele/{id}")]
+#[delete("/delete/{id}")]
 async fn delete_diagram(
     db: web::Data<DatabaseConnection>,
     id: web::Path<String>

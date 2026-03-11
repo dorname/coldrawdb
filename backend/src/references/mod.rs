@@ -6,6 +6,11 @@ use sea_orm::{DatabaseConnection, TransactionTrait};
 
 use crate::{common::{CommonResponse, ResponseCode, ResponseMessage}, entity::vo::ReferenceVo, error::DrawDBError};
 
+pub fn references_routes(config: &mut web::ServiceConfig) {
+    config.service(add_reference);
+    config.service(delete_reference);
+}
+
 /// 新增引用
 #[post("/add")]
 async fn add_reference(

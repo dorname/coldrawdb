@@ -1,4 +1,7 @@
-import { actixGet, actixPost, actixPut, actixDel, request } from './requestApi.js';
+// Legacy examples file; no longer used in production code.
+// Kept for reference only.
+
+import { request } from './requestApi.js';
 
 // 任务相关的 API 调用示例
 export const taskApi = {

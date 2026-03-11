@@ -47,7 +47,8 @@ import jsPDF from "jspdf";
 import { useHotkeys } from "react-hotkeys-hook";
 import { Validator } from "jsonschema";
 import { areaSchema, noteSchema, tableSchema } from "../../data/schemas";
-import { db } from "../../data/db";
+import { diagramService } from "../../services/diagramService";
+import { templateService } from "../../services/templateService";
 import {
   useLayout,
   useSettings,
@@ -722,22 +723,24 @@ export default function ControlPanel({
         shortcut: "Ctrl+Shift+S",
       },
       save_as_template: {
-        function: () => {
-          db.templates
-            .add({
-              title: title,
-              tables: tables,
-              database: database,
-              relationships: relationships,
-              notes: notes,
+        function: async () => {
+          try {
+            await templateService.create({
+              title,
+              tables,
+              database,
+              relationships,
+              notes,
               subjectAreas: areas,
               custom: 1,
-              ...(databases[database].hasEnums && { enums: enums }),
-              ...(databases[database].hasTypes && { types: types }),
-            })
-            .then(() => {
-              Toast.success(t("template_saved"));
+              ...(databases[database].hasEnums && { enums }),
+              ...(databases[database].hasTypes && { types }),
             });
+            Toast.success(t("template_saved"));
+          } catch (e) {
+            console.error(e);
+            Toast.error(t("oops_smth_went_wrong"));
+          }
         },
       },
       rename: {
@@ -751,22 +754,23 @@ export default function ControlPanel({
           message: t("are_you_sure_delete_diagram"),
         },
         function: async () => {
-          await db.diagrams
-            .delete(diagramId)
-            .then(() => {
-              setDiagramId(0);
-              setTitle("Untitled diagram");
-              setTables([]);
-              setRelationships([]);
-              setAreas([]);
-              setNotes([]);
-              setTypes([]);
-              setEnums([]);
-              setUndoStack([]);
-              setRedoStack([]);
-              setGistId("");
-            })
-            .catch(() => Toast.error(t("oops_smth_went_wrong")));
+          try {
+            await diagramService.delete(diagramId);
+            setDiagramId(0);
+            setTitle("Untitled diagram");
+            setTables([]);
+            setRelationships([]);
+            setAreas([]);
+            setNotes([]);
+            setTypes([]);
+            setEnums([]);
+            setUndoStack([]);
+            setRedoStack([]);
+            setGistId("");
+          } catch (e) {
+            console.error(e);
+            Toast.error(t("oops_smth_went_wrong"));
+          }
         },
       },
       import_from: {
@@ -1150,15 +1154,12 @@ export default function ControlPanel({
             return;
           }
 
-          db.table("diagrams")
-            .delete(diagramId)
-            .catch((error) => {
-              Toast.error(t("oops_smth_went_wrong"));
-              console.error(
-                `Error deleting records with gistId '${diagramId}':`,
-                error,
-              );
-            });
+          try {
+            await diagramService.delete(diagramId);
+          } catch (error) {
+            Toast.error(t("oops_smth_went_wrong"));
+            console.error(`Error deleting diagram '${diagramId}':`, error);
+          }
         },
       },
       edit: {
@@ -1389,14 +1390,8 @@ export default function ControlPanel({
           message: t("are_you_sure_flush_storage"),
         },
         function: async () => {
-          db.delete()
-            .then(() => {
-              Toast.success(t("storage_flushed"));
-              window.location.reload(false);
-            })
-            .catch(() => {
-              Toast.error(t("oops_smth_went_wrong"));
-            });
+          // 目前不再清理本地 IndexedDB，由后端持久化负责；这里仅刷新页面
+          window.location.reload(false);
         },
       },
     },

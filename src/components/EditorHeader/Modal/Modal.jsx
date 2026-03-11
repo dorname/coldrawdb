@@ -7,7 +7,6 @@ import {
 } from "@douyinfe/semi-ui";
 import { DB, MODAL, STATUS } from "../../../data/constants";
 import { useState } from "react";
-import { db } from "../../../data/db";
 import {
   useAreas,
   useEnums,
@@ -38,6 +37,7 @@ import CodeEditor from "../../CodeEditor";
 import { useTranslation } from "react-i18next";
 import { importSQL } from "../../../utils/importSQL";
 import { databases } from "../../../data/databases";
+import { diagramService } from "../../../services/diagramService";
 import { isRtl } from "../../../i18n/utils/rtl";
 
 const extensionToLanguage = {
@@ -98,44 +98,42 @@ export default function Modal({
   };
 
   const loadDiagram = async (id) => {
-    await db.diagrams
-      .get(id)
-      .then((diagram) => {
-        if (diagram) {
-          if (diagram.database) {
-            setDatabase(diagram.database);
-          } else {
-            setDatabase(DB.GENERIC);
-          }
-          setDiagramId(diagram.id);
-          setTitle(diagram.name);
-          setTables(diagram.tables);
-          setRelationships(diagram.references);
-          setAreas(diagram.areas);
-          setNotes(diagram.notes);
-          setTasks(diagram.todos ?? []);
-          setTransform({
-            pan: diagram.pan,
-            zoom: diagram.zoom,
-          });
-          setUndoStack([]);
-          setRedoStack([]);
-          if (databases[database].hasTypes) {
-            setTypes(diagram.types ?? []);
-          }
-          if (databases[database].hasEnums) {
-            setEnums(diagram.enums ?? []);
-          }
-          window.name = `d ${diagram.id}`;
+    try {
+      const diagram = await diagramService.getById(id);
+      if (diagram) {
+        if (diagram.database) {
+          setDatabase(diagram.database);
         } else {
-          window.name = "";
-          Toast.error(t("didnt_find_diagram"));
+          setDatabase(DB.GENERIC);
         }
-      })
-      .catch((error) => {
-        console.log(error);
+        setDiagramId(diagram.id);
+        setTitle(diagram.title);
+        setTables(diagram.tables);
+        setRelationships(diagram.relationships);
+        setAreas(diagram.areas);
+        setNotes(diagram.notes);
+        setTasks(diagram.todos ?? []);
+        setTransform({
+          pan: diagram.pan,
+          zoom: diagram.zoom,
+        });
+        setUndoStack([]);
+        setRedoStack([]);
+        if (databases[diagram.database || database].hasTypes) {
+          setTypes(diagram.types ?? []);
+        }
+        if (databases[diagram.database || database].hasEnums) {
+          setEnums(diagram.enums ?? []);
+        }
+        window.name = `d ${diagram.id}`;
+      } else {
+        window.name = "";
         Toast.error(t("didnt_find_diagram"));
-      });
+      }
+    } catch (error) {
+      console.log(error);
+      Toast.error(t("didnt_find_diagram"));
+    }
   };
 
   const parseSQLAndLoadDiagram = () => {

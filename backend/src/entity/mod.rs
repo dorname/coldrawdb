@@ -13,5 +13,6 @@ pub mod reference;
 pub mod table;
 pub mod table_link;
 pub mod task;
+pub mod template;
 pub mod vo;
 pub mod dto;

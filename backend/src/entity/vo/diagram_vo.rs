@@ -1,46 +1,50 @@
 use sea_orm::ActiveValue;
-use serde::{Serialize,Deserialize};
-use crate::entity::diagram::{Model as DiagramModel,ActiveModel as Diagram};
-use crate::entity::vo::table_vo::TableVo;
-use crate::entity::vo::area_vo::AreaVo;
-use crate::entity::vo::reference_vo::ReferenceVo;
+use serde::{Deserialize, Serialize};
+
+use crate::entity::diagram::{ActiveModel as Diagram, Model as DiagramModel};
 use crate::entity::vo::indice_vo::IndiceVo;
-use crate::entity::vo::note_vo::NoteVo;
-use crate::entity::vo::TaskVo;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DiagramVo{
+pub struct DiagramVo {
     pub id: String,
     pub zoom: Option<String>,
     pub database: Option<String>,
-    pub name: Option<String> ,
-    // todo 新增、删除、修改表时，都是通过这个表来操作的
-    pub tables: Option<Vec<TableVo>>,
-    // todo 新增、删除、修改区域时，都是通过这个表来操作的
-    pub areas: Option<Vec<AreaVo>>,
-    // todo 新增、删除、修改关联关系时，都是通过这个表来操作的
-    pub references: Option<Vec<ReferenceVo>>,
-    // todo 新增、删除、修改索引时，都是通过这个表来操作的
+    pub name: Option<String>,
+    pub tables: Option<serde_json::Value>,
+    pub areas: Option<serde_json::Value>,
+    pub references: Option<serde_json::Value>,
     pub indices: Option<Vec<IndiceVo>>,
-    // todo 新增、删除、修改任务时，都是通过这个表来操作的
-    pub notes: Option<Vec<NoteVo>>,
-    // tasks 
-    pub tasks: Option<Vec<TaskVo>>,
+    pub notes: Option<serde_json::Value>,
+    pub tasks: Option<serde_json::Value>,
     pub pan: Option<String>,
     #[serde(rename = "lastModified")]
-    pub last_modified: Option<String>
+    pub last_modified: Option<String>,
+    #[serde(rename = "gistId")]
+    pub gist_id: Option<String>,
+    #[serde(rename = "loadedFromGistId")]
+    pub loaded_from_gist_id: Option<String>,
+    pub enums: Option<serde_json::Value>,
+    pub types: Option<serde_json::Value>,
 }
 
 impl DiagramVo {
-    //转化成diagram的方法
-    pub fn convert_to_diagram(&self, id:String) -> DiagramModel {
+    pub fn convert_to_diagram(&self, id: String) -> DiagramModel {
         DiagramModel {
             id,
             database: self.database.clone(),
             zoom: self.zoom.clone(),
             name: self.name.clone(),
             pan: self.pan.clone(),
-            last_modified: self.last_modified.clone()
+            last_modified: self.last_modified.clone(),
+            gist_id: self.gist_id.clone(),
+            loaded_from_gist_id: self.loaded_from_gist_id.clone(),
+            tables_json: self.tables.as_ref().and_then(|v| serde_json::to_string(v).ok()),
+            references_json: self.references.as_ref().and_then(|v| serde_json::to_string(v).ok()),
+            notes_json: self.notes.as_ref().and_then(|v| serde_json::to_string(v).ok()),
+            areas_json: self.areas.as_ref().and_then(|v| serde_json::to_string(v).ok()),
+            tasks_json: self.tasks.as_ref().and_then(|v| serde_json::to_string(v).ok()),
+            enums_json: self.enums.as_ref().and_then(|v| serde_json::to_string(v).ok()),
+            types_json: self.types.as_ref().and_then(|v| serde_json::to_string(v).ok()),
         }
     }
 
@@ -50,40 +54,70 @@ impl DiagramVo {
             database: diagram.database.clone(),
             zoom: diagram.zoom.clone(),
             name: diagram.name.clone(),
-            tables: None,
-            areas: None,
-            references: None,
+            tables: diagram.tables_json.as_ref().and_then(|s| serde_json::from_str(s).ok()),
+            areas: diagram.areas_json.as_ref().and_then(|s| serde_json::from_str(s).ok()),
+            references: diagram.references_json.as_ref().and_then(|s| serde_json::from_str(s).ok()),
             indices: None,
-            notes: None,
-            tasks:None,
+            notes: diagram.notes_json.as_ref().and_then(|s| serde_json::from_str(s).ok()),
+            tasks: diagram.tasks_json.as_ref().and_then(|s| serde_json::from_str(s).ok()),
             pan: diagram.pan.clone(),
-            last_modified: diagram.last_modified.clone()
+            last_modified: diagram.last_modified.clone(),
+            gist_id: diagram.gist_id.clone(),
+            loaded_from_gist_id: diagram.loaded_from_gist_id.clone(),
+            enums: diagram.enums_json.as_ref().and_then(|s| serde_json::from_str(s).ok()),
+            types: diagram.types_json.as_ref().and_then(|s| serde_json::from_str(s).ok()),
         }
     }
 
-    // 转化成diagram_active_model
-    pub fn convert_to_active_model(&self)-> Diagram {
+    pub fn convert_to_active_model(&self) -> Diagram {
         let id = ActiveValue::Set(self.id.clone());
 
-        let mut am = Diagram{
+        let mut am = Diagram {
             id,
             ..Default::default()
         };
-        if let Some(_) = &self.database{
+        if self.database.is_some() {
             am.database = ActiveValue::Set(self.database.clone());
         }
-        if let Some(_) = &self.name  {
-            am.name  = ActiveValue::Set(self.name.clone());
+        if self.name.is_some() {
+            am.name = ActiveValue::Set(self.name.clone());
         }
-        if let Some(_) = &self.zoom{
+        if self.zoom.is_some() {
             am.zoom = ActiveValue::Set(self.zoom.clone());
         }
-        if let Some(_) = &self.pan{
+        if self.pan.is_some() {
             am.pan = ActiveValue::Set(self.pan.clone());
         }
-        if let Some(_) = &self.last_modified{
+        if self.last_modified.is_some() {
             am.last_modified = ActiveValue::Set(self.last_modified.clone());
         }
+        if self.gist_id.is_some() {
+            am.gist_id = ActiveValue::Set(self.gist_id.clone());
+        }
+        if self.loaded_from_gist_id.is_some() {
+            am.loaded_from_gist_id = ActiveValue::Set(self.loaded_from_gist_id.clone());
+        }
+        am.tables_json = ActiveValue::Set(
+            self.tables.as_ref().and_then(|v| serde_json::to_string(v).ok())
+        );
+        am.references_json = ActiveValue::Set(
+            self.references.as_ref().and_then(|v| serde_json::to_string(v).ok())
+        );
+        am.notes_json = ActiveValue::Set(
+            self.notes.as_ref().and_then(|v| serde_json::to_string(v).ok())
+        );
+        am.areas_json = ActiveValue::Set(
+            self.areas.as_ref().and_then(|v| serde_json::to_string(v).ok())
+        );
+        am.tasks_json = ActiveValue::Set(
+            self.tasks.as_ref().and_then(|v| serde_json::to_string(v).ok())
+        );
+        am.enums_json = ActiveValue::Set(
+            self.enums.as_ref().and_then(|v| serde_json::to_string(v).ok())
+        );
+        am.types_json = ActiveValue::Set(
+            self.types.as_ref().and_then(|v| serde_json::to_string(v).ok())
+        );
         am
     }
 }

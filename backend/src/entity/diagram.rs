@@ -14,6 +14,22 @@ pub struct Model {
     pub name: Option<String>,
     pub pan: Option<String>,
     pub last_modified: Option<String>,
+    pub gist_id: Option<String>,
+    pub loaded_from_gist_id: Option<String>,
+    #[sea_orm(column_type = "Text")]
+    pub tables_json: Option<String>,
+    #[sea_orm(column_type = "Text")]
+    pub references_json: Option<String>,
+    #[sea_orm(column_type = "Text")]
+    pub notes_json: Option<String>,
+    #[sea_orm(column_type = "Text")]
+    pub areas_json: Option<String>,
+    #[sea_orm(column_type = "Text")]
+    pub tasks_json: Option<String>,
+    #[sea_orm(column_type = "Text")]
+    pub enums_json: Option<String>,
+    #[sea_orm(column_type = "Text")]
+    pub types_json: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
