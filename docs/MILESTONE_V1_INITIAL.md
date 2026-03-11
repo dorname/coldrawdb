@@ -27,11 +27,13 @@
 - `backend/migrations/0001_phase1_schema.down.sql`
 - `backend/migrations/0002_phase3_bridge.up.sql`
 - `backend/migrations/0002_phase3_bridge.down.sql`
+- `backend/migrations/0003_frontend_integration.up.sql`（diagram 表新列 + template 表）
 - `backend/src/init.rs`
 
 ### 2.3 API 与桥接
 - `backend/src/diagrams_v1.rs`
 - `backend/src/phase3_bridge.rs`
+- `backend/src/templates/mod.rs`（模板 CRUD API）
 - `backend/src/main.rs`
 - `backend/src/repository/diagram_repository.rs`
 
@@ -58,6 +60,10 @@
 - `POST /api/v1/bridge/import/local`
 - `GET /api/v1/bridge/import/local/logs`
 - `POST /api/v1/bridge/import/local/retry/{id}`
+
+### 前端集成（迁移 0003）
+- diagram 表新增列：gist_id、loaded_from_gist_id、tables_json、references_json、notes_json、areas_json、tasks_json、enums_json、types_json
+- template 表与 `/templates` Legacy 模板 API
 
 ---
 

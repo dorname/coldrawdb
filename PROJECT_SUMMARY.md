@@ -44,10 +44,11 @@ coldrawdb/
 │   │   ├── diagrams/         # Legacy Diagrams 路由
 │   │   ├── tables/           # Tables 路由 + 内部 API
 │   │   ├── todos/            # Todos 路由
-│   │   ├── references/       # References (路由未注册)
-│   │   ├── notes/            # Notes 内部 API
-│   │   └── indices/          # Indices 内部 API
-│   ├── migrations/           # SQL 迁移文件
+│   │   ├── references/       # References 路由
+│   │   ├── templates/        # Templates 路由（模板 CRUD）
+│   │   ├── notes/            # Notes 内部 API（当前未挂载路由）
+│   │   └── indices/          # Indices 内部 API（当前未挂载路由）
+│   ├── migrations/           # SQL 迁移文件 (0001/0002/0003_frontend_integration + template 表)
 │   ├── config.toml           # 服务器配置
 │   ├── init.sql              # 基线建表脚本
 │   └── Cargo.toml            # Rust 依赖
@@ -160,6 +161,10 @@ LayoutContext
 - **Purpose**: 提供迁移配置管理和本地草稿导入能力。
 - **Endpoints**: `GET/PUT /api/v1/bridge/config`, `POST /api/v1/bridge/import/local`, `GET /api/v1/bridge/import/local/logs`, `POST /api/v1/bridge/import/local/retry/{id}`
 
+#### `templates/mod.rs` — 模板 API
+- **Purpose**: 模板 CRUD，对应 migration 0003 的 template 表；启动时可选初始化默认模板。
+- **Endpoints**: `/templates` scope 下的 list/get/create/update/delete
+
 #### `entity/` — 数据实体
 - **Purpose**: SeaORM 实体定义，包含 11 个核心表实体和对应的 VO/DTO。
 - **Entities**: Diagram, DiagramLink, Table, Field, TableLink, Indice, IndiceLink, Reference, Area, Note, Task
@@ -224,7 +229,7 @@ Indice (1) ──── (N) IndiceLink ──── (1) Field
 | GET | `/diagrams/queryAll` | 查询所有 Diagrams |
 | POST | `/diagrams/add` | 新增 Diagram |
 | POST | `/diagrams/update` | 更新 Diagram |
-| DELETE | `/diagrams/detele/{id}` | 删除 Diagram (路径有 typo) |
+| DELETE | `/diagrams/delete/{id}` | 删除 Diagram |
 
 ### V1 API
 

@@ -36,7 +36,7 @@ DrawDB is a robust and user-friendly database entity relationship (DBER) editor 
 
 ## Getting Started
 
-> 当前仓库已完成 **初版里程碑（后端范围）**：数据库迁移、`/api/v1` 核心接口与迁移桥接能力。里程碑总览见 `docs/MILESTONE_V1_INITIAL.md`。
+> 当前仓库已完成 **初版里程碑（后端范围）**：数据库迁移、`/api/v1` 核心接口与迁移桥接能力。里程碑总览见 `docs/MILESTONE_V1_INITIAL.md`。详细技术栈与架构见 [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)。
 
 ### Prerequisites
 
