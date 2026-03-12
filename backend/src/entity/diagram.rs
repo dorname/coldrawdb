@@ -14,6 +14,9 @@ pub struct Model {
     pub name: Option<String>,
     pub pan: Option<String>,
     pub last_modified: Option<String>,
+    pub updated_at: Option<String>,
+    pub revision: i64,
+    pub is_deleted: bool,
     pub gist_id: Option<String>,
     pub loaded_from_gist_id: Option<String>,
     #[sea_orm(column_type = "Text")]

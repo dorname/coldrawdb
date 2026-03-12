@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 // Legacy examples file; no longer used in production code.
 // Kept for reference only.
 

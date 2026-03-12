@@ -35,6 +35,7 @@ pub enum ResponseMessage {
     Unauthorized,
     Forbidden,
     NotFound,
+    Conflict,
     Default(String),
 }
 impl ResponseMessage {
@@ -46,6 +47,7 @@ impl ResponseMessage {
             ResponseMessage::Unauthorized => "未授权".to_string(),
             ResponseMessage::Forbidden => "禁止访问".to_string(),
             ResponseMessage::NotFound => "未找到".to_string(),
+            ResponseMessage::Conflict => "冲突".to_string(),
             ResponseMessage::Default(message) => message.clone(),
         }
     }
@@ -65,6 +67,7 @@ pub enum ResponseCode {
     Unauthorized,
     Forbidden,
     NotFound,
+    Conflict,
 }
 impl ResponseCode {
     // 将ResponseCode转换为i32
@@ -75,6 +78,7 @@ impl ResponseCode {
             ResponseCode::Unauthorized => 401,
             ResponseCode::Forbidden => 403,
             ResponseCode::NotFound => 404,
+            ResponseCode::Conflict => 409,
         }
     }
 }

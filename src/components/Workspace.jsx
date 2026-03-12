@@ -16,9 +16,10 @@ import {
   useTasks,
   useSaveState,
   useEnums,
+  useSync,
 } from "../hooks";
 import FloatingControls from "./FloatingControls";
-import { Modal, Tag } from "@douyinfe/semi-ui";
+import { Modal, Tag, Toast } from "@douyinfe/semi-ui";
 import { useTranslation } from "react-i18next";
 import { databases } from "../data/databases";
 import { isRtl } from "../i18n/utils/rtl";
@@ -61,6 +62,7 @@ export default function WorkSpace() {
     setDatabase,
   } = useDiagram();
   const { undoStack, redoStack, setUndoStack, setRedoStack } = useUndoRedo();
+  const sync = useSync();
   const { t, i18n } = useTranslation();
   let [searchParams, setSearchParams] = useSearchParams();
   const handleResize = (e) => {
@@ -78,6 +80,7 @@ export default function WorkSpace() {
 
     const basePayload = {
       id,
+      revision: sync?.revision ?? 0,
       database,
       title,
       tables,
@@ -103,8 +106,12 @@ export default function WorkSpace() {
           const newId = created.id;
           setId(newId);
           window.name = `d ${newId}`;
+          sync?.setRevision?.(created.revision ?? 0);
+          sync?.connect?.(newId);
         } else {
-          await diagramService.update(basePayload);
+          const updated = await diagramService.update(basePayload);
+          sync?.setRevision?.(updated.revision ?? sync?.revision ?? 0);
+          sync?.sendSnapshot?.(updated);
         }
       } else {
         if (!id) {
@@ -128,6 +135,16 @@ export default function WorkSpace() {
       setLastSaved(new Date().toLocaleString());
     } catch (e) {
       console.error(e);
+      // 后端 revision 冲突会返回 code=409，requestApi 会抛 Error(message)
+      const msg = String(e?.message || "");
+      if (
+        msg.toLowerCase().includes("conflict") ||
+        msg.includes("冲突") ||
+        msg.includes("revision conflict")
+      ) {
+        Toast.warning("文档已被其他端更新，请刷新后再保存。");
+        sync?.pullLatest?.(id);
+      }
       setSaveState(State.ERROR);
     }
   }, [
@@ -148,6 +165,7 @@ export default function WorkSpace() {
     gistId,
     loadedFromGistId,
     saveState,
+    sync,
   ]);
 
   const load = useCallback(async () => {
@@ -159,6 +177,7 @@ export default function WorkSpace() {
         setDatabase(DB.GENERIC);
       }
       setId(d.id);
+      sync?.setRevision?.(d.revision ?? 0);
       setGistId(d.gistId);
       setLoadedFromGistId(d.loadedFromGistId);
       setTitle(d.title);
@@ -321,6 +340,7 @@ export default function WorkSpace() {
     selectedDb,
     setSaveState,
     searchParams,
+    sync,
   ]);
 
   useEffect(() => {
@@ -361,6 +381,15 @@ export default function WorkSpace() {
 
     load();
   }, [load]);
+
+  useEffect(() => {
+    // 仅对 diagram（非模板）连接 WS
+    const name = window.name.split(" ");
+    const op = name[0];
+    if (op === "d" && id) {
+      sync?.connect?.(id);
+    }
+  }, [id, sync]);
 
   return (
     <div className="h-full flex flex-col overflow-hidden theme">

@@ -9,6 +9,9 @@ use crate::entity::prelude::*;
 use crate::entity::vo::DiagramVo;
 use crate::next_id;
 use crate::{common::CommonResponse, error::DrawDBError};
+use chrono::Utc;
+
+pub mod ws;
 
 /// 图表模块
 pub fn diagrams_routes(config: &mut web::ServiceConfig) {
@@ -18,6 +21,7 @@ pub fn diagrams_routes(config: &mut web::ServiceConfig) {
     config.service(add_diagram);
     config.service(update_diagram);
     config.service(delete_diagram);
+    config.service(web::resource("/ws/{diagram_id}").route(web::get().to(ws::ws_diagram)));
 }
 
 /// 查询所有图表
@@ -106,9 +110,10 @@ async fn add_diagram(
 
     // 提交事务
     tx.commit().await?;
+    let vo = DiagramVo::from(&result);
     Ok(CommonResponse::new(ResponseCode::Success,
          ResponseMessage::Success,
-          Some(serde_json::to_value(result).unwrap())))
+          Some(serde_json::to_value(vo).unwrap())))
 }
 
 ///更新图表
@@ -119,7 +124,44 @@ async fn update_diagram(
 ) -> Result<CommonResponse, DrawDBError>{
     //开启事务
     let tx = db.begin().await?;
-    let diagram_model = diagram.convert_to_active_model();
+    let mut vo = diagram.into_inner();
+    let expected_revision = vo.revision.unwrap_or(0);
+
+    let existing = Diagram::find_by_id(vo.id.clone()).one(&tx).await?;
+    let Some(existing) = existing else {
+        tx.rollback().await?;
+        return Ok(CommonResponse::new(
+            ResponseCode::NotFound,
+            ResponseMessage::NotFound,
+            None,
+        ));
+    };
+
+    if expected_revision != existing.revision {
+        tx.rollback().await?;
+        return Ok(CommonResponse::new(
+            ResponseCode::Conflict,
+            ResponseMessage::Default(format!(
+                "revision conflict: expected {}, current {}",
+                expected_revision, existing.revision
+            )),
+            Some(
+                serde_json::json!({
+                    "id": existing.id,
+                    "currentRevision": existing.revision
+                })
+            ),
+        ));
+    }
+
+    // server-side bump revision and timestamps
+    let now = Utc::now().to_rfc3339();
+    vo.revision = Some(existing.revision + 1);
+    vo.updated_at = Some(now.clone());
+    // 保持对旧字段的兼容（前端仍使用 lastModified）
+    vo.last_modified = Some(now);
+
+    let diagram_model = vo.convert_to_active_model();
     let result = diagram_model.update(&tx).await?;
     // TODO：
     // 1、删除与表的关联关系
@@ -129,9 +171,10 @@ async fn update_diagram(
     // 5、更新图表
     // 6、更新引用
     tx.commit().await?;
+    let vo = DiagramVo::from(&result);
     Ok(CommonResponse::new(ResponseCode::Success,
         ResponseMessage::Success,
-         Some(serde_json::to_value(result).unwrap())))
+         Some(serde_json::to_value(vo).unwrap())))
 }
 
 ///删除图表

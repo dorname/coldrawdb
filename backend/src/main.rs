@@ -21,6 +21,8 @@ fn init_log() {
 async fn main() -> Result<(), DrawDBError> {
     init_log();
     let db = init(false).await?;
+    let db_conn = db.clone().unwrap();
+    let hub = backend::diagrams::ws::create_hub(db_conn.clone());
     let server_config = get_config();
     let config = server_config
         .read()
@@ -31,6 +33,7 @@ async fn main() -> Result<(), DrawDBError> {
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(db.clone().unwrap()))
+            .app_data(web::Data::new(hub.clone()))
             .configure(app_config)
     })
     .bind(format!("{}:{}", host, port))?

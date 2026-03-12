@@ -9,6 +9,7 @@ import TypesContextProvider from "../context/TypesContext";
 import TasksContextProvider from "../context/TasksContext";
 import SaveStateContextProvider from "../context/SaveStateContext";
 import EnumsContextProvider from "../context/EnumsContext";
+import SyncContextProvider from "../context/SyncContext";
 import WorkSpace from "../components/Workspace";
 
 export default function Editor() {
@@ -24,7 +25,9 @@ export default function Editor() {
                     <EnumsContextProvider>
                       <TablesContextProvider>
                         <SaveStateContextProvider>
-                          <WorkSpace />
+                          <SyncContextProvider>
+                            <WorkSpace />
+                          </SyncContextProvider>
                         </SaveStateContextProvider>
                       </TablesContextProvider>
                     </EnumsContextProvider>

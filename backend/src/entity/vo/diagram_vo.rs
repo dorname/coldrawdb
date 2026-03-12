@@ -7,6 +7,7 @@ use crate::entity::vo::indice_vo::IndiceVo;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiagramVo {
     pub id: String,
+    pub revision: Option<i64>,
     pub zoom: Option<String>,
     pub database: Option<String>,
     pub name: Option<String>,
@@ -19,6 +20,8 @@ pub struct DiagramVo {
     pub pan: Option<String>,
     #[serde(rename = "lastModified")]
     pub last_modified: Option<String>,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: Option<String>,
     #[serde(rename = "gistId")]
     pub gist_id: Option<String>,
     #[serde(rename = "loadedFromGistId")]
@@ -36,6 +39,9 @@ impl DiagramVo {
             name: self.name.clone(),
             pan: self.pan.clone(),
             last_modified: self.last_modified.clone(),
+            updated_at: self.updated_at.clone(),
+            revision: self.revision.unwrap_or(0),
+            is_deleted: false,
             gist_id: self.gist_id.clone(),
             loaded_from_gist_id: self.loaded_from_gist_id.clone(),
             tables_json: self.tables.as_ref().and_then(|v| serde_json::to_string(v).ok()),
@@ -51,6 +57,7 @@ impl DiagramVo {
     pub fn from(diagram: &DiagramModel) -> Self {
         Self {
             id: diagram.id.clone(),
+            revision: Some(diagram.revision),
             database: diagram.database.clone(),
             zoom: diagram.zoom.clone(),
             name: diagram.name.clone(),
@@ -62,6 +69,7 @@ impl DiagramVo {
             tasks: diagram.tasks_json.as_ref().and_then(|s| serde_json::from_str(s).ok()),
             pan: diagram.pan.clone(),
             last_modified: diagram.last_modified.clone(),
+            updated_at: diagram.updated_at.clone(),
             gist_id: diagram.gist_id.clone(),
             loaded_from_gist_id: diagram.loaded_from_gist_id.clone(),
             enums: diagram.enums_json.as_ref().and_then(|s| serde_json::from_str(s).ok()),
@@ -76,6 +84,9 @@ impl DiagramVo {
             id,
             ..Default::default()
         };
+        if self.revision.is_some() {
+            am.revision = ActiveValue::Set(self.revision.unwrap_or(0));
+        }
         if self.database.is_some() {
             am.database = ActiveValue::Set(self.database.clone());
         }
@@ -90,6 +101,9 @@ impl DiagramVo {
         }
         if self.last_modified.is_some() {
             am.last_modified = ActiveValue::Set(self.last_modified.clone());
+        }
+        if self.updated_at.is_some() {
+            am.updated_at = ActiveValue::Set(self.updated_at.clone());
         }
         if self.gist_id.is_some() {
             am.gist_id = ActiveValue::Set(self.gist_id.clone());

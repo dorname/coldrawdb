@@ -11,6 +11,7 @@ const mapFromBackend = (vo) => {
   if (!vo) return null;
   return {
     id: vo.id,
+    revision: typeof vo.revision === "number" ? vo.revision : 0,
     database: vo.database || null,
     title: vo.name || "Untitled Diagram",
     tables: vo.tables || [],
@@ -31,6 +32,7 @@ const mapFromBackend = (vo) => {
 const mapToBackend = (diagram) => {
   const {
     id,
+    revision,
     database,
     title,
     tables,
@@ -49,6 +51,7 @@ const mapToBackend = (diagram) => {
 
   return {
     id: id ? String(id) : "",
+    revision: typeof revision === "number" ? revision : 0,
     database: database || null,
     name: title,
     tables,
@@ -64,6 +67,11 @@ const mapToBackend = (diagram) => {
     enums: enums || [],
     types: types || [],
   };
+};
+
+export const diagramMapper = {
+  mapFromBackend,
+  mapToBackend,
 };
 
 export const diagramService = {
@@ -89,17 +97,14 @@ export const diagramService = {
     const payload = mapToBackend(diagram);
     const resp = await post("/diagrams/add", payload);
     const data = unwrap(resp);
-    return mapFromBackend({
-      ...payload,
-      id: data.id ?? payload.id,
-    });
+    return mapFromBackend(data);
   },
 
   async update(diagram) {
     const payload = mapToBackend(diagram);
     const resp = await post("/diagrams/update", payload);
-    unwrap(resp);
-    return diagram;
+    const data = unwrap(resp);
+    return mapFromBackend(data);
   },
 
   async delete(id) {
