@@ -1,6 +1,6 @@
 import { createContext, useState } from "react";
 import { Action, DB, ObjectType, defaultBlue } from "../data/constants";
-import { useTransform, useUndoRedo, useSelect } from "../hooks";
+import { useTransform, useUndoRedo, useSelect, useSync } from "../hooks";
 import { Toast } from "@douyinfe/semi-ui";
 import { useTranslation } from "react-i18next";
 import { nanoid } from "nanoid";
@@ -15,43 +15,44 @@ export default function DiagramContextProvider({ children }) {
   const { transform } = useTransform();
   const { setUndoStack, setRedoStack } = useUndoRedo();
   const { selectedElement, setSelectedElement } = useSelect();
+  const sync = useSync();
 
   const addTable = (data, addToHistory = true) => {
     const id = nanoid();
+    let tableToAdd;
     if (data) {
+      tableToAdd = data;
       setTables((prev) => {
         const temp = prev.slice();
         temp.splice(data.index, 0, data);
         return temp;
       });
     } else {
-      setTables((prev) => [
-        ...prev,
-        {
-          id,
-          name: `table_${prev.length}`,
-          x: transform.pan.x,
-          y: transform.pan.y,
-          fields: [
-            {
-              name: "id",
-              type: database === DB.GENERIC ? "INT" : "INTEGER",
-              default: "",
-              check: "",
-              primary: true,
-              unique: true,
-              notNull: true,
-              increment: true,
-              comment: "",
-              table_id: id,
-              id: nanoid(),
-            },
-          ],
-          comment: "",
-          indices: [],
-          color: defaultBlue,
-        },
-      ]);
+      tableToAdd = {
+        id,
+        name: `table_${tables.length}`,
+        x: transform.pan.x,
+        y: transform.pan.y,
+        fields: [
+          {
+            name: "id",
+            type: database === DB.GENERIC ? "INT" : "INTEGER",
+            default: "",
+            check: "",
+            primary: true,
+            unique: true,
+            notNull: true,
+            increment: true,
+            comment: "",
+            table_id: id,
+            id: nanoid(),
+          },
+        ],
+        comment: "",
+        indices: [],
+        color: defaultBlue,
+      };
+      setTables((prev) => [...prev, tableToAdd]);
     }
     if (addToHistory) {
       setUndoStack((prev) => [
@@ -64,6 +65,7 @@ export default function DiagramContextProvider({ children }) {
         },
       ]);
       setRedoStack([]);
+      sync?.sendOp?.({ op: "table_add", data: tableToAdd });
     }
   };
 
@@ -105,12 +107,14 @@ export default function DiagramContextProvider({ children }) {
         open: false,
       }));
     }
+    if (addToHistory) sync?.sendOp?.({ op: "table_remove", data: { id } });
   };
 
   const updateTable = (id, updatedValues) => {
     setTables((prev) =>
       prev.map((t) => (t.id === id ? { ...t, ...updatedValues } : t)),
     );
+    sync?.sendOp?.({ op: "table_update", data: { id, ...updatedValues } });
   };
 
   const updateField = (tid, fid, updatedValues) => {
@@ -127,6 +131,10 @@ export default function DiagramContextProvider({ children }) {
         return table;
       }),
     );
+    sync?.sendOp?.({
+      op: "field_update",
+      data: { tableId: tid, fieldId: fid, values: updatedValues },
+    });
   };
 
   const deleteField = (field, tid, addToHistory = true) => {
@@ -173,6 +181,12 @@ export default function DiagramContextProvider({ children }) {
     updateTable(tid, {
       fields: fields.filter((e) => e.id !== field.id),
     });
+    if (addToHistory) {
+      sync?.sendOp?.({
+        op: "field_remove",
+        data: { tableId: tid, fieldId: field.id },
+      });
+    }
   };
 
   const addRelationship = (data, addToHistory = true) => {
@@ -190,6 +204,7 @@ export default function DiagramContextProvider({ children }) {
         setRedoStack([]);
         return [...prev, data];
       });
+      sync?.sendOp?.({ op: "relationship_add", data });
     } else {
       setRelationships((prev) => {
         const temp = prev.slice();
@@ -213,6 +228,7 @@ export default function DiagramContextProvider({ children }) {
         },
       ]);
       setRedoStack([]);
+      sync?.sendOp?.({ op: "relationship_remove", data: { id } });
     }
     setRelationships((prev) =>
       prev.filter((e) => e.id !== id).map((e, i) => ({ ...e, id: i })),
@@ -223,6 +239,7 @@ export default function DiagramContextProvider({ children }) {
     setRelationships((prev) =>
       prev.map((t) => (t.id === id ? { ...t, ...updatedValues } : t)),
     );
+    sync?.sendOp?.({ op: "relationship_update", data: { id, ...updatedValues } });
   };
 
   return (

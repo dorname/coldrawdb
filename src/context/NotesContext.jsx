@@ -1,6 +1,6 @@
 import { createContext, useState } from "react";
 import { Action, ObjectType, defaultNoteTheme } from "../data/constants";
-import { useUndoRedo, useTransform, useSelect } from "../hooks";
+import { useUndoRedo, useTransform, useSelect, useSync } from "../hooks";
 import { Toast } from "@douyinfe/semi-ui";
 import { useTranslation } from "react-i18next";
 
@@ -12,9 +12,12 @@ export default function NotesContextProvider({ children }) {
   const { transform } = useTransform();
   const { setUndoStack, setRedoStack } = useUndoRedo();
   const { selectedElement, setSelectedElement } = useSelect();
+  const sync = useSync();
 
   const addNote = (data, addToHistory = true) => {
+    let noteToAdd;
     if (data) {
+      noteToAdd = data;
       setNotes((prev) => {
         const temp = prev.slice();
         temp.splice(data.id, 0, data);
@@ -22,18 +25,16 @@ export default function NotesContextProvider({ children }) {
       });
     } else {
       const height = 88;
-      setNotes((prev) => [
-        ...prev,
-        {
-          id: prev.length,
-          x: transform.pan.x,
-          y: transform.pan.y - height / 2,
-          title: `note_${prev.length}`,
-          content: "",
-          color: defaultNoteTheme,
-          height,
-        },
-      ]);
+      noteToAdd = {
+        id: notes.length,
+        x: transform.pan.x,
+        y: transform.pan.y - height / 2,
+        title: `note_${notes.length}`,
+        content: "",
+        color: defaultNoteTheme,
+        height,
+      };
+      setNotes((prev) => [...prev, noteToAdd]);
     }
     if (addToHistory) {
       setUndoStack((prev) => [
@@ -45,6 +46,7 @@ export default function NotesContextProvider({ children }) {
         },
       ]);
       setRedoStack([]);
+      sync?.sendOp?.({ op: "note_add", data: noteToAdd });
     }
   };
 
@@ -73,6 +75,7 @@ export default function NotesContextProvider({ children }) {
         open: false,
       }));
     }
+    if (addToHistory) sync?.sendOp?.({ op: "note_remove", data: { id } });
   };
 
   const updateNote = (id, values) => {
@@ -87,6 +90,7 @@ export default function NotesContextProvider({ children }) {
         return t;
       }),
     );
+    sync?.sendOp?.({ op: "note_update", data: { id, ...values } });
   };
 
   return (

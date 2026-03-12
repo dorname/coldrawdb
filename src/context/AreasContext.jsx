@@ -1,6 +1,6 @@
 import { createContext, useState } from "react";
 import { Action, ObjectType, defaultBlue } from "../data/constants";
-import { useUndoRedo, useTransform, useSelect } from "../hooks";
+import { useUndoRedo, useTransform, useSelect, useSync } from "../hooks";
 import { Toast } from "@douyinfe/semi-ui";
 import { useTranslation } from "react-i18next";
 
@@ -12,9 +12,12 @@ export default function AreasContextProvider({ children }) {
   const { transform } = useTransform();
   const { selectedElement, setSelectedElement } = useSelect();
   const { setUndoStack, setRedoStack } = useUndoRedo();
+  const sync = useSync();
 
   const addArea = (data, addToHistory = true) => {
+    let areaToAdd;
     if (data) {
+      areaToAdd = data;
       setAreas((prev) => {
         const temp = prev.slice();
         temp.splice(data.id, 0, data);
@@ -23,18 +26,16 @@ export default function AreasContextProvider({ children }) {
     } else {
       const width = 200;
       const height = 200;
-      setAreas((prev) => [
-        ...prev,
-        {
-          id: prev.length,
-          name: `area_${prev.length}`,
-          x: transform.pan.x - width / 2,
-          y: transform.pan.y - height / 2,
-          width,
-          height,
-          color: defaultBlue,
-        },
-      ]);
+      areaToAdd = {
+        id: areas.length,
+        name: `area_${areas.length}`,
+        x: transform.pan.x - width / 2,
+        y: transform.pan.y - height / 2,
+        width,
+        height,
+        color: defaultBlue,
+      };
+      setAreas((prev) => [...prev, areaToAdd]);
     }
     if (addToHistory) {
       setUndoStack((prev) => [
@@ -46,6 +47,7 @@ export default function AreasContextProvider({ children }) {
         },
       ]);
       setRedoStack([]);
+      sync?.sendOp?.({ op: "area_add", data: areaToAdd });
     }
   };
 
@@ -74,6 +76,7 @@ export default function AreasContextProvider({ children }) {
         open: false,
       }));
     }
+    if (addToHistory) sync?.sendOp?.({ op: "area_remove", data: { id } });
   };
 
   const updateArea = (id, values) => {
@@ -88,6 +91,7 @@ export default function AreasContextProvider({ children }) {
         return t;
       }),
     );
+    sync?.sendOp?.({ op: "area_update", data: { id, ...values } });
   };
 
   return (

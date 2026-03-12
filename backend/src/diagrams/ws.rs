@@ -164,6 +164,24 @@ impl Handler<ClientText> for RoomHub {
                 return;
             }
 
+            if msg_type == "op_edit" {
+                hub_addr.do_send(Broadcast {
+                    diagram_id,
+                    text,
+                    skip: Some(sender_id),
+                });
+                return;
+            }
+
+            if msg_type == "op_awareness" || msg_type == "op_cursor" {
+                hub_addr.do_send(Broadcast {
+                    diagram_id,
+                    text,
+                    skip: Some(sender_id),
+                });
+                return;
+            }
+
             if msg_type != "diagram_snapshot" {
                 return;
             }
