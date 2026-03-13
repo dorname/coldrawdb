@@ -15,26 +15,42 @@
 
 ---
 
-## 1.1 当前进度（与代码一致）
+## 1.1 当前进度概览
 
-> 该小节用于描述**已落地能力**，避免文档与实现脱节。
+> 按阶段汇总已落地能力与待办，与第 4 章实施阶段一一对应。
 
-### 已完成（一期：保存级实时 + 冲突提示）
+| 阶段 | 内容概述 | 状态 |
+|------|----------|------|
+| 1 | 保存级同步 + 冲突控制 | 已完成 |
+| 2 | 操作级 LWW 同步 + 字段级 + 光标/在线基础 | 已完成 |
+| 3 | 协作体验增强 + 历史回放 + CRDT/OT | 规划中 |
 
-- **WebSocket 端点已提供**：`GET /diagrams/ws/{diagram_id}`，按 `diagram_id` 建立 room 并广播消息。
-- **revision 冲突已支持**：REST 更新（`POST /diagrams/update`）携带 expected `revision`，服务端校验不一致返回 **409 Conflict**，前端 Toast 提示并支持拉取最新快照刷新。
-- **保存/自动保存触发同步**：保存成功后广播整份 diagram 快照到同 room 的其他客户端，其他端收到后应用快照更新状态。
+### 阶段 1（已完成）：保存级实时 + 冲突提示
 
-### 仍是待办（下一阶段要解决的核心问题）
+- **WebSocket 端点**：`GET /diagrams/ws/{diagram_id}`，按 `diagram_id` 建立 room 并广播消息。
+- **revision 冲突**：REST 更新（`POST /diagrams/update`）携带 expected `revision`，服务端校验不一致返回 **409 Conflict**，前端 Toast 提示并支持 `pullLatest` 刷新。
+- **保存级同步**：保存成功后广播整份 diagram 快照（`diagram_snapshot`）到同 room 的其他客户端，其他端应用快照更新状态。
 
-- 字段级冲突合并仍为 **LWW + 操作级同步**：即便已经支持 `field_update/field_remove/field_reorder` 的实时广播，不同用户同时编辑同一字段时仍可能出现“后写覆盖前写”的情况。
-- 光标/在线体验仍较粗糙：已具备 `op_awareness/op_cursor` 协议与内存状态（`onlineClients/cursors`），但 UI 仅是粗粒度地标记他人正在查看的对象，缺少清晰的用户标识与选区展示。
-- 历史版本/回放尚未落地：`diagram_history` 表结构与 `/diagrams/history` 接口仍在设计阶段，前端暂未提供时间轴/回放 UI。
-- CRDT/OT 尚处于 PoC 设计阶段：目前仅在文档层规划在 notes 文本区域引入 Yjs/yrs 等方案，尚未在生产路径启用。
+### 阶段 2（已完成）：操作级 LWW 同步 + 字段级/光标基础
+
+- **操作级 `op_edit`**：
+  - 表 / 关系 / 笔记 / 区域 / 任务的增删改通过 `op_edit` 在 room 内转发，前端 `SyncContext.applyOp` 增量更新各 Context。
+  - 字段级：`field_update` / `field_remove` / `field_reorder` 已接入（仍为 LWW，同字段并发编辑会“后写覆盖前写”）。
+- **光标/在线**：
+  - 已定义 `op_awareness` / `op_cursor` 协议，后端仅转发；前端在 `SyncContext` 中维护 `onlineClients` 与 `cursors`。
+  - 本地选中表/笔记/区域时通过 `sendCursor` 广播粗粒度光标（完整 UI 待阶段 3 增强）。
+
+### 阶段 3（规划中）：多人在线协作体验 + 历史/CRDT
+
+- **历史与回放**：`diagram_history` 表与 `/diagrams/history` 接口已在文档中设计，尚未实现。
+- **CRDT/OT**：仅在文档中完成 notes 文本的 Yjs/yrs PoC 设计，尚未在生产路径启用。
+- **协作体验**：计划增强光标/选区 UI、在线用户列表展示、与 undo/redo 的协调等。
 
 ---
 
 ## 2. 前置条件
+
+> 当前实现进度与分阶段方案见 **§1.1** 与 **§4**。
 
 ### 当前架构简述
 
@@ -72,142 +88,74 @@
 
 ---
 
-## 4. 分步实施（可落地步骤）
+## 4. 实施阶段与方案
 
-| 步骤 | 内容 |
-|------|------|
-| **Step 1** | 后端新增 WebSocket 端点，例如 `ws://host/diagrams/ws/{diagram_id}`；握手时校验 diagram 存在（可先不做鉴权）。 |
-| **Step 2** | 服务端维护「diagram_id -> 连接集合」的 room，收到某连接的消息后，向同 room 内其他连接广播（消息格式建议 JSON：`{ "type": "...", "payload": { ... } }`）。 |
-| **Step 3** | 定义最小消息协议：如 `op_edit`（表格/关系/笔记等变更）、`op_cursor`（可选）、`op_awareness`（可选）。 |
-| **Step 4** | 前端根据当前打开的 diagram_id 建立 WS 连接，在 SyncContext 中接收并解析消息，调用现有 Context 的 setTables/setRelationships 等或应用增量操作。 |
-| **Step 5** | 前端在本地编辑（如保存或关键操作）时，向 WS 发送 op，服务端广播给同 room 其他客户端。 |
-| **Step 6** | （可选）冲突策略：若采用 LWW，在 payload 中带 revision，服务端或客户端丢弃旧 revision 的更新并提示用户。 |
+以下 4.1 / 4.2 / 4.3 与 1.1 中的阶段 1 / 2 / 3 一一对应，便于区分「已完成」与「规划中」。
 
 ---
 
-## 4.1 下一阶段（推荐）：操作级实时响应（op_edit）
+### 4.1 阶段 1：保存级实时 + 冲突控制（状态：已完成）
 
-> 目标：把“保存级快照同步”升级为“操作级实时同步”，使任一端的编辑操作在 1–2 秒内出现在其他端（不依赖保存）。
+> 对应 1.1 中阶段 1。
 
-### 当前落地情况简述
-
-- 已实现：
-  - `op_edit` 消息通道（后端仅转发，不写库）。
-  - 前端在 **表 / 关系 / 笔记 / 区域 / 任务** 的增删改时发送 `op_edit`，其他端通过 `SyncContext.applyOp` 增量更新各 Context。
-  - 自身发送的 op 会通过 `senderClientId` 被忽略，避免重复应用。
-- 未实现（仍为后续工作）：
-  - 字段级 CRDT/OT 合并（当前字段级仍为 LWW + 操作级同步）。
-  - 更丰富的光标/选区展现（目前仅在本地选中表/笔记/区域时向其他客户端广播粗粒度 `op_cursor`，并在内存中维护 `cursors` 与 `onlineClients` 状态）。
-  - 更复杂的自动合并策略（当前仍是 LWW + 冲突提示 + 手动刷新）。
-
-### 核心原则
-
-- **实时响应与持久化解耦**：操作级消息用于实时同步；落库仍以 REST 保存为主（继续复用 revision 冲突策略）。
-- **后端尽量无状态**：后端负责 room 管理与广播，可选做简单校验/去重；不强行承担 OT/CRDT 的合并复杂度。
-
-### 最小协议（建议）
-
-- **`op_edit`**：操作级编辑同步（必做）
-
-```json
-{
-  "type": "op_edit",
-  "payload": {
-    "diagramId": "123",
-    "senderClientId": "client-abc",
-    "op": "table_add | table_remove | table_update | relationship_add | relationship_remove | relationship_update | note_add | note_remove | note_update | area_add | area_remove | area_update | task_add | task_remove | task_update",
-    "data": { }
-  }
-}
-```
-
-- **`op_cursor`**：光标/选区（可选）
-- **`op_awareness`**：在线用户列表、只读/编辑状态（可选）
-
-### 前端落地点（建议）
-
-- 在 `SyncContext` 中新增：
-  - `sendOp(op)`：本地编辑发生时通过 WS 发送 `op_edit`
-  - `applyOp(op)`：收到远端 `op_edit` 时增量更新各 Context（并避免写入 undo/redo）
-- 在各编辑入口（新增/删除/更新表、关系、note、area、task）调用：
-  - “先本地更新 Context” → “再 `sendOp` 广播给其他端”
-
-### 冲突与回退
-
-- 操作级同步默认走 LWW：后到的操作覆盖先到的操作（同字段同时编辑不可避免会有覆盖）。
-- 当保存时触发 revision 冲突：
-  - 继续提示用户刷新或合并（保持现有行为）
-  - 可提供“一键拉取最新快照”作为回退（同步状态重新对齐）
+- **目标**：同一 diagram 多端打开时，任一端保存后其他端在数秒内看到整图更新；多端同时保存时通过 revision 避免静默覆盖并提示冲突。
+- **主要实现**：
+  - 后端：`GET /diagrams/ws/{diagram_id}`，按 `diagram_id` 建 room；`POST /diagrams/update` 校验 expected `revision`，不一致返回 409。
+  - 前端：`Workspace` 保存成功后调用 `SyncContext.sendSnapshot`；收到 `diagram_snapshot` 时应用整份快照；冲突时 Toast + `pullLatest`。
+- **验收**：双窗口同 diagram，一端保存后另一端看到更新；故意制造 revision 落后时保存，应出现冲突提示并可拉取最新。
 
 ---
 
-## 4.2 下一阶段目标：迈向真正的多人在线编辑
+### 4.2 阶段 2：操作级 LWW 同步 + 字段级/光标基础（状态：已完成）
 
-> 在现有「保存级 + 操作级 LWW 同步」基础上，进一步完善协作体验，并为 CRDT/OT 与历史回放打好基础。
+> 对应 1.1 中阶段 2。
 
-### 目标 A：更完整的协作体验
+- **目标**：无需等保存，表/关系/笔记/区域/任务及字段的增删改在其他端实时可见；粗粒度光标与在线状态可广播与展示基础。
+- **服务端**：
+  - `op_edit` / `op_awareness` / `op_cursor` 在 `RoomHub` 内按 room 仅转发，不落库。
+- **前端**：
+  - `SyncContext.sendOp` / `applyOp`：支持 `table_*` / `relationship_*` / `note_*` / `area_*` / `task_update` 以及 `field_update` / `field_remove` / `field_reorder`。
+  - `onlineClients`、`cursors` 状态；连接时发送 `op_awareness`（join/ping/leave），选中元素时发送 `op_cursor`（focusedType/focusedId）。
+- **核心原则**：实时与持久化解耦（操作级仅同步，落库仍走 REST + revision）；后端尽量无状态。
+- **当前限制**：字段级仍为 LWW；光标/在线 UI 仅为协议与状态基础，完整展示与用户区分在阶段 3。
 
-- 为光标与在线状态提供清晰、可区分的 UI：
-  - 在编辑器头部展示在线用户列表（来自 `onlineClients`），区分不同 client/user。
-  - 在画布与侧栏中，根据 `cursors` 高亮其他用户正在查看或编辑的对象（表、字段、笔记、区域等）。
-- 优化操作级同步与撤销/重做的交互：
-  - 远端操作不应打乱本地用户的编辑流，例如 undo/redo 应尽可能只作用于本地用户发起的操作。
+**最小协议（已用）**：`op_edit` 的 payload 含 `diagramId`、`senderClientId`、`op`、`data`；`op_cursor` / `op_awareness` 含 `clientId`、`focusedType`/`focusedId` 或 `user`、`status` 等。
 
-### 目标 B：引入局部 CRDT/OT
+---
 
-- 选取 **notes 文本区域** 作为首个 CRDT 试验点：
-  - 使用 Yjs/yrs 等 CRDT 库，将每个 note 内容绑定到 `Y.Text`。
-  - 通过现有 WebSocket 通道扩展 `notes_crdt_update` 消息，在同一 diagram 的客户端间转发文档更新。
-- 与 LWW + revision 共存：
-  - CRDT 只在文本字段内部解决并发冲突，结构性变更（新增/删除 note、自身属性变更）仍用 LWW + op_edit。
-  - 保存时，将 Yjs 文档序列化回 notes 内容字段，继续以 `DiagramVo` 形式写入数据库。
+### 4.3 阶段 3：迈向真正的多人在线编辑（状态：规划中）
 
-#### Notes 文本 CRDT PoC 设计
+> 对应 1.1 中阶段 3；以下为规划内容，不做为已实现承诺。
 
-- **范围**：
-  - 仅覆盖 notes 的文本内容（如 `note.content`），不改变 notes 的增删结构与位置属性，这些仍由现有的 LWW + op_edit 负责。
-- **协议**：
-  - 利用现有 `/diagrams/ws/{diagram_id}` 通道，约定新的消息类型，例如：
-    ```json
-    {
-      "type": "notes_crdt_update",
-      "payload": {
-        "diagramId": "123",
-        "clientId": "client-abc",
-        "update": "<Yjs encoded update bytes (base64)>"
-      }
-    }
-    ```
-  - 后端继续采用“room 内仅转发”的模式，不解析 CRDT 数据。
-- **保存与加载**：
-  - 加载 diagram 时，从 `snapshot_json` 中读取 notes 文本，将其作为初始状态灌入 Yjs 文档（针对每个 note 的 `Y.Text`）。
-  - 保存 diagram 时，从 Yjs 文档读取最新文本内容回写到 notes，再通过现有 `/diagrams/update` 路径落库。
-- **回退策略**：
-  - 为 CRDT 增加显式开关（例如实验设置或环境变量），关闭时：\n
-    - 不再发送/处理 `notes_crdt_update`；\n
-    - notes 文本退回到单机编辑 + 保存级 LWW 行为，避免对已有数据造成影响。
+#### 4.3.1 协作体验增强（目标 A）
 
-### 目标 C：为“历史与回放”打基础
+- 在编辑器头部展示在线用户列表（来自 `onlineClients`），区分不同 client/user。
+- 在画布与侧栏中根据 `cursors` 高亮其他用户正在查看或编辑的对象（表、字段、笔记、区域等）。
+- 优化远端操作与本地 undo/redo 的交互，避免远端操作打乱本地编辑流。
 
-- 设计并实现 `diagram_history` 表与历史查询接口：
-  - 每次保存成功（revision 自增）时，记录一条历史快照。
-  - 允许通过 revision 恢复任意时刻的完整 diagram 状态。
-- 为后续的「时间轴回放」「版本对比」预留接口与数据形态，而不急于实现完整 UI。
+#### 4.3.2 局部 CRDT/OT（目标 B）
 
-#### 历史数据与接口设计（初版）
+- 选取 **notes 文本区域** 作为首个 CRDT 试验点：使用 Yjs/yrs 将 note 内容绑定到 `Y.Text`，通过现有 WS 扩展 `notes_crdt_update` 消息在同一 diagram 客户端间转发。
+- 与 LWW 共存：CRDT 仅作用于文本字段；结构性变更仍用 op_edit；保存时从 Yjs 序列化回 notes 再写库。
 
-- 后端新增历史表（示意）：
-  - 表名：`diagram_history`
-  - 字段建议：
-    - `id`：主键（雪花 ID 或自增）
-    - `diagram_id`：归属的 diagram
-    - `revision`：对应的 revision 号
-    - `snapshot_json`：`DiagramVo` 的 JSON 序列化结果
-    - `created_at`：记录创建时间
-- 历史查询接口形态：
-  - `GET /diagrams/history/{diagram_id}`：返回该 diagram 的历史版本列表（`revision`、`created_at`、可选描述），用于构建时间轴。
-  - `GET /diagrams/history/{diagram_id}/{revision}`：返回指定 revision 的完整快照（可直接映射为前端的 diagram 对象）。
-  - 可选：为未来的差异比较预留 `GET /diagrams/history/{diagram_id}/diff?from=rev1&to=rev2`，形态可在真正实现前再细化。
+**Notes 文本 CRDT PoC 设计（初版）**：
+
+- **范围**：仅 `note.content`；notes 的增删与位置等仍由 LWW + op_edit 负责。
+- **协议**：例如 `{ "type": "notes_crdt_update", "payload": { "diagramId", "clientId", "update": "<base64>" } }`，后端仅转发。
+- **保存与加载**：加载时从快照灌入 Yjs；保存时从 Yjs 读回写进 `DiagramVo`。
+- **回退策略**：通过开关关闭 CRDT 时，不再收发 `notes_crdt_update`，notes 文本退回到单机 + 保存级 LWW。
+
+#### 4.3.3 历史与回放基础（目标 C）
+
+- 每次保存成功（revision 自增）时写入一条历史快照；支持按 revision 恢复完整 diagram 状态。
+- 为时间轴回放、版本对比预留接口与数据形态，UI 可后续迭代。
+
+**历史数据与接口设计（初版）**：
+
+- **表**：`diagram_history`，字段建议：`id`、`diagram_id`、`revision`、`snapshot_json`（DiagramVo JSON）、`created_at`。
+- **接口**：`GET /diagrams/history/{diagram_id}` 返回版本列表；`GET /diagrams/history/{diagram_id}/{revision}` 返回该 revision 快照；可选预留 `diff?from=&to=`。
+
+---
 
 ## 5. 验收标准
 
