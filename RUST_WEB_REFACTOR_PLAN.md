@@ -151,8 +151,36 @@
 - 产物：高级功能补齐、灰度发布、监控面板
 - 退出条件：线上指标达标
 
+> **Phase 4 = 4 周压缩版（已 spec 化）** — 原 10-12 周总计划被压缩为 4 周落地。
+> 详情见 spec `.omc/specs/deep-interview-phase4-rust-web-mvp.md`（16 rounds，
+> Ambiguity 18.3% PASSED）与执行细化 plan `.omc/plans/phase4-rust-web-mvp.md`。
+> 框架选型最终 = Leptos（SCORECARD 85/100）；React 在 W4 末**完全下线**（不留共存）；
+> 收官报告见 `docs/phase4/PHASE4_DONE.md`。
+
+### 7.1 执行进度（2026-06-06 收官时点）
+
+| Week | 计划内容 | 状态 | 关键交付物 |
+|------|----------|------|------------|
+| W1 | 框架调研 + 模块脚手架 + React baseline | ✅ DONE | [`docs/phase4/framework-poc/`](docs/phase4/framework-poc/) 3 份报告 + SCORECARD (Leptos 85); [`frontend-rs/`](frontend-rs/) 1 crate + 4 modules; [`docs/phase4/perf/react-baseline-{tti,fps,heap,bundle}.txt`](docs/phase4/perf/) |
+| W2 | MVP 5 大功能 happy path + E2E 起步 | ✅ DONE | `frontend-rs/src/editor_{core,render,panels,data_access}.rs`; `frontend-rs/tests/e2e/01-05_*.spec` |
+| W3 | 异常 E2E + §8 perf + release profile | ✅ DONE | 10-15 异常 spec; `docs/phase4/perf/backend-perf-{get,put}.txt` (P95 1.9ms / 1.0ms); `[profile.release]` lto/opt-level=z/strip |
+| W4 | E2E 25/25 矩阵 + 4h soak + React 下线 + CI 改造 | ✅ DONE | 25/25 覆盖矩阵; `frontend-rs/tests/soak/4h.sh`; 5 commit React 下线 + tag `phase4-pre-react-removal`; `.github/workflows/build.yml` 删 npm 加 cargo + mmdc |
+
+### 7.2 Phase 4 交付物索引
+
+- 计划: [`.omc/plans/phase4-rust-web-mvp.md`](.omc/plans/phase4-rust-web-mvp.md)
+- Spec: [`.omc/specs/deep-interview-phase4-rust-web-mvp.md`](.omc/specs/deep-interview-phase4-rust-web-mvp.md)
+- 框架选型: [`docs/phase4/framework-poc/SCORECARD.md`](docs/phase4/framework-poc/SCORECARD.md)
+- 模块映射: [`docs/phase4/module-mapping.md`](docs/phase4/module-mapping.md)
+- 架构图: [`docs/phase4/architecture.mmd`](docs/phase4/architecture.mmd) / [`.svg`](docs/phase4/architecture.svg)
+- 性能基线: [`docs/phase4/perf/`](docs/phase4/perf/)
+- 收官报告: [`docs/phase4/PHASE4_DONE.md`](docs/phase4/PHASE4_DONE.md)
+- 验证清单: [`docs/phase4/PHASE4_VALIDATION.md`](docs/phase4/PHASE4_VALIDATION.md)
+- React 下线 CHANGELOG: [`docs/phase4/CHANGELOG-react-removal.md`](docs/phase4/CHANGELOG-react-removal.md)
+- 回退预案: [`docs/phase4/ROLLBACK_GATE.md`](docs/phase4/ROLLBACK_GATE.md)
+
 ## Phase 5：切流与收尾（第 11~12 周）
-- 产物：切流报告、回滚预案、运维交接文档
+- 产物：切流报告、回退预案、运维交接文档
 - 退出条件：旧链路下线
 
 ---

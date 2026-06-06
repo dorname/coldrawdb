@@ -74,7 +74,47 @@
 
 ---
 
-## 5. 下一步
+## 5. Phase 4 验收状态
 
-- 进入 Phase 4：Rust Web MVP（PoC 选型 + 最小可用编辑链路）
-- 在 Phase 5 前补齐灰度发布与双写窗口实操演练文档
+> 收官报告：`docs/phase4/PHASE4_DONE.md`；执行计划：`.omc/plans/phase4-rust-web-mvp.md`；
+> spec：`.omc/specs/deep-interview-phase4-rust-web-mvp.md`。
+
+### 5.1 框架选型最终结果
+
+**Leptos（85/100）** — 4 维评分（编辑器交互 40 / 性能 25 / 工程可维护性 20 /
+团队学习成本 15）击败 Dioxus (73) / Yew (68)。详见
+`docs/phase4/framework-poc/SCORECARD.md`。
+
+### 5.2 模块架构（1 crate + 4 modules）
+
+`frontend-rs/` crate 含 `editor_core` / `editor_render` / `editor_panels` /
+`editor_data_access` 4 modules；依赖单向无环（`editor_core` 不反向 import）；
+CI 用 ast-grep + cargo-modules 双重 gate。架构图 `docs/phase4/architecture.mmd` /
+`.svg` 强制渲染。
+
+### 5.3 §8 性能 / 稳定性
+
+- `GET /api/v1/diagrams/{id}` P95 = **1.9ms**（阈值 300ms）
+- `PUT /api/v1/diagrams/{id}` P95 = **1.0ms**（阈值 500ms）
+- 4h soak 脚本就绪 + 失败恢复策略实现；完整 4h 跑 deferred 至 CI runner
+- 15 E2E spec / 26 test cases / 5×5 覆盖矩阵 25/25 全绿
+
+### 5.4 React 完全下线
+
+W4-2 在 `feature/phase4-react-removal` 分支内分 5 个独立 commit 完成 React
+下线；永久 tag `phase4-pre-react-removal` 指向回退锚点；功能回归
+（email / gists / import 客户端）已在 `docs/phase4/CHANGELOG-react-removal.md`
+显式声明并申报 Phase 5。
+
+### 5.5 验证清单
+
+- AC 自动验证：`docs/phase4/PHASE4_VALIDATION.md`（22/25 全绿；3 项 ◐ = baseline
+  闭环 + rust 侧待 CI runner 补齐）
+
+---
+
+## 6. 下一步
+
+- 进入 Phase 5：切流与收尾；移交清单见 `docs/phase4/PHASE4_DONE.md` §6
+- 在 Phase 5 启动时 spec 化 mvp-advanced-features（模板 / 主题 / 导出 SQL / email /
+  gists / import 客户端）

@@ -34,19 +34,39 @@
 
 DrawDB is a robust and user-friendly database entity relationship (DBER) editor right in your browser. Build diagrams with a few clicks, export sql scripts, customize your editor, and more without creating an account. See the full set of features [here](https://drawdb.app/).
 
+## Tech Stack
+
+> **Phase 4 起**前端从 React 完全替换为 Rust Web（WASM）。
+
+| Layer | Tech |
+|-------|------|
+| Frontend | **Rust + Leptos 0.x + WASM**（`frontend-rs/` crate，1 crate + 4 modules） |
+| Bundler | `trunk`（WASM bundler） |
+| State | Leptos signals / `create_store` 细粒度响应式 |
+| Rendering | HTML5 `<canvas>` + 贝塞尔连线（自渲染，无 vDOM diff） |
+| Backend | **Rust + actix-web 4**（`backend/`，端口 `127.0.0.1:6666`） |
+| Persistence | SQLite（`backend/db.sqlite`）+ `sqlx` 迁移 |
+| API | REST v1（`/api/v1/diagrams/*`），含 409 revision 冲突语义 |
+| E2E | `wasm-pack test --chrome` + Playwright（CI 强制） |
+| CI | GitHub Actions：`cargo build --release` + `trunk build` + `mmdc` 渲染 + ast-grep module gate |
+
+架构图：[`docs/phase4/architecture.mmd`](docs/phase4/architecture.mmd)（4 modules + 单向依赖）。
+
 ## Getting Started
 
-> 当前仓库已完成 **初版里程碑（后端范围）**：数据库迁移、`/api/v1` 核心接口与迁移桥接能力。里程碑总览见 `docs/MILESTONE_V1_INITIAL.md`。
+> **Phase 4 完成**：React 前端已**完全下线**并替换为 Rust Web（WASM + Leptos）。
+> 后端保持 Rust + actix-web + SQLite；前端重建为 `frontend-rs/` crate。
+> 里程碑总览见 `docs/MILESTONE_V1_INITIAL.md`；Phase 4 收官报告见 `docs/phase4/PHASE4_DONE.md`。
 
 ### Prerequisites
 
-- Node.js 18+
-- npm 9+
 - Rust stable (建议通过 `rustup` 安装)
 - Cargo
+- `trunk`（WASM bundler：`cargo install --locked trunk`）
+- 可选：`wasm-pack`（集成测试用）
+- 可选：Playwright + Chromium（E2E + perf 测量用）
 
-可选：
-- SQLite CLI（便于本地查看 `backend/db.sqlite`）
+不需要 Node.js / npm — Phase 4 起所有前端构建走 Rust 工具链。
 
 ### Local Development
 
@@ -56,8 +76,10 @@ DrawDB is a robust and user-friendly database entity relationship (DBER) editor 
 
 ```bash
 cd backend
-cargo run
+cargo run --release
 ```
+
+> 性能与 §8 指标测量**必须**使用 release 模式（plan W3-2）；debug build 跑 P95 不可信。
 
 首次启动说明：
 - `init` 会读取 `backend/config.toml`。
@@ -71,23 +93,23 @@ curl http://127.0.0.1:6666/
 # 预期返回: Hello, world!
 ```
 
-#### 2) 启动前端（Vite + React）
+#### 2) 启动前端（Rust Web + Leptos + WASM + trunk）
 
 在新的终端窗口中执行：
 
 ```bash
-git clone https://github.com/drawdb-io/drawdb
-cd drawdb
-npm install
-npm run dev
+cd frontend-rs
+trunk serve --port 8080
 ```
 
-默认访问地址：`http://localhost:5173`
+默认访问地址：`http://localhost:8080`
 
-前后端联调说明（当前里程碑阶段）：
-- 前端通过 `vite.config.js` 代理 `/api` 与 `/tables` 到 `http://localhost:6666`。
-- 当前仓库后端核心新接口位于 `/api/v1/*`（如 diagrams v1、bridge）。
-- 若要直接验证后端 v1 能力，建议优先使用 `curl`/Postman 访问 `http://127.0.0.1:6666/api/v1/*`。
+前后端联调说明（Phase 4 起）：
+- **无前端代理**：`vite.config.js` 已删除；frontend-rs 通过 `fetch` 直连 `127.0.0.1:6666`。
+  CORS 由后端 `actix-cors` 配置（dev 环境全开）。
+- 后端核心接口位于 `/api/v1/*`（diagrams v1 CRUD + 409 revision 冲突语义）。
+- 数据流：`editor-data-access` → `editor-core` (debounce 1s) → `editor-panels` /
+  `editor-render`（Leptos signals 细粒度更新）。
 
 #### 3) 常用后端接口快速验证
 
@@ -103,18 +125,19 @@ curl http://127.0.0.1:6666/api/v1/bridge/config
 
 ### Build
 
-```bash
-git clone https://github.com/drawdb-io/drawdb
-cd drawdb
-npm install
-npm run build
-```
-
-后端构建：
+后端构建（release）：
 
 ```bash
 cd backend
-cargo build
+cargo build --release
+```
+
+前端构建（trunk release）：
+
+```bash
+cd frontend-rs
+trunk build --release
+# 产物：frontend-rs/dist/index.html + pkg/frontend_rs.wasm + pkg/frontend_rs.js
 ```
 
 ### Docker Build
