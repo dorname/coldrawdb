@@ -34,3 +34,11 @@ backend/*.sqlite
 
 # Phase 4 W4-2 rollback backups (keep in repo)
 !backups/phase4-pre-rollback-*.sqlite
+
+# OMC private working directory (interview/plan/handoffs/state)
+.omc/
+
+# Rust Web frontend build artifacts
+frontend-rs/target/
+frontend-rs/dist/
+frontend-rs/.trunk/

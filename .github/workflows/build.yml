@@ -2,9 +2,9 @@ name: Build
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "drawdb-web" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "drawdb-web" ]
     types: [ opened, synchronize, reopened ]
 
 jobs:
@@ -12,19 +12,58 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        node-version: [18.x, 20.x]
-
     steps:
     - uses: actions/checkout@v3
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v3
+
+    - name: Install Rust toolchain
+      uses: actions/setup-rust@v1
       with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-    - run: npm install
-    - name: Run eslint 
-      run: npm run lint
-    - name: Run vite build
-      run: npm run build
+        toolchain: stable
+
+    - name: Cache cargo registry
+      uses: actions/cache@v3
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Install Trunk
+      run: |
+        cargo install --locked trunk
+        cargo install --locked wasm-pack
+        rustup target add wasm32-unknown-unknown
+
+    - name: Install Playwright Chromium (for wasm-pack test --chrome)
+      run: npx playwright install chromium
+
+    - name: Build backend (release)
+      run: cargo build --release --manifest-path backend/Cargo.toml
+
+    - name: Test backend
+      run: cargo test --manifest-path backend/Cargo.toml
+
+    - name: Clippy backend (deny warnings)
+      run: cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
+
+    - name: Clippy frontend-rs (deny warnings)
+      run: cargo clippy --manifest-path frontend-rs/Cargo.toml --all-targets -- -D warnings
+
+    - name: Build frontend-rs (release, WASM)
+      run: trunk build --release --manifest-path frontend-rs/Cargo.toml
+
+    - name: Test frontend-rs (integration)
+      run: cargo test --manifest-path frontend-rs/Cargo.toml
+
+    - name: WASM browser tests (chromium)
+      run: wasm-pack test --chrome --manifest-path frontend-rs/Cargo.toml
+
+    - name: Playwright E2E (frontend-rs)
+      run: |
+        cd frontend-rs
+        npx playwright install --with-deps chromium
+        npx playwright test
+
+    - name: Render architecture.mmd -> architecture.svg
+      run: npx -p @mermaid-js/mermaid-cli mmdc -i docs/phase4/architecture.mmd -o docs/phase4/architecture.svg
+
+    - name: Module dependency gate (ast-grep + cargo-modules)
+      run: bash frontend-rs/scripts/check_module_deps.sh
