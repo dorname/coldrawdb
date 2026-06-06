@@ -31,3 +31,6 @@ backend/*.lock
 backend/*.sqlite
 .cursor*
 ./package-lock.json
+
+# Phase 4 W4-2 rollback backups (keep in repo)
+!backups/phase4-pre-rollback-*.sqlite
