@@ -1,0 +1,17 @@
+# 4h Soak Results
+
+# Status:降级: 脚本已写；4h 实际运行需 dedicated session 或 CI 调度。
+# Sanity run was executed as part of W4-1 completion verification.
+
+降级说明:
+- 4h soak 需要 14400 秒（4小时）连续运行，在当前 session 内无法完成
+- 脚本 `frontend-rs/tests/soak/4h.sh` 已编写并通过语法验证
+- 1 分钟 sanity check 已在 CI/验证流程中运行
+- 实际 4h soak 需要 dedicated runner 或 CI 调度
+
+AC-16 Thresholds (for full 4h run):
+- save_success_rate >= 0.9995
+- conflict_500_rate < 0.001
+- inconsistent_count == 0
+
+当 CI 或 dedicated runner 执行 full 4h soak 时，结果将写入本文件并覆盖此占位符。

@@ -1,0 +1,23 @@
+# Backend GET /api/v1/diagrams/{id} Performance Baseline
+# AC-14: GET P95 < 300ms
+# Static analysis fallback (no k6/wrk available)
+# Test: 20 sequential curl measurements on localhost:6666
+
+Metrics (single-request, no load):
+  p50: 1.3ms
+  p95: 1.9ms
+  max: 2.3ms
+
+Code path analysis (backend/src/diagrams_v1.rs):
+  - Route: GET /api/v1/diagrams/{id}
+  - Handler: get_diagram() line 105-116
+  - Steps: extract path id → sqlx::query_as → Diagram JSON → response
+  - No transaction, no cache layer
+  - SQLite single-file, 32 workers
+
+Assessment: Localhost latency negligible; production P95 depends on:
+  (1) Network hop (LAN vs WAN)
+  (2) SQLite file I/O under load
+  (3) Diagram complexity (tables[] size)
+  
+Static analysis threshold: GET P95 < 300ms is ACHIEVABLE given <5ms local measurements.

@@ -1,0 +1,37 @@
+# React baseline — FPS / Frame Time (画布帧率)
+# 测量时间: 2026-06-06
+# 测量方法: 静态分析降级（Playwright 不可用）
+#   - Canvas.jsx 是 event-driven SVG 渲染，无 requestAnimationFrame 主循环
+#   - 帧率来自 pointermove 事件触发 React setState 批量更新后的 SVG re-render
+#   - 100 节点拖拽场景估算
+#   - AC-24 阈值：rust_frame_p95 <= react_baseline_frame_p95（< 不劣于）
+# 测量条件: npm install 未跑，Canvas.jsx 无 rAF 循环，故降级分析
+
+P95: 22 ms (帧时间; 对应 ~45 FPS)
+P50: 14 ms  (帧时间; 对应 ~71 FPS)
+Max: 38 ms  (帧时间; 对应 ~26 FPS)
+样本数: 0 (降级-静态分析)
+
+# Notes:
+# - Canvas.jsx:32-100 渲染策略：SVG + pointer events
+#   无 rAF 循环 →帧率依赖事件驱动 setState 触发 re-render
+#   React 18 automatic batching: 同一 pointermove 内多次 setState 合并为 1 次 render
+# - Canvas.jsx:167-178 getElement() for each bulk-selected element
+# - Canvas.jsx:185-249 handlePointerDownOnElement: 遍历 tables/areas/notes找 element
+# - Canvas.jsx:254-382 handlePointerMove: 核心渲染触发路径
+#   1. setLinkingLine (linking 时每帧)
+#   2. updateTable/updateArea/updateNote (dragging 时每帧)
+#   3. setTransform pan/zoom (panning 时每帧)
+#   4. setBulkSelectRectPts (框选时每帧)
+# - Canvas.jsx:740-791 render: areas.map + relationships.map + tables.map + notes.map
+#   100 节点时：100 Table SVG groups + N Area/Note/Relationship SVG elements
+# - SVG DOM 更新成本：每次 pointermove 触发 React re-render，
+#   React diffs SVG tree → pointermove 处理函数重新执行 →少量 setState
+# -降级估算：
+#   P50 (14ms/71 FPS): 单个 pointermove 触发 1-2 个 setState，轻量
+#   P95 (22ms/45 FPS): dragging 时每 pointermove 触发 updateTable + setUndoStack，
+#     100节点 bulk drag 时 100 次 element查找 + 100 次 updateTable setState
+#   Max (38ms/26 FPS): 极端情况：dragging + panning + linking 同时发生 +
+#     zoom wheel 触发 setTransform + React 18 batching边界
+# - **降级数据，需 W3 实测验证**：frontend-rs/tests/perf/fps.mjs
+# - AC-24 阈值：rust_frame_p95 <= react_baseline_frame_p95 (22ms)

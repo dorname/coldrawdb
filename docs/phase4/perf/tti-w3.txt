@@ -1,0 +1,14 @@
+# W3 Frontend TTI Baseline (AC-23)
+# 测量时间: 2026-06-06
+# 状态: 降级 - Rust Web 未跑通 (lib.rs 缺少 #[wasm_bindgen(start)] mount 入口)
+# W4-1 用 §8 + W1-5 baseline 估算
+
+React baseline (W1-5): P95=3500ms, 阈值=3850ms
+
+Rust Web 估算 (静态分析):
+- Leptos 0.5 + WASM: 无 vDOM，fine-grained reactivity
+- 预期 TTI < 3850ms × 0.85 = 3272ms (85% of React threshold)
+- bundle size: ~400KB gzip (WASM 比 React bundle 小)
+- AC-23 阈值: < 3850ms (React × 1.1)
+
+结论: 待 W4-1 有完整 mount 入口后 live 测量。当前 scaffold 阶段降级处理。

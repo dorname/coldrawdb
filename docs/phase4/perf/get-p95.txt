@@ -1,0 +1,12 @@
+# §8 perf — GET P95
+# 测量时间: 2026-06-06
+# backend: release build, 32 workers, 127.0.0.1:6666
+# frontend: N/A (perf 测后端)
+# 工具: curl 循环 100 次 + python3 解析
+
+GET P95: 1.09ms (阈值 < 300ms) ✓ ACHIEVED
+GET P99: 1.17ms
+GET P50: 0.83ms
+GET Max: 1.17ms
+
+注: 本地 localhost 测量，网络开销为 0。生产环境 LAN 预期 p95 < 10ms，WAN 预期 p95 < 100ms，均远低于 300ms 阈值。

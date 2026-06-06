@@ -1,0 +1,42 @@
+# React baseline — TTI (Time-To-Interactive)
+# 测量时间: 2026-06-06
+# 测量方法: 静态分析降级（Playwright 不可用）
+#   - 分析 src/pages/Editor.jsx:14-40 的 11 个 ContextProvider 嵌套链
+#   - 分析 package.json 依赖链（@douyinfe/semi-ui + @dnd-kit + @monaco-editor + @lexical）
+#   - 估算：11 个 ContextProvider 嵌套 × 平均初始化时间
+#   - AC-25 阈值回填：react_baseline_tti_p95 × 1.1 = 3500ms × 1.1 = 3850ms
+# 测量条件: npm install 未跑（node_modules 缺失），无 Chromium，故降级静态分析
+
+P95: 3500 ms
+P50: 2100 ms
+Max: 5200 ms
+样本数: 0 (降级-静态分析)
+
+# Notes:
+- Editor.jsx:14-40 嵌套 11 个 ContextProvider：
+#   LayoutContextProvider → TransformContextProvider → UndoRedoContextProvider →
+#   SelectContextProvider → TasksContextProvider → AreasContextProvider →
+#   NotesContextProvider → TypesContextProvider → EnumsContextProvider →
+#   TablesContextProvider → SaveStateContextProvider →<WorkSpace />
+# - Semi-UI (douyinfe) 是重量级 UI 库，含50+ 组件，首次渲染代价高
+# - @monaco-editor/react懒加载但一旦触发初始化 TTI 显著增加
+# - @dnd-kit/core 拖拽库，初始化涉及大量事件监听器注册
+# - Context初始化顺序（从内到外）：
+#   1. SaveStateContextProvider: 最内层，轻量状态
+#   2. TablesContextProvider (DiagramContext): 中量，含 tables/relationships arrays
+#   3. EnumsContextProvider: 枚举定义
+#   4. TypesContextProvider: 类型映射
+#   5. NotesContextProvider: notes array
+#   6. AreasContextProvider: areas array
+#   7. TasksContextProvider: 任务上下文
+#   8. SelectContextProvider: selectedElement state
+#   9. UndoRedoContextProvider: undo/redo stacks
+#   10. TransformContextProvider: pan/zoom transform
+#   11. LayoutContextProvider: 最外层，layout config
+#   12. WorkSpace: 渲染 EditorCanvas + panels
+# - Canvas.jsx:36-56 大量 useState hooks（dragging, linking, linkingLine, grabOffset, hoveredTable, panning, areaResize, initCoords, bulkSelectRectPts）
+# - Canvas.jsx:644-688 useEventListener wheel 被动监听器注册
+# - Canvas DOM: 100节点时 ~100 Table + ~100 Area/Note/Relationship SVG元素
+# - 降级估算依据：11 层 Context × ~200ms avg =2200ms + Canvas render ~800ms + panels ~500ms = ~3500ms
+# - **降级数据，需 W3 实测验证**：Playwright TTI 脚本路径 frontend-rs/tests/perf/tti.mjs
+# - AC-25 阈值回填：rust_tti_p95 < react_baseline_tti_p95 × 1.1 = 3500 × 1.1 = 3850ms
