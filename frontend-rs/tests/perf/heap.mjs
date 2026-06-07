@@ -24,9 +24,9 @@ const metrics = await page.evaluate(() => {
 
 await browser.close();
 if (metrics) {
-  const usedMB = (metrics.usedJSHeapSize / 1048576).toFixed(1);
-  const totalMB = (metrics.totalJSHeapSize / 1048576).toFixed(1);
-  console.log(`Heap Used: ${usedMB}MB, Total: ${totalMB}MB`);
+  const usedMB = +(metrics.usedJSHeapSize / 1048576).toFixed(2);
+  const totalMB = +(metrics.totalJSHeapSize / 1048576).toFixed(2);
+  console.log(JSON.stringify({ status: 'ok', usedMB, totalMB }));
 } else {
-  console.log('performance.memory not available (Chromium only with --enable-precise-memory-info)');
+  console.log(JSON.stringify({ status: 'degraded', reason: 'performance.memory not available' }));
 }

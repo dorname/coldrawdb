@@ -24,4 +24,4 @@ await browser.close();
 const sorted = times.sort((a, b) => a - b);
 const p50 = sorted[Math.floor(sorted.length * 0.5)];
 const p95 = sorted[Math.floor(sorted.length * 0.95)];
-console.log(`TTI P50: ${p50}ms, P95: ${p95}ms, all: ${sorted.join(',')}ms`);
+console.log(JSON.stringify({ status: 'ok', p50, p95, all: sorted }));

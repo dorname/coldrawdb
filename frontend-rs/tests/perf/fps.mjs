@@ -26,4 +26,4 @@ const sorted = frameTimes.sort((a, b) => a - b);
 const p50 = sorted[Math.floor(sorted.length * 0.5)];
 const p95 = sorted[Math.floor(sorted.length * 0.95)];
 const avg = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
-console.log(`FPS P50: ${(1000/p50).toFixed(1)}, P95: ${(1000/p95).toFixed(1)}, Avg: ${(1000/avg).toFixed(1)}`);
+console.log(JSON.stringify({ status: 'ok', p50: +(1000/p50).toFixed(2), p95: +(1000/p95).toFixed(2), avg: +(1000/avg).toFixed(2) }));
