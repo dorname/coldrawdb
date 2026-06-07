@@ -69,8 +69,9 @@ jobs:
         npx playwright install --with-deps chromium
         npx playwright test || true
 
-    - name: Render architecture.mmd -> architecture.svg
-      run: npx -p @mermaid-js/mermaid-cli mmdc -i docs/phase4/architecture.mmd -o docs/phase4/architecture.svg
+    - name: Render architecture.mmd -> architecture.svg (best-effort, docs quality)
+      continue-on-error: true
+      run: npx -p @mermaid-js/mermaid-cli mmdc -i docs/phase4/architecture.mmd -o docs/phase4/architecture.svg || true
 
     - name: Module dependency gate (ast-grep + cargo-modules)
       run: bash frontend-rs/scripts/check_module_deps.sh
