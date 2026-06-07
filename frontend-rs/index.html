@@ -1,12 +1,11 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><title>drawdb (rust)</title></head>
-<body>
-<div id="app"></div>
-<script type="module">
-import init, * as bindings from './frontend-rs-b145e60e03d234c9.js';
-const wasm = await init({ module_or_path: './frontend-rs-b145e60e03d234c9_bg.wasm' });
-window.wasmBindings = bindings;
-// Mount the app
-bindings.mount();
-</script>
-</body></html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>drawdb (rust)</title>
+    <link data-trunk rel="rust" data-cargo-no-default-features="true" />
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
+</html>

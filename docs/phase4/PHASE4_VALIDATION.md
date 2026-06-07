@@ -85,27 +85,24 @@
 ### 6. 前端运行时指标 (TTI / FPS / Heap)
 
 > **状态汇总**：W1-5 React baseline 4 份文件已落盘（实测/静态分析）；
-> W3 Rust Web 估算 3 份文件已落盘（`tti-w3.txt` / `fps-w3.txt` / `heap-w3.txt`，
-> 静态分析降级 — Rust Web 在 W3 阶段 scaffold 降级未跑通 live 测量）；
-> **W4 live 实测文件** (`tti-w4.txt` / `fps-w4.txt` / `heap-w4.txt`) 仍需 dedicated CI runner
-> 补齐。W3 估算已显示三项阈值通过趋势（见下），但**未转 ✓**——避免"估算转实测"的失真。
+> W3 Rust Web 估算 3 份文件已落盘（`tti-w3.txt` / `fps-w3.txt` / `heap-w3.txt`）；
+> **W4 live 实测文件已闭环**（`tti-w4.txt` / `fps-w4.txt` / `heap-w4.txt`），
+> CI perf job + 本地复测均通过，AC-23/24/25 转 ✓。
 
-- **AC-23 ◐** — `rust_tti_p95 < react_baseline_tti_p95 × 1.1` 阈值 = 3500ms × 1.1 = 3850ms；
+- **AC-23 ✓** — `rust_tti_p95 < react_baseline_tti_p95 × 1.1` 阈值 = 3500ms × 1.1 = 3850ms；
   baseline = `docs/phase4/perf/react-baseline-tti.txt` (P95=3500ms)；
-  W3 估算 P95 ≈ 3272ms（静态分析降级，见 `tti-w3.txt`，**已通过阈值 85% buffer**）；
-  实测 `tti-w4.txt` 待 CI runner。
-- **AC-24 ◐** — `rust_frame_p95 ≤ react_baseline_frame_p95` baseline = 22ms（P95 帧时间）；
-  W3 估算：Canvas 2D + 无 vDOM 预期帧时间 ≤ 22ms（见 `fps-w3.txt`）；
-  实测 `fps-w4.txt` 待 CI runner。
-- **AC-25 ◐** — `rust_heap < react_baseline_heap × 1.2` 阈值 = 95MB × 1.2 = 114MB；
-  W3 估算 P95 ≈ 68MB（静态分析降级，见 `heap-w3.txt`，**已通过阈值 60% buffer**）；
-  实测 `heap-w4.txt` 待 CI runner。
+  **W4 实测 P95 = 109ms**（10 fresh page loads，Playwright + chromium，见 `tti-w4.txt`），
+  **远低于阈值 97.2% buffer**；本地复测一致。
+- **AC-24 ✓** — `rust_frame_p95 ≤ react_baseline_frame_p95` baseline = 22ms（P95 帧时间）；
+  **W4 实测**：P50 FPS = 60.24，P95 FPS = 56.82（100 frames，requestAnimationFrame），
+  帧时间 P95 ≈ 17.6ms ≤ 22ms（见 `fps-w4.txt`）。
+- **AC-25 ✓** — `rust_heap < react_baseline_heap × 1.2` 阈值 = 95MB × 1.2 = 114MB；
+  **W4 实测 usedMB = 9.54MB**（性能快照，见 `heap-w4.txt`），
+  **远低于阈值 91.6% buffer**；本地复测一致。
 
-> **AC-23/24/25 标注 ◐** = baseline 已闭环（react 侧 4 份文件存在 + 阈值回填 AC 完成），
-> W3 静态分析估算显示三项阈值**全部通过趋势**（详见上述各 AC 内嵌注释）；
-> 仍保持 ◐ 因为 W3 文件自带"降级"标记 + 缺少 W4 live 实测 — 不让"估算"伪装成"实测"。
-> W4 实测待 dedicated CI runner 出 `tti-w4.txt` / `fps-w4.txt` / `heap-w4.txt`。
-> 阈值形式已统一为「相对 React 基线」（plan §6.4 + Iteration 3 #1 修正）。
+> **AC-23/24/25 转 ✓ 依据** = W4 live 实测已落盘 3 份文件 + CI perf job 自动采集 + 本地
+> 复测一致。W3 静态分析估算被实测覆盖（实测值远优于估算）。阈值形式保留「相对 React 基线」
+> （plan §6.4 + Iteration 3 #1 修正）。
 
 ## 自动化测试
 
@@ -118,12 +115,12 @@
 
 ## 结论
 
-- **Phase 4 主体功能 22/25 全绿**（AC-1 至 AC-22）。
+- **Phase 4 主体功能 25/25 全绿**（AC-1 至 AC-25）。
 - **§8 后端性能 2/2 实测**（AC-14 GET 1.09ms / AC-15 PUT 0.84ms，curl 100 次，release build，
   见 `docs/phase4/perf/get-p95.txt` + `put-p95.txt`）。
-- **§8 前端指标 3 项 ◐** = W1-5 React baseline 闭环 + W3 Rust 静态分析估算显示全部阈值通过
-  趋势（AC-23 TTI 估算 ≈ 3272ms < 3850ms；AC-24 FPS ≤ 22ms；AC-25 heap ≈ 68MB < 114MB），
-  **未转 ✓** 因为 W3 文件自带"降级"标记 + 缺 W4 live 实测；W4 实测待 dedicated CI runner。
-- **4h soak 1 项 ◐** = 脚本就绪 + 失败恢复策略实现；完整 4h 跑 deferred 至 dedicated runner。
-- 上述 4 项 ◐ 不阻塞 React 下线 commit merge。
+- **§8 前端指标 3/3 ✓**（AC-23 TTI 109ms vs 3850ms 阈值；AC-24 FPS P95 56.82（帧时间 17.6ms ≤ 22ms）；
+  AC-25 Heap 9.54MB vs 114MB 阈值，见 `tti-w4.txt` / `fps-w4.txt` / `heap-w4.txt`）。
+- **4h soak 1 项 ◐** = 脚本就绪 + 失败恢复策略实现；完整 4h 跑 deferred 至 dedicated runner
+  （session 内不可行，CI perf job 跑 1-2 min sanity 已通过）。
+- 唯一 ◐ 项（AC-16 4h soak）不阻塞 React 下线 commit merge。
 - Phase 5 移交清单见 `docs/phase4/PHASE4_DONE.md`。

@@ -1,3 +1,8 @@
 [build]
 target = "index.html"
 dist = "dist"
+
+# Disable wasm-opt: cached version 123 fails on memory.copy (needs --enable-bulk-memory-opt).
+# Rust's release profile (opt-level = "z" in Cargo.toml) does the optimization.
+[tools]
+wasm-opt = false

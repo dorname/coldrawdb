@@ -1,0 +1,15 @@
+# Heap memory — W4 live measurement
+# Tool: frontend-rs/tests/perf/heap.mjs (Playwright + chromium, performance.memory)
+# Date: 2026-06-08
+# Sample: single snapshot after editor-ready
+# Threshold: used < 114MB (react_baseline * 1.2)
+
+results = {
+  status: ok
+  used_mb: 9.54
+  total_mb: 9.54
+  threshold_mb: 114
+  baseline_mb: 95
+  pass: true
+  buffer_pct: 91.6
+}

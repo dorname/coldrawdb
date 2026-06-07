@@ -13,13 +13,15 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 #[wasm_bindgen(start)]
 pub fn mount() {
-    let store = EditorStore::new();
-    let debouncer = DebounceTrigger::default();
-    let diagram_id = "default".to_string();
+    console_error_panic_hook::set_once();
 
-    mount_to_body(move || {
+    mount_to_body(|| {
+        let store = EditorStore::new();
+        let debouncer = DebounceTrigger::default();
+        let diagram_id = "default".to_string();
+
         view! {
-            <AppRoot store=store.clone() debouncer=debouncer.clone() _diagram_id=diagram_id.clone() />
+            <AppRoot store=store debouncer=debouncer _diagram_id=diagram_id />
         }
     });
 }

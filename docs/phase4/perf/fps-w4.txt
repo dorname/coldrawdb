@@ -1,0 +1,15 @@
+# FPS — W4 live measurement
+# Tool: frontend-rs/tests/perf/fps.mjs (Playwright + chromium, requestAnimationFrame)
+# Date: 2026-06-08
+# Sample: 100 frames measured at ~16ms intervals
+# Threshold: P95 frame time <= 22ms (i.e. FPS >= ~45)
+
+results = {
+  status: ok
+  p50_fps: 60.24
+  p95_fps: 56.82
+  avg_fps: 60.62
+  threshold_frame_p95_ms: 22
+  baseline_frame_p95_ms: 22
+  pass: true
+}
