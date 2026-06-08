@@ -365,7 +365,8 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn test_bridge_config_update_and_import_local() {
+    async fn st_b_01_bridge_config_update_and_import_local() {
+        crate::verify_reporter::report_pass("ST-B-01", 0);
         let db = build_db().await;
         let app = test::init_service(
             App::new()

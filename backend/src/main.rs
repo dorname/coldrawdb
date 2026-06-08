@@ -14,6 +14,7 @@ mod fields;
 mod repository;
 mod diagrams_v1;
 mod phase3_bridge;
+mod verify_reporter;
 use error::DrawDBError;
 use init::{get_config, init};
 use tracing_subscriber::fmt;

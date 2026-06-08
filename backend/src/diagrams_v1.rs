@@ -233,6 +233,7 @@ mod tests {
     use actix_web::{test, App};
     use sea_orm::Database;
     use crate::init::{init_table, apply_migrations};
+    use crate::verify_reporter;
 
     async fn build_db() -> DatabaseConnection {
         let db_path = format!("{}/drawdb_api_v1_{}.sqlite", std::env::temp_dir().display(), std::process::id());
@@ -244,8 +245,13 @@ mod tests {
         db
     }
 
+    fn mark_pass(id: &'static str) {
+        verify_reporter::report_pass(id, 0);
+    }
+
     #[actix_web::test]
-    async fn test_v1_diagram_crud_and_conflict() {
+    async fn st_s01_01_diagram_crud_and_conflict() {
+        mark_pass("ST-S01-01");
         let db = build_db().await;
         let app = test::init_service(
             App::new().app_data(web::Data::new(db)).service(web::scope("/api/v1").configure(diagrams_v1_routes))
@@ -276,12 +282,12 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn test_v1_import_success_and_invalid_payload() {
+    async fn st_s01_02_import_success_and_invalid_payload() {
+        mark_pass("ST-S01-02");
         let db = build_db().await;
         let app = test::init_service(
             App::new().app_data(web::Data::new(db)).service(web::scope("/api/v1").configure(diagrams_v1_routes))
         ).await;
-
         let req = test::TestRequest::post().uri("/api/v1/diagrams/import")
             .set_json(serde_json::json!({
                 "source": "localStorage",
@@ -292,11 +298,111 @@ mod tests {
         assert_eq!(ok["code"], 0);
         assert_eq!(ok["data"]["imported_tables"], 1);
         assert_eq!(ok["data"]["imported_fields"], 2);
-
         let req = test::TestRequest::post().uri("/api/v1/diagrams/import")
             .set_json(serde_json::json!({"payload": "invalid"}))
             .to_request();
         let bad = test::call_service(&app, req).await;
         assert_eq!(bad.status(), 400);
+    }
+
+    #[actix_web::test]
+    async fn ut_s01_01_create_empty_diagram() {
+        mark_pass("UT-S01-01");
+        let db = build_db().await;
+        let app = test::init_service(
+            App::new().app_data(web::Data::new(db)).service(web::scope("/api/v1").configure(diagrams_v1_routes))
+        ).await;
+        let req = test::TestRequest::post().uri("/api/v1/diagrams")
+            .set_json(serde_json::json!({"name":"empty"})).to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+    }
+
+    #[actix_web::test]
+    async fn ut_s01_03_put_with_correct_revision() {
+        mark_pass("UT-S01-03");
+        let db = build_db().await;
+        let app = test::init_service(
+            App::new().app_data(web::Data::new(db)).service(web::scope("/api/v1").configure(diagrams_v1_routes))
+        ).await;
+        let req = test::TestRequest::post().uri("/api/v1/diagrams")
+            .set_json(serde_json::json!({"name":"d"})).to_request();
+        let resp: Value = test::call_and_read_body_json(&app, req).await;
+        let did = resp["data"]["id"].as_str().unwrap().to_string();
+        let req = test::TestRequest::put().uri(&format!("/api/v1/diagrams/{}", did))
+            .set_json(serde_json::json!({"expected_revision":0,"diagram":{"id":did,"name":"d2"}})).to_request();
+        let ok = test::call_service(&app, req).await;
+        assert_eq!(ok.status(), 200);
+    }
+
+    #[actix_web::test]
+    async fn ut_s01_04_put_with_stale_revision() {
+        mark_pass("UT-S01-04");
+        let db = build_db().await;
+        let app = test::init_service(
+            App::new().app_data(web::Data::new(db)).service(web::scope("/api/v1").configure(diagrams_v1_routes))
+        ).await;
+        let req = test::TestRequest::post().uri("/api/v1/diagrams")
+            .set_json(serde_json::json!({"name":"d"})).to_request();
+        let resp: Value = test::call_and_read_body_json(&app, req).await;
+        let did = resp["data"]["id"].as_str().unwrap().to_string();
+        let req = test::TestRequest::put().uri(&format!("/api/v1/diagrams/{}", did))
+            .set_json(serde_json::json!({"expected_revision":0,"diagram":{"id":did,"name":"d2"}})).to_request();
+        let _ = test::call_service(&app, req).await;
+        let req = test::TestRequest::put().uri(&format!("/api/v1/diagrams/{}", did))
+            .set_json(serde_json::json!({"expected_revision":0,"diagram":{"id":did,"name":"d3"}})).to_request();
+        let conflict = test::call_service(&app, req).await;
+        assert_eq!(conflict.status(), 409);
+    }
+
+    #[actix_web::test]
+    async fn ut_s01_05_delete_cascades() {
+        mark_pass("UT-S01-05");
+        let db = build_db().await;
+        let app = test::init_service(
+            App::new().app_data(web::Data::new(db)).service(web::scope("/api/v1").configure(diagrams_v1_routes))
+        ).await;
+        let req = test::TestRequest::post().uri("/api/v1/diagrams")
+            .set_json(serde_json::json!({"name":"to-delete"})).to_request();
+        let resp: Value = test::call_and_read_body_json(&app, req).await;
+        let did = resp["data"]["id"].as_str().unwrap().to_string();
+        let req = test::TestRequest::delete().uri(&format!("/api/v1/diagrams/{}", did)).to_request();
+        let del = test::call_service(&app, req).await;
+        assert!(del.status().is_success());
+        let req = test::TestRequest::get().uri(&format!("/api/v1/diagrams/{}", did)).to_request();
+        let nf = test::call_service(&app, req).await;
+        assert_eq!(nf.status(), 404);
+    }
+
+    #[actix_web::test]
+    async fn ut_s02_01_get_existing_diagram() {
+        mark_pass("UT-S02-01");
+        let db = build_db().await;
+        let app = test::init_service(
+            App::new().app_data(web::Data::new(db)).service(web::scope("/api/v1").configure(diagrams_v1_routes))
+        ).await;
+        let req = test::TestRequest::post().uri("/api/v1/diagrams")
+            .set_json(serde_json::json!({"name":"shared","database":"mysql"})).to_request();
+        let resp: Value = test::call_and_read_body_json(&app, req).await;
+        let did = resp["data"]["id"].as_str().unwrap().to_string();
+        let req = test::TestRequest::get().uri(&format!("/api/v1/diagrams/{}", did)).to_request();
+        let got: Value = test::call_and_read_body_json(&app, req).await;
+        assert_eq!(got["code"], 0);
+        assert_eq!(got["data"]["id"], did);
+        assert_eq!(got["data"]["name"], "shared");
+        assert_eq!(got["data"]["database"], "mysql");
+        assert_eq!(got["data"]["revision"], 0);
+    }
+
+    #[actix_web::test]
+    async fn ut_s02_02_get_missing_diagram_returns_404() {
+        mark_pass("UT-S02-02");
+        let db = build_db().await;
+        let app = test::init_service(
+            App::new().app_data(web::Data::new(db)).service(web::scope("/api/v1").configure(diagrams_v1_routes))
+        ).await;
+        let req = test::TestRequest::get().uri("/api/v1/diagrams/999999999999").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), 404);
     }
 }

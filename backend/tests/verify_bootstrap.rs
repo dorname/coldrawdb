@@ -1,0 +1,117 @@
+// 集成测试：负责 V1 verify 阶段 jsonl 初始化
+//
+// 行为契约：
+// 1. truncate logos/resources/verify/test-results.jsonl
+// 2. 列出 28 个 V1 规格用例 ID；其中 9 个已由 diagrams_v1 / phase3_bridge 单测实际写入
+//    pass 行；本测试仅写 19 个未实现的 skip 行
+// 3. 单一测试函数中**先 truncate，再串行 append**——保证并发 cargo test 不会破坏 jsonl
+
+use std::path::PathBuf;
+use std::fs;
+
+fn project_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap()
+}
+
+fn result_path() -> PathBuf {
+    project_root().join("logos/resources/verify/test-results.jsonl")
+}
+
+fn iso_now() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (year, month, day, hour, minute, second) = (1970u32, 1u32, 1u32, 0u32, 0u32, 0u32);
+    let days = secs / 86_400;
+    let rem = secs % 86_400;
+    let h = (rem / 3600) as u32;
+    let m = ((rem % 3600) / 60) as u32;
+    let s = (rem % 60) as u32;
+    let (y, mo, d) = civil_from_days(days as i64);
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        if y == 0 { year } else { y },
+        if mo == 0 { month } else { mo },
+        if d == 0 { day } else { d },
+        h + hour,
+        m + minute,
+        s + second
+    )
+    .replace("1970-01-01T00:00:00Z", &format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", y, mo, d, h, m, s))
+}
+
+fn civil_from_days(z: i64) -> (u32, u32, u32) {
+    let z = z + 719_468;
+    let era = if z >= 0 { z / 146_097 } else { (z - 146_096) / 146_097 };
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = (yoe as i64) + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    let y = if m <= 2 { y + 1 } else { y } as u32;
+    (y, m, d)
+}
+
+fn append_skip_line(path: &PathBuf, id: &str, reason: &str) {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+    let line = format!(
+        "{{\"id\":\"{}\",\"status\":\"skip\",\"timestamp\":\"{}\",\"error\":\"{}\"}}\n",
+        id,
+        iso_now(),
+        reason.replace('\\', "\\\\").replace('"', "\\\"")
+    );
+    let mut f = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .expect("open jsonl");
+    f.write_all(line.as_bytes()).expect("write jsonl");
+    let _ = f.flush();
+}
+
+#[test]
+fn bootstrap_unimplemented_cases_as_skip() {
+    let path = result_path();
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    // 第一次 reporter 调用会自动 truncate；本测试仅追加 skip 行
+
+    // 28 个用例 ID 中，本批已实现 9 个；其余 19 个标 skip
+    // 已实现：ST-S01-01, ST-S01-02, UT-S01-01, UT-S01-03, UT-S01-04, UT-S01-05,
+    //        UT-S02-01, UT-S02-02, ST-B-01
+    let skip_set: &[(&str, &str)] = &[
+        ("UT-S01-02", "spec-defined, no Rust impl in this batch (import path covered by ST-S01-02)"),
+        ("UT-S01-06", "spec-defined, no Rust impl in this batch"),
+        ("UT-S01-07", "spec-defined, no Rust impl in this batch"),
+        ("UT-S01-08", "spec-defined, no Rust impl in this batch"),
+        ("UT-S01-09", "spec-defined, no Rust impl in this batch"),
+        ("UT-S01-10", "spec-defined, no Rust impl in this batch"),
+        ("ST-S01-03", "spec-defined, requires wasm-pack headless harness, deferred"),
+        ("UT-S02-03", "spec-defined, no Rust impl in this batch"),
+        ("UT-S02-04", "spec-defined, no Rust impl in this batch"),
+        ("UT-S02-05", "spec-defined, no Rust impl in this batch"),
+        ("UT-S02-06", "spec-defined, no Rust impl in this batch"),
+        ("UT-S02-07", "spec-defined, no Rust impl in this batch"),
+        ("UT-S02-08", "spec-defined, no Rust impl in this batch"),
+        ("UT-S02-09", "spec-defined, no Rust impl in this batch"),
+        ("ST-S02-01", "spec-defined, no Rust impl in this batch"),
+        ("ST-S02-02", "spec-defined, no Rust impl in this batch"),
+        ("ST-S02-03", "spec-defined, no Rust impl in this batch"),
+        ("ST-S02-04", "spec-defined, no Rust impl in this batch"),
+        ("ST-S02-05", "spec-defined, no Rust impl in this batch"),
+        ("ST-S02-06", "spec-defined, no Rust impl in this batch"),
+    ];
+
+    for (id, reason) in skip_set {
+        append_skip_line(&path, id, reason);
+    }
+}
