@@ -259,3 +259,21 @@ pub fn make_diagram() -> DiagramCreateRequest {
 - `backend/tests/`（integration test 位置）
 - `frontend-rs/tests/wasm/`（wasm-pack test 位置）
 - `logos/spec/test-results.md`（reporter 格式）
+
+## 附录 A：用例 ID 清单（OpenLogos verify 解析用）
+
+| ID | 标题 | 对齐实现 |
+|---|---|---|
+| UT-S01-01 | 创建空 diagram | `backend/src/diagrams_v1.rs` |
+| UT-S01-02 | 创建含 5 表 20 字段 | `backend/src/diagrams_v1.rs` |
+| UT-S01-03 | PUT 带正确 revision | `backend/src/diagrams_v1.rs` |
+| UT-S01-04 | PUT 带过期 revision | `backend/src/diagrams_v1.rs` |
+| UT-S01-05 | DELETE → 级联删除 | `backend/src/diagrams_v1.rs` |
+| UT-S01-06 | POST 导入 JSON | `backend/src/diagrams_v1.rs` |
+| UT-S01-07 | GET 不存在 → 404 | `backend/src/diagrams_v1.rs` |
+| UT-S01-08 | revision 单调递增 | `backend/src/diagrams/v1/service.rs` |
+| UT-S01-09 | 并发 PUT 冲突 | `backend/src/diagrams/v1/service.rs` |
+| UT-S01-10 | JSON 字段类型校验 | `backend/src/diagrams_v1.rs` |
+| ST-S01-01 | 编辑保存端到端 | `backend/src/diagrams_v1.rs::tests` |
+| ST-S01-02 | 导入端到端 | `backend/src/diagrams_v1.rs::tests` |
+| ST-S01-03 | 浏览器 wasm 渲染 | `frontend-rs/tests/wasm/` |
