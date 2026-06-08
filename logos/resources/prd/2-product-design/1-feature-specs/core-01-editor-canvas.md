@@ -50,9 +50,113 @@
 
 ## 5. 渲染策略（coldrawdb V1）
 
+### 5.1 渲染主体
+
 - **render 层**：`frontend-rs/editor_render` 使用 `<canvas>`（HTML5）+ 贝塞尔连线（自渲染，无 vDOM diff）
 - **响应式**：基于 Leptos signals 细粒度更新（仅重绘变更部分）
 - **性能预算**：100 张表 / 200 条关系 / 60fps（来源：Phase 4 W4 perf）
+
+### 5.2 样式底座（CSS Design Tokens + cdb- 前缀规则）— V1 必交付
+
+#### 5.2.1 文件位置与加载
+
+- 样式文件：**唯一** — `frontend-rs/src/styles.css`
+- 加载方式：在 `frontend-rs/index.html` 头部 `<link rel="stylesheet" href="styles.css">`（Trunk 自动处理）
+- **禁止**散落样式：组件内联 `style=`、散落 `<style>` 块、`!important` 覆盖
+
+#### 5.2.2 设计 Token（CSS 变量）
+
+定义在 `:root`，所有组件通过 `var(--*)` 引用：
+
+```css
+:root {
+  /* 颜色 — 主色 coldrawdb teal（与 Logo 同色 #175e7a） */
+  --cdb-color-primary: #175e7a;
+  --cdb-color-primary-hover: #134c63;
+  --cdb-color-primary-bg: #e6f1f5;
+
+  /* 颜色 — 语义 */
+  --cdb-color-success: #10b981;
+  --cdb-color-warning: #f59e0b;
+  --cdb-color-error: #ef4444;
+
+  /* 颜色 — 中性 */
+  --cdb-color-text: #1f2937;
+  --cdb-color-text-muted: #6b7280;
+  --cdb-color-border: #e5e7eb;
+  --cdb-color-bg: #ffffff;
+  --cdb-color-bg-subtle: #f9fafb;
+  --cdb-color-bg-canvas: #f3f4f6;
+
+  /* 间距（4px 栅格） */
+  --cdb-space-1: 4px;
+  --cdb-space-2: 8px;
+  --cdb-space-3: 12px;
+  --cdb-space-4: 16px;
+  --cdb-space-6: 24px;
+  --cdb-space-8: 32px;
+
+  /* 字号 */
+  --cdb-text-xs: 11px;
+  --cdb-text-sm: 12px;
+  --cdb-text-base: 14px;
+  --cdb-text-lg: 16px;
+  --cdb-text-xl: 18px;
+
+  /* 圆角 */
+  --cdb-radius-sm: 4px;
+  --cdb-radius-md: 6px;
+  --cdb-radius-lg: 8px;
+
+  /* 阴影 */
+  --cdb-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --cdb-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+  --cdb-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+}
+```
+
+#### 5.2.3 布局栅格
+
+- App 顶层：`display: grid; grid-template-rows: auto auto 1fr auto;`（顶栏 / 工具栏 / 主体 / 状态栏）
+- 主体：`display: grid; grid-template-columns: 240px 1fr 320px;`（左栏 / 画布 / 右栏）
+- 最小宽度 1024px，< 1024px 提示「请使用更大屏幕」（V1 不做响应式）
+
+#### 5.2.4 `.cdb-*` 前缀规则
+
+- **强制**：所有自定义 class 必须以 `cdb-` 开头（coldrawdb）
+- **命名空间**：
+  - `cdb-` 前缀 = 组件（如 `cdb-topbar`、`cdb-modal-overlay`）
+  - `cdb-is-` 前缀 = 状态（如 `cdb-is-selected`、`cdb-is-open`）
+  - `cdb-` 后 BEM：块 `cdb-modal` / 元素 `cdb-modal__header` / 修饰 `cdb-modal--lg`
+- **禁止**：使用 Tailwind 工具类、无前缀的全局类
+
+#### 5.2.5 与 Leptos class 属性的接驳
+
+`view! { <div class="cdb-topbar"> }` 等同于 React 风格 className；Leptos 0.5 的 `class:` 条件语法生成复合 class。
+
+#### 5.2.6 验收要点
+
+| 验证项 | 工具 | 期望 |
+|---|---|---|
+| 仅一个 styles.css | `find frontend-rs -name "*.css" -not -path "*/node_modules/*"` | 仅 1 个匹配 |
+| 无内联 style | `grep -rn 'style="' frontend-rs/src/` | 0 匹配 |
+| 所有 class 带 cdb- 前缀 | `grep -rhoE 'class="[^"]+"' frontend-rs/src/ \| grep -oE '"[a-z][a-z0-9_-]*' \| sort -u \| grep -v '^"cdb-'` | 0 匹配 |
+| 设计 token 全部使用 | `grep -c 'var(--cdb-' frontend-rs/src/styles.css` | ≥ 30 |
+
+### 5.3 Areas / Notes / References 渲染（V1 必交付，连接 store）
+
+- 当前 `editor_render::leptos_canvas::Canvas` 传空 `areas: Vec::new>()` / `notes: Vec::new>()`
+- 目标：改为 `store.areas.get()` / `store.notes.get()`（需在 `EditorStore` 新增对应 RwSignal）
+- `draw_area` / `draw_note` / `draw_bezier` 函数已存在，**复用** 不重写
+- references 端点拖拽改 start/end_field_id（spec CAP-EDIT-02）
+
+### 5.4 V1 边界（渲染层）
+
+- ❌ CSS-in-JS 运行时（V1 用纯 CSS，避免 wasm 体积膨胀）
+- ❌ 主题切换（V1 单一 light 主题）
+- ❌ 暗色模式（V2）
+- ❌ 自定义字体加载（V1 走系统字体栈）
+- ❌ CSS 动画（V1 无 transition / animation，避免影响 60fps 性能预算）
 
 ## 6. 与侧栏 / 顶部菜单的联动
 

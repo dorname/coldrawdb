@@ -13,248 +13,285 @@
   <meta charset="UTF-8" />
   <title>coldrawdb — Editor Prototype</title>
   <style>
+    /* === Design Tokens (与 styles.css :root 保持完全一致) === */
+    :root {
+      --cdb-color-primary: #175e7a;
+      --cdb-color-primary-hover: #134c63;
+      --cdb-color-primary-bg: #e6f1f5;
+      --cdb-color-success: #10b981;
+      --cdb-color-warning: #f59e0b;
+      --cdb-color-error: #ef4444;
+      --cdb-color-text: #1f2937;
+      --cdb-color-text-muted: #6b7280;
+      --cdb-color-border: #e5e7eb;
+      --cdb-color-bg: #ffffff;
+      --cdb-color-bg-subtle: #f9fafb;
+      --cdb-color-bg-canvas: #f3f4f6;
+      --cdb-space-1: 4px; --cdb-space-2: 8px; --cdb-space-3: 12px;
+      --cdb-space-4: 16px; --cdb-space-6: 24px; --cdb-space-8: 32px;
+      --cdb-text-xs: 11px; --cdb-text-sm: 12px; --cdb-text-base: 14px;
+      --cdb-text-lg: 16px; --cdb-text-xl: 18px;
+      --cdb-radius-sm: 4px; --cdb-radius-md: 6px; --cdb-radius-lg: 8px;
+      --cdb-shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+      --cdb-shadow-md: 0 4px 6px rgba(0,0,0,0.07);
+      --cdb-shadow-lg: 0 10px 15px rgba(0,0,0,0.1);
+    }
+
+    /* === Reset === */
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      color: #1f2937;
-      background: #f3f4f6;
-      height: 100vh;
-      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: var(--cdb-color-text);
+      background: var(--cdb-color-bg-canvas);
+      font-size: var(--cdb-text-base);
+      height: 100vh; overflow: hidden;
     }
-    .app { display: grid; grid-template-rows: auto auto 1fr auto; height: 100vh; }
+    .cdb-app { display: grid; grid-template-rows: auto auto 1fr auto; height: 100vh; }
 
-    /* Header (top menu) */
-    .header {
-      background: #ffffff;
-      border-bottom: 1px solid #e5e7eb;
-      padding: 8px 16px;
-      display: flex;
-      align-items: center;
-      gap: 16px;
+    /* === Top Menu Bar === */
+    .cdb-header {
+      background: var(--cdb-color-bg);
+      border-bottom: 1px solid var(--cdb-color-border);
+      padding: var(--cdb-space-2) var(--cdb-space-4);
+      display: flex; align-items: center; gap: var(--cdb-space-4);
     }
-    .logo { font-weight: 700; color: #175e7a; font-size: 18px; }
-    .menu { display: flex; gap: 12px; }
-    .menu-item { padding: 4px 8px; cursor: pointer; border-radius: 4px; }
-    .menu-item:hover { background: #f3f4f6; }
-    .header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
-    .save-state { font-size: 12px; color: #10b981; }
-    .save-state.saving { color: #f59e0b; }
-    .save-state.error { color: #ef4444; }
-    .icon-btn {
-      background: none; border: 1px solid #e5e7eb; padding: 4px 8px;
-      border-radius: 4px; cursor: pointer;
+    .cdb-logo { font-weight: 700; color: var(--cdb-color-primary); font-size: var(--cdb-text-xl); }
+    .cdb-menu { display: flex; gap: var(--cdb-space-3); }
+    .cdb-menu-item {
+      padding: var(--cdb-space-1) var(--cdb-space-2);
+      cursor: pointer; border-radius: var(--cdb-radius-sm);
+      color: var(--cdb-color-text);
     }
-    .icon-btn:hover { background: #f3f4f6; }
+    .cdb-menu-item:hover, .cdb-menu-item.cdb-is-open { background: var(--cdb-color-bg-subtle); }
+    .cdb-header-right { margin-left: auto; display: flex; align-items: center; gap: var(--cdb-space-3); }
+    .cdb-save-state { font-size: var(--cdb-text-sm); color: var(--cdb-color-success); }
+    .cdb-save-state.cdb-is-saving { color: var(--cdb-color-warning); }
+    .cdb-save-state.cdb-is-error { color: var(--cdb-color-error); }
 
-    /* Toolbar */
-    .toolbar {
-      background: #ffffff;
-      border-bottom: 1px solid #e5e7eb;
-      padding: 8px 16px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
+    /* === Toolbar (Undo / Redo / Share / Export) === */
+    .cdb-toolbar {
+      background: var(--cdb-color-bg);
+      border-bottom: 1px solid var(--cdb-color-border);
+      padding: var(--cdb-space-2) var(--cdb-space-4);
+      display: flex; align-items: center; gap: var(--cdb-space-3);
     }
-    .title-edit { font-size: 14px; padding: 4px 8px; border: 1px solid transparent; border-radius: 4px; }
-    .title-edit:hover { border-color: #e5e7eb; }
-    .rev-tag { font-size: 12px; color: #6b7280; background: #f3f4f6; padding: 2px 8px; border-radius: 4px; }
-    .toolbar-right { margin-left: auto; display: flex; gap: 8px; }
-    .btn-primary { background: #175e7a; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
-    .btn-secondary { background: white; color: #175e7a; border: 1px solid #175e7a; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
-
-    /* Main: Control Panel + Canvas + Side Panel */
-    .main { display: grid; grid-template-columns: 200px 1fr 320px; overflow: hidden; }
-
-    .control-panel {
-      background: #f9fafb;
-      border-right: 1px solid #e5e7eb;
-      padding: 12px;
-      overflow-y: auto;
+    .cdb-title-edit {
+      font-size: var(--cdb-text-base); padding: var(--cdb-space-1) var(--cdb-space-2);
+      border: 1px solid transparent; border-radius: var(--cdb-radius-sm);
     }
-    .control-section { margin-bottom: 16px; }
-    .control-section h4 { font-size: 11px; text-transform: uppercase; color: #6b7280; margin-bottom: 8px; }
-    .control-btn { display: block; width: 100%; padding: 8px; background: white; border: 1px solid #e5e7eb; border-radius: 4px; margin-bottom: 4px; cursor: pointer; text-align: left; }
-    .control-btn:hover { background: #f3f4f6; }
+    .cdb-title-edit:hover { border-color: var(--cdb-color-border); }
+    .cdb-rev-tag {
+      font-size: var(--cdb-text-sm); color: var(--cdb-color-text-muted);
+      background: var(--cdb-color-bg-subtle); padding: 2px var(--cdb-space-2); border-radius: var(--cdb-radius-sm);
+    }
+    .cdb-toolbar-right { margin-left: auto; display: flex; gap: var(--cdb-space-2); }
 
-    .canvas {
-      background: #ffffff;
-      position: relative;
-      overflow: auto;
+    /* === Buttons === */
+    .cdb-btn {
+      background: var(--cdb-color-bg); color: var(--cdb-color-text);
+      border: 1px solid var(--cdb-color-border); padding: var(--cdb-space-1) var(--cdb-space-3);
+      border-radius: var(--cdb-radius-sm); cursor: pointer; font-size: var(--cdb-text-base);
+    }
+    .cdb-btn:hover { background: var(--cdb-color-bg-subtle); }
+    .cdb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .cdb-btn--primary { background: var(--cdb-color-primary); color: white; border-color: var(--cdb-color-primary); }
+    .cdb-btn--primary:hover { background: var(--cdb-color-primary-hover); }
+    .cdb-btn--icon { padding: var(--cdb-space-1) var(--cdb-space-2); }
+
+    /* === Main: Side Panel + Canvas + Side Panel === */
+    .cdb-main { display: grid; grid-template-columns: 240px 1fr 320px; overflow: hidden; }
+    .cdb-side-panel--left { background: var(--cdb-color-bg-subtle); border-right: 1px solid var(--cdb-color-border); }
+    .cdb-side-panel--right { background: var(--cdb-color-bg-subtle); border-left: 1px solid var(--cdb-color-border); }
+    .cdb-side-panel { display: flex; flex-direction: column; }
+
+    /* === Side Panel: Search + Tabs === */
+    .cdb-search-box { padding: var(--cdb-space-2); border-bottom: 1px solid var(--cdb-color-border); }
+    .cdb-search-box input {
+      width: 100%; padding: var(--cdb-space-1) var(--cdb-space-2);
+      border: 1px solid var(--cdb-color-border); border-radius: var(--cdb-radius-sm);
+      font-size: var(--cdb-text-sm);
+    }
+    .cdb-tabs {
+      display: flex; border-bottom: 1px solid var(--cdb-color-border);
+      background: var(--cdb-color-bg); overflow-x: auto;
+    }
+    .cdb-tab {
+      padding: var(--cdb-space-2) var(--cdb-space-3); cursor: pointer;
+      font-size: var(--cdb-text-sm); border-bottom: 2px solid transparent; white-space: nowrap;
+    }
+    .cdb-tab.cdb-is-active { border-bottom-color: var(--cdb-color-primary); color: var(--cdb-color-primary); font-weight: 600; }
+    .cdb-tab-content { flex: 1; overflow-y: auto; padding: var(--cdb-space-2); }
+    .cdb-list-item {
+      padding: var(--cdb-space-1) var(--cdb-space-2);
+      background: var(--cdb-color-bg); border: 1px solid var(--cdb-color-border);
+      border-radius: var(--cdb-radius-sm); margin-bottom: var(--cdb-space-1);
+      font-size: var(--cdb-text-sm); cursor: pointer;
+    }
+    .cdb-list-item:hover { background: var(--cdb-color-bg-subtle); }
+    .cdb-list-item.cdb-is-selected { background: var(--cdb-color-primary-bg); border-color: var(--cdb-color-primary); }
+
+    /* === Canvas === */
+    .cdb-canvas {
+      background: var(--cdb-color-bg);
+      position: relative; overflow: auto;
       background-image:
-        linear-gradient(rgba(0,0,0,.04) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0,0,0,.04) 1px, transparent 1px);
-      background-size: 20px 20px;
+        linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px);
+      background-size: 24px 24px;
     }
-    .table-card {
-      position: absolute;
-      background: white;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
-      min-width: 220px;
-      box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    .cdb-table-card {
+      position: absolute; background: var(--cdb-color-bg);
+      border: 1px solid #d1d5db; border-radius: var(--cdb-radius-md);
+      min-width: 220px; box-shadow: var(--cdb-shadow-sm);
     }
-    .table-header {
-      background: #175e7a;
-      color: white;
-      padding: 6px 10px;
-      font-weight: 600;
-      font-size: 13px;
-      border-radius: 6px 6px 0 0;
-      cursor: move;
+    .cdb-table-card.cdb-is-selected { border-color: var(--cdb-color-primary); box-shadow: 0 0 0 2px var(--cdb-color-primary-bg); }
+    .cdb-table-header {
+      background: var(--cdb-color-primary); color: white;
+      padding: var(--cdb-space-1) var(--cdb-space-2) + 2px; font-weight: 600;
+      font-size: var(--cdb-text-sm); border-radius: var(--cdb-radius-md) var(--cdb-radius-md) 0 0; cursor: move;
     }
-    .field-row {
-      padding: 4px 10px;
-      font-size: 12px;
-      border-bottom: 1px solid #f3f4f6;
-      display: flex;
-      justify-content: space-between;
+    .cdb-field-row {
+      padding: var(--cdb-space-1) var(--cdb-space-2); font-size: var(--cdb-text-sm);
+      border-bottom: 1px solid var(--cdb-color-bg-subtle);
+      display: flex; justify-content: space-between;
     }
-    .field-row:last-child { border-bottom: none; }
-    .field-pk { color: #b45309; font-weight: 600; }
+    .cdb-field-row:last-child { border-bottom: none; }
+    .cdb-field-pk { color: var(--cdb-color-warning); font-weight: 600; }
 
-    .side-panel {
-      background: #f9fafb;
-      border-left: 1px solid #e5e7eb;
-      display: flex;
-      flex-direction: column;
-    }
-    .search-box {
-      padding: 8px;
-      border-bottom: 1px solid #e5e7eb;
-    }
-    .search-box input {
-      width: 100%; padding: 6px 8px; border: 1px solid #e5e7eb; border-radius: 4px;
-    }
-    .tabs {
-      display: flex; border-bottom: 1px solid #e5e7eb; background: white;
-      overflow-x: auto;
-    }
-    .tab {
-      padding: 8px 12px; cursor: pointer; font-size: 12px;
-      border-bottom: 2px solid transparent; white-space: nowrap;
-    }
-    .tab.active { border-bottom-color: #175e7a; color: #175e7a; font-weight: 600; }
-    .tab-content { flex: 1; overflow-y: auto; padding: 8px; }
-    .list-item {
-      padding: 6px 8px; background: white; border: 1px solid #e5e7eb;
-      border-radius: 4px; margin-bottom: 4px; font-size: 12px; cursor: pointer;
-    }
-    .list-item:hover { background: #f3f4f6; }
-
-    /* Footer */
-    .footer {
-      background: #ffffff;
-      border-top: 1px solid #e5e7eb;
-      padding: 6px 16px;
-      font-size: 11px;
-      color: #6b7280;
-      display: flex;
-      gap: 16px;
+    /* === Footer (Status Bar) === */
+    .cdb-footer {
+      background: var(--cdb-color-bg);
+      border-top: 1px solid var(--cdb-color-border);
+      padding: var(--cdb-space-1) var(--cdb-space-4);
+      font-size: var(--cdb-text-xs); color: var(--cdb-color-text-muted);
+      display: flex; gap: var(--cdb-space-4);
     }
 
-    /* Sample tables (visual only) */
-    .t1 { top: 60px; left: 80px; }
-    .t2 { top: 220px; left: 360px; }
+    /* === Modal (B1 占位，B4 完整实现) === */
+    .cdb-modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.4);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000;
+    }
+    .cdb-modal {
+      background: var(--cdb-color-bg);
+      border-radius: var(--cdb-radius-lg);
+      box-shadow: var(--cdb-shadow-lg);
+      min-width: 400px; max-width: 600px;
+    }
+    .cdb-modal__header { padding: var(--cdb-space-3) var(--cdb-space-4); border-bottom: 1px solid var(--cdb-color-border); font-weight: 600; }
+    .cdb-modal__body { padding: var(--cdb-space-4); }
+    .cdb-modal__footer { padding: var(--cdb-space-3) var(--cdb-space-4); border-top: 1px solid var(--cdb-color-border); display: flex; gap: var(--cdb-space-2); justify-content: flex-end; }
+
+    /* === Conflict Dialog (409 弹窗) === */
+    .cdb-conflict-dialog-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1100; }
+    .cdb-conflict-dialog { background: var(--cdb-color-bg); border-radius: var(--cdb-radius-lg); padding: var(--cdb-space-6); max-width: 480px; box-shadow: var(--cdb-shadow-lg); }
+    .cdb-conflict-dialog h2 { color: var(--cdb-color-warning); margin-bottom: var(--cdb-space-3); font-size: var(--cdb-text-lg); }
+    .cdb-dialog-buttons { display: flex; gap: var(--cdb-space-2); margin-top: var(--cdb-space-4); justify-content: flex-end; }
+
+    /* === Error Toast === */
+    .cdb-error-toast {
+      position: fixed; bottom: var(--cdb-space-6); right: var(--cdb-space-6);
+      background: var(--cdb-color-error); color: white;
+      padding: var(--cdb-space-3) var(--cdb-space-4);
+      border-radius: var(--cdb-radius-md);
+      box-shadow: var(--cdb-shadow-md);
+      z-index: 1200;
+      display: flex; align-items: center; gap: var(--cdb-space-3);
+    }
+    .cdb-error-toast button { background: none; border: none; color: white; cursor: pointer; font-size: var(--cdb-text-lg); }
+
+    /* === Sample table positions (visual only) === */
+    .cdb-t1 { top: 60px; left: 80px; }
+    .cdb-t2 { top: 220px; left: 360px; }
   </style>
 </head>
 <body>
-  <div class="app">
-    <!-- Header -->
-    <header class="header">
-      <div class="logo">coldrawdb</div>
-      <nav class="menu">
-        <div class="menu-item">File ▾</div>
-        <div class="menu-item">Edit ▾</div>
-        <div class="menu-item">View ▾</div>
-        <div class="menu-item">Help ▾</div>
+  <!--
+    B1 样式底座升级（add-frontend-completeness 提案）
+    - 所有 class 改 cdb- 前缀（与 styles.css 命名空间一致）
+    - 颜色 / 间距 / 字号 / 圆角 / 阴影全部走 CSS 变量
+    - Modal / ConflictDialog / ErrorToast 视觉基线已纳入（占位实现见 B4）
+    - 7 个侧栏 Tab 全部列出（Areas/Enums/Notes/Relationships/Types/Issues 由 B2 实现）
+  -->
+  <div class="cdb-app">
+    <header class="cdb-header">
+      <div class="cdb-logo">coldrawdb</div>
+      <nav class="cdb-menu">
+        <div class="cdb-menu-item">File ▾</div>
+        <div class="cdb-menu-item">Edit ▾</div>
+        <div class="cdb-menu-item">View ▾</div>
+        <div class="cdb-menu-item">Help ▾</div>
       </nav>
-      <div class="header-right">
-        <span class="save-state">● Saved</span>
-        <button class="icon-btn" title="设置">⚙</button>
+      <div class="cdb-header-right">
+        <span class="cdb-save-state">● Saved</span>
+        <button class="cdb-btn cdb-btn--icon" title="设置">⚙</button>
       </div>
     </header>
 
-    <!-- Toolbar -->
-    <div class="toolbar">
-      <button class="icon-btn" title="撤销 (Ctrl+Z)">↶</button>
-      <button class="icon-btn" title="重做 (Ctrl+Shift+Z)">↷</button>
-      <div class="title-edit">My Database Schema</div>
-      <span class="rev-tag">rev: 5</span>
-      <div class="toolbar-right">
-        <button class="btn-secondary">Share</button>
-        <button class="btn-primary">Export ▾</button>
+    <div class="cdb-toolbar">
+      <button class="cdb-btn cdb-btn--icon" title="撤销 (Ctrl+Z)">↶</button>
+      <button class="cdb-btn cdb-btn--icon" title="重做 (Ctrl+Shift+Z)">↷</button>
+      <input class="cdb-title-edit" value="Untitled Diagram" />
+      <span class="cdb-rev-tag">rev: 0</span>
+      <div class="cdb-toolbar-right">
+        <button class="cdb-btn">Share</button>
+        <button class="cdb-btn cdb-btn--primary">Export ▾</button>
       </div>
     </div>
 
-    <!-- Main: Control Panel + Canvas + Side Panel -->
-    <div class="main">
-      <!-- Control Panel (left) -->
-      <aside class="control-panel">
-        <div class="control-section">
-          <h4>Add</h4>
-          <button class="control-btn">+ Table</button>
-          <button class="control-btn">+ Area</button>
-          <button class="control-btn">+ Note</button>
-          <button class="control-btn">+ Enum</button>
+    <div class="cdb-main">
+      <aside class="cdb-side-panel cdb-side-panel--left">
+        <div class="cdb-search-box">
+          <input type="text" placeholder="Search tables, fields..." />
         </div>
-        <div class="control-section">
-          <h4>View</h4>
-          <button class="control-btn">Zoom In</button>
-          <button class="control-btn">Zoom Out</button>
-          <button class="control-btn">Reset</button>
+        <div class="cdb-tabs">
+          <div class="cdb-tab cdb-is-active">Tables</div>
+          <div class="cdb-tab">Areas</div>
+          <div class="cdb-tab">Enums</div>
+          <div class="cdb-tab">Notes</div>
+          <div class="cdb-tab">Relationships</div>
+          <div class="cdb-tab">Types</div>
+          <div class="cdb-tab">Issues</div>
         </div>
-        <div class="control-section">
-          <h4>Validate</h4>
-          <button class="control-btn">Run Validation</button>
+        <div class="cdb-tab-content">
+          <div class="cdb-list-item cdb-is-selected">users</div>
+          <div class="cdb-list-item">orders</div>
+          <div class="cdb-list-item">products</div>
         </div>
       </aside>
 
-      <!-- Canvas (center) -->
-      <main class="canvas">
-        <!-- Sample Table 1 -->
-        <div class="table-card t1">
-          <div class="table-header">users</div>
-          <div class="field-row"><span class="field-pk">id INT [PK]</span></div>
-          <div class="field-row"><span>name VARCHAR(255)</span></div>
-          <div class="field-row"><span>email VARCHAR(255)</span></div>
-          <div class="field-row"><span>created_at TIMESTAMP</span></div>
+      <main class="cdb-canvas">
+        <div class="cdb-table-card cdb-t1">
+          <div class="cdb-table-header">users</div>
+          <div class="cdb-field-row"><span class="cdb-field-pk">id</span><span>INT</span></div>
+          <div class="cdb-field-row"><span>email</span><span>VARCHAR(255)</span></div>
+          <div class="cdb-field-row"><span>created_at</span><span>TIMESTAMP</span></div>
         </div>
-        <!-- Sample Table 2 -->
-        <div class="table-card t2">
-          <div class="table-header">posts</div>
-          <div class="field-row"><span class="field-pk">id INT [PK]</span></div>
-          <div class="field-row"><span>user_id INT [FK]</span></div>
-          <div class="field-row"><span>title VARCHAR(255)</span></div>
-          <div class="field-row"><span>body TEXT</span></div>
+        <div class="cdb-table-card cdb-t2">
+          <div class="cdb-table-header">orders</div>
+          <div class="cdb-field-row"><span class="cdb-field-pk">id</span><span>INT</span></div>
+          <div class="cdb-field-row"><span>user_id</span><span>INT</span></div>
+          <div class="cdb-field-row"><span>total</span><span>DECIMAL</span></div>
         </div>
       </main>
 
-      <!-- Side Panel (right) -->
-      <aside class="side-panel">
-        <div class="search-box">
-          <input type="text" placeholder="Search tables, fields..." />
+      <aside class="cdb-side-panel cdb-side-panel--right">
+        <div class="cdb-tabs">
+          <div class="cdb-tab cdb-is-active">Fields</div>
         </div>
-        <div class="tabs">
-          <div class="tab active">Tables</div>
-          <div class="tab">Areas</div>
-          <div class="tab">Enums</div>
-          <div class="tab">Notes</div>
-          <div class="tab">Refs</div>
-          <div class="tab">Types</div>
-          <div class="tab">Issues</div>
-        </div>
-        <div class="tab-content">
-          <div class="list-item">users (4 fields)</div>
-          <div class="list-item">posts (4 fields)</div>
+        <div class="cdb-tab-content">
+          <p style="color: var(--cdb-color-text-muted); font-size: var(--cdb-text-sm);">
+            Select a field to edit
+          </p>
         </div>
       </aside>
     </div>
 
-    <!-- Footer -->
-    <footer class="footer">
-      <span>Undo stack: 3 / 50</span>
-      <span>Last saved: 2 seconds ago</span>
-      <span>Engine: MySQL</span>
+    <footer class="cdb-footer">
+      <span>● 100 tables / 200 relationships / 60fps target</span>
+      <span>db: generic</span>
     </footer>
   </div>
 </body>
