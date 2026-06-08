@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<!--
+  ADDED — 编辑器主页面 HTML 原型
+  模块：core | 提案：add-baseline-docs
+  路径：logos/resources/prd/2-product-design/2-page-design/core-01-editor-prototype.html
+  对齐参考源：drawdb §2.1 Workspace.jsx 顶层布局
+
+  本文件是**静态原型**（Phase 2 页面设计），用于视觉对账与评审。
+  实际运行时由 frontend-rs (Leptos WASM) 渲染，本原型不直接参与构建。
+-->
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <title>coldrawdb — Editor Prototype</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: #1f2937;
+      background: #f3f4f6;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .app { display: grid; grid-template-rows: auto auto 1fr auto; height: 100vh; }
+
+    /* Header (top menu) */
+    .header {
+      background: #ffffff;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .logo { font-weight: 700; color: #175e7a; font-size: 18px; }
+    .menu { display: flex; gap: 12px; }
+    .menu-item { padding: 4px 8px; cursor: pointer; border-radius: 4px; }
+    .menu-item:hover { background: #f3f4f6; }
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+    .save-state { font-size: 12px; color: #10b981; }
+    .save-state.saving { color: #f59e0b; }
+    .save-state.error { color: #ef4444; }
+    .icon-btn {
+      background: none; border: 1px solid #e5e7eb; padding: 4px 8px;
+      border-radius: 4px; cursor: pointer;
+    }
+    .icon-btn:hover { background: #f3f4f6; }
+
+    /* Toolbar */
+    .toolbar {
+      background: #ffffff;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .title-edit { font-size: 14px; padding: 4px 8px; border: 1px solid transparent; border-radius: 4px; }
+    .title-edit:hover { border-color: #e5e7eb; }
+    .rev-tag { font-size: 12px; color: #6b7280; background: #f3f4f6; padding: 2px 8px; border-radius: 4px; }
+    .toolbar-right { margin-left: auto; display: flex; gap: 8px; }
+    .btn-primary { background: #175e7a; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
+    .btn-secondary { background: white; color: #175e7a; border: 1px solid #175e7a; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
+
+    /* Main: Control Panel + Canvas + Side Panel */
+    .main { display: grid; grid-template-columns: 200px 1fr 320px; overflow: hidden; }
+
+    .control-panel {
+      background: #f9fafb;
+      border-right: 1px solid #e5e7eb;
+      padding: 12px;
+      overflow-y: auto;
+    }
+    .control-section { margin-bottom: 16px; }
+    .control-section h4 { font-size: 11px; text-transform: uppercase; color: #6b7280; margin-bottom: 8px; }
+    .control-btn { display: block; width: 100%; padding: 8px; background: white; border: 1px solid #e5e7eb; border-radius: 4px; margin-bottom: 4px; cursor: pointer; text-align: left; }
+    .control-btn:hover { background: #f3f4f6; }
+
+    .canvas {
+      background: #ffffff;
+      position: relative;
+      overflow: auto;
+      background-image:
+        linear-gradient(rgba(0,0,0,.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,.04) 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+    .table-card {
+      position: absolute;
+      background: white;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      min-width: 220px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    }
+    .table-header {
+      background: #175e7a;
+      color: white;
+      padding: 6px 10px;
+      font-weight: 600;
+      font-size: 13px;
+      border-radius: 6px 6px 0 0;
+      cursor: move;
+    }
+    .field-row {
+      padding: 4px 10px;
+      font-size: 12px;
+      border-bottom: 1px solid #f3f4f6;
+      display: flex;
+      justify-content: space-between;
+    }
+    .field-row:last-child { border-bottom: none; }
+    .field-pk { color: #b45309; font-weight: 600; }
+
+    .side-panel {
+      background: #f9fafb;
+      border-left: 1px solid #e5e7eb;
+      display: flex;
+      flex-direction: column;
+    }
+    .search-box {
+      padding: 8px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .search-box input {
+      width: 100%; padding: 6px 8px; border: 1px solid #e5e7eb; border-radius: 4px;
+    }
+    .tabs {
+      display: flex; border-bottom: 1px solid #e5e7eb; background: white;
+      overflow-x: auto;
+    }
+    .tab {
+      padding: 8px 12px; cursor: pointer; font-size: 12px;
+      border-bottom: 2px solid transparent; white-space: nowrap;
+    }
+    .tab.active { border-bottom-color: #175e7a; color: #175e7a; font-weight: 600; }
+    .tab-content { flex: 1; overflow-y: auto; padding: 8px; }
+    .list-item {
+      padding: 6px 8px; background: white; border: 1px solid #e5e7eb;
+      border-radius: 4px; margin-bottom: 4px; font-size: 12px; cursor: pointer;
+    }
+    .list-item:hover { background: #f3f4f6; }
+
+    /* Footer */
+    .footer {
+      background: #ffffff;
+      border-top: 1px solid #e5e7eb;
+      padding: 6px 16px;
+      font-size: 11px;
+      color: #6b7280;
+      display: flex;
+      gap: 16px;
+    }
+
+    /* Sample tables (visual only) */
+    .t1 { top: 60px; left: 80px; }
+    .t2 { top: 220px; left: 360px; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">coldrawdb</div>
+      <nav class="menu">
+        <div class="menu-item">File ▾</div>
+        <div class="menu-item">Edit ▾</div>
+        <div class="menu-item">View ▾</div>
+        <div class="menu-item">Help ▾</div>
+      </nav>
+      <div class="header-right">
+        <span class="save-state">● Saved</span>
+        <button class="icon-btn" title="设置">⚙</button>
+      </div>
+    </header>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <button class="icon-btn" title="撤销 (Ctrl+Z)">↶</button>
+      <button class="icon-btn" title="重做 (Ctrl+Shift+Z)">↷</button>
+      <div class="title-edit">My Database Schema</div>
+      <span class="rev-tag">rev: 5</span>
+      <div class="toolbar-right">
+        <button class="btn-secondary">Share</button>
+        <button class="btn-primary">Export ▾</button>
+      </div>
+    </div>
+
+    <!-- Main: Control Panel + Canvas + Side Panel -->
+    <div class="main">
+      <!-- Control Panel (left) -->
+      <aside class="control-panel">
+        <div class="control-section">
+          <h4>Add</h4>
+          <button class="control-btn">+ Table</button>
+          <button class="control-btn">+ Area</button>
+          <button class="control-btn">+ Note</button>
+          <button class="control-btn">+ Enum</button>
+        </div>
+        <div class="control-section">
+          <h4>View</h4>
+          <button class="control-btn">Zoom In</button>
+          <button class="control-btn">Zoom Out</button>
+          <button class="control-btn">Reset</button>
+        </div>
+        <div class="control-section">
+          <h4>Validate</h4>
+          <button class="control-btn">Run Validation</button>
+        </div>
+      </aside>
+
+      <!-- Canvas (center) -->
+      <main class="canvas">
+        <!-- Sample Table 1 -->
+        <div class="table-card t1">
+          <div class="table-header">users</div>
+          <div class="field-row"><span class="field-pk">id INT [PK]</span></div>
+          <div class="field-row"><span>name VARCHAR(255)</span></div>
+          <div class="field-row"><span>email VARCHAR(255)</span></div>
+          <div class="field-row"><span>created_at TIMESTAMP</span></div>
+        </div>
+        <!-- Sample Table 2 -->
+        <div class="table-card t2">
+          <div class="table-header">posts</div>
+          <div class="field-row"><span class="field-pk">id INT [PK]</span></div>
+          <div class="field-row"><span>user_id INT [FK]</span></div>
+          <div class="field-row"><span>title VARCHAR(255)</span></div>
+          <div class="field-row"><span>body TEXT</span></div>
+        </div>
+      </main>
+
+      <!-- Side Panel (right) -->
+      <aside class="side-panel">
+        <div class="search-box">
+          <input type="text" placeholder="Search tables, fields..." />
+        </div>
+        <div class="tabs">
+          <div class="tab active">Tables</div>
+          <div class="tab">Areas</div>
+          <div class="tab">Enums</div>
+          <div class="tab">Notes</div>
+          <div class="tab">Refs</div>
+          <div class="tab">Types</div>
+          <div class="tab">Issues</div>
+        </div>
+        <div class="tab-content">
+          <div class="list-item">users (4 fields)</div>
+          <div class="list-item">posts (4 fields)</div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <span>Undo stack: 3 / 50</span>
+      <span>Last saved: 2 seconds ago</span>
+      <span>Engine: MySQL</span>
+    </footer>
+  </div>
+</body>
+</html>
