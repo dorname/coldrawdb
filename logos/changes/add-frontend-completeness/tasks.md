@@ -139,10 +139,28 @@
 ## [code] 批次 5 — 剩余 5 模态 + 快捷键 + 搜索筛选 + 清单修正
 
 **前置依赖**：B4 完成
-**覆盖 skipped 用例**：
-- ST-S02-04（Import 模态 SQL 解析）
-- ST-S02-05（Language 模态切换 i18n）
-- 新增 ST-UI-05（Ctrl+Z / Ctrl+Shift+Z 键盘快捷键）
+**覆盖 skipped 用例**（frontend UI UT，spec `core-05-top-menu-modals.md` §3 9 模态清单补齐）：
+- **UT-MM-10**（本次 delta 新增）— Import 模态 SQL 解析（parse_sql_statements）
+- **UT-MM-11**（本次 delta 新增）— SetTableWidth 模态宽度解析（parse_table_width）
+- **UT-MM-12**（本次 delta 新增）— Language 模态验证（validate_language）
+- **UT-MM-13**（本次 delta 新增）— ConfigureCustomTypes 增删（add/remove_custom_type）
+- **UT-MM-14**（本次 delta 新增）— ImportSource 模态选择解析（resolve_import_source）
+- **UT-MM-15**（本次 delta 新增）— CommandStack::undo 弹出最近命令
+- **UT-MM-16**（本次 delta 新增）— CommandStack::redo 弹出最近 undo
+- **UT-KB-01**（本次 delta 新增）— 键盘事件 Ctrl+Z 触发 undo（is_undo_shortcut）
+- **ST-MM-02**（本次 delta 新增，e2e 待 B5 wasm-pack）— 端到端 Import 模态 SQL 解析
+- **ST-MM-03**（本次 delta 新增，e2e 待 B5 wasm-pack）— ConfigureCustomTypes 关闭后跨刷新保留
+- **ST-UI-05**（本次 delta 新增，e2e 待 B5 wasm-pack）— Ctrl+Z / Ctrl+Shift+Z 键盘快捷键 e2e
+
+**注意**：
+- `ST-S02-04` / `ST-S02-05` 是 backend 端到端用例，**不在前端 B5 范围**
+- B5 用 UT-MM-10~16 + UT-KB-01 共 8 个纯函数 UT 覆盖 5 模态 + 撤销/重做底座 + 快捷键识别
+- 3 个 ST 留 B5 wasm-pack test 接入后跑
+
+**Delta 配套**（merge 时同步合并）：
+- 新增 `logos/resources/test/core-UI-modals-2-test-cases.md`（5 模态 UT-MM-10~14 + ST-MM-02/03 详细定义）
+- 新增 `logos/resources/test/core-KB-shortcut-test-cases.md`（键盘快捷键 UT-MM-15/16 + UT-KB-01 + ST-UI-05 详细定义）
+- 修改 `core-05-top-menu-modals.md` 追加 §9.2 B5 测试 ID 索引
 
 **实施步骤**：
 - [ ] 新增 5 个模态组件：`ImportModal`（粘贴 SQL）、`ImportSourceModal`（选 backend 源）、`LanguageModal`（zh/en 切换，V1 提示 toast）、`SetTableWidthModal`（输入新宽度）、`ConfigureCustomTypesModal`（增删自定义类型）
