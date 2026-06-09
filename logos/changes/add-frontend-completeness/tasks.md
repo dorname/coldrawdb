@@ -47,21 +47,26 @@
 ## [code] 批次 2 — 5 个剩余侧栏 Tab
 
 **前置依赖**：B1 完成（CSS 底座 + 顶部菜单）
-**覆盖 skipped 用例**：
-- UT-S02-03（侧栏 Tab 切换）
-- UT-S02-04（侧栏搜索过滤）
-- 新增 ST-UI-02（侧栏 6 Tab 全部可点击）
+**覆盖 skipped 用例**（修正：原 tasks.md 错误引用 UT-S02-03/04，core-S02-test-cases.md 实际是后端 API 测试；新编号来自 `core-04-side-panel-tabs.md` §11 + 本次 delta 追加的 `core-SP-side-panel-test-cases.md`）：
+- **UT-SP-02**（已存在，§11 索引）— Tables Tab 搜索过滤
+- **UT-SP-09**（本次 delta 新增）— 6 业务 Tab 切换
+- **UT-SP-10**（本次 delta 新增）— 全局搜索跨 Tab 过滤
+- **ST-SP-01**（已存在，§11 索引，B2 间接覆盖）— 端到端 5 表 + Issues Tab 0 error
+
+**Delta 配套**（merge 时同步合并）：
+- 新增 `logos/resources/test/core-SP-side-panel-test-cases.md`（详细定义 UT-SP-02/09/10 + ST-SP-01）
+- 修改 `core-04-side-panel-tabs.md` §11（追加 UT-SP-09/10 索引行）
 
 **实施步骤**：
 - [ ] 修改 `editor_panels.rs`：
   - 新增 `LeftPanel` 改造：tab 切换器（Tables / Areas / Enums / Notes / Relationships / Types / Issues）
-  - 新增 6 个 Tab 子组件：`TablesTab`（从 LeftPanel 抽出）、`AreasTab`、`EnumsTab`、`NotesTab`、`RelationshipsTab`、`TypesTab`、`IssuesTab`
+  - 新增 7 个 Tab 子组件：`TablesTab`（从 LeftPanel 抽出）、`AreasTab`、`EnumsTab`、`NotesTab`、`RelationshipsTab`、`TypesTab`、`IssuesTab`
   - 搜索 + 类型筛选输入框（spec §10）
-- [ ] Areas/Enums/Notes/Types 暂用内存 state（spec 标记 V1 仅前端 state）
-- [ ] Relationships/Issues 用 store 中已有数据
-- [ ] 新增对应 UT + ST
-- [ ] 写入 OpenLogos reporter
-- [ ] `openlogos verify` 确认 Gate 3.5 仍 PASS
+- Areas/Enums/Notes/Types 暂用内存 state（spec 标记 V1 仅前端 state）
+- Relationships/Issues 用 store 中已有数据
+- 新增对应 UT（wasm-bindgen-test 模拟）+ ST（headless browser e2e）
+- 写入 OpenLogos reporter
+- `openlogos verify` 确认 Gate 3.5 仍 PASS
 
 **回滚条件**：B2 后侧栏 tab 切换导致 Tables Tab 原有功能 regression → 暂停 B3 修复。
 

@@ -204,6 +204,8 @@ Table users {
 | UT-SP-07 | DBML Editor：编辑后 Apply → 解析成功 → Diagram 更新 |
 | UT-SP-08 | DBML Editor：编辑非法 DBML → 错误消息 + 不应用 |
 | ST-SP-01 | 端到端：编辑 5 表 → Issues Tab 显示 0 error |
+| UT-SP-09 | 6 业务 Tab 切换（点击 Tab A→B→C，验证激活态 + 内容区切换）— B2 范围 |
+| UT-SP-10 | 全局搜索跨 Tab 过滤（spec §10，搜索框过滤 Tables/Areas/Enums 等多 Tab 列表）— B2 范围 |
 
 ## 12. V1 边界
 
