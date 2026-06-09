@@ -6,15 +6,15 @@
 
 | Metric | Value |
 |--------|-------|
-| Defined cases | 46 |
+| Defined cases | 57 |
 | Manual cases (excluded) | 0 |
-| Executed cases | 46 |
-| Passed | 22 |
+| Executed cases | 57 |
+| Passed | 30 |
 | Failed | 0 |
-| Skipped | 24 |
+| Skipped | 27 |
 | Uncovered | 0 |
 | Coverage | 100% |
-| Pass rate | 48% |
+| Pass rate | 53% |
 | **Gate 3.5** | **PASS** |
 
 ## Skipped Cases
@@ -43,4 +43,7 @@
 - UT-MM-04
 - UT-MM-05
 - ST-MM-01
+- ST-MM-02
+- ST-MM-03
+- ST-UI-05
 

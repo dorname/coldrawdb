@@ -295,6 +295,46 @@ pub fn TopMenuBar(
                                     file_open.set(false);
                                 }
                             >"Rename"</button>
+                            <button
+                                class="cdb-menu-dropdown-item"
+                                data-testid="cdb-menu-import"
+                                on:click=move |_| {
+                                    modal_kind.set(Some(modals::ModalKind::Import));
+                                    file_open.set(false);
+                                }
+                            >"Import"</button>
+                            <button
+                                class="cdb-menu-dropdown-item"
+                                data-testid="cdb-menu-import-source"
+                                on:click=move |_| {
+                                    modal_kind.set(Some(modals::ModalKind::ImportSource));
+                                    file_open.set(false);
+                                }
+                            >"Import Source"</button>
+                            <button
+                                class="cdb-menu-dropdown-item"
+                                data-testid="cdb-menu-language"
+                                on:click=move |_| {
+                                    modal_kind.set(Some(modals::ModalKind::Language));
+                                    file_open.set(false);
+                                }
+                            >"Language"</button>
+                            <button
+                                class="cdb-menu-dropdown-item"
+                                data-testid="cdb-menu-set-width"
+                                on:click=move |_| {
+                                    modal_kind.set(Some(modals::ModalKind::SetTableWidth));
+                                    file_open.set(false);
+                                }
+                            >"Set Table Width"</button>
+                            <button
+                                class="cdb-menu-dropdown-item"
+                                data-testid="cdb-menu-custom-types"
+                                on:click=move |_| {
+                                    modal_kind.set(Some(modals::ModalKind::ConfigureCustomTypes));
+                                    file_open.set(false);
+                                }
+                            >"Configure Custom Types"</button>
                         </div>
                     }.into_view()
                 } else {
@@ -1200,6 +1240,10 @@ pub fn AppRoot(
                 current_title=current_title
                 on_action=on_modal_action
             />
+            <modals::KeyboardShortcuts
+                on_undo=|| {}
+                on_redo=|| {}
+            />
         </div>
     }
 }
@@ -1232,13 +1276,20 @@ pub mod modals {
     use crate::editor_core::types::Diagram;
     use leptos::*;
 
-    /// 模态种类 (B4 范围: 4 个)
+    /// 模态种类 (B4: 4 个核心 + B5: 5 个剩余 = 9 个，spec §3 全集)
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub enum ModalKind {
+        // B4
         New,
         Open,
         Share,
         Rename,
+        // B5
+        Import,
+        ImportSource,
+        Language,
+        SetTableWidth,
+        ConfigureCustomTypes,
     }
 
     pub const TITLE_MAX_LEN: usize = 64;
@@ -1274,6 +1325,118 @@ pub mod modals {
     /// - UT-MM-09: 非法 JSON → Err
     pub fn parse_diagram_json(text: &str) -> Result<Diagram, String> {
         serde_json::from_str::<Diagram>(text).map_err(|e| format!("JSON parse error: {}", e))
+    }
+
+    /// 解析用户粘贴的 SQL 文本为语句列表
+    /// - UT-MM-10: 多语句以 `;` 分割
+    /// - UT-MM-10: 去除 `-- comment` 单行注释
+    /// - UT-MM-10: 空字符串 → Ok(vec![])
+    pub fn parse_sql_statements(text: &str) -> Result<Vec<String>, String> {
+        let mut out = Vec::new();
+        for raw in text.split(';') {
+            // 去除每行 `--` 注释
+            let cleaned: String = raw
+                .lines()
+                .map(|l| {
+                    let trimmed = l.trim_start();
+                    if trimmed.starts_with("--") {
+                        ""
+                    } else {
+                        l
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            let trimmed = cleaned.trim();
+            if !trimmed.is_empty() {
+                out.push(trimmed.to_string());
+            }
+        }
+        Ok(out)
+    }
+
+    /// 解析表宽度输入
+    /// - UT-MM-11: "200" → Ok(200), "0" → Ok(0)
+    /// - UT-MM-11: "abc" / "" → Err
+    pub fn parse_table_width(input: &str) -> Result<u32, String> {
+        let trimmed = input.trim();
+        if trimmed.is_empty() {
+            return Err("宽度不能为空".to_string());
+        }
+        trimmed
+            .parse::<u32>()
+            .map_err(|e| format!("宽度必须是非负整数: {}", e))
+    }
+
+    /// 校验语言代码
+    /// - UT-MM-12: "en" / "zh" → Ok(()); 其他 → Err
+    pub fn validate_language(lang: &str) -> Result<(), String> {
+        match lang {
+            "en" | "zh" => Ok(()),
+            other => Err(format!("不支持的语言: {}（V1 仅 en/zh）", other)),
+        }
+    }
+
+    /// ImportSource 模态的源类型
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum SourceKind {
+        Local,
+        Remote,
+    }
+
+    /// 解析 ImportSource 模态的选择
+    /// - UT-MM-14: "local" → Local, "remote" → Remote
+    /// - UT-MM-14: "http" / 其他 → Err
+    pub fn resolve_import_source(s: &str) -> Result<SourceKind, String> {
+        match s {
+            "local" => Ok(SourceKind::Local),
+            "remote" => Ok(SourceKind::Remote),
+            other => Err(format!("不支持的导入源: {}（V1 仅 local/remote）", other)),
+        }
+    }
+
+    /// 自定义类型条目
+    pub type CustomTypeEntry = (String, String); // (name, base_type)
+
+    /// 添加自定义类型（同名则替换）
+    /// - UT-MM-13: add 空 vec → 长度 1
+    /// - UT-MM-13: add 已存在 name → 替换
+    pub fn add_custom_type(types: &mut Vec<CustomTypeEntry>, name: &str, base_type: &str) {
+        let name = name.trim();
+        if name.is_empty() {
+            return;
+        }
+        if let Some(entry) = types.iter_mut().find(|(n, _)| n == name) {
+            entry.1 = base_type.to_string();
+        } else {
+            types.push((name.to_string(), base_type.to_string()));
+        }
+    }
+
+    /// 删除自定义类型
+    /// - UT-MM-13: remove 存在 → vec 为空
+    /// - UT-MM-13: remove 不存在 → no-op
+    pub fn remove_custom_type(types: &mut Vec<CustomTypeEntry>, name: &str) {
+        types.retain(|(n, _)| n != name);
+    }
+
+    /// 检查键盘事件是否匹配 Ctrl/Cmd+Z (Undo)
+    /// - UT-KB-01: ctrlKey/MetaKey + 'z' + !shiftKey → true
+    /// - UT-KB-01: !ctrl && !meta → false
+    pub fn is_undo_shortcut(key: &str, ctrl_or_meta: bool, shift: bool) -> bool {
+        if !ctrl_or_meta || shift {
+            return false;
+        }
+        key.eq_ignore_ascii_case("z")
+    }
+
+    /// 检查键盘事件是否匹配 Ctrl/Cmd+Shift+Z (Redo)
+    /// - UT-KB-01: ctrlKey/MetaKey + 'z' + shiftKey → true
+    pub fn is_redo_shortcut(key: &str, ctrl_or_meta: bool, shift: bool) -> bool {
+        if !ctrl_or_meta || !shift {
+            return false;
+        }
+        key.eq_ignore_ascii_case("z")
     }
 
     // ─── ModalRoot: 通用壳 (B4 stub, B5 接入完整行为) ────────────────────────
@@ -1330,6 +1493,31 @@ pub mod modals {
                                 current_title=current_title
                                 on_rename=on_action_rename.clone()
                             />
+                        </div>
+                    }.into_view(),
+                    Some(ModalKind::Import) => view! {
+                        <div class="cdb-modal" data-testid="modal-import" on:click=|ev| ev.stop_propagation()>
+                            <ImportModal kind=kind />
+                        </div>
+                    }.into_view(),
+                    Some(ModalKind::ImportSource) => view! {
+                        <div class="cdb-modal" data-testid="modal-import-source" on:click=|ev| ev.stop_propagation()>
+                            <ImportSourceModal kind=kind />
+                        </div>
+                    }.into_view(),
+                    Some(ModalKind::Language) => view! {
+                        <div class="cdb-modal" data-testid="modal-language" on:click=|ev| ev.stop_propagation()>
+                            <LanguageModal kind=kind />
+                        </div>
+                    }.into_view(),
+                    Some(ModalKind::SetTableWidth) => view! {
+                        <div class="cdb-modal" data-testid="modal-set-width" on:click=|ev| ev.stop_propagation()>
+                            <SetTableWidthModal kind=kind />
+                        </div>
+                    }.into_view(),
+                    Some(ModalKind::ConfigureCustomTypes) => view! {
+                        <div class="cdb-modal" data-testid="modal-custom-types" on:click=|ev| ev.stop_propagation()>
+                            <ConfigureCustomTypesModal kind=kind />
                         </div>
                     }.into_view(),
                     None => view! { <></> }.into_view(),
@@ -1555,6 +1743,362 @@ pub mod modals {
                 >"Rename"</button>
             </div>
         }
+    }
+
+    // ─── B5: 5 个剩余模态 (Import/ImportSource/Language/SetTableWidth/ConfigureCustomTypes) ────
+
+    /// Import 模态: 粘贴 SQL → 调用 bridge/import
+    /// - UT-MM-10: parse_sql_statements 纯函数测试
+    /// - B5 stub: 仅 UI shell，逻辑留 B5 e2e 接入
+    #[component]
+    pub fn ImportModal(
+        kind: RwSignal<Option<ModalKind>>,
+    ) -> impl IntoView {
+        let sql_input = create_rw_signal(String::new());
+        let kind_close = kind;
+        let parse_result = move || parse_sql_statements(&sql_input.get());
+
+        view! {
+            <div class="cdb-modal-header">
+                <h3 class="cdb-modal-title" data-testid="modal-title-import">"Import SQL"</h3>
+                <button
+                    class="cdb-modal-close"
+                    data-testid="modal-cancel-import"
+                    on:click=move |_| kind_close.set(None)
+                >"×"</button>
+            </div>
+            <div class="cdb-modal-body">
+                <label class="cdb-form-label">"Paste SQL"</label>
+                <textarea
+                    class="cdb-form-input"
+                    data-testid="modal-input-sql"
+                    rows="8"
+                    prop:value=move || sql_input.get()
+                    on:input=move |ev| {
+                        use wasm_bindgen::JsCast;
+                        let v = ev.target().unwrap().unchecked_into::<web_sys::HtmlTextAreaElement>().value();
+                        sql_input.set(v);
+                    }
+                />
+                {move || match parse_result() {
+                    Ok(stmts) if !stmts.is_empty() => view! {
+                        <span class="cdb-form-hint" data-testid="modal-parse-count">
+                            {format!("解析到 {} 条语句", stmts.len())}
+                        </span>
+                    }.into_view(),
+                    Ok(_) => view! { <></> }.into_view(),
+                    Err(e) => view! {
+                        <span class="cdb-form-error">{e}</span>
+                    }.into_view(),
+                }}
+            </div>
+            <div class="cdb-modal-footer">
+                <button
+                    class="cdb-btn"
+                    data-testid="modal-cancel-import-btn"
+                    on:click=move |_| kind_close.set(None)
+                >"Cancel"</button>
+                <button
+                    class="cdb-btn cdb-btn--primary"
+                    data-testid="modal-submit-import"
+                >"Import"</button>
+            </div>
+        }
+    }
+
+    /// ImportSource 模态: 选择 local / remote
+    /// - UT-MM-14: resolve_import_source 纯函数测试
+    #[component]
+    pub fn ImportSourceModal(
+        kind: RwSignal<Option<ModalKind>>,
+    ) -> impl IntoView {
+        let selected = create_rw_signal(String::from("local"));
+        let kind_close = kind;
+
+        view! {
+            <div class="cdb-modal-header">
+                <h3 class="cdb-modal-title" data-testid="modal-title-import-source">"Import Source"</h3>
+                <button
+                    class="cdb-modal-close"
+                    data-testid="modal-cancel-import-source"
+                    on:click=move |_| kind_close.set(None)
+                >"×"</button>
+            </div>
+            <div class="cdb-modal-body">
+                <label class="cdb-form-label">
+                    <input
+                        type="radio"
+                        name="import-source"
+                        data-testid="modal-source-local"
+                        checked=move || selected.get() == "local"
+                        on:change=move |_| selected.set("local".to_string())
+                    />
+                    " Local"
+                </label>
+                <label class="cdb-form-label">
+                    <input
+                        type="radio"
+                        name="import-source"
+                        data-testid="modal-source-remote"
+                        checked=move || selected.get() == "remote"
+                        on:change=move |_| selected.set("remote".to_string())
+                    />
+                    " Remote (V1 stub)"
+                </label>
+            </div>
+            <div class="cdb-modal-footer">
+                <button
+                    class="cdb-btn"
+                    data-testid="modal-cancel-import-source-btn"
+                    on:click=move |_| kind_close.set(None)
+                >"Cancel"</button>
+                <button
+                    class="cdb-btn cdb-btn--primary"
+                    data-testid="modal-submit-import-source"
+                >"OK"</button>
+            </div>
+        }
+    }
+
+    /// Language 模态: 切换 zh / en
+    /// - UT-MM-12: validate_language 纯函数测试
+    #[component]
+    pub fn LanguageModal(
+        kind: RwSignal<Option<ModalKind>>,
+    ) -> impl IntoView {
+        let selected = create_rw_signal(String::from("en"));
+        let kind_close = kind;
+
+        view! {
+            <div class="cdb-modal-header">
+                <h3 class="cdb-modal-title" data-testid="modal-title-language">"Language"</h3>
+                <button
+                    class="cdb-modal-close"
+                    data-testid="modal-cancel-language"
+                    on:click=move |_| kind_close.set(None)
+                >"×"</button>
+            </div>
+            <div class="cdb-modal-body">
+                <label class="cdb-form-label">
+                    <input
+                        type="radio"
+                        name="lang"
+                        data-testid="modal-lang-en"
+                        checked=move || selected.get() == "en"
+                        on:change=move |_| selected.set("en".to_string())
+                    />
+                    " English"
+                </label>
+                <label class="cdb-form-label">
+                    <input
+                        type="radio"
+                        name="lang"
+                        data-testid="modal-lang-zh"
+                        checked=move || selected.get() == "zh"
+                        on:change=move |_| selected.set("zh".to_string())
+                    />
+                    " 中文"
+                </label>
+                <p class="cdb-form-hint">"B5 stub: V1 切换后只 toast 提示，实际 i18n 文案切换留 V2"</p>
+            </div>
+            <div class="cdb-modal-footer">
+                <button
+                    class="cdb-btn"
+                    data-testid="modal-cancel-language-btn"
+                    on:click=move |_| kind_close.set(None)
+                >"Cancel"</button>
+                <button
+                    class="cdb-btn cdb-btn--primary"
+                    data-testid="modal-submit-language"
+                >"Apply"</button>
+            </div>
+        }
+    }
+
+    /// SetTableWidth 模态: 批量设置表宽
+    /// - UT-MM-11: parse_table_width 纯函数测试
+    #[component]
+    pub fn SetTableWidthModal(
+        kind: RwSignal<Option<ModalKind>>,
+    ) -> impl IntoView {
+        let width_input = create_rw_signal(String::from("200"));
+        let validation = move || parse_table_width(&width_input.get());
+        let is_valid = move || validation().is_ok();
+        let kind_close = kind;
+
+        view! {
+            <div class="cdb-modal-header">
+                <h3 class="cdb-modal-title" data-testid="modal-title-set-width">"Set Table Width"</h3>
+                <button
+                    class="cdb-modal-close"
+                    data-testid="modal-cancel-set-width"
+                    on:click=move |_| kind_close.set(None)
+                >"×"</button>
+            </div>
+            <div class="cdb-modal-body">
+                <label class="cdb-form-label">"Width (0 = auto)"</label>
+                <input
+                    class="cdb-form-input"
+                    class:cdb-is-invalid=move || validation().is_err()
+                    data-testid="modal-input-width"
+                    prop:value=move || width_input.get()
+                    on:input=move |ev| {
+                        use wasm_bindgen::JsCast;
+                        let v = ev.target().unwrap().unchecked_into::<web_sys::HtmlInputElement>().value();
+                        width_input.set(v);
+                    }
+                />
+                {move || validation().err().map(|e| view! {
+                    <span class="cdb-form-error">{e}</span>
+                })}
+            </div>
+            <div class="cdb-modal-footer">
+                <button
+                    class="cdb-btn"
+                    data-testid="modal-cancel-set-width-btn"
+                    on:click=move |_| kind_close.set(None)
+                >"Cancel"</button>
+                <button
+                    class="cdb-btn cdb-btn--primary"
+                    data-testid="modal-submit-set-width"
+                    disabled=move || !is_valid()
+                >"Apply"</button>
+            </div>
+        }
+    }
+
+    /// ConfigureCustomTypes 模态: 增删改自定义类型
+    /// - UT-MM-13: add/remove_custom_type 纯函数测试
+    #[component]
+    pub fn ConfigureCustomTypesModal(
+        kind: RwSignal<Option<ModalKind>>,
+    ) -> impl IntoView {
+        let types: RwSignal<Vec<CustomTypeEntry>> = create_rw_signal(Vec::new());
+        let new_name = create_rw_signal(String::new());
+        let new_base = create_rw_signal(String::from("VARCHAR(255)"));
+        let kind_close = kind;
+
+        view! {
+            <div class="cdb-modal-header">
+                <h3 class="cdb-modal-title" data-testid="modal-title-custom-types">"Custom Types"</h3>
+                <button
+                    class="cdb-modal-close"
+                    data-testid="modal-cancel-custom-types"
+                    on:click=move |_| kind_close.set(None)
+                >"×"</button>
+            </div>
+            <div class="cdb-modal-body">
+                <p class="cdb-form-hint">"V1 限制: 仅前端 session state，刷新后丢失 (spec §5.9)"</p>
+                <div class="cdb-custom-types-list" data-testid="modal-custom-types-list">
+                    {move || types.get().into_iter().enumerate().map(|(i, (name, base))| {
+                        let types_for_remove = types;
+                        let n = name.clone();
+                        view! {
+                            <div class="cdb-custom-type-item" data-testid=format!("modal-custom-type-{i}")>
+                                <span>{format!("{name} → {base}")}</span>
+                                <button
+                                    class="cdb-btn cdb-btn--small"
+                                    data-testid=format!("modal-remove-custom-type-{i}")
+                                    on:click=move |_| {
+                                        let mut v = types_for_remove.get();
+                                        remove_custom_type(&mut v, &n);
+                                        types_for_remove.set(v);
+                                    }
+                                >"×"</button>
+                            </div>
+                        }
+                    }).collect::<Vec<_>>()}
+                </div>
+                <div class="cdb-custom-types-add">
+                    <input
+                        class="cdb-form-input"
+                        data-testid="modal-input-custom-type-name"
+                        placeholder="Name"
+                        prop:value=move || new_name.get()
+                        on:input=move |ev| {
+                            use wasm_bindgen::JsCast;
+                            let v = ev.target().unwrap().unchecked_into::<web_sys::HtmlInputElement>().value();
+                            new_name.set(v);
+                        }
+                    />
+                    <input
+                        class="cdb-form-input"
+                        data-testid="modal-input-custom-type-base"
+                        prop:value=move || new_base.get()
+                        on:input=move |ev| {
+                            use wasm_bindgen::JsCast;
+                            let v = ev.target().unwrap().unchecked_into::<web_sys::HtmlInputElement>().value();
+                            new_base.set(v);
+                        }
+                    />
+                    <button
+                        class="cdb-btn cdb-btn--primary"
+                        data-testid="modal-add-custom-type"
+                        on:click=move |_| {
+                            let mut v = types.get();
+                            add_custom_type(&mut v, &new_name.get(), &new_base.get());
+                            types.set(v);
+                            new_name.set(String::new());
+                        }
+                    >"Add"</button>
+                </div>
+            </div>
+            <div class="cdb-modal-footer">
+                <button
+                    class="cdb-btn"
+                    data-testid="modal-cancel-custom-types-btn"
+                    on:click=move |_| kind_close.set(None)
+                >"Close"</button>
+            </div>
+        }
+    }
+
+    // ─── B5: 全局键盘快捷键 ─────────────────────────────────────────────
+
+    /// 全局键盘事件监听
+    /// - UT-KB-01: is_undo_shortcut 纯函数已覆盖
+    /// - ST-UI-05: 完整 e2e (Ctrl+Z / Ctrl+Shift+Z 触发 undo/redo) 留 B5 wasm-pack
+    ///
+    /// V1 stub: 仅在 document 上注册 keydown 监听，命中 is_undo_shortcut /
+    /// is_redo_shortcut 时通过传入的回调通知调用方。调用方负责实际调用
+    /// CommandStack::undo() / CommandStack::redo()。
+    #[component]
+    pub fn KeyboardShortcuts<F1, F2>(
+        on_undo: F1,
+        on_redo: F2,
+    ) -> impl IntoView
+    where
+        F1: Fn() + Clone + 'static,
+        F2: Fn() + Clone + 'static,
+    {
+        let on_undo_clone = on_undo.clone();
+        let on_redo_clone = on_redo.clone();
+
+        // 简化的全局 keydown 监听（仅识别 z 键 + ctrl/meta；B5 wasm-pack 时可换更稳健实现）
+        gloo::events::EventListener::new_with_options(
+            &gloo::utils::document(),
+            "keydown",
+            gloo::events::EventListenerOptions::enable_prevent_default(),
+            move |ev| {
+                use wasm_bindgen::JsCast;
+                let key_event: Option<&web_sys::KeyboardEvent> = ev.dyn_ref();
+                if let Some(ke) = key_event {
+                    let key = ke.key();
+                    let ctrl_or_meta = ke.ctrl_key() || ke.meta_key();
+                    let shift = ke.shift_key();
+                    if is_undo_shortcut(&key, ctrl_or_meta, shift) {
+                        ke.prevent_default();
+                        on_undo_clone();
+                    } else if is_redo_shortcut(&key, ctrl_or_meta, shift) {
+                        ke.prevent_default();
+                        on_redo_clone();
+                    }
+                }
+            },
+        )
+        .forget();
+
+        view! { <></> }
     }
 }
 
@@ -1857,5 +2401,104 @@ mod tests {
         let r = modals::parse_diagram_json(bad);
         assert!(r.is_err(), "UT-MM-09: 非法 JSON 应返回 Err");
         assert!(r.unwrap_err().starts_with("JSON parse error"), "UT-MM-09: 错误信息应包含 'JSON parse error'");
+    }
+
+    // ─── B5 additional modal pure function tests ──────────────────────────
+
+    #[test]
+    fn test_parse_sql_statements_multi_ut_mm_10() {
+        let text = "CREATE TABLE a (id INT); INSERT INTO a VALUES (1);";
+        let r = modals::parse_sql_statements(text);
+        assert!(r.is_ok(), "UT-MM-10: 合法 SQL 应返回 Ok");
+        let v = r.unwrap();
+        assert_eq!(v.len(), 2, "UT-MM-10: 应分割为 2 条语句");
+        assert!(v[0].contains("CREATE TABLE a"));
+        assert!(v[1].contains("INSERT INTO a"));
+    }
+
+    #[test]
+    fn test_parse_sql_statements_empty_ut_mm_10() {
+        let r = modals::parse_sql_statements("");
+        assert_eq!(r.unwrap().len(), 0, "UT-MM-10: 空字符串应返回空 vec");
+    }
+
+    #[test]
+    fn test_parse_sql_statements_strips_comments_ut_mm_10() {
+        let text = "-- this is a comment\nCREATE TABLE a (id INT);";
+        let r = modals::parse_sql_statements(text);
+        let v = r.unwrap();
+        assert_eq!(v.len(), 1, "UT-MM-10: 注释行应被去除");
+        assert!(!v[0].contains("--"), "UT-MM-10: 注释符不应在结果中");
+    }
+
+    #[test]
+    fn test_parse_table_width_happy_ut_mm_11() {
+        assert_eq!(modals::parse_table_width("200").unwrap(), 200, "UT-MM-11: '200' → 200");
+        assert_eq!(modals::parse_table_width("0").unwrap(), 0, "UT-MM-11: '0' → 0 (auto)");
+    }
+
+    #[test]
+    fn test_parse_table_width_invalid_ut_mm_11() {
+        assert!(modals::parse_table_width("abc").is_err(), "UT-MM-11: 'abc' → Err");
+        assert!(modals::parse_table_width("").is_err(), "UT-MM-11: '' → Err");
+    }
+
+    #[test]
+    fn test_validate_language_ut_mm_12() {
+        assert!(modals::validate_language("en").is_ok(), "UT-MM-12: 'en' 应通过");
+        assert!(modals::validate_language("zh").is_ok(), "UT-MM-12: 'zh' 应通过");
+        assert!(modals::validate_language("fr").is_err(), "UT-MM-12: 'fr' 应 Err");
+    }
+
+    #[test]
+    fn test_resolve_import_source_ut_mm_14() {
+        assert_eq!(modals::resolve_import_source("local").unwrap(), modals::SourceKind::Local);
+        assert_eq!(modals::resolve_import_source("remote").unwrap(), modals::SourceKind::Remote);
+        assert!(modals::resolve_import_source("http").is_err(), "UT-MM-14: 'http' 应 Err");
+    }
+
+    #[test]
+    fn test_add_custom_type_ut_mm_13() {
+        let mut v: Vec<modals::CustomTypeEntry> = Vec::new();
+        modals::add_custom_type(&mut v, "uuid", "VARCHAR(36)");
+        assert_eq!(v.len(), 1, "UT-MM-13: add 后 vec 长度应为 1");
+        assert_eq!(v[0], ("uuid".to_string(), "VARCHAR(36)".to_string()));
+    }
+
+    #[test]
+    fn test_add_custom_type_replaces_duplicate_ut_mm_13() {
+        let mut v = vec![("uuid".to_string(), "OLD".to_string())];
+        modals::add_custom_type(&mut v, "uuid", "NEW");
+        assert_eq!(v.len(), 1, "UT-MM-13: add 同名应替换而非新增");
+        assert_eq!(v[0].1, "NEW");
+    }
+
+    #[test]
+    fn test_remove_custom_type_ut_mm_13() {
+        let mut v = vec![("uuid".to_string(), "VARCHAR(36)".to_string())];
+        modals::remove_custom_type(&mut v, "uuid");
+        assert!(v.is_empty(), "UT-MM-13: remove 存在 → vec 为空");
+    }
+
+    #[test]
+    fn test_remove_custom_type_nonexistent_ut_mm_13() {
+        let mut v = vec![("uuid".to_string(), "VARCHAR(36)".to_string())];
+        modals::remove_custom_type(&mut v, "nonexistent");
+        assert_eq!(v.len(), 1, "UT-MM-13: remove 不存在 → no-op");
+    }
+
+    #[test]
+    fn test_is_undo_shortcut_ut_kb_01() {
+        assert!(modals::is_undo_shortcut("z", true, false), "UT-KB-01: Ctrl+Z → true");
+        assert!(modals::is_undo_shortcut("Z", true, false), "UT-KB-01: 大小写无关");
+        assert!(!modals::is_undo_shortcut("z", false, false), "UT-KB-01: 不带 Ctrl → false");
+        assert!(!modals::is_undo_shortcut("z", true, true), "UT-KB-01: 带 Shift 属 redo → false");
+        assert!(!modals::is_undo_shortcut("a", true, false), "UT-KB-01: 其他键 → false");
+    }
+
+    #[test]
+    fn test_is_redo_shortcut_ut_kb_01() {
+        assert!(modals::is_redo_shortcut("z", true, true), "UT-KB-01: Ctrl+Shift+Z → true");
+        assert!(!modals::is_redo_shortcut("z", true, false), "UT-KB-01: 不带 Shift 属 undo → false");
     }
 }

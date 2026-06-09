@@ -42,7 +42,7 @@
 - [x] Relationships Tab
 - [x] Types Tab（V1 仅前端 state）
 - [x] Issues Tab + 校验引擎
-- [x] DBMLEditor 备选视图
+- [ ] DBMLEditor 备选视图（V1 边界，spec core-04 §9 留 V2）
 - [x] 全局搜索 + 类型筛选
 - [ ] 房间成员列表（V2）
 

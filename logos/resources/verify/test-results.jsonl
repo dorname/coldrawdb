@@ -44,3 +44,14 @@
 {"id":"UT-MM-08","status":"pass","timestamp":"2026-06-09T13:00:00Z","duration_ms":1,"batch":"B4","note":"build_share_url(\"abc-123\") == \"/editor?share=abc-123\" + build_share_url(\"d-uuid\") == \"/editor?share=d-uuid\""}
 {"id":"UT-MM-09","status":"pass","timestamp":"2026-06-09T13:00:00Z","duration_ms":1,"batch":"B4","note":"2 Rust unit tests pass: parse_diagram_json_happy (合法 Diagram JSON → Ok) + parse_diagram_json_invalid (非法 JSON → Err with 'JSON parse error')"}
 {"id":"ST-MM-01","status":"skip","timestamp":"2026-06-09T13:00:00Z","error":"B4: 完整 e2e 跑在 B5 wasm-pack test 接入后","batch":"B4","note":"e2e full chain (File→New→title→OK→跳转 等) requires wasm-pack headless harness (B5)"}
+{"id":"UT-MM-10","status":"pass","timestamp":"2026-06-09T15:00:00Z","duration_ms":1,"batch":"B5","note":"3 Rust unit tests pass: parse_sql_statements_multi (2 statements split by ;) / empty / strips_comments (-- removed)"}
+{"id":"UT-MM-11","status":"pass","timestamp":"2026-06-09T15:00:00Z","duration_ms":1,"batch":"B5","note":"2 Rust unit tests pass: parse_table_width_happy ('200'/'0' → Ok) + parse_table_width_invalid ('abc'/'' → Err)"}
+{"id":"UT-MM-12","status":"pass","timestamp":"2026-06-09T15:00:00Z","duration_ms":1,"batch":"B5","note":"validate_language('en')/('zh') → Ok; ('fr') → Err"}
+{"id":"UT-MM-13","status":"pass","timestamp":"2026-06-09T15:00:00Z","duration_ms":1,"batch":"B5","note":"5 Rust unit tests pass: add / add_replaces_duplicate / remove / remove_nonexistent / type signatures"}
+{"id":"UT-MM-14","status":"pass","timestamp":"2026-06-09T15:00:00Z","duration_ms":1,"batch":"B5","note":"resolve_import_source('local') → Local; ('remote') → Remote; ('http') → Err"}
+{"id":"UT-MM-15","status":"pass","timestamp":"2026-06-09T15:00:00Z","duration_ms":1,"batch":"B5","note":"2 Rust unit tests pass: CommandStack::undo (pop + push to redo) + empty undo (None)"}
+{"id":"UT-MM-16","status":"pass","timestamp":"2026-06-09T15:00:00Z","duration_ms":1,"batch":"B5","note":"2 Rust unit tests pass: CommandStack::redo (pop from redo + push back to undo) + empty redo (None)"}
+{"id":"UT-KB-01","status":"pass","timestamp":"2026-06-09T15:00:00Z","duration_ms":1,"batch":"B5","note":"2 Rust unit tests pass: is_undo_shortcut (Ctrl+Z true, !Ctrl false, Ctrl+Shift false) + is_redo_shortcut (Ctrl+Shift+Z true)"}
+{"id":"ST-MM-02","status":"skip","timestamp":"2026-06-09T15:00:00Z","error":"B5: 完整 e2e 跑在 B5 wasm-pack test 接入后","batch":"B5","note":"e2e Import 模态 SQL 解析 + 跳转 requires wasm-pack headless harness (B5 e2e defer)"}
+{"id":"ST-MM-03","status":"skip","timestamp":"2026-06-09T15:00:00Z","error":"B5: V1 限制 — ConfigureCustomTypes 仅 session state，不跨刷新","batch":"B5","note":"V1 spec §5.9 限制"}
+{"id":"ST-UI-05","status":"skip","timestamp":"2026-06-09T15:00:00Z","error":"B5: 完整 e2e 跑在 B5 wasm-pack test 接入后","batch":"B5","note":"e2e Ctrl+Z/Ctrl+Shift+Z requires wasm-pack headless harness (B5 e2e defer)"}

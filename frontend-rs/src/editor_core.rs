@@ -223,6 +223,28 @@ impl CommandStack {
         Self::default()
     }
 
+    /// Pop the most recent command from the undo stack and push it onto the redo stack.
+    ///
+    /// B5: 底座实现 — 仅栈管理，不做 inverse apply（spec V1 边界：实际状态回滚
+    /// 需要 per-Command 变体反向逻辑，工作量超出本批次；UT-MM-15 验证栈语义）
+    ///
+    /// 返回值：Some(cmd) 表示成功弹出，None 表示 undo 栈空
+    pub fn undo(&mut self) -> Option<Command> {
+        let cmd = self.undo.pop()?;
+        self.redo.push(cmd.clone());
+        Some(cmd)
+    }
+
+    /// Pop the most recent command from the redo stack and push it back onto the undo stack.
+    ///
+    /// B5: 底座实现 — 与 undo 对称，仅栈管理。
+    /// UT-MM-16 验证栈语义。
+    pub fn redo(&mut self) -> Option<Command> {
+        let cmd = self.redo.pop()?;
+        self.undo.push(cmd.clone());
+        Some(cmd)
+    }
+
     /// Apply a command to the store and push onto the undo stack.
     ///
     /// Spec §Non-Goals：undo UI 不暴露（按钮不渲染），但底座存在；Phase 5 零成本开启 UI。
@@ -612,5 +634,69 @@ mod tests {
         assert_eq!(store.notes.get().len(), 3, "UT-CR-02: load 后 notes 应有 3 项");
         let snap = store.snapshot("d".into(), "D".into());
         assert_eq!(snap.notes.len(), 3);
+    }
+
+    // ─── B5 CommandStack undo/redo tests (UT-MM-15 / UT-MM-16) ────────────
+
+    #[test]
+    fn test_command_stack_undo_ut_mm_15() {
+        let mut stack = CommandStack::new();
+        let cmd = Command::AddTable(Table {
+            id: "t-undo-1".into(),
+            name: "t1".into(),
+            x: 0.0,
+            y: 0.0,
+            color: "".into(),
+            comment: "".into(),
+            fields: Vec::new(),
+            indices: Vec::new(),
+        });
+        // 手动 push（避免 store 依赖）
+        stack.undo.push(cmd.clone());
+        assert_eq!(stack.undo.len(), 1, "UT-MM-15: push 后 undo 长度 1");
+        let popped = stack.undo();
+        assert!(popped.is_some(), "UT-MM-15: undo 弹出一条");
+        assert_eq!(popped.unwrap(), cmd);
+        assert_eq!(stack.undo.len(), 0, "UT-MM-15: undo 后 undo 栈为空");
+        assert_eq!(stack.redo.len(), 1, "UT-MM-15: 弹出的 cmd 应进 redo 栈");
+    }
+
+    #[test]
+    fn test_command_stack_undo_empty_ut_mm_15() {
+        let mut stack = CommandStack::new();
+        let popped = stack.undo();
+        assert!(popped.is_none(), "UT-MM-15: 空 undo 栈应返回 None");
+        assert_eq!(stack.redo.len(), 0, "UT-MM-15: 空 undo 栈调用后 redo 仍为空");
+    }
+
+    #[test]
+    fn test_command_stack_redo_ut_mm_16() {
+        let mut stack = CommandStack::new();
+        let cmd = Command::AddReference(Reference {
+            id: "r-redo-1".into(),
+            name: "fk".into(),
+            start_table_id: "t1".into(),
+            end_table_id: "t2".into(),
+            start_field_id: "f1".into(),
+            end_field_id: "f2".into(),
+            type_: "1:N".into(),
+            on_delete: "".into(),
+            on_update: "".into(),
+        });
+        stack.undo.push(cmd.clone());
+        stack.undo();
+        assert_eq!(stack.redo.len(), 1, "UT-MM-16: undo 后 redo 长度 1");
+        let popped = stack.redo();
+        assert!(popped.is_some(), "UT-MM-16: redo 弹出一条");
+        assert_eq!(popped.unwrap(), cmd);
+        assert_eq!(stack.redo.len(), 0, "UT-MM-16: redo 后 redo 栈为空");
+        assert_eq!(stack.undo.len(), 1, "UT-MM-16: 弹出的 cmd 应回 undo 栈");
+    }
+
+    #[test]
+    fn test_command_stack_redo_empty_ut_mm_16() {
+        let mut stack = CommandStack::new();
+        let popped = stack.redo();
+        assert!(popped.is_none(), "UT-MM-16: 空 redo 栈应返回 None");
     }
 }

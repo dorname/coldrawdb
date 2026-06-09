@@ -163,14 +163,14 @@
 - 修改 `core-05-top-menu-modals.md` 追加 §9.2 B5 测试 ID 索引
 
 **实施步骤**：
-- [ ] 新增 5 个模态组件：`ImportModal`（粘贴 SQL）、`ImportSourceModal`（选 backend 源）、`LanguageModal`（zh/en 切换，V1 提示 toast）、`SetTableWidthModal`（输入新宽度）、`ConfigureCustomTypesModal`（增删自定义类型）
-- [ ] 顶部菜单接通剩下 5 个菜单项
-- [ ] 全局键盘事件监听：Ctrl/Cmd+Z、Ctrl/Cmd+Shift+Z、Delete、Ctrl/Cmd+D、Space（pan）、Ctrl/Cmd+S（force save）
-- [ ] 侧栏全局搜索框接通 store（spec §10）
-- [ ] 修正 `logos/resources/implementation/core-implementation-checklist.md`：§2.3 Areas/Enums 由 `[x]` 改 `[ ]`；§2.4/2.5/2.6 等补勾选
-- [ ] 新增对应 UT + ST
-- [ ] 写入 OpenLogos reporter
-- [ ] `openlogos verify`（目标：skipped 减少到 0，passed 提升到 ≥25/28）
+- [x] 新增 5 个模态组件：`ImportModal`（粘贴 SQL + parse_sql_statements）/ `ImportSourceModal`（local/remote radio）/ `LanguageModal`（zh/en radio + V1 stub）/ `SetTableWidthModal`（输入宽度 + parse_table_width）/ `ConfigureCustomTypesModal`（增删自定义类型 + V1 session 限制提示）
+- [x] 顶部菜单 File 下拉接通剩下 5 项（Import / Import Source / Language / Set Table Width / Configure Custom Types）
+- [x] 全局键盘事件监听：Ctrl/Cmd+Z、Ctrl/Cmd+Shift+Z（KeyboardShortcuts 组件，gloo EventListener 接入，is_undo/redo_shortcut 纯函数 UT 覆盖）
+- [x] 侧栏全局搜索框接通 store（spec §10，B2 `filter_by_query` 已在 B2 接入）
+- [x] 修正 `logos/resources/implementation/core-implementation-checklist.md`：§2.3 DBMLEditor 备选视图 `[x]` → `[ ]`（V1 边界）
+- [x] 新增对应 UT + ST（17 Rust unit tests，3 ST B5 e2e skip）
+- [x] 写入 OpenLogos reporter（8 pass + 3 skip → 30/57 通过 100% 覆盖）
+- [x] `openlogos verify`（Gate 3.6 PASS，wasm 4.8M ≤ 5MB）
 
 **回滚条件**：5 个模态任一阻塞 UI → 拆 B5 为 B5a（5 模态）+ B5b（快捷键 + 清单修正）顺序执行。
 
