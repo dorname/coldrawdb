@@ -46,6 +46,7 @@ impl Default for Transform {
 #[derive(Clone, Debug)]
 struct DragState {
     table_id: Option<String>,
+    endpoint_drag: Option<(String, EndpointEnd)>, // (ref_id, end) when dragging an endpoint
     start_mouse_x: f64,
     start_mouse_y: f64,
     start_pan_x: f64,
@@ -58,6 +59,7 @@ impl Default for DragState {
     fn default() -> Self {
         DragState {
             table_id: None,
+            endpoint_drag: None,
             start_mouse_x: 0.0,
             start_mouse_y: 0.0,
             start_pan_x: 0.0,
@@ -109,11 +111,10 @@ mod leptos_canvas {
             let t = transform.get();
             let tables = store.tables.get();
             let refs = store.references.get();
+            // B3: connect areas/notes to store (was `Vec::new()` placeholder)
+            let areas = store.areas.get();
+            let notes = store.notes.get();
             let sel = selected_id.get();
-
-            // Areas and notes are empty during initial render; they'll update as store loads
-            let areas: Vec<Area> = Vec::new();
-            let notes: Vec<Note> = Vec::new();
 
             super::draw_canvas(&ctx, &t, &tables, &refs, &areas, &notes, sel.as_deref());
         });
@@ -131,6 +132,21 @@ mod leptos_canvas {
             );
 
             let tables = store.tables.get_untracked();
+            let refs = store.references.get_untracked();
+            // B3: hit-test endpoint first (priority over table body)
+            if let Some((ref_id, end)) = super::hit_test_endpoint(&tables, &refs, dx, dy) {
+                drag_state.set(Some(DragState {
+                    table_id: None,
+                    endpoint_drag: Some((ref_id, end)),
+                    start_mouse_x: ev.client_x() as f64,
+                    start_mouse_y: ev.client_y() as f64,
+                    start_pan_x: 0.0,
+                    start_pan_y: 0.0,
+                    start_table_x: 0.0,
+                    start_table_y: 0.0,
+                }));
+                return;
+            }
             if let Some(id) = super::hit_test(&tables, dx, dy) {
                 let table_x = tables.iter().find(|t| t.id == id).map(|t| t.x).unwrap_or(0.0);
                 let table_y = tables.iter().find(|t| t.id == id).map(|t| t.y).unwrap_or(0.0);
@@ -140,6 +156,7 @@ mod leptos_canvas {
                 }
                 drag_state.set(Some(DragState {
                     table_id: Some(id),
+                    endpoint_drag: None,
                     start_mouse_x: ev.client_x() as f64,
                     start_mouse_y: ev.client_y() as f64,
                     start_pan_x: transform.get_untracked().pan_x,
@@ -152,6 +169,7 @@ mod leptos_canvas {
                 let t = transform.get_untracked();
                 drag_state.set(Some(DragState {
                     table_id: None,
+                    endpoint_drag: None,
                     start_mouse_x: ev.client_x() as f64,
                     start_mouse_y: ev.client_y() as f64,
                     start_pan_x: t.pan_x,
@@ -171,7 +189,43 @@ mod leptos_canvas {
             let dx = ev.client_x() as f64 - drag.start_mouse_x;
             let dy = ev.client_y() as f64 - drag.start_mouse_y;
 
-            if let Some(table_id) = &drag.table_id {
+            if let Some((ref_id, end)) = &drag.endpoint_drag {
+                // B3: endpoint drag — find nearest field in the connected table
+                let (dx_d, dy_d) = screen_to_diagram(
+                    ev.client_x() as f64,
+                    ev.client_y() as f64,
+                    &canvas,
+                    &transform.get_untracked(),
+                );
+                let tables = store.tables.get_untracked();
+                let target_table_id = match end {
+                    EndpointEnd::Start => store.references.get_untracked().iter()
+                        .find(|r| r.id == *ref_id).map(|r| r.start_table_id.clone()),
+                    EndpointEnd::End => store.references.get_untracked().iter()
+                        .find(|r| r.id == *ref_id).map(|r| r.end_table_id.clone()),
+                };
+                if let Some(tid) = target_table_id {
+                    let new_field = tables.iter()
+                        .find(|t| t.id == tid)
+                        .and_then(|t| {
+                            t.fields.iter().min_by(|a, b| {
+                                let ay = t.y + TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT *
+                                    t.fields.iter().position(|f| f.id == a.id).unwrap_or(0) as f64;
+                                let by = t.y + TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT *
+                                    t.fields.iter().position(|f| f.id == b.id).unwrap_or(0) as f64;
+                                let da = (dx_d - t.x).powi(2) + (dy_d - ay).powi(2);
+                                let db = (dx_d - t.x).powi(2) + (dy_d - by).powi(2);
+                                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+                            })
+                        })
+                        .map(|f| f.id.clone());
+                    if let Some(fid) = new_field {
+                        let refs_now = store.references.get_untracked();
+                        let updated = super::update_reference_endpoint(&refs_now, ref_id, *end, &fid);
+                        store.references.set(updated);
+                    }
+                }
+            } else if let Some(table_id) = &drag.table_id {
                 let new_x = drag.start_table_x + dx / transform.get_untracked().zoom;
                 let new_y = drag.start_table_y + dy / transform.get_untracked().zoom;
                 let mut tables = store.tables.get_untracked();
@@ -478,6 +532,74 @@ pub fn hit_test(tables: &[Table], x: f64, y: f64) -> Option<String> {
     None
 }
 
+// ─── Reference endpoint hit test (B3) ────────────────────────────────────────
+
+/// 端点位置（reference start 或 end）
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EndpointEnd {
+    Start,
+    End,
+}
+
+/// 检测 (x, y) 是否命中某条 reference 的端点；返回 (ref_id, end) 或 None
+/// 端点几何：起点 = (from.x + TABLE_WIDTH, from.y + HEADER/2)，
+///           终点 = (to.x, to.y + HEADER/2)，命中半径 6 像素（zoom 后实际尺寸更小）
+pub fn hit_test_endpoint(
+    tables: &[Table],
+    refs: &[Reference],
+    x: f64,
+    y: f64,
+) -> Option<(String, EndpointEnd)> {
+    for r in refs {
+        let from = tables.iter().find(|t| t.id == r.start_table_id);
+        let to = tables.iter().find(|t| t.id == r.end_table_id);
+        if let (Some(f), Some(t)) = (from, to) {
+            let sx = f.x + TABLE_WIDTH;
+            let sy = f.y + TABLE_HEADER_HEIGHT / 2.0;
+            let ex = t.x;
+            let ey = t.y + TABLE_HEADER_HEIGHT / 2.0;
+            let r2 = 36.0; // 6^2 squared radius
+            if (x - sx).powi(2) + (y - sy).powi(2) <= r2 {
+                return Some((r.id.clone(), EndpointEnd::Start));
+            }
+            if (x - ex).powi(2) + (y - ey).powi(2) <= r2 {
+                return Some((r.id.clone(), EndpointEnd::End));
+            }
+        }
+    }
+    None
+}
+
+// ─── Pure function: update reference endpoint (B3) ──────────────────────────
+
+/// 端点 drag 改 start_field_id 或 end_field_id；pure function（不修改原 Vec）
+/// - ref_id 不存在 → 返回原 Vec（no-op）
+/// - new_field_id == "" → 不更新（避免空值）
+pub fn update_reference_endpoint(
+    refs: &[Reference],
+    ref_id: &str,
+    end: EndpointEnd,
+    new_field_id: &str,
+) -> Vec<Reference> {
+    if new_field_id.is_empty() {
+        return refs.to_vec();
+    }
+    refs.iter()
+        .map(|r| {
+            if r.id != ref_id {
+                r.clone()
+            } else {
+                let mut updated = r.clone();
+                match end {
+                    EndpointEnd::Start => updated.start_field_id = new_field_id.to_string(),
+                    EndpointEnd::End => updated.end_field_id = new_field_id.to_string(),
+                }
+                updated
+            }
+        })
+        .collect()
+}
+
 // ─── Canvas 2D path helpers ──────────────────────────────────────────────────
 
 fn round_rect(ctx: &CanvasRenderingContext2d, x: f64, y: f64, w: f64, h: f64, r: f64) {
@@ -504,4 +626,56 @@ fn round_rect_top(ctx: &CanvasRenderingContext2d, x: f64, y: f64, w: f64, h: f64
     ctx.line_to(x, y + r);
     ctx.arc_to(x, y, x + r, y, r).ok();
     ctx.close_path();
+}
+
+// ─── Tests ───────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::editor_core::types::Reference;
+
+    fn make_ref(id: &str, start_f: &str, end_f: &str) -> Reference {
+        Reference {
+            id: id.into(),
+            name: format!("ref-{id}"),
+            start_table_id: "t1".into(),
+            end_table_id: "t1".into(),
+            start_field_id: start_f.into(),
+            end_field_id: end_f.into(),
+            type_: "1:N".into(),
+            on_delete: "".into(),
+            on_update: "".into(),
+        }
+    }
+
+    #[test]
+    fn test_update_reference_endpoint_start_ut_cr_03() {
+        let refs = vec![make_ref("r1", "f1", "f2")];
+        let original = refs.clone();
+        let result = update_reference_endpoint(&refs, "r1", EndpointEnd::Start, "f2");
+        assert_eq!(result.len(), 1, "UT-CR-03: 返回 Vec 长度应为 1");
+        assert_eq!(result[0].start_field_id, "f2", "UT-CR-03: start_field_id 应更新为 f2");
+        assert_eq!(result[0].end_field_id, "f2", "UT-CR-03: end_field_id 应保持 f2");
+        assert_eq!(refs[0].start_field_id, original[0].start_field_id, "UT-CR-03: 原始 Vec 不应被修改（pure function）");
+    }
+
+    #[test]
+    fn test_update_reference_endpoint_end_ut_cr_04() {
+        let refs = vec![make_ref("r1", "f1", "f2")];
+        let result = update_reference_endpoint(&refs, "r1", EndpointEnd::End, "f3");
+        assert_eq!(result.len(), 1, "UT-CR-04: 返回 Vec 长度应为 1");
+        assert_eq!(result[0].end_field_id, "f3", "UT-CR-04: end_field_id 应更新为 f3");
+        assert_eq!(result[0].start_field_id, "f1", "UT-CR-04: start_field_id 应保持 f1");
+    }
+
+    #[test]
+    fn test_update_reference_endpoint_nonexistent_ut_cr_05() {
+        let refs = vec![make_ref("r1", "f1", "f2")];
+        let original_first = refs[0].clone();
+        let result = update_reference_endpoint(&refs, "nonexistent", EndpointEnd::Start, "f2");
+        assert_eq!(result.len(), 1, "UT-CR-05: 返回 Vec 长度应为 1");
+        assert_eq!(result[0].start_field_id, original_first.start_field_id, "UT-CR-05: 不存在的 ref_id 应 no-op");
+        assert_eq!(result[0].end_field_id, original_first.end_field_id, "UT-CR-05: end_field_id 也应不变");
+    }
 }

@@ -88,14 +88,14 @@
 - 修改 `core-01-editor-canvas.md` §5.3（追加 §5.3.1 测试 ID 索引）
 
 **实施步骤**：
-- [ ] 修改 `editor_render.rs::leptos_canvas::Canvas`：将空 `areas`/`notes` 替换为 `store.areas.get()` / `store.notes.get()`（需在 `EditorStore` 新增这两个 signal）
-- [ ] `EditorStore` 新增 `areas: RwSignal<Vec<Area>>` / `notes: RwSignal<Vec<Note>>`（`editor_core.rs:119-126`）
-- [ ] `load` / `snapshot` 方法同步更新
-- [ ] Issues Tab 数据源：从 `references` 派生孤儿关系 + 字段类型未匹配 + 主键缺失
-- [ ] 画布交互增强：拖拽端点（references 端点拖拽改 start/end_field_id）
-- [ ] 新增对应 UT + ST
-- [ ] 写入 OpenLogos reporter
-- [ ] `openlogos verify`
+- [x] 修改 `editor_render.rs::leptos_canvas::Canvas`：将空 `areas`/`notes` 替换为 `store.areas.get()` / `store.notes.get()`（需在 `EditorStore` 新增这两个 signal）
+- [x] `EditorStore` 新增 `areas: RwSignal<Vec<Area>>` / `notes: RwSignal<Vec<Note>>`（`editor_core.rs:119-126`）
+- [x] `load` / `snapshot` 方法同步更新
+- [x] Issues Tab 数据源：从 `references` 派生孤儿关系 + 字段类型未匹配 + 主键缺失
+- [x] 画布交互增强：拖拽端点（references 端点拖拽改 start/end_field_id，pure function `update_reference_endpoint`）
+- [x] 新增对应 UT + ST（UT-CR-01~05 Rust unit tests + ST-CR-01 B5 e2e skip）
+- [x] 写入 OpenLogos reporter（5 pass + 1 skip → 17/38 通过 100% 覆盖）
+- [x] `openlogos verify`（Gate 3.6 PASS，wasm 3.7M ≤ 5MB）
 
 **回滚条件**：B3 后 `references` 渲染空 → 排查 `EditorStore.references` 是否被 `load` 正确注入。
 

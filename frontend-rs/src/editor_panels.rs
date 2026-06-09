@@ -388,6 +388,7 @@ pub fn LeftPanel(
     store: EditorStore,
     selected_table_id: RwSignal<Option<String>>,
     on_select_table: Rc<dyn Fn(Option<String>)>,
+    on_jump_to_table: Option<Rc<dyn Fn(String)>>,
 ) -> impl IntoView {
     // B2 范围：Areas/Enums/Notes/Types 暂用「仅前端 state」（spec 标 V1）
     let areas: RwSignal<Vec<AreaStub>> = create_rw_signal(Vec::new());
@@ -476,7 +477,7 @@ pub fn LeftPanel(
                         <TypesTab types=types search_query=search_query.clone() />
                     }.into_view(),
                     SidePanelTab::Issues => view! {
-                        <IssuesTab store=store.clone() />
+                        <IssuesTab store=store.clone() on_jump_to_table=on_jump_to_table.clone() />
                     }.into_view(),
                 }}
             </div>
@@ -843,13 +844,17 @@ pub fn TypesTab(
     }
 }
 
-/// Issues Tab — 派生自 store 的校验错误（B2 基础校验 + ST-SP-01 间接覆盖）
+/// Issues Tab — 派生自 store 的校验错误（B2 基础校验 + B3 跳转 + ST-SP-01 间接覆盖）
 /// - 表名重复
 /// - 主键缺失
 /// - 字段类型不兼容（type 字段为空或为 "INVALID"）
 /// - 关系端点不存在（start/end_table_id 在 store.tables 中找不到）
+/// - B3 新增：每条 issue 加「→ 跳转」按钮，调用 on_jump_to_table(target_id)
 #[component]
-pub fn IssuesTab(store: EditorStore) -> impl IntoView {
+pub fn IssuesTab(
+    store: EditorStore,
+    on_jump_to_table: Option<Rc<dyn Fn(String)>>,
+) -> impl IntoView {
     let issues = create_memo(move |_| {
         let mut out: Vec<(String, String, String)> = Vec::new(); // (level, message, target)
         let tables = store.tables.get();
@@ -899,14 +904,14 @@ pub fn IssuesTab(store: EditorStore) -> impl IntoView {
                 out.push((
                     "error".into(),
                     format!("关系 {} 起点表不存在", r.id),
-                    r.id.clone(),
+                    r.start_table_id.clone(),
                 ));
             }
             if !tables.iter().any(|t| t.id == r.end_table_id) {
                 out.push((
                     "error".into(),
                     format!("关系 {} 终点表不存在", r.id),
-                    r.id.clone(),
+                    r.end_table_id.clone(),
                 ));
             }
         }
@@ -925,10 +930,26 @@ pub fn IssuesTab(store: EditorStore) -> impl IntoView {
                     _ => "cdb-issue cdb-issue--info",
                 };
                 let testid = format!("issue-item-{}", target);
+                let jump_testid = format!("issue-jump-{}", target);
+                let target_for_jump = target.clone();
+                let on_jump = on_jump_to_table.clone();
                 view! {
                     <div class={level_class} data-testid={testid}>
                         <span class="cdb-issue-level">{level.clone()}</span>
                         <span class="cdb-issue-message">{message}</span>
+                        {on_jump.as_ref().map(|cb| {
+                            let cb = cb.clone();
+                            let tid = target_for_jump.clone();
+                            view! {
+                                <button
+                                    class="cdb-btn cdb-btn--small"
+                                    data-testid={jump_testid}
+                                    on:click=move |_| cb(tid.clone())
+                                >
+                                    "→ 跳转"
+                                </button>
+                            }
+                        })}
                     </div>
                 }
             } />
@@ -1086,6 +1107,7 @@ pub fn AppRoot(
                     store=store.clone()
                     selected_table_id=selected_table_id.clone()
                     on_select_table=Rc::new(move |id| selected_table_id.set(id))
+                    on_jump_to_table=Some(Rc::new(move |id| selected_table_id.set(Some(id))))
                 />
                 <div class="cdb-canvas-container">
                     <div class="cdb-canvas-empty">

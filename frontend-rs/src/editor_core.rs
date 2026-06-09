@@ -17,6 +17,9 @@ use leptos::*;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+// Import Area/Note from types module (used by B3 EditorStore areas/notes signal)
+use crate::editor_core::types::{Area, Note};
+
 pub mod types {
     //! DTO 类型层，与 `RUST_WEB_REFACTOR_PLAN.md §5.3` 字段对齐，
     //! 与后端 `backend/src/diagrams_v1.rs:96-156` API contract 一致。
@@ -120,6 +123,8 @@ pub mod types {
 pub struct EditorStore {
     pub tables: RwSignal<Vec<Table>>,
     pub references: RwSignal<Vec<Reference>>,
+    pub areas: RwSignal<Vec<Area>>,
+    pub notes: RwSignal<Vec<Note>>,
     pub revision: RwSignal<i64>,
     pub dirty: RwSignal<bool>,
     pub database: RwSignal<Database>,
@@ -133,6 +138,8 @@ impl EditorStore {
         Self {
             tables: create_rw_signal(Vec::new()),
             references: create_rw_signal(Vec::new()),
+            areas: create_rw_signal(Vec::new()),
+            notes: create_rw_signal(Vec::new()),
             revision: create_rw_signal(0),
             dirty: create_rw_signal(false),
             database: create_rw_signal(Database::Generic),
@@ -144,6 +151,8 @@ impl EditorStore {
     pub fn load(&self, diagram: Diagram) {
         self.tables.set(diagram.tables);
         self.references.set(diagram.references);
+        self.areas.set(diagram.areas);
+        self.notes.set(diagram.notes);
         self.revision.set(diagram.revision);
         self.database.set(diagram.database);
         self.dirty.set(false);
@@ -158,8 +167,8 @@ impl EditorStore {
             database: self.database.get(),
             tables: self.tables.get(),
             references: self.references.get(),
-            notes: Vec::new(),
-            areas: Vec::new(),
+            areas: self.areas.get(),
+            notes: self.notes.get(),
         }
     }
 }
@@ -524,5 +533,85 @@ mod tests {
         thread::sleep(Duration::from_millis(150));
         // 只应触发 1 次（第二次）
         assert_eq!(count.get(), 1, "UT-S01-08: debounce 多次 schedule 仅最后一次触发");
+    }
+
+    // --- UT-CR-01 — Areas 渲染（store.areas → draw_area） ---
+
+    /// UT-CR-01: EditorStore::new() 时 areas 为空；load 注入 2 个 area 后变 2
+    #[test]
+    fn test_editor_store_areas_default_empty_ut_cr_01() {
+        let store = EditorStore::new();
+        assert!(store.areas.get().is_empty(), "UT-CR-01: 初始 areas 应为空");
+    }
+
+    /// UT-CR-01: load() 注入 areas 后 store.areas.get() 返回正确数量
+    #[test]
+    fn test_editor_store_areas_load_ut_cr_01() {
+        let store = EditorStore::new();
+        let mut diagram = Diagram {
+            id: "d1".into(),
+            name: "D".into(),
+            revision: 1,
+            database: Database::Generic,
+            tables: Vec::new(),
+            references: Vec::new(),
+            notes: Vec::new(),
+            areas: vec![
+                Area {
+                    id: "a1".into(),
+                    x: 0.0, y: 0.0, width: 100.0, height: 100.0,
+                    color: "#000".into(), name: "Area 1".into(),
+                },
+                Area {
+                    id: "a2".into(),
+                    x: 200.0, y: 200.0, width: 50.0, height: 50.0,
+                    color: "#111".into(), name: "Area 2".into(),
+                },
+            ],
+        };
+        store.load(diagram.clone());
+        assert_eq!(store.areas.get().len(), 2, "UT-CR-01: load 后 areas 应有 2 项");
+        assert_eq!(store.areas.get()[0].name, "Area 1");
+
+        // snapshot 同步
+        let snap = store.snapshot("d1".into(), "D".into());
+        assert_eq!(snap.areas.len(), 2, "UT-CR-01: snapshot.areas 应有 2 项");
+        assert_eq!(snap.areas[1].id, "a2");
+    }
+
+    // --- UT-CR-02 — Notes 渲染（store.notes → draw_note） ---
+
+    /// UT-CR-02: load() 注入 3 个 note 后 store.notes.get() 返回 3
+    #[test]
+    fn test_editor_store_notes_load_ut_cr_02() {
+        let store = EditorStore::new();
+        assert!(store.notes.get().is_empty(), "UT-CR-02: 初始 notes 应为空");
+        let diagram = Diagram {
+            id: "d".into(),
+            name: "D".into(),
+            revision: 0,
+            database: Database::Generic,
+            tables: Vec::new(),
+            references: Vec::new(),
+            areas: Vec::new(),
+            notes: vec![
+                Note {
+                    id: "n1".into(), x: 0.0, y: 0.0,
+                    content: "Note 1".into(), color: "#fff".into(),
+                },
+                Note {
+                    id: "n2".into(), x: 50.0, y: 50.0,
+                    content: "Note 2".into(), color: "#fff".into(),
+                },
+                Note {
+                    id: "n3".into(), x: 100.0, y: 100.0,
+                    content: "Note 3".into(), color: "#fff".into(),
+                },
+            ],
+        };
+        store.load(diagram);
+        assert_eq!(store.notes.get().len(), 3, "UT-CR-02: load 后 notes 应有 3 项");
+        let snap = store.snapshot("d".into(), "D".into());
+        assert_eq!(snap.notes.len(), 3);
     }
 }
