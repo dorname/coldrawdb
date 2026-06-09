@@ -75,10 +75,17 @@
 ## [code] 批次 3 — 画布渲染补全 + Issues Tab
 
 **前置依赖**：B2 完成
-**覆盖 skipped 用例**：
-- UT-S01-09（areas 渲染）
-- UT-S01-10（notes 渲染）
-- 新增 ST-UI-03（references 贝塞尔连线在画布可见）
+**覆盖 skipped 用例**（修正：原 tasks.md 错误引用 UT-S01-09/10，core-S01-test-cases.md §2 line 134/147 实际是后端 API（自动保存重试 + 字段类型校验），不适合画布渲染；新编号来自 `core-01-editor-canvas.md` §5.3 + 本次 delta 追加的 `core-CR-canvas-test-cases.md`）：
+- **UT-CR-01**（本次 delta 新增）— Areas 渲染（store 状态切换）
+- **UT-CR-02**（本次 delta 新增）— Notes 渲染（store 状态切换）
+- **UT-CR-03**（本次 delta 新增）— 端点 drag 改 start_field_id
+- **UT-CR-04**（本次 delta 新增）— 端点 drag 改 end_field_id
+- **UT-CR-05**（本次 delta 新增）— 端点 drag 不存在的 reference_id
+- **ST-CR-01**（本次 delta 新增，e2e 待 B5）— references 贝塞尔连线在画布可见
+
+**Delta 配套**（merge 时同步合并）：
+- 新增 `logos/resources/test/core-CR-canvas-test-cases.md`（详细定义 UT-CR-01~05 + ST-CR-01）
+- 修改 `core-01-editor-canvas.md` §5.3（追加 §5.3.1 测试 ID 索引）
 
 **实施步骤**：
 - [ ] 修改 `editor_render.rs::leptos_canvas::Canvas`：将空 `areas`/`notes` 替换为 `store.areas.get()` / `store.notes.get()`（需在 `EditorStore` 新增这两个 signal）

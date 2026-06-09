@@ -150,6 +150,19 @@
 - `draw_area` / `draw_note` / `draw_bezier` 函数已存在，**复用** 不重写
 - references 端点拖拽改 start/end_field_id（spec CAP-EDIT-02）
 
+#### 5.3.1 测试 ID 索引（B3 范围）
+
+| TC ID | 描述 | 对齐实现 |
+|---|---|---|
+| UT-CR-01 | Areas 渲染（store 状态切换 + draw_area 接收 &\[Area\]） | `editor_core.rs::EditorStore` |
+| UT-CR-02 | Notes 渲染（store 状态切换 + draw_note 接收 &\[Note\]） | `editor_core.rs::EditorStore` |
+| UT-CR-03 | 端点 drag 改 start_field_id（pure function） | `editor_render.rs::update_reference_endpoint` |
+| UT-CR-04 | 端点 drag 改 end_field_id | `editor_render.rs::update_reference_endpoint` |
+| UT-CR-05 | 端点 drag 不存在的 reference_id（no-op） | `editor_render.rs::update_reference_endpoint` |
+| ST-CR-01 | references 贝塞尔连线在画布可见（e2e） | `frontend-rs/tests/wasm/cr.rs` |
+
+> 详细定义见 `logos/resources/test/core-CR-canvas-test-cases.md`。
+
 ### 5.4 V1 边界（渲染层）
 
 - ❌ CSS-in-JS 运行时（V1 用纯 CSS，避免 wasm 体积膨胀）
