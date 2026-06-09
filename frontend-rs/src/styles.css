@@ -468,3 +468,87 @@ body {
     padding: var(--cdb-space-4);
   }
 }
+
+/* ============================================================
+ * B2: Side-panel 7-Tab 增强（search box / type filter / tab pane / issues）
+ * ============================================================ */
+.cdb-tab-pane {
+  padding: var(--cdb-space-2);
+  min-height: 100px;
+}
+
+.cdb-list-item-meta {
+  margin-left: var(--cdb-space-2);
+  color: var(--cdb-color-text-muted);
+  font-size: var(--cdb-text-xs);
+}
+
+.cdb-search-box input.cdb-search-input,
+.cdb-search-box select.cdb-type-filter {
+  margin-bottom: var(--cdb-space-1);
+}
+
+.cdb-search-input {
+  width: 100%;
+  padding: var(--cdb-space-1) var(--cdb-space-2);
+  border: 1px solid var(--cdb-color-border);
+  border-radius: var(--cdb-radius-sm);
+  font-size: var(--cdb-text-sm);
+  background: var(--cdb-color-bg);
+}
+
+.cdb-search-input:focus {
+  outline: none;
+  border-color: var(--cdb-color-primary);
+}
+
+.cdb-type-filter {
+  width: 100%;
+  padding: var(--cdb-space-1) var(--cdb-space-2);
+  border: 1px solid var(--cdb-color-border);
+  border-radius: var(--cdb-radius-sm);
+  font-size: var(--cdb-text-sm);
+  background: var(--cdb-color-bg);
+}
+
+/* Issues Tab styling */
+.cdb-issue {
+  display: flex;
+  align-items: center;
+  gap: var(--cdb-space-2);
+  padding: var(--cdb-space-2);
+  border-radius: var(--cdb-radius-sm);
+  margin-bottom: var(--cdb-space-1);
+  font-size: var(--cdb-text-sm);
+  border-left: 3px solid transparent;
+}
+
+.cdb-issue--error {
+  background: #fef2f2;
+  border-left-color: var(--cdb-color-error);
+  color: var(--cdb-color-error);
+}
+
+.cdb-issue--warning {
+  background: #fffbeb;
+  border-left-color: var(--cdb-color-warning);
+  color: var(--cdb-color-warning);
+}
+
+.cdb-issue--info {
+  background: #eff6ff;
+  border-left-color: var(--cdb-color-primary);
+  color: var(--cdb-color-primary);
+}
+
+.cdb-issue-level {
+  font-weight: 600;
+  font-size: var(--cdb-text-xs);
+  text-transform: uppercase;
+  min-width: 50px;
+}
+
+.cdb-issue-message {
+  flex: 1;
+  color: var(--cdb-color-text);
+}

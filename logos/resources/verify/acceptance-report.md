@@ -6,15 +6,15 @@
 
 | Metric | Value |
 |--------|-------|
-| Defined cases | 28 |
+| Defined cases | 32 |
 | Manual cases (excluded) | 0 |
-| Executed cases | 28 |
-| Passed | 9 |
+| Executed cases | 32 |
+| Passed | 12 |
 | Failed | 0 |
-| Skipped | 19 |
+| Skipped | 20 |
 | Uncovered | 0 |
 | Coverage | 100% |
-| Pass rate | 32% |
+| Pass rate | 38% |
 | **Gate 3.5** | **PASS** |
 
 ## Skipped Cases
@@ -22,6 +22,7 @@
 - UT-S01-02
 - UT-S01-06
 - UT-S01-08
+- ST-SP-01
 - UT-S01-09
 - UT-S01-10
 - ST-S01-03

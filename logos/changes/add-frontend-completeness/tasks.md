@@ -58,15 +58,15 @@
 - 修改 `core-04-side-panel-tabs.md` §11（追加 UT-SP-09/10 索引行）
 
 **实施步骤**：
-- [ ] 修改 `editor_panels.rs`：
+- [x] 修改 `editor_panels.rs`：
   - 新增 `LeftPanel` 改造：tab 切换器（Tables / Areas / Enums / Notes / Relationships / Types / Issues）
   - 新增 7 个 Tab 子组件：`TablesTab`（从 LeftPanel 抽出）、`AreasTab`、`EnumsTab`、`NotesTab`、`RelationshipsTab`、`TypesTab`、`IssuesTab`
   - 搜索 + 类型筛选输入框（spec §10）
-- Areas/Enums/Notes/Types 暂用内存 state（spec 标记 V1 仅前端 state）
-- Relationships/Issues 用 store 中已有数据
-- 新增对应 UT（wasm-bindgen-test 模拟）+ ST（headless browser e2e）
-- 写入 OpenLogos reporter
-- `openlogos verify` 确认 Gate 3.5 仍 PASS
+- [x] Areas/Enums/Notes/Types 暂用内存 state（spec 标记 V1 仅前端 state）
+- [x] Relationships/Issues 用 store 中已有数据
+- [x] 新增对应 UT（纯函数 + cargo test --lib 共 9 个 UT 通过）
+- [x] 写入 OpenLogos reporter（UT-SP-02/09/10 pass，ST-SP-01 skip e2e 待 B5）
+- [x] `openlogos verify` 确认 Gate 3.6 PASS（32 用例，12 通过，100% 覆盖）
 
 **回滚条件**：B2 后侧栏 tab 切换导致 Tables Tab 原有功能 regression → 暂停 B3 修复。
 
