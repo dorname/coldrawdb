@@ -104,17 +104,30 @@
 ## [code] 批次 4 — 4 个核心模态
 
 **前置依赖**：B3 完成
-**覆盖 skipped 用例**：
-- ST-S02-01（Open 模态加载 .json）
-- ST-S02-02（Share 模态生成 URL）
-- ST-S02-03（Rename 模态改名）
-- 新增 ST-UI-04（New 模态创建空 diagram）
+**覆盖 skipped 用例**（frontend UI UT，spec `core-05-top-menu-modals.md` §7 已定义）：
+- **UT-MM-01**（本次 delta 复用）— New 模态创建 diagram（validate_title + build_create_url）
+- **UT-MM-04**（本次 delta 复用）— 模态背景点击关闭
+- **UT-MM-05**（本次 delta 复用）— 模态 ESC 键关闭
+- **UT-MM-06**（本次 delta 复用）— 必填字段失焦红框
+- **UT-MM-07**（本次 delta 复用）— New 模态 title 为空 → OK 禁用
+- **UT-MM-08**（本次 delta 复用）— Share 模态 URL 格式正确
+- **UT-MM-09**（本次 delta 复用）— Open 模态 JSON 解析
+- **ST-MM-01**（本次 delta 复用，e2e 待 B5）— 端到端菜单/模态/工具栏/快捷键全链路
+
+**注意**：
+- `ST-S02-01` / `ST-S02-02` / `ST-S02-03` 是 backend `core-S02-test-cases.md` 中的 API 端到端用例，**不在前端 B4 范围**（需要后端进程 + 真实 HTTP 调用，前端 wasm-pack 测不到）
+- B4 用 UT-MM-01~09（前端纯函数 UT 可测）覆盖 4 个模态的输入校验 + URL 生成 + JSON 解析
+- ST-MM-01 在 B5 接入 wasm-pack test harness 后跑
+
+**Delta 配套**（merge 时同步合并）：
+- 新增 `logos/resources/test/core-UI-modals-test-cases.md`（详细定义 UT-MM-01/04/05/06/07/08/09 + ST-MM-01）
+- 修改 `core-05-top-menu-modals.md` 追加 §9.1 B4 测试 ID 索引
 
 **实施步骤**：
 - [ ] 在 `editor_panels.rs` 新增 `ModalRoot` 子模块：通用遮罩 + ESC 关闭 + 背景点击关闭
 - [ ] 新增 4 个模态组件：`NewModal`（输入名称 + 创建）、`OpenModal`（文件选择 + 上传 .json）、`ShareModal`（生成 `/editor?share=ID` URL + 复制按钮）、`RenameModal`（重命名 diagram）
 - [ ] 顶部菜单 File 下拉的对应项接通 `ModalRoot` 的 show/hide signal
-- [ ] 调通 `editor_data_access::create` / `load`（已在 120/85 行）
+- [ ] 调通 `editor_data_access::create` / `get`（已在 120/85 行）
 - [ ] 新增对应 UT + ST
 - [ ] 写入 OpenLogos reporter
 - [ ] `openlogos verify`
