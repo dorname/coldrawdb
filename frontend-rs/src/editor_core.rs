@@ -380,3 +380,149 @@ impl Default for DebounceTrigger {
 
 #[allow(dead_code)]
 fn init() {}
+
+#[cfg(test)]
+mod tests {
+    //! Unit tests for editor_core (B1: add-frontend-completeness)
+    //!
+    //! Covered OpenLogos cases:
+    //!   - UT-S01-07: 表创建触发 undo 栈 (CommandStack::apply AddTable)
+    //!   - UT-S01-08: debounce 触发 save (DebounceTrigger::schedule)
+    //!
+    //! Spec: logos/resources/test/core-S01-test-cases.md §2 line 107/120
+
+    use super::*;
+    use crate::editor_core::types::Field;
+
+    /// UT-S01-07 — 表创建触发 undo 栈
+    /// Spec: `core-S01-test-cases.md` line 107
+    /// 验证：3 次 AddTable 后 stack.undo.len() == 3
+    #[test]
+    fn test_undo_stack_push_addtable_ut_s01_07() {
+        let store = EditorStore::new();
+        let mut stack = CommandStack::new();
+
+        for i in 0..3 {
+            let t = Table {
+                id: format!("t-{}", i),
+                name: format!("T{}", i),
+                x: 0.0,
+                y: 0.0,
+                color: "#000".into(),
+                comment: String::new(),
+                fields: Vec::new(),
+                indices: Vec::new(),
+            };
+            let cmd = Command::AddTable(t);
+            CommandStack::apply(&store, &mut stack, cmd)
+                .expect("AddTable should succeed for unique id");
+        }
+
+        // 验证：3 次 AddTable 后 undo_stack.len() == 3
+        assert_eq!(stack.undo.len(), 3, "UT-S01-07: 3 AddTable 后 undo_stack 长度应为 3");
+        // 副作用：store.tables 也应该有 3 项
+        assert_eq!(store.tables.get().len(), 3, "UT-S01-07: store.tables 应含 3 项");
+        // 重置：redo 应被清空
+        assert_eq!(stack.redo.len(), 0, "UT-S01-07: 新增命令应清空 redo 栈");
+    }
+
+    /// UT-S01-07 扩展：重复 id 触发 CoreError
+    #[test]
+    fn test_undo_stack_rejects_duplicate_id_ut_s01_07() {
+        let store = EditorStore::new();
+        let mut stack = CommandStack::new();
+        let t = Table {
+            id: "dup".into(),
+            name: "T".into(),
+            x: 0.0, y: 0.0, color: "#000".into(),
+            comment: String::new(), fields: Vec::new(), indices: Vec::new(),
+        };
+        CommandStack::apply(&store, &mut stack, Command::AddTable(t.clone())).unwrap();
+        let result = CommandStack::apply(&store, &mut stack, Command::AddTable(t));
+        assert!(result.is_err(), "UT-S01-07: 重复 id 应返回 Err");
+    }
+
+    /// UT-S01-07 扩展：DeleteField 正常 + 错误
+    #[test]
+    fn test_delete_field_happy_and_missing_ut_s01_07() {
+        let store = EditorStore::new();
+        let mut stack = CommandStack::new();
+        let t = Table {
+            id: "t1".into(), name: "T".into(),
+            x: 0.0, y: 0.0, color: "#000".into(),
+            comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "F".into(), type_: "INT".into(),
+                default: String::new(), check: String::new(),
+                primary: false, unique: false, not_null: false, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(),
+        };
+        CommandStack::apply(&store, &mut stack, Command::AddTable(t)).unwrap();
+        // 正常删除
+        assert!(CommandStack::apply(&store, &mut stack, Command::DeleteField {
+            table_id: "t1".into(), field_id: "f1".into(),
+        }).is_ok());
+        // 字段不存在 → Err
+        let r = CommandStack::apply(&store, &mut stack, Command::DeleteField {
+            table_id: "t1".into(), field_id: "missing".into(),
+        });
+        assert!(r.is_err(), "UT-S01-07: 字段不存在应返回 Err");
+    }
+
+    /// UT-S01-08 — debounce 触发 save
+    /// Spec: `core-S01-test-cases.md` line 120
+    /// 验证：DebounceTrigger schedule 1s 静默期后触发回调
+    ///
+    /// 注：DebounceTrigger 内部用 gloo_timers::callback::Timeout，在 native 目标下
+    /// gloo-timers 通过 std::thread 实现，但 callback 需要 Send + 'static。
+    /// 真实测试需在 wasm 目标下用 wasm-bindgen-test 跑（依赖 wasm-pack test 环境）。
+    /// B1 阶段标 #[ignore]，reporter 中 status=skip。B5 接入 wasm-pack test 后取消 ignore。
+    #[test]
+    #[ignore = "requires wasm-pack test (B5); gloo-timers callback needs Send + 'static"]
+    fn test_debounce_trigger_fires_after_delay_ut_s01_08() {
+        use std::rc::Rc;
+        use std::cell::Cell;
+        use std::thread;
+        use std::time::Duration;
+
+        let fired = Rc::new(Cell::new(false));
+        let fired_clone = fired.clone();
+        let trigger = DebounceTrigger::new(50);
+        trigger.schedule(move || {
+            fired_clone.set(true);
+        });
+
+        // 等待超过 50ms
+        thread::sleep(Duration::from_millis(150));
+
+        assert!(fired.get(), "UT-S01-08: 50ms debounce 后回调应已触发");
+    }
+
+    /// UT-S01-08 扩展：连续 schedule 取消前一次（debounce 语义）
+    /// 同 UT-S01-08：wasm-pack test only (B5)
+    #[test]
+    #[ignore = "requires wasm-pack test (B5); gloo-timers callback needs Send + 'static"]
+    fn test_debounce_retrigger_resets_ut_s01_08() {
+        use std::rc::Rc;
+        use std::cell::Cell;
+        use std::thread;
+        use std::time::Duration;
+
+        let count = Rc::new(Cell::new(0));
+        let c1 = count.clone();
+        let c2 = count.clone();
+
+        let trigger = DebounceTrigger::new(80);
+        trigger.schedule(move || { c1.set(c1.get() + 1); });
+
+        thread::sleep(Duration::from_millis(30));
+        // 在 80ms 静默期内再次 schedule → 取消前一次
+        trigger.schedule(move || { c2.set(c2.get() + 1); });
+
+        thread::sleep(Duration::from_millis(150));
+        // 只应触发 1 次（第二次）
+        assert_eq!(count.get(), 1, "UT-S01-08: debounce 多次 schedule 仅最后一次触发");
+    }
+}

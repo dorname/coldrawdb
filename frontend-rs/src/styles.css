@@ -1,0 +1,470 @@
+/* coldrawdb V1 — Styles
+ * Path: frontend-rs/src/styles.css
+ * Proposal: add-frontend-completeness B1
+ * Spec: logos/resources/prd/2-product-design/1-feature-specs/core-01-editor-canvas.md §5.2
+ * Token naming: .cdb-* prefix (coldrawdb)
+ *
+ * Verify with:
+ *   find frontend-rs -name "*.css" -not -path "*/node_modules/*"     # 1 match
+ *   grep -rn 'style="' frontend-rs/src/                                # 0 match
+ *   grep -c 'var(--cdb-' frontend-rs/src/styles.css                    # >= 30
+ */
+
+/* ============================================================
+ * Design Tokens (CSS variables)
+ * ============================================================ */
+:root {
+  /* Color — primary (coldrawdb teal, matches Logo) */
+  --cdb-color-primary: #175e7a;
+  --cdb-color-primary-hover: #134c63;
+  --cdb-color-primary-bg: #e6f1f5;
+
+  /* Color — semantic */
+  --cdb-color-success: #10b981;
+  --cdb-color-warning: #f59e0b;
+  --cdb-color-error: #ef4444;
+
+  /* Color — neutral */
+  --cdb-color-text: #1f2937;
+  --cdb-color-text-muted: #6b7280;
+  --cdb-color-border: #e5e7eb;
+  --cdb-color-bg: #ffffff;
+  --cdb-color-bg-subtle: #f9fafb;
+  --cdb-color-bg-canvas: #f3f4f6;
+
+  /* Spacing (4px grid) */
+  --cdb-space-1: 4px;
+  --cdb-space-2: 8px;
+  --cdb-space-3: 12px;
+  --cdb-space-4: 16px;
+  --cdb-space-6: 24px;
+  --cdb-space-8: 32px;
+
+  /* Font size */
+  --cdb-text-xs: 11px;
+  --cdb-text-sm: 12px;
+  --cdb-text-base: 14px;
+  --cdb-text-lg: 16px;
+  --cdb-text-xl: 18px;
+
+  /* Radius */
+  --cdb-radius-sm: 4px;
+  --cdb-radius-md: 6px;
+  --cdb-radius-lg: 8px;
+
+  /* Shadow */
+  --cdb-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --cdb-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+  --cdb-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+}
+
+/* ============================================================
+ * Reset
+ * ============================================================ */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: var(--cdb-color-text);
+  background: var(--cdb-color-bg-canvas);
+  font-size: var(--cdb-text-base);
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ============================================================
+ * App layout (top menu / toolbar / main / footer)
+ * ============================================================ */
+.cdb-app {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  height: 100vh;
+}
+
+.cdb-main {
+  display: grid;
+  grid-template-columns: 240px 1fr 320px;
+  overflow: hidden;
+}
+
+.cdb-side-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.cdb-side-panel--left {
+  background: var(--cdb-color-bg-subtle);
+  border-right: 1px solid var(--cdb-color-border);
+}
+
+.cdb-side-panel--right {
+  background: var(--cdb-color-bg-subtle);
+  border-left: 1px solid var(--cdb-color-border);
+}
+
+/* ============================================================
+ * Top menu bar (B1: 4 dropdowns shell)
+ * ============================================================ */
+.cdb-header {
+  background: var(--cdb-color-bg);
+  border-bottom: 1px solid var(--cdb-color-border);
+  padding: var(--cdb-space-2) var(--cdb-space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--cdb-space-4);
+}
+
+.cdb-logo {
+  font-weight: 700;
+  color: var(--cdb-color-primary);
+  font-size: var(--cdb-text-xl);
+}
+
+.cdb-menu {
+  display: flex;
+  gap: var(--cdb-space-3);
+}
+
+.cdb-menu-item {
+  padding: var(--cdb-space-1) var(--cdb-space-2);
+  cursor: pointer;
+  border-radius: var(--cdb-radius-sm);
+  color: var(--cdb-color-text);
+  position: relative;
+  user-select: none;
+}
+
+.cdb-menu-item:hover,
+.cdb-menu-item.cdb-is-open {
+  background: var(--cdb-color-bg-subtle);
+}
+
+.cdb-header-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--cdb-space-3);
+}
+
+.cdb-save-state {
+  font-size: var(--cdb-text-sm);
+  color: var(--cdb-color-success);
+}
+
+.cdb-save-state.cdb-is-saving { color: var(--cdb-color-warning); }
+.cdb-save-state.cdb-is-error { color: var(--cdb-color-error); }
+
+/* ============================================================
+ * Toolbar (Undo / Redo / Title / Rev / Share / Export)
+ * ============================================================ */
+.cdb-toolbar {
+  background: var(--cdb-color-bg);
+  border-bottom: 1px solid var(--cdb-color-border);
+  padding: var(--cdb-space-2) var(--cdb-space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--cdb-space-3);
+}
+
+.cdb-title-edit {
+  font-size: var(--cdb-text-base);
+  padding: var(--cdb-space-1) var(--cdb-space-2);
+  border: 1px solid transparent;
+  border-radius: var(--cdb-radius-sm);
+  background: transparent;
+  color: var(--cdb-color-text);
+  min-width: 200px;
+}
+
+.cdb-title-edit:hover { border-color: var(--cdb-color-border); }
+.cdb-title-edit:focus { border-color: var(--cdb-color-primary); outline: none; }
+
+.cdb-rev-tag {
+  font-size: var(--cdb-text-sm);
+  color: var(--cdb-color-text-muted);
+  background: var(--cdb-color-bg-subtle);
+  padding: 2px var(--cdb-space-2);
+  border-radius: var(--cdb-radius-sm);
+}
+
+.cdb-toolbar-right {
+  margin-left: auto;
+  display: flex;
+  gap: var(--cdb-space-2);
+}
+
+/* ============================================================
+ * Buttons
+ * ============================================================ */
+.cdb-btn {
+  background: var(--cdb-color-bg);
+  color: var(--cdb-color-text);
+  border: 1px solid var(--cdb-color-border);
+  padding: var(--cdb-space-1) var(--cdb-space-3);
+  border-radius: var(--cdb-radius-sm);
+  cursor: pointer;
+  font-size: var(--cdb-text-base);
+}
+
+.cdb-btn:hover { background: var(--cdb-color-bg-subtle); }
+.cdb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.cdb-btn--primary {
+  background: var(--cdb-color-primary);
+  color: white;
+  border-color: var(--cdb-color-primary);
+}
+
+.cdb-btn--primary:hover { background: var(--cdb-color-primary-hover); }
+
+.cdb-btn--icon {
+  padding: var(--cdb-space-1) var(--cdb-space-2);
+  font-size: var(--cdb-text-lg);
+  min-width: 32px;
+}
+
+/* ============================================================
+ * Side panel: search + tabs
+ * ============================================================ */
+.cdb-search-box {
+  padding: var(--cdb-space-2);
+  border-bottom: 1px solid var(--cdb-color-border);
+}
+
+.cdb-search-box input {
+  width: 100%;
+  padding: var(--cdb-space-1) var(--cdb-space-2);
+  border: 1px solid var(--cdb-color-border);
+  border-radius: var(--cdb-radius-sm);
+  font-size: var(--cdb-text-sm);
+}
+
+.cdb-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--cdb-color-border);
+  background: var(--cdb-color-bg);
+  overflow-x: auto;
+}
+
+.cdb-tab {
+  padding: var(--cdb-space-2) var(--cdb-space-3);
+  cursor: pointer;
+  font-size: var(--cdb-text-sm);
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  color: var(--cdb-color-text);
+}
+
+.cdb-tab.cdb-is-active {
+  border-bottom-color: var(--cdb-color-primary);
+  color: var(--cdb-color-primary);
+  font-weight: 600;
+}
+
+.cdb-tab-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--cdb-space-2);
+}
+
+.cdb-list-item {
+  padding: var(--cdb-space-1) var(--cdb-space-2);
+  background: var(--cdb-color-bg);
+  border: 1px solid var(--cdb-color-border);
+  border-radius: var(--cdb-radius-sm);
+  margin-bottom: var(--cdb-space-1);
+  font-size: var(--cdb-text-sm);
+  cursor: pointer;
+}
+
+.cdb-list-item:hover { background: var(--cdb-color-bg-subtle); }
+
+.cdb-list-item.cdb-is-selected {
+  background: var(--cdb-color-primary-bg);
+  border-color: var(--cdb-color-primary);
+}
+
+/* ============================================================
+ * Canvas (placeholder for B1; B3 will wire up areas/notes)
+ * ============================================================ */
+.cdb-canvas-container {
+  background: var(--cdb-color-bg);
+  position: relative;
+  overflow: auto;
+}
+
+.cdb-canvas-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--cdb-color-text-muted);
+  font-size: var(--cdb-text-base);
+}
+
+/* ============================================================
+ * Right panel (field list, B1 wraps existing RightPanel output)
+ * ============================================================ */
+.cdb-field-list {
+  padding: var(--cdb-space-2);
+}
+
+.cdb-field-list h3 {
+  font-size: var(--cdb-text-base);
+  margin-bottom: var(--cdb-space-2);
+  color: var(--cdb-color-text);
+}
+
+.cdb-field-row {
+  display: flex;
+  align-items: center;
+  gap: var(--cdb-space-2);
+  padding: var(--cdb-space-1) 0;
+  font-size: var(--cdb-text-sm);
+}
+
+.cdb-field-row > span:first-child {
+  flex: 1;
+  color: var(--cdb-color-text);
+}
+
+.cdb-field-row select {
+  padding: var(--cdb-space-1) var(--cdb-space-2);
+  border: 1px solid var(--cdb-color-border);
+  border-radius: var(--cdb-radius-sm);
+  font-size: var(--cdb-text-sm);
+  background: var(--cdb-color-bg);
+}
+
+/* ============================================================
+ * Section / panel helpers (B1, replaces inline styles)
+ * ============================================================ */
+.cdb-section-title {
+  font-size: var(--cdb-text-base);
+  font-weight: 600;
+  padding: var(--cdb-space-3) var(--cdb-space-2) var(--cdb-space-1);
+  color: var(--cdb-color-text);
+}
+
+.cdb-empty-hint {
+  color: var(--cdb-color-text-muted);
+  padding: var(--cdb-space-4);
+  font-size: var(--cdb-text-sm);
+}
+
+.cdb-topbar-actions {
+  display: flex;
+  gap: var(--cdb-space-2);
+  padding: var(--cdb-space-2) var(--cdb-space-4);
+  background: var(--cdb-color-bg);
+  border-bottom: 1px solid var(--cdb-color-border);
+}
+
+.cdb-btn--block {
+  display: block;
+  width: 100%;
+  margin-bottom: var(--cdb-space-2);
+}
+
+/* ============================================================
+ * Conflict dialog (409)
+ * ============================================================ */
+.cdb-conflict-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+}
+
+.cdb-conflict-dialog {
+  background: var(--cdb-color-bg);
+  border-radius: var(--cdb-radius-lg);
+  padding: var(--cdb-space-6);
+  max-width: 480px;
+  box-shadow: var(--cdb-shadow-lg);
+}
+
+.cdb-conflict-dialog h2 {
+  color: var(--cdb-color-warning);
+  margin-bottom: var(--cdb-space-3);
+  font-size: var(--cdb-text-lg);
+}
+
+.cdb-conflict-dialog p {
+  color: var(--cdb-color-text);
+  font-size: var(--cdb-text-base);
+  margin-bottom: var(--cdb-space-2);
+  line-height: 1.5;
+}
+
+.cdb-dialog-buttons {
+  display: flex;
+  gap: var(--cdb-space-2);
+  margin-top: var(--cdb-space-4);
+  justify-content: flex-end;
+}
+
+/* ============================================================
+ * Error toast
+ * ============================================================ */
+.cdb-error-toast {
+  position: fixed;
+  bottom: var(--cdb-space-6);
+  right: var(--cdb-space-6);
+  background: var(--cdb-color-error);
+  color: white;
+  padding: var(--cdb-space-3) var(--cdb-space-4);
+  border-radius: var(--cdb-radius-md);
+  box-shadow: var(--cdb-shadow-md);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  gap: var(--cdb-space-3);
+  max-width: 400px;
+  font-size: var(--cdb-text-sm);
+}
+
+.cdb-error-toast button {
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  font-size: var(--cdb-text-lg);
+  line-height: 1;
+}
+
+/* ============================================================
+ * Footer (status bar)
+ * ============================================================ */
+.cdb-footer {
+  background: var(--cdb-color-bg);
+  border-top: 1px solid var(--cdb-color-border);
+  padding: var(--cdb-space-1) var(--cdb-space-4);
+  font-size: var(--cdb-text-xs);
+  color: var(--cdb-color-text-muted);
+  display: flex;
+  gap: var(--cdb-space-4);
+}
+
+/* ============================================================
+ * Responsive: V1 边界 (spec §5.4) — 最小宽度 1024px
+ * ============================================================ */
+@media (max-width: 1023px) {
+  body::before {
+    content: "请使用 ≥ 1024px 宽度的屏幕（coldrawdb V1 不支持小屏）";
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--cdb-color-bg-canvas);
+    color: var(--cdb-color-text);
+    font-size: var(--cdb-text-lg);
+    z-index: 9999;
+    text-align: center;
+    padding: var(--cdb-space-4);
+  }
+}
