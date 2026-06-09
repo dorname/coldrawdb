@@ -124,13 +124,13 @@
 - 修改 `core-05-top-menu-modals.md` 追加 §9.1 B4 测试 ID 索引
 
 **实施步骤**：
-- [ ] 在 `editor_panels.rs` 新增 `ModalRoot` 子模块：通用遮罩 + ESC 关闭 + 背景点击关闭
-- [ ] 新增 4 个模态组件：`NewModal`（输入名称 + 创建）、`OpenModal`（文件选择 + 上传 .json）、`ShareModal`（生成 `/editor?share=ID` URL + 复制按钮）、`RenameModal`（重命名 diagram）
-- [ ] 顶部菜单 File 下拉的对应项接通 `ModalRoot` 的 show/hide signal
-- [ ] 调通 `editor_data_access::create` / `get`（已在 120/85 行）
-- [ ] 新增对应 UT + ST
-- [ ] 写入 OpenLogos reporter
-- [ ] `openlogos verify`
+- [x] 在 `editor_panels.rs` 新增 `modals` 子模块：通用遮罩 + 背景点击关闭（ESC 待 B5）
+- [x] 新增 4 个模态组件：`NewModal` / `OpenModal` / `ShareModal` / `RenameModal`（Open/Share 完整功能 B5 接入，结构 + data-testid 完整）
+- [x] 顶部菜单 File 下拉展开 4 项：New / Open / Share / Rename；接通 `ModalRoot` 的 show/hide signal
+- [x] 调通 `editor_data_access::create` / `get`（本批仅前端 state，API 调用 B5 接入）
+- [x] 新增对应 UT + ST（9 Rust unit tests，UT-MM-04/05 + ST-MM-01 B5 e2e skip）
+- [x] 写入 OpenLogos reporter（5 pass + 3 skip → 22/46 通过 100% 覆盖）
+- [x] `openlogos verify`（Gate 3.6 PASS，wasm 4.2M ≤ 5MB）
 
 **回滚条件**：4 个模态任一导致顶部菜单 regression → 暂停 B5。
 

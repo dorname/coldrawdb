@@ -24,11 +24,10 @@ pub mod types {
     //! DTO 类型层，与 `RUST_WEB_REFACTOR_PLAN.md §5.3` 字段对齐，
     //! 与后端 `backend/src/diagrams_v1.rs:96-156` API contract 一致。
     //!
-    //! 所有类型 derive `Clone, Debug, PartialEq` 以支持 Leptos signal diff 与单测断言。
-    //! serde Serialize/Deserialize 在 W2-1 editor-data-access 接入网络层时再加，避免本层
-    //! 提前承担 codec 复杂度。
+    //! 所有类型 derive `Clone, Debug, PartialEq, Serialize, Deserialize` 以支持
+    //! Leptos signal diff + 单测断言 + B4 Open 模态 JSON 解析。
 
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
     pub struct Diagram {
         pub id: String,
         pub name: String,
@@ -40,7 +39,7 @@ pub mod types {
         pub areas: Vec<Area>,
     }
 
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
     pub struct Table {
         pub id: String,
         pub name: String,
@@ -52,7 +51,7 @@ pub mod types {
         pub indices: Vec<Index>,
     }
 
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
     pub struct Field {
         pub id: String,
         pub name: String,
@@ -66,7 +65,7 @@ pub mod types {
         pub comment: String,
     }
 
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
     pub struct Reference {
         pub id: String,
         pub name: String,
@@ -79,7 +78,7 @@ pub mod types {
         pub on_update: String,
     }
 
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
     pub struct Index {
         pub id: String,
         pub name: String,
@@ -87,7 +86,7 @@ pub mod types {
         pub unique: bool,
     }
 
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
     pub struct Note {
         pub id: String,
         pub x: f64,
@@ -96,7 +95,7 @@ pub mod types {
         pub color: String,
     }
 
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
     pub struct Area {
         pub id: String,
         pub x: f64,
@@ -108,7 +107,7 @@ pub mod types {
     }
 
     /// 后端 dialect（与后端 `Database` 枚举对齐；详 backend/src/diagrams_v1.rs:96）。
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
     pub enum Database {
         Generic,
         Mysql,

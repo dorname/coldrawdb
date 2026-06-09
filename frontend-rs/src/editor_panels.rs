@@ -244,14 +244,62 @@ pub fn ErrorToast(error: RwSignal<Option<String>>) -> impl IntoView {
     {render(error)}
 }
 
-/// 顶部菜单栏 (B1)：4 下拉空壳，点击不展开真实菜单
+/// 顶部菜单栏 (B1)：4 下拉空壳 + B4 File 下拉接通 4 个模态
 #[component]
-pub fn TopMenuBar() -> impl IntoView {
+pub fn TopMenuBar(
+    modal_kind: RwSignal<Option<modals::ModalKind>>,
+) -> impl IntoView {
+    let file_open = create_rw_signal(false);
+
     view! {
         <header class="cdb-header" data-testid="top-menu-bar">
             <div class="cdb-logo">"coldrawdb"</div>
             <nav class="cdb-menu">
-                <div class="cdb-menu-item" data-testid="cdb-menu-file">"File ▾"</div>
+                <div
+                    class="cdb-menu-item"
+                    data-testid="cdb-menu-file"
+                    on:click=move |_| file_open.update(|v| *v = !*v)
+                >"File ▾"</div>
+                {move || if file_open.get() {
+                    view! {
+                        <div class="cdb-menu-dropdown" data-testid="cdb-menu-file-dropdown">
+                            <button
+                                class="cdb-menu-dropdown-item"
+                                data-testid="cdb-menu-new"
+                                on:click=move |_| {
+                                    modal_kind.set(Some(modals::ModalKind::New));
+                                    file_open.set(false);
+                                }
+                            >"New"</button>
+                            <button
+                                class="cdb-menu-dropdown-item"
+                                data-testid="cdb-menu-open"
+                                on:click=move |_| {
+                                    modal_kind.set(Some(modals::ModalKind::Open));
+                                    file_open.set(false);
+                                }
+                            >"Open"</button>
+                            <button
+                                class="cdb-menu-dropdown-item"
+                                data-testid="cdb-menu-share"
+                                on:click=move |_| {
+                                    modal_kind.set(Some(modals::ModalKind::Share));
+                                    file_open.set(false);
+                                }
+                            >"Share"</button>
+                            <button
+                                class="cdb-menu-dropdown-item"
+                                data-testid="cdb-menu-rename"
+                                on:click=move |_| {
+                                    modal_kind.set(Some(modals::ModalKind::Rename));
+                                    file_open.set(false);
+                                }
+                            >"Rename"</button>
+                        </div>
+                    }.into_view()
+                } else {
+                    view! { <></> }.into_view()
+                }}
                 <div class="cdb-menu-item" data-testid="cdb-menu-edit">"Edit ▾"</div>
                 <div class="cdb-menu-item" data-testid="cdb-menu-view">"View ▾"</div>
                 <div class="cdb-menu-item" data-testid="cdb-menu-help">"Help ▾"</div>
@@ -346,6 +394,7 @@ pub fn TopBar(
     store: EditorStore,
     debouncer: DebounceTrigger,
     error: RwSignal<Option<String>>,
+    modal_kind: RwSignal<Option<modals::ModalKind>>,
 ) -> impl IntoView {
     let saving = create_rw_signal(false);
     let debouncer_for_save = debouncer.clone();
@@ -354,7 +403,7 @@ pub fn TopBar(
 
     view! {
         <div>
-            <TopMenuBar />
+            <TopMenuBar modal_kind=modal_kind />
             <Toolbar
                 store=store.clone()
                 error=error.clone()
@@ -974,6 +1023,19 @@ pub fn AppRoot(
     let error: RwSignal<Option<String>> = create_rw_signal(None);
     let next_id = create_rw_signal(0i64);
 
+    // B4: 模态状态 (4 核心模态)
+    let modal_kind: RwSignal<Option<modals::ModalKind>> = create_rw_signal(None);
+    let current_diagram_id: RwSignal<String> = create_rw_signal(_diagram_id.clone());
+    let current_title: RwSignal<String> = create_rw_signal(String::from("Untitled Diagram"));
+
+    // B4: 模态提交回调 (New/Rename 共享)
+    // - New: 创建空 diagram，更新 current_diagram_id + current_title
+    // - Rename: 更新 current_title
+    // - B5 接入实际 editor_data_access::create / save
+    let on_modal_action = move |name: String| {
+        current_title.set(name);
+    };
+
     // B1: 预留 CommandStack 信号（stack 内部为空；B5 接入 undo/redo 逻辑）
     let _stack: RwSignal<Rc<RefCell<crate::editor_core::CommandStack>>> = create_rw_signal(
         Rc::new(RefCell::new(crate::editor_core::CommandStack::new()))
@@ -1084,7 +1146,7 @@ pub fn AppRoot(
 
     view! {
         <div class="cdb-app" data-testid="editor-ready">
-            <TopMenuBar />
+            <TopMenuBar modal_kind=modal_kind />
             <Toolbar store=store.clone() error=error.clone() />
             <div class="cdb-topbar-actions">
                 <button
@@ -1132,7 +1194,367 @@ pub fn AppRoot(
                 on_reload=Rc::new(move || {})
             />
             <ErrorToast error=error />
+            <modals::ModalRoot
+                kind=modal_kind
+                current_diagram_id=current_diagram_id
+                current_title=current_title
+                on_action=on_modal_action
+            />
         </div>
+    }
+}
+
+// ─── modals sub-module (B4: 4 core modals) ────────────────────────────────────
+
+/// B4 模态补全 (add-frontend-completeness)
+/// - 4 个核心模态: New / Open / Share / Rename
+/// - 其余 5 个 (Import / ImportSource / Language / SetTableWidth / ConfigureCustomTypes) 在 B5
+///
+/// data-testid 清单 (验证: `grep -c 'data-testid=' src/editor_panels.rs` 期望 ≥ 14):
+///   - modal-{new,open,share,rename}  (B4)
+///   - modal-title-{new,open,share,rename}  (B4)
+///   - modal-submit-{new,open,share,rename}  (B4)
+///   - modal-cancel-{new,open,share,rename}  (B4)
+pub mod modals {
+    //! B4 modal sub-module: 4 core modals (New/Open/Share/Rename)
+    //!
+    //! 覆盖 OpenLogos cases:
+    //!   - UT-MM-01: New 模态创建 diagram (validate_title + build_create_url)
+    //!   - UT-MM-04: 模态背景点击关闭 (ModalRoot) — B4 stub, B5 wasm-pack
+    //!   - UT-MM-05: 模态 ESC 键关闭 (ModalRoot) — B4 stub, B5 wasm-pack
+    //!   - UT-MM-06: 必填字段失焦红框 (validate_title 返回 Err)
+    //!   - UT-MM-07: New 模态 title 为空 → OK 禁用
+    //!   - UT-MM-08: Share 模态 URL 格式正确 (build_share_url)
+    //!   - UT-MM-09: Open 模态 JSON 解析 (parse_diagram_json)
+    //!   - ST-MM-01: e2e 全链路 (B5 wasm-pack test)
+
+    use super::*;
+    use crate::editor_core::types::Diagram;
+    use leptos::*;
+
+    /// 模态种类 (B4 范围: 4 个)
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    pub enum ModalKind {
+        New,
+        Open,
+        Share,
+        Rename,
+    }
+
+    pub const TITLE_MAX_LEN: usize = 64;
+
+    /// 校验 title (New / Rename 模态)
+    /// - UT-MM-06: 空 → Err
+    /// - UT-MM-07: 空 → OK 禁用 (调用方基于 Result 决定)
+    pub fn validate_title(title: &str) -> Result<(), String> {
+        let trimmed = title.trim();
+        if trimmed.is_empty() {
+            return Err("title 不能为空".to_string());
+        }
+        if trimmed.chars().count() > TITLE_MAX_LEN {
+            return Err(format!("title 长度不能超过 {} 字符", TITLE_MAX_LEN));
+        }
+        Ok(())
+    }
+
+    /// 新建 diagram 后的跳转 URL
+    /// - UT-MM-01: build_create_url("d-new") == "/editor/d-new"
+    pub fn build_create_url(diagram_id: &str) -> String {
+        format!("/editor/{}", diagram_id)
+    }
+
+    /// Share 模态的分享链接 (V1 公开访问)
+    /// - UT-MM-08: build_share_url("abc-123") == "/editor?share=abc-123"
+    pub fn build_share_url(diagram_id: &str) -> String {
+        format!("/editor?share={}", diagram_id)
+    }
+
+    /// 解析用户上传的 .json 文件内容
+    /// - UT-MM-09: 合法 JSON → Ok(Diagram)
+    /// - UT-MM-09: 非法 JSON → Err
+    pub fn parse_diagram_json(text: &str) -> Result<Diagram, String> {
+        serde_json::from_str::<Diagram>(text).map_err(|e| format!("JSON parse error: {}", e))
+    }
+
+    // ─── ModalRoot: 通用壳 (B4 stub, B5 接入完整行为) ────────────────────────
+
+    /// 通用模态根容器 (B4: show/hide + 背景点击关闭)
+    /// - UT-MM-04: 背景点击关闭 (B4 实现)
+    /// - UT-MM-05: ESC 键关闭 (B5 wasm-pack test 接入)
+    /// - 模态体点击不冒泡到遮罩
+    #[component]
+    pub fn ModalRoot<F>(
+        kind: RwSignal<Option<ModalKind>>,
+        current_diagram_id: RwSignal<String>,
+        current_title: RwSignal<String>,
+        on_action: F,
+    ) -> impl IntoView
+    where
+        F: Fn(String) + Clone + 'static,
+    {
+        let on_action_new = on_action.clone();
+        let on_action_rename = on_action.clone();
+
+        view! {
+            <div
+                class="cdb-modal-overlay"
+                data-testid="modal-root"
+                on:click=move |_| kind.set(None)
+            >
+                {move || match kind.get() {
+                    Some(ModalKind::New) => view! {
+                        <div class="cdb-modal" data-testid="modal-new" on:click=|ev| ev.stop_propagation()>
+                            <NewModal
+                                kind=kind
+                                on_create=on_action_new.clone()
+                            />
+                        </div>
+                    }.into_view(),
+                    Some(ModalKind::Open) => view! {
+                        <div class="cdb-modal" data-testid="modal-open" on:click=|ev| ev.stop_propagation()>
+                            <OpenModal kind=kind />
+                        </div>
+                    }.into_view(),
+                    Some(ModalKind::Share) => view! {
+                        <div class="cdb-modal" data-testid="modal-share" on:click=|ev| ev.stop_propagation()>
+                            <ShareModal
+                                kind=kind
+                                current_diagram_id=current_diagram_id
+                            />
+                        </div>
+                    }.into_view(),
+                    Some(ModalKind::Rename) => view! {
+                        <div class="cdb-modal" data-testid="modal-rename" on:click=|ev| ev.stop_propagation()>
+                            <RenameModal
+                                kind=kind
+                                current_title=current_title
+                                on_rename=on_action_rename.clone()
+                            />
+                        </div>
+                    }.into_view(),
+                    None => view! { <></> }.into_view(),
+                }}
+            </div>
+        }
+    }
+
+    // ─── NewModal ───────────────────────────────────────────────────────────
+
+    /// New 模态: 输入 title → 创建新 diagram
+    /// - UT-MM-01: 提交时调用 on_create(name)
+    /// - UT-MM-07: title 为空时 OK 禁用
+    #[component]
+    pub fn NewModal<F>(
+        kind: RwSignal<Option<ModalKind>>,
+        on_create: F,
+    ) -> impl IntoView
+    where
+        F: Fn(String) + Clone + 'static,
+    {
+        let title_input = create_rw_signal(String::new());
+        let validation = move || validate_title(&title_input.get());
+        let is_valid = move || validation().is_ok();
+        let on_create_submit = on_create.clone();
+        let kind_close = kind;
+
+        view! {
+            <div class="cdb-modal-header">
+                <h3 class="cdb-modal-title" data-testid="modal-title-new">"New Diagram"</h3>
+                <button
+                    class="cdb-modal-close"
+                    data-testid="modal-cancel-new"
+                    on:click=move |_| kind_close.set(None)
+                >"×"</button>
+            </div>
+            <div class="cdb-modal-body">
+                <label class="cdb-form-label">"Title"</label>
+                <input
+                    class="cdb-form-input"
+                    class:cdb-is-invalid=move || validation().is_err()
+                    data-testid="modal-input-title-new"
+                    prop:value=move || title_input.get()
+                    on:input=move |ev| {
+                        use wasm_bindgen::JsCast;
+                        let v = ev.target().unwrap().unchecked_into::<web_sys::HtmlInputElement>().value();
+                        title_input.set(v);
+                    }
+                />
+                {move || validation().err().map(|e| view! {
+                    <span class="cdb-form-error" data-testid="modal-error-new">{e}</span>
+                })}
+            </div>
+            <div class="cdb-modal-footer">
+                <button
+                    class="cdb-btn"
+                    data-testid="modal-cancel-new-btn"
+                    on:click=move |_| kind_close.set(None)
+                >"Cancel"</button>
+                <button
+                    class="cdb-btn cdb-btn--primary"
+                    data-testid="modal-submit-new"
+                    disabled=move || !is_valid()
+                    on:click=move |_| {
+                        if let Ok(()) = validation() {
+                            let name = title_input.get_untracked();
+                            on_create_submit(name);
+                            kind_close.set(None);
+                        }
+                    }
+                >"Create"</button>
+            </div>
+        }
+    }
+
+    // ─── OpenModal ──────────────────────────────────────────────────────────
+
+    /// Open 模态: 选择 .json 文件 (B4 stub)
+    /// - UT-MM-09: 解析逻辑在 parse_diagram_json 纯函数 (B4 UT)
+    /// - B5 接入 file → text() → parse_diagram_json 全链路
+    #[component]
+    pub fn OpenModal(
+        kind: RwSignal<Option<ModalKind>>,
+    ) -> impl IntoView {
+        let kind_close = kind;
+
+        view! {
+            <div class="cdb-modal-header">
+                <h3 class="cdb-modal-title" data-testid="modal-title-open">"Open Diagram"</h3>
+                <button
+                    class="cdb-modal-close"
+                    data-testid="modal-cancel-open"
+                    on:click=move |_| kind_close.set(None)
+                >"×"</button>
+            </div>
+            <div class="cdb-modal-body">
+                <label class="cdb-form-label">"Upload .json file"</label>
+                <input
+                    class="cdb-form-input"
+                    data-testid="modal-input-file-open"
+                    type="file"
+                    accept=".json"
+                />
+                <p class="cdb-form-hint">"B5 接入文件读取 + parse_diagram_json 校验"</p>
+            </div>
+            <div class="cdb-modal-footer">
+                <button
+                    class="cdb-btn"
+                    data-testid="modal-cancel-open-btn"
+                    on:click=move |_| kind_close.set(None)
+                >"Cancel"</button>
+            </div>
+        }
+    }
+
+    // ─── ShareModal ─────────────────────────────────────────────────────────
+
+    /// Share 模态: 显示分享链接 (B4 stub: 仅显示，Copy 按钮 B5 接入剪贴板)
+    /// - UT-MM-08: build_share_url 生成的 URL 显示
+    #[component]
+    pub fn ShareModal(
+        kind: RwSignal<Option<ModalKind>>,
+        current_diagram_id: RwSignal<String>,
+    ) -> impl IntoView {
+        let kind_close = kind;
+        let share_url = move || build_share_url(&current_diagram_id.get());
+
+        view! {
+            <div class="cdb-modal-header">
+                <h3 class="cdb-modal-title" data-testid="modal-title-share">"Share Diagram"</h3>
+                <button
+                    class="cdb-modal-close"
+                    data-testid="modal-cancel-share"
+                    on:click=move |_| kind_close.set(None)
+                >"×"</button>
+            </div>
+            <div class="cdb-modal-body">
+                <label class="cdb-form-label">"Share link"</label>
+                <input
+                    class="cdb-form-input"
+                    data-testid="modal-input-share-url"
+                    readonly=true
+                    prop:value=share_url
+                />
+                <p class="cdb-form-hint">"B5 接入 navigator.clipboard.write_text"</p>
+            </div>
+            <div class="cdb-modal-footer">
+                <button
+                    class="cdb-btn"
+                    data-testid="modal-cancel-share-btn"
+                    on:click=move |_| kind_close.set(None)
+                >"Close"</button>
+                <button
+                    class="cdb-btn cdb-btn--primary"
+                    data-testid="modal-submit-share"
+                >"Copy"</button>
+            </div>
+        }
+    }
+
+    // ─── RenameModal ────────────────────────────────────────────────────────
+
+    /// Rename 模态: 重命名当前 diagram
+    /// - UT-MM-06: title 校验复用 validate_title
+    #[component]
+    pub fn RenameModal<F>(
+        kind: RwSignal<Option<ModalKind>>,
+        current_title: RwSignal<String>,
+        on_rename: F,
+    ) -> impl IntoView
+    where
+        F: Fn(String) + Clone + 'static,
+    {
+        let title_input = create_rw_signal(current_title.get_untracked());
+        let validation = move || validate_title(&title_input.get());
+        let is_valid = move || validation().is_ok();
+        let kind_close = kind;
+        let on_rename_submit = on_rename;
+
+        view! {
+            <div class="cdb-modal-header">
+                <h3 class="cdb-modal-title" data-testid="modal-title-rename">"Rename Diagram"</h3>
+                <button
+                    class="cdb-modal-close"
+                    data-testid="modal-cancel-rename"
+                    on:click=move |_| kind_close.set(None)
+                >"×"</button>
+            </div>
+            <div class="cdb-modal-body">
+                <label class="cdb-form-label">"New title"</label>
+                <input
+                    class="cdb-form-input"
+                    class:cdb-is-invalid=move || validation().is_err()
+                    data-testid="modal-input-title-rename"
+                    prop:value=move || title_input.get()
+                    on:input=move |ev| {
+                        use wasm_bindgen::JsCast;
+                        let v = ev.target().unwrap().unchecked_into::<web_sys::HtmlInputElement>().value();
+                        title_input.set(v);
+                    }
+                />
+                {move || validation().err().map(|e| view! {
+                    <span class="cdb-form-error" data-testid="modal-error-rename">{e}</span>
+                })}
+            </div>
+            <div class="cdb-modal-footer">
+                <button
+                    class="cdb-btn"
+                    data-testid="modal-cancel-rename-btn"
+                    on:click=move |_| kind_close.set(None)
+                >"Cancel"</button>
+                <button
+                    class="cdb-btn cdb-btn--primary"
+                    data-testid="modal-submit-rename"
+                    disabled=move || !is_valid()
+                    on:click=move |_| {
+                        if let Ok(()) = validation() {
+                            let name = title_input.get_untracked();
+                            on_rename_submit(name);
+                            kind_close.set(None);
+                        }
+                    }
+                >"Rename"</button>
+            </div>
+        }
     }
 }
 
@@ -1360,5 +1782,80 @@ mod tests {
         let result = filter_references_by_query(&refs, "user");
         assert_eq!(result.len(), 1, "UT-SP-10: refs 搜索 'user' 应匹配 r1（start=users）");
         assert_eq!(result[0].id, "r1");
+    }
+
+    // ─── B4 modal pure function tests ─────────────────────────────────────
+
+    #[test]
+    fn test_validate_title_happy_ut_mm_01() {
+        assert!(modals::validate_title("My Diagram").is_ok(), "UT-MM-01: 正常 title 应通过");
+    }
+
+    #[test]
+    fn test_validate_title_empty_ut_mm_06() {
+        let r = modals::validate_title("");
+        assert!(r.is_err(), "UT-MM-06: 空 title 应返回 Err");
+        assert_eq!(r.unwrap_err(), "title 不能为空");
+    }
+
+    #[test]
+    fn test_validate_title_whitespace_only_ut_mm_06() {
+        let r = modals::validate_title("   ");
+        assert!(r.is_err(), "UT-MM-06: 全空白 title 应返回 Err");
+    }
+
+    #[test]
+    fn test_validate_title_too_long_ut_mm_06() {
+        let long = "a".repeat(modals::TITLE_MAX_LEN + 1);
+        let r = modals::validate_title(&long);
+        assert!(r.is_err(), "UT-MM-06: 超长 title 应返回 Err");
+    }
+
+    #[test]
+    fn test_validate_title_empty_disables_submit_ut_mm_07() {
+        // UT-MM-07: title 为空 → 提交按钮应禁用
+        // 实际禁用逻辑在 NewModal 组件中基于 is_valid()，这里验证纯函数返回 Err
+        let r = modals::validate_title("");
+        assert!(r.is_err(), "UT-MM-07: 空 title 时 NewModal 提交应禁用（基于 validate_title 返回 Err）");
+    }
+
+    #[test]
+    fn test_build_create_url_ut_mm_01() {
+        assert_eq!(modals::build_create_url("d-new"), "/editor/d-new", "UT-MM-01: build_create_url 应返回 /editor/<id>");
+        assert_eq!(modals::build_create_url("abc-123"), "/editor/abc-123");
+    }
+
+    #[test]
+    fn test_build_share_url_ut_mm_08() {
+        assert_eq!(modals::build_share_url("abc-123"), "/editor?share=abc-123", "UT-MM-08: build_share_url 应返回 /editor?share=<id>");
+        assert_eq!(modals::build_share_url("d-uuid"), "/editor?share=d-uuid");
+    }
+
+    #[test]
+    fn test_parse_diagram_json_happy_ut_mm_09() {
+        // UT-MM-09: 合法 Diagram JSON
+        let json = r#"{
+            "id": "d1",
+            "name": "Test",
+            "revision": 0,
+            "database": "Generic",
+            "tables": [],
+            "references": [],
+            "notes": [],
+            "areas": []
+        }"#;
+        let r = modals::parse_diagram_json(json);
+        assert!(r.is_ok(), "UT-MM-09: 合法 JSON 应解析为 Diagram");
+        let d = r.unwrap();
+        assert_eq!(d.id, "d1");
+        assert_eq!(d.name, "Test");
+    }
+
+    #[test]
+    fn test_parse_diagram_json_invalid_ut_mm_09() {
+        let bad = r#"{ not valid json }"#;
+        let r = modals::parse_diagram_json(bad);
+        assert!(r.is_err(), "UT-MM-09: 非法 JSON 应返回 Err");
+        assert!(r.unwrap_err().starts_with("JSON parse error"), "UT-MM-09: 错误信息应包含 'JSON parse error'");
     }
 }

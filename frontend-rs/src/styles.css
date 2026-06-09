@@ -552,3 +552,160 @@ body {
   flex: 1;
   color: var(--cdb-color-text);
 }
+
+/* ============================================================
+ * Modal root + 4 core modals (New / Open / Share / Rename) — B4
+ * ============================================================ */
+.cdb-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.cdb-modal {
+  background: var(--cdb-color-bg);
+  border-radius: var(--cdb-radius-lg);
+  box-shadow: var(--cdb-shadow-lg);
+  min-width: 400px;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+}
+
+.cdb-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--cdb-space-4) var(--cdb-space-6);
+  border-bottom: 1px solid var(--cdb-color-border);
+}
+
+.cdb-modal-title {
+  margin: 0;
+  font-size: var(--cdb-text-lg);
+  font-weight: 600;
+  color: var(--cdb-color-text);
+}
+
+.cdb-modal-close {
+  background: transparent;
+  border: none;
+  font-size: var(--cdb-text-xl);
+  cursor: pointer;
+  color: var(--cdb-color-text-muted);
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cdb-modal-close:hover {
+  color: var(--cdb-color-text);
+}
+
+.cdb-modal-body {
+  padding: var(--cdb-space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--cdb-space-3);
+}
+
+.cdb-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--cdb-space-2);
+  padding: var(--cdb-space-4) var(--cdb-space-6);
+  border-top: 1px solid var(--cdb-color-border);
+}
+
+.cdb-form-label {
+  font-size: var(--cdb-text-sm);
+  color: var(--cdb-color-text-muted);
+  font-weight: 500;
+}
+
+.cdb-form-input {
+  padding: var(--cdb-space-2) var(--cdb-space-3);
+  border: 1px solid var(--cdb-color-border);
+  border-radius: var(--cdb-radius-sm);
+  font-size: var(--cdb-text-base);
+  color: var(--cdb-color-text);
+  background: var(--cdb-color-bg);
+  font-family: inherit;
+}
+
+.cdb-form-input:focus {
+  outline: none;
+  border-color: var(--cdb-color-primary);
+  box-shadow: 0 0 0 2px var(--cdb-color-primary-bg);
+}
+
+.cdb-form-input.cdb-is-invalid {
+  border-color: var(--cdb-color-error);
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.1);
+}
+
+.cdb-form-input:disabled {
+  background: var(--cdb-color-bg-subtle);
+  cursor: not-allowed;
+}
+
+.cdb-form-error {
+  font-size: var(--cdb-text-xs);
+  color: var(--cdb-color-error);
+}
+
+.cdb-form-hint {
+  font-size: var(--cdb-text-xs);
+  color: var(--cdb-color-text-muted);
+  margin: 0;
+}
+
+.cdb-form-success {
+  font-size: var(--cdb-text-xs);
+  color: var(--cdb-color-success);
+}
+
+/* ============================================================
+ * Top-menu File dropdown (B4)
+ * ============================================================ */
+.cdb-menu {
+  position: relative;
+}
+
+.cdb-menu-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: var(--cdb-space-1);
+  background: var(--cdb-color-bg);
+  border: 1px solid var(--cdb-color-border);
+  border-radius: var(--cdb-radius-md);
+  box-shadow: var(--cdb-shadow-md);
+  min-width: 160px;
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  padding: var(--cdb-space-1) 0;
+}
+
+.cdb-menu-dropdown-item {
+  background: transparent;
+  border: none;
+  text-align: left;
+  padding: var(--cdb-space-2) var(--cdb-space-4);
+  font-size: var(--cdb-text-sm);
+  color: var(--cdb-color-text);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.cdb-menu-dropdown-item:hover {
+  background: var(--cdb-color-bg-subtle);
+}
