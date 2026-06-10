@@ -55,6 +55,7 @@
 - **render 层**：`frontend-rs/editor_render` 使用 `<canvas>`（HTML5）+ 贝塞尔连线（自渲染，无 vDOM diff）
 - **响应式**：基于 Leptos signals 细粒度更新（仅重绘变更部分）
 - **性能预算**：100 张表 / 200 条关系 / 60fps（来源：Phase 4 W4 perf）
+- **画布容器 testid**：`<div class="cdb-canvas-container">` 必须带 `data-testid="editor-canvas"`，用于 e2e 定位画布区域（HP-01 / HP-05 锚点）
 
 ### 5.2 样式底座（CSS Design Tokens + cdb- 前缀规则）— V1 必交付
 
@@ -160,6 +161,7 @@
 | UT-CR-04 | 端点 drag 改 end_field_id | `editor_render.rs::update_reference_endpoint` |
 | UT-CR-05 | 端点 drag 不存在的 reference_id（no-op） | `editor_render.rs::update_reference_endpoint` |
 | ST-CR-01 | references 贝塞尔连线在画布可见（e2e） | `frontend-rs/tests/wasm/cr.rs` |
+| UT-FIX-02 | `cdb-canvas-container` 含 `data-testid="editor-canvas"`（编译期 grep 断言） | `frontend-rs/src/editor_panels.rs` |
 
 > 详细定义见 `logos/resources/test/core-CR-canvas-test-cases.md`。
 

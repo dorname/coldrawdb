@@ -88,6 +88,7 @@
 
 - 打开：从菜单 / 工具栏触发
 - 关闭：右上角 × / ESC / 背景点击
+- **遮罩生命周期**：`<div class="cdb-modal-overlay">`（即"背景"）**仅在 `kind.get().is_some()` 时存在**。模态关闭（`kind` 回到 `None`）时遮罩必须从 DOM 移除，否则遮罩会持续拦截全屏 pointer events，阻挡非模态 UI 的所有点击（HP-01~HP-05 回归验收点）
 - 取消前若有未保存修改 → 弹确认
 
 ### 4.2 布局
@@ -316,3 +317,52 @@ B5 在 §3 的 9 个模态清单中，补齐最后 **5 个模态** + **键盘快
 - `core-KB-shortcut-test-cases.md`（键盘快捷键 UT 详细步骤）
 - `frontend-rs/src/editor_panels.rs::modals`（B4 子模块扩展）
 - `frontend-rs/src/editor_core.rs::CommandStack`（扩展 undo/redo）
+
+## ADDED — §9.3 B1 测试 ID 索引（提案：fix-modal-overlay-blocking）
+
+> 模块：core | 提案：fix-modal-overlay-blocking
+> 路径：deltas/prd/2-product-design/1-feature-specs/core-05-top-menu-modals.md
+> 对齐参考源：`core-05-top-menu-modals.md` §4.1（遮罩生命周期）+ §5.7（Share）+ `test/fix-modal-blocking-test-cases.md`
+
+# B1 Modal 遮罩修复 — 测试 ID 索引
+
+## 1. 范围
+
+B1 修一处真实 UI bug（ModalRoot 遮罩无条件渲染）+ 补 1 个 testid 锚点（画布）+ 加 1 项 backend middleware（CORS），单批次闭环：
+
+- 修：`<div class="cdb-modal-overlay">` 受 `kind.get().is_some()` 控制（详见 §4.1 遮罩生命周期新约束）
+- 补：`<div class="cdb-canvas-container">` 加 `data-testid="editor-canvas"`（详见 `core-01-editor-canvas.md` §5.1）
+- 加：backend `actix-cors` middleware（dev 模式允许 `http://localhost:8080` 跨源 PUT）
+
+## 2. 测试 ID 索引
+
+| TC ID | 描述 | 对齐实现 | B1 状态 |
+|---|---|---|---|
+| UT-FIX-01 | ModalRoot 在 `kind=None` 时不渲染遮罩 div | `editor_panels.rs::modals::ModalRoot` | ✅ B1 实现 |
+| ST-FIX-01 | Playwright e2e 5/5 HP 全 PASS（HP-01~HP-05） | `frontend-rs/scripts/e2e-smoke.mjs` | ✅ B1 实现 |
+
+## 3. B1 spec 修正
+
+- 原 §7 编号 UT-MM-04（模态背景点击关闭）已通过 B4 实现，本 B1 不重复。UT-FIX-01 与 UT-MM-04 行为正交：
+  - UT-MM-04 验证「模态打开时点击背景能关闭」（B4 已 PASS）
+  - UT-FIX-01 验证「模态关闭后遮罩 div 必须从 DOM 移除」（B1 新约束）
+- ST-FIX-01 是 `add-frontend-completeness` 提案 [deploy] section 列出的 smoke 验证的**重新执行**（前次 0/5 FAIL 因 ModalRoot 遮罩 + editor-canvas testid 缺失 + CORS 缺失三重原因，本 B1 修复后重跑）
+
+## 4. 验收要点
+
+- HP-01（Load blank editor）：页面初始无 `kind=Some(_)`，DOM 中**不应**存在 `cdb-modal-overlay`
+- HP-02~HP-05：所有非模态操作（点击 button / 点击 file menu 项）必须可达，不再被 `intercepts pointer events` 拦截
+- 行为等价性：模态打开时仍能背景点击关闭（UT-MM-04 已覆盖）
+
+## 5. 不在本 B1 范围
+
+- add-frontend-completeness 留下的其他 stub（share URL 加载 / import submit handler / undo-redo 实际 effect / set_ref 实际 effect）— 后续专门提案
+- actix-cors 配置文件化（V1 用 `Cors::permissive()`，生产由 config.toml 切换的留 V2）
+
+## 6. 对齐参考源
+
+- `core-05-top-menu-modals.md` §4.1（遮罩生命周期新约束，本 B1 加）
+- `core-01-editor-canvas.md` §5.1（testid 新约束）
+- `logos/resources/test/fix-modal-blocking-test-cases.md`（详细 UT-FIX-01 + ST-FIX-01 步骤）
+- `logos/spec/smoke-report.md`（前次 0/5 FAIL 证据）
+- `logos/changes/archive/20260610-2122-add-frontend-completeness/`（前置提案）
