@@ -179,11 +179,18 @@
 ## [deploy] 部署任务
 
 > ⚠️ 人类确认点：仅在 B1~B5 全部完成 + `openlogos verify` PASS 后执行。
+> 本提案无 staging 服务器，改为**本地 dev 双进程 + Playwright 5 大 HP e2e**。
+> 对齐 baseline `core-01-deployment-plan.md` §3（本地 dev 部署）。
 
-- [ ] `cd frontend-rs && trunk build --release` 生成生产 dist
-- [ ] 用 `dist/` 内容替换 staging 服务器前端静态目录
-- [ ] 确认 `nginx` 重新加载生效
-- [ ] **人类确认** 后运行 `openlogos smoke`：浏览器 e2e 验证 5 大 happy path
+- [ ] 启动后端：`cd backend && cargo run`（监听 `:3000`）
+- [ ] 启动前端：`cd frontend-rs && trunk serve`（监听 `:8080`）
+- [ ] 浏览器/Playwright 访问 `http://localhost:8080/editor`
+- [ ] **人类确认** 后运行 `node frontend-rs/scripts/e2e-smoke.mjs`：Playwright 自动验证 5 大 happy path
+  - HP-01 加载空白编辑器
+  - HP-02 拖表入画布 → 1s debounce 自动保存 → reload 后保留
+  - HP-03 字段增删改 → 共享链接 GET 加载
+  - HP-04 SQL 导入（Import 模态）→ 解析 → diagram 出现表
+  - HP-05 键盘快捷键 Ctrl+Z / Ctrl+Shift+Z
 - [ ] smoke 失败 → `git revert` 整个 add-frontend-completeness 提交链，恢复到 `0375339`
 
 ---
