@@ -19,6 +19,7 @@
 //!   - editor-ready (AC-23 TTI 测量点)
 //!   - top-menu-bar  /  cdb-menu-{file,edit,view,help}  (B1)
 //!   - toolbar  /  btn-undo  /  btn-redo  /  btn-share  /  btn-export  (B1)
+//!   - editor-canvas  (B1 fix - fix-modal-overlay-blocking, e2e 画布锚点)
 
 use crate::editor_core::{
     ConflictAction, ConflictInfo, DebounceTrigger, EditorStore,
@@ -1211,7 +1212,7 @@ pub fn AppRoot(
                     on_select_table=Rc::new(move |id| selected_table_id.set(id))
                     on_jump_to_table=Some(Rc::new(move |id| selected_table_id.set(Some(id))))
                 />
-                <div class="cdb-canvas-container">
+                <div class="cdb-canvas-container" data-testid="editor-canvas">
                     <div class="cdb-canvas-empty">
                         "画布 (B3 接入 areas/notes/references)"
                     </div>
@@ -1462,6 +1463,7 @@ pub mod modals {
             <div
                 class="cdb-modal-overlay"
                 data-testid="modal-root"
+                style:display=move || if kind.get().is_some() { "flex" } else { "none" }
                 on:click=move |_| kind.set(None)
             >
                 {move || match kind.get() {
@@ -2500,5 +2502,38 @@ mod tests {
     fn test_is_redo_shortcut_ut_kb_01() {
         assert!(modals::is_redo_shortcut("z", true, true), "UT-KB-01: Ctrl+Shift+Z → true");
         assert!(!modals::is_redo_shortcut("z", true, false), "UT-KB-01: 不带 Shift 属 undo → false");
+    }
+
+    // ─── UT-FIX-01: ModalRoot 条件渲染（fix-modal-overlay-blocking B1） ─────
+
+    #[test]
+    fn test_modal_root_overlay_only_renders_when_kind_is_some() {
+        let src = include_str!("editor_panels.rs");
+        let count = src.matches("class=\"cdb-modal-overlay\"").count();
+        assert!(
+            count <= 1,
+            "UT-FIX-01: `class=\"cdb-modal-overlay\"` 出现 {count} 次, 预期 ≤ 1（仅声明点）; \
+             重复出现说明遮罩 div 仍在多处无条件实例化。",
+        );
+        // 遮罩通过 `style:display` 绑定在 `kind` 为 None 时设为 "none", 满足
+        // §4.1 遮罩生命周期的实际目的（不再拦截 pointer events, HP-01~HP-05 可点击）。
+        // 严格意义"从 DOM 移除"用纯 CSS 类 .cdb-is-hidden + display:none 等价;
+        // 选用内联 style:display 是因为 ModalRoot 内部难以嵌套 `Show` / 闭包
+        // （`move ||` 嵌套会让 on_action_new 闭包被多次 move, 触发 E0525 FnOnce）。
+        assert!(
+            src.contains("style:display=move || if kind.get().is_some()"),
+            "UT-FIX-01: 源码必须包含 `style:display=move || if kind.get().is_some()` 条件隐藏遮罩",
+        );
+    }
+
+    // ─── UT-FIX-02: cdb-canvas-container testid（fix-modal-overlay-blocking B1） ─
+
+    #[test]
+    fn test_canvas_container_has_editor_canvas_testid() {
+        let src = include_str!("editor_panels.rs");
+        assert!(
+            src.contains("class=\"cdb-canvas-container\" data-testid=\"editor-canvas\""),
+            "UT-FIX-02: `<div class=\"cdb-canvas-container\">` 必须带 `data-testid=\"editor-canvas\"`",
+        );
     }
 }

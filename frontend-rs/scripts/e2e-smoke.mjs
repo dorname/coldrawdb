@@ -64,11 +64,9 @@ async function hp02_createTableAndAutoSave(page) {
   };
   page.on("request", handler);
   try {
-    // 创建表（弹窗流）
+    // btn-create-table 直接建表（不开模态，命名"新表"），无需输入 name
     await page.click('[data-testid="btn-create-table"]');
-    await page.locator('[data-testid="table-name-input"]').waitFor({ state: "visible" });
-    await page.fill('[data-testid="table-name-input"]', "users");
-    await page.click('[data-testid="btn-confirm"]');
+    await page.locator('[data-testid^="table-list-item-"]').first().waitFor({ state: "visible", timeout: 5_000 });
 
     // 等 debounce 1.1s + 网络空闲
     await page.waitForTimeout(1_300);
@@ -77,7 +75,7 @@ async function hp02_createTableAndAutoSave(page) {
       throw new Error(`expected >= 1 PUT, got ${putRequests.length}`);
     }
 
-    // 记录当前 diagram id 段（URL 路径的一部分）用于 reload 后断言
+    // 记录当前 table 数（reload 后断言）
     const beforeReloadTables = await page.locator('[data-testid^="table-list-item-"]').count();
     if (beforeReloadTables < 1) {
       throw new Error(`expected >= 1 table before reload, got ${beforeReloadTables}`);
@@ -109,15 +107,13 @@ async function hp02_createTableAndAutoSave(page) {
 async function hp03_fieldAndShareModal(page) {
   const t0 = Date.now();
   try {
-    // 创建一张新表（hp02 已有 users，这里加 orders 以验证多表 + 字段）
+    // 第二张表（hp02 已有一张"新表"），btn-create-table 直接建表不开模态
     await page.click('[data-testid="btn-create-table"]');
-    await page.locator('[data-testid="table-name-input"]').waitFor({ state: "visible" });
-    await page.fill('[data-testid="table-name-input"]', "orders");
-    await page.click('[data-testid="btn-confirm"]');
+    await page.locator('[data-testid^="table-list-item-"]').nth(1).waitFor({ state: "visible", timeout: 5_000 });
 
-    // 选中 orders 表（在侧栏列表中点击）
-    const ordersItem = page.locator('[data-testid^="table-list-item-"]', { hasText: "orders" }).first();
-    await ordersItem.click();
+    // 选中第二张表（侧栏列表中第二项）
+    const secondItem = page.locator('[data-testid^="table-list-item-"]').nth(1);
+    await secondItem.click();
 
     // 加字段
     await page.click('[data-testid="btn-add-field"]');

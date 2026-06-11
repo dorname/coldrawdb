@@ -1,4 +1,5 @@
 use actix_web::{get, web, App, HttpServer, Responder};
+use actix_cors::Cors;
 mod common;
 mod entity;
 mod error;
@@ -70,6 +71,7 @@ async fn main() -> Result<(), DrawDBError> {
 
     HttpServer::new(move || {
         App::new()
+            .wrap(Cors::permissive())
             .app_data(web::Data::new(db.clone().unwrap()))
             .service(hello)
             .route("/", web::get().to(index))
@@ -78,7 +80,7 @@ async fn main() -> Result<(), DrawDBError> {
             .service(web::scope("/diagrams").configure(diagrams::diagrams_routes))
             .service(web::scope("/api/v1").configure(diagrams_v1::diagrams_v1_routes))
             .service(web::scope("/api/v1").configure(phase3_bridge::phase3_bridge_routes))
-     
+
     })
     .bind(format!("{}:{}", host, port))?
     .run()
