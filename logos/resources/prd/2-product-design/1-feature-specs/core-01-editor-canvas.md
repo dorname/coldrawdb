@@ -162,6 +162,9 @@
 | UT-CR-05 | 端点 drag 不存在的 reference_id（no-op） | `editor_render.rs::update_reference_endpoint` |
 | ST-CR-01 | references 贝塞尔连线在画布可见（e2e） | `frontend-rs/tests/wasm/cr.rs` |
 | UT-FIX-02 | `cdb-canvas-container` 含 `data-testid="editor-canvas"`（编译期 grep 断言） | `frontend-rs/src/editor_panels.rs` |
+| UT-STUB-01 | `is_table_selected()` 纯函数 4 case：Some(id) match / Some(testid-with-prefix) reject / None / mismatch | `frontend-rs/src/editor_panels.rs::is_table_selected` |
+| UT-STUB-02 | `schedule_save()` helper 副作用契约：1 次调用 → `DebounceTrigger` 内部 handle 被设置（mock，不真发 PUT） | `frontend-rs/src/editor_panels.rs::AppRoot::schedule_save` |
+| ST-STUB-01 | Playwright 5 HP 强断言：HP-02 `PUT count >= 1` + `window.__cdb_revision >= 1`；HP-03 `.cdb-list-item.cdb-is-selected` 数 = 1 + 右栏 `h3` 含表名 | `frontend-rs/scripts/e2e-smoke.mjs` |
 
 > 详细定义见 `logos/resources/test/core-CR-canvas-test-cases.md`。
 
