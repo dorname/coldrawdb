@@ -44,7 +44,7 @@ DrawDB is a robust and user-friendly database entity relationship (DBER) editor 
 | Bundler | `trunk`（WASM bundler） |
 | State | Leptos signals / `create_store` 细粒度响应式 |
 | Rendering | HTML5 `<canvas>` + 贝塞尔连线（自渲染，无 vDOM diff） |
-| Backend | **Rust + actix-web 4**（`backend/`，端口 `127.0.0.1:6666`） |
+| Backend | **Rust + actix-web 4**（`backend/`，端口 `127.0.0.1:3000`） |
 | Persistence | SQLite（`backend/db.sqlite`）+ `sqlx` 迁移 |
 | API | REST v1（`/api/v1/diagrams/*`），含 409 revision 冲突语义 |
 | E2E | `wasm-pack test --chrome` + Playwright（CI 强制） |
@@ -72,7 +72,7 @@ DrawDB is a robust and user-friendly database entity relationship (DBER) editor 
 
 #### 1) 启动后端（Rust + SQLite）
 
-后端默认监听 `127.0.0.1:6666`，配置文件为 `backend/config.toml`。
+后端默认监听 `127.0.0.1:3000`，配置文件为 `backend/config.toml`。
 
 ```bash
 cd backend
@@ -89,7 +89,7 @@ cargo run --release
 后端健康检查：
 
 ```bash
-curl http://127.0.0.1:6666/
+curl http://127.0.0.1:3000/
 # 预期返回: Hello, world!
 ```
 
@@ -105,7 +105,7 @@ trunk serve --port 8080
 默认访问地址：`http://localhost:8080`
 
 前后端联调说明（Phase 4 起）：
-- **无前端代理**：`vite.config.js` 已删除；frontend-rs 通过 `fetch` 直连 `127.0.0.1:6666`。
+- **无前端代理**：`vite.config.js` 已删除；frontend-rs 通过 `fetch` 直连 `127.0.0.1:3000`。
   CORS 由后端 `actix-cors` 配置（dev 环境全开）。
 - 后端核心接口位于 `/api/v1/*`（diagrams v1 CRUD + 409 revision 冲突语义）。
 - 数据流：`editor-data-access` → `editor-core` (debounce 1s) → `editor-panels` /
@@ -115,12 +115,12 @@ trunk serve --port 8080
 
 ```bash
 # 创建 diagram
-curl -X POST http://127.0.0.1:6666/api/v1/diagrams \
+curl -X POST http://127.0.0.1:3000/api/v1/diagrams \
   -H 'Content-Type: application/json' \
   -d '{"name":"demo","engine":"mysql"}'
 
 # 查询 bridge 配置
-curl http://127.0.0.1:6666/api/v1/bridge/config
+curl http://127.0.0.1:3000/api/v1/bridge/config
 ```
 
 ### Build

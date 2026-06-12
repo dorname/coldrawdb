@@ -110,6 +110,25 @@ Step 5 分批执行提示词（可直接复用）：
 cd <项目根目录> && openlogos <command>
 ```
 
+## 项目当前状态
+
+- **模块**：`core`（核心功能）
+- **生命周期**：`launched`（`logos/logos-project.yaml`）
+- **当前阶段**：Phase 4 已完成，前端全面替换为 Rust Web（WASM + Leptos）
+- **最近归档变更**：
+  - `add-frontend-completeness`
+  - `fix-modal-overlay-blocking`
+  - `fix-add-frontend-stub-leftover`
+
+## OpenLogos 快速链接
+
+- 查看下一步：`openlogos next`
+- 查看状态：`openlogos status`
+- 创建变更：`openlogos change <slug>`
+- 合并变更：`openlogos merge <slug>`
+- 验收：`openlogos verify <slug>`
+- 归档：`openlogos archive <slug>`
+
 ## Conventions
 - 遵循 OpenLogos 三层推进模型（Why → What → How）
 - 每次变更必须先创建 logos/changes/ 变更提案
