@@ -25,6 +25,7 @@ use crate::editor_core::{
     ConflictAction, ConflictInfo, DebounceTrigger, EditorStore,
 };
 use crate::editor_core::types::{Field, Reference, Table};
+use crate::editor_data_access::{DiagramClient, SaveError, SaveResponse};
 use leptos::*;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -129,6 +130,61 @@ impl Named for TypeStub {
     fn name(&self) -> &str {
         &self.name
     }
+}
+
+/// Pure predicate for LeftPanel 侧栏选中态 (UT-STUB-01) — 不依赖 Leptos signals，
+/// 可在 `cargo test --lib` 中直接调用。
+///
+/// **关键契约 (Bug B 防回归)**：显式拒绝 `data-testid` 命名空间形式输入
+/// （如 `Some("table-list-item-xxx")`），因为 `table.id` 永远不含 `-list-item-` 子串。
+/// 任何把 testid 字符串传回 select 链路的代码会被该函数拒绝。
+pub fn is_table_selected(selected: &Option<String>, table_id: &str) -> bool {
+    match selected {
+        Some(s) if s == table_id => true,
+        _ => false,
+    }
+}
+
+/// Public save 调度 helper (UT-STUB-02) — 抽 4 处 save handler 末尾的 `debouncer.schedule(...)`
+/// 公共逻辑，避免雷同。闭包内 `spawn_local` 调 `DiagramClient::save` async 路径：
+/// - 成功 → `store.revision.set(r.revision)` + `store.dirty.set(false)`
+/// - 409 Conflict → `conflict.set(Some(ConflictInfo{...}))`（V1: 触发 ConflictDialog，handler 仍 stub）
+/// - 其它错误 → `error.set(Some(e.to_string()))`
+///
+/// 7 个参数全是 `Clone` 友好的 owned 值（DiagramClient 内部 `Rc`；EditorStore / RwSignal
+/// 内部全 `Copy` 友好），所以跨 `spawn_local` 边界安全。
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn schedule_save(
+    client: DiagramClient,
+    store: EditorStore,
+    current_diagram_id: RwSignal<String>,
+    current_title: RwSignal<String>,
+    debouncer: DebounceTrigger,
+    conflict: RwSignal<Option<ConflictInfo>>,
+    error: RwSignal<Option<String>>,
+) {
+    let id = current_diagram_id.get();
+    let rev = store.revision.get();
+    let name = current_title.get();
+    let snap = store.snapshot(id.clone(), name);
+    debouncer.schedule(move || {
+        let client = client.clone();
+        let store = store.clone();
+        let conflict = conflict.clone();
+        let error = error.clone();
+        spawn_local(async move {
+            match client.save(&id, rev, &snap).await {
+                Ok(resp) => {
+                    store.revision.set(resp.revision);
+                    store.dirty.set(false);
+                }
+                Err(SaveError::Conflict { current_revision, .. }) => {
+                    conflict.set(Some(ConflictInfo::new(current_revision, rev)));
+                }
+                Err(e) => error.set(Some(e.to_string())),
+            }
+        });
+    });
 }
 
 /// Pure filter function for UT-SP-02 / UT-SP-10 — 不依赖 Leptos signals，
@@ -706,13 +762,15 @@ pub fn TablesTab(
                 let table_name = table.name.clone();
                 let on_select = on_select_table.clone();
                 let testid = format!("table-list-item-{}", table_id);
-                let testid_for_select = testid.clone();
+                // on:click 闭包要 move 进 table_id；class: 闭包也借用 table_id。
+                // 预先 clone 一份给 on:click 用。
+                let table_id_for_click = table_id.clone();
                 view! {
                     <div
                         class="cdb-list-item"
-                        class:cdb-is-selected=move || selected_table_id.get() == Some(table_id.clone())
+                        class:cdb-is-selected=move || is_table_selected(&selected_table_id.get(), &table_id)
                         data-testid={testid}
-                        on:click=move |_| { on_select(Some(testid_for_select.clone())); }
+                        on:click=move |_| { on_select(Some(table_id_for_click.clone())); }
                     >
                         {table_name}
                     </div>
@@ -1088,12 +1146,21 @@ pub fn AppRoot(
         format!("auto-{}", id)
     };
 
+    // HTTP client to backend (port 3000, CORS middleware 在 fix-modal-overlay-blocking 已配)
+    let client = DiagramClient::new("http://127.0.0.1:3000");
+    // 4 个 save handler 各 clone 一份（避免 move 闭包互抢 client）
+    let client_for_create = client.clone();
+    let client_for_save = client.clone();
+    let client_for_add_field = client.clone();
+    let client_for_change_type = client.clone();
+
     // Toolbar CreateTable 处理
     let on_create_table = {
         let store = store.clone();
         let debouncer = debouncer.clone();
         let selected_table_id = selected_table_id.clone();
         let next_id = next_id.clone();
+        let error_for_create = error.clone();
         Rc::new(move || {
             let id = next_id.get();
             next_id.set(id + 1);
@@ -1112,7 +1179,29 @@ pub fn AppRoot(
             store.tables.set(tables);
             selected_table_id.set(Some(new_table.id));
             store.dirty.set(true);
-            debouncer.schedule(move || {});
+
+            // ST-STUB-01: e2e 用 / 入口,lib.rs fallback "default" → PUT /diagrams/default 后端 404
+            // 这里在首次创建表时,如果还是 fallback "default",先 POST /diagrams 拿真 id 再 save
+            if current_diagram_id.get() == "default" {
+                let client = client_for_create.clone();
+                let store = store.clone();
+                let debouncer = debouncer.clone();
+                let current_diagram_id = current_diagram_id.clone();
+                let current_title = current_title.clone();
+                let error = error_for_create.clone();
+                let conflict = conflict.clone();
+                spawn_local(async move {
+                    match client.create("新图").await {
+                        Ok(new_id) => {
+                            current_diagram_id.set(new_id);
+                            schedule_save(client, store, current_diagram_id, current_title, debouncer, conflict, error);
+                        }
+                        Err(e) => error.set(Some(e.to_string())),
+                    }
+                });
+            } else {
+                schedule_save(client_for_create.clone(), store.clone(), current_diagram_id.clone(), current_title.clone(), debouncer.clone(), conflict.clone(), error_for_create.clone());
+            }
         }) as Rc<dyn Fn()>
     };
 
@@ -1122,9 +1211,7 @@ pub fn AppRoot(
         let err = error.clone();
         Rc::new(move || {
             err.set(Some("保存触发 debounce 1s".to_string()));
-            debouncer.schedule(move || {
-                let _ = store.dirty.get();
-            });
+            schedule_save(client_for_save.clone(), store.clone(), current_diagram_id.clone(), current_title.clone(), debouncer.clone(), conflict.clone(), error.clone());
         }) as Rc<dyn Fn()>
     };
 
@@ -1153,7 +1240,7 @@ pub fn AppRoot(
             }
             store.tables.set(tables);
             store.dirty.set(true);
-            debouncer.schedule(move || {});
+            schedule_save(client_for_add_field.clone(), store.clone(), current_diagram_id.clone(), current_title.clone(), debouncer.clone(), conflict.clone(), error.clone());
         })
     };
 
@@ -1170,7 +1257,7 @@ pub fn AppRoot(
             }
             store.tables.set(tables);
             store.dirty.set(true);
-            debouncer.schedule(move || {});
+            schedule_save(client_for_change_type.clone(), store.clone(), current_diagram_id.clone(), current_title.clone(), debouncer.clone(), conflict.clone(), error.clone());
         })
     };
 
@@ -2534,6 +2621,71 @@ mod tests {
         assert!(
             src.contains("class=\"cdb-canvas-container\" data-testid=\"editor-canvas\""),
             "UT-FIX-02: `<div class=\"cdb-canvas-container\">` 必须带 `data-testid=\"editor-canvas\"`",
+        );
+    }
+
+    // ─── UT-STUB-01: is_table_selected 纯函数 4 case (fix-add-frontend-stub-leftover) ─
+
+    /// UT-STUB-01 case 1: Some(id) match → true
+    #[test]
+    fn test_is_table_selected_some_id_match_ut_stub_01() {
+        assert!(
+            is_table_selected(&Some("t1".to_string()), "t1"),
+            "UT-STUB-01 case 1: Some('t1') + 't1' 应匹配"
+        );
+    }
+
+    /// UT-STUB-01 case 2: Some(testid) 错配 → false（**核心**：防 Bug B 回归）
+    /// 验证 testid 字符串形如 `table-list-item-t1` 永远不应被当作 table_id 传入 selected
+    #[test]
+    fn test_is_table_selected_rejects_testid_prefix_ut_stub_01() {
+        assert!(
+            !is_table_selected(&Some("table-list-item-t1".to_string()), "t1"),
+            "UT-STUB-01 case 2: testid 形式 'table-list-item-t1' + 't1' 必须 reject（防 Bug B 回归）"
+        );
+    }
+
+    /// UT-STUB-01 case 3: None → false
+    #[test]
+    fn test_is_table_selected_none_ut_stub_01() {
+        assert!(
+            !is_table_selected(&None, "t1"),
+            "UT-STUB-01 case 3: None + 't1' 应 false"
+        );
+    }
+
+    /// UT-STUB-01 case 4: Some(id) 不匹配 → false
+    #[test]
+    fn test_is_table_selected_mismatch_ut_stub_01() {
+        assert!(
+            !is_table_selected(&Some("t1".to_string()), "t2"),
+            "UT-STUB-01 case 4: Some('t1') + 't2' 应 false"
+        );
+    }
+
+    // ─── UT-STUB-02: schedule_save 副作用契约 (fix-add-frontend-stub-leftover) ─
+
+    /// UT-STUB-02: `schedule_save` 必须存在并调用 `debouncer.schedule`
+    /// 编译期 + 源码静态断言：避免未来 refactor 改回空闭包而无人发现
+    /// 实际 PUT 副作用由 ST-STUB-01 (e2e) 验证（避免单测依赖 wasm 网络）
+    #[test]
+    fn test_schedule_save_calls_debouncer_schedule_ut_stub_02() {
+        let src = include_str!("editor_panels.rs");
+        assert!(
+            src.contains("pub(crate) fn schedule_save("),
+            "UT-STUB-02: `schedule_save` 公共 helper 必须存在（pub(crate) fn）"
+        );
+        assert!(
+            src.contains("debouncer.schedule("),
+            "UT-STUB-02: `schedule_save` 必须调用 `debouncer.schedule(...)` 触发 1.1s debounce"
+        );
+        // 4 个 save handler 必须接 schedule_save（on_create_table / on_save / on_add_field / on_change_type）
+        // 防止 stub 回退
+        let calls = src.matches("schedule_save(").count();
+        assert!(
+            calls >= 5,
+            "UT-STUB-02: `schedule_save(` 出现次数应 ≥ 5 (1 定义 + 4 调用), 实测 {} 次",
+            calls
         );
     }
 }

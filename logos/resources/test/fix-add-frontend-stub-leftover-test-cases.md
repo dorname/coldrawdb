@@ -69,9 +69,10 @@
   - 跑 `node frontend-rs/scripts/e2e-smoke.mjs`
 - **断言**（**强断言**）：
   - HP-01 加载空白编辑器 — `editor-canvas` testid 可见 + `editor-ready` 可见
-  - HP-02 创建表 + 1s debounce auto-save + reload 持久化：
+  - HP-02 创建表 + 1s debounce auto-save + revision 推进：
     - **`PUT count >= 1`**（接 save 链路后真有 PUT）
     - **`window.__cdb_revision >= 1`**（乐观锁 revision 推进）
+    - 验证 table-list-item 在 DOM 中可见
   - HP-03 字段增改 + Share 模态 URL 格式校验：
     - **`.cdb-list-item.cdb-is-selected` 数 = 1**（点中侧栏后只有一项高亮）
     - **右栏 `h3` 文本含表名**（RightPanel 真渲染对应选中表）

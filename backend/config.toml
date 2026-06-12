@@ -4,7 +4,7 @@ init_sql_path = "init.sql"
 test_path = "test.sqlite"
 
 [server]
-port = 6666
+port = 3000
 host = "127.0.0.1"
 
 [options]

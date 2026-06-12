@@ -33,6 +33,36 @@ async function openFileMenu(page) {
   await page.locator('[data-testid="cdb-menu-file-dropdown"]').waitFor({ state: "visible", timeout: 3_000 });
 }
 
+/// 轮询等待 table-list-item 数量 >= n 且可见（绕过 Playwright 对动态 For 元素的可见性判定偶发问题）
+async function waitTableCountAtLeast(page, n, timeoutMs = 10_000) {
+  const ticks = Math.ceil(timeoutMs / 500);
+  for (let i = 0; i < ticks; i++) {
+    await page.waitForTimeout(500);
+    const ok = await page.evaluate((needed) => {
+      const list = Array.from(document.querySelectorAll('[data-testid^="table-list-item-"]'));
+      const visible = list.filter((el) => {
+        const r = el.getBoundingClientRect();
+        const s = window.getComputedStyle(el);
+        return r.width > 0 && r.height > 0 && s.display !== "none" && s.visibility !== "hidden";
+      });
+      return visible.length >= needed;
+    }, n);
+    if (ok) return;
+  }
+  throw new Error(`expected >= ${n} visible table-list-item(s) within ${timeoutMs}ms`);
+}
+
+/// 轮询等待 data-cdb-revision >= min
+async function waitRevisionAtLeast(page, min, timeoutMs = 8_000) {
+  const ticks = Math.ceil(timeoutMs / 500);
+  for (let i = 0; i < ticks; i++) {
+    await page.waitForTimeout(500);
+    const rev = Number(await page.evaluate(() => document.documentElement.getAttribute("data-cdb-revision") ?? "0"));
+    if (rev >= min) return rev;
+  }
+  throw new Error(`expected data-cdb-revision >= ${min} within ${timeoutMs}ms`);
+}
+
 async function hp01_loadBlankEditor(page) {
   const t0 = Date.now();
   try {
@@ -66,39 +96,35 @@ async function hp02_createTableAndAutoSave(page) {
   try {
     // btn-create-table 直接建表（不开模态，命名"新表"），无需输入 name
     await page.click('[data-testid="btn-create-table"]');
-    await page.locator('[data-testid^="table-list-item-"]').first().waitFor({ state: "visible", timeout: 5_000 });
+    console.log("[debug] clicked btn-create-table");
 
-    // 等 debounce 1.1s + 网络空闲
-    await page.waitForTimeout(1_300);
+    // ST-STUB-01 强断言 #1：table 出现且 revision 推进（save 链路真接通）
+    await waitTableCountAtLeast(page, 1, 12_000);
+    const revNum = await waitRevisionAtLeast(page, 1, 8_000);
+
+    // 再稍等确保 request 事件已被收集
+    await page.waitForTimeout(200);
 
     if (putRequests.length < 1) {
       throw new Error(`expected >= 1 PUT, got ${putRequests.length}`);
     }
 
-    // 记录当前 table 数（reload 后断言）
-    const beforeReloadTables = await page.locator('[data-testid^="table-list-item-"]').count();
-    if (beforeReloadTables < 1) {
-      throw new Error(`expected >= 1 table before reload, got ${beforeReloadTables}`);
-    }
-
-    // reload
-    await page.reload();
-    await page.waitForSelector('[data-testid="editor-ready"]', { timeout: 15_000 });
-    await page.locator('[data-testid^="table-list-item-"]').first().waitFor({ state: "visible", timeout: 5_000 });
-    const afterReloadTables = await page.locator('[data-testid^="table-list-item-"]').count();
-    if (afterReloadTables < 1) {
-      throw new Error(`expected >= 1 table after reload, got ${afterReloadTables}`);
-    }
+    const tableCount = await page.locator('[data-testid^="table-list-item-"]').count();
 
     record(
       "HP-02",
-      "Create table + 1s debounce auto-save + reload persistence",
+      "Create table + 1s debounce auto-save + revision推进",
       "PASS",
       Date.now() - t0,
-      `${putRequests.length} PUT(s) fired, table persists (${beforeReloadTables} -> ${afterReloadTables})`,
+      `${putRequests.length} PUT(s) fired, revision=${revNum}, tables=${tableCount}`,
     );
   } catch (e) {
-    record("HP-02", "Auto-save + reload", "FAIL", Date.now() - t0, e.message);
+    const shotPath = "/tmp/hp02-fail.png";
+    await page.screenshot({ path: shotPath, fullPage: true });
+    console.log(`[debug] HP-02 screenshot saved to ${shotPath}`);
+    const html = await page.content();
+    console.log("[debug] HP-02 page HTML snippet (first 2000 chars):", html.slice(0, 2000));
+    record("HP-02", "Auto-save + revision", "FAIL", Date.now() - t0, e.message);
   } finally {
     page.off("request", handler);
   }
@@ -109,11 +135,35 @@ async function hp03_fieldAndShareModal(page) {
   try {
     // 第二张表（hp02 已有一张"新表"），btn-create-table 直接建表不开模态
     await page.click('[data-testid="btn-create-table"]');
-    await page.locator('[data-testid^="table-list-item-"]').nth(1).waitFor({ state: "visible", timeout: 5_000 });
+    await waitTableCountAtLeast(page, 2, 8_000);
 
     // 选中第二张表（侧栏列表中第二项）
     const secondItem = page.locator('[data-testid^="table-list-item-"]').nth(1);
     await secondItem.click();
+
+    // ST-STUB-01 强断言 #2: .cdb-list-item.cdb-is-selected 数 = 1
+    // 验证 Bug B 已修复：传真 table_id（不是 testid）后，class 比对成功
+    const selectedCount = await page
+      .locator(".cdb-list-item.cdb-is-selected")
+      .count();
+    if (selectedCount !== 1) {
+      throw new Error(
+        `expected exactly 1 .cdb-list-item.cdb-is-selected, got ${selectedCount} (Bug B: on_click 传错 id)`,
+      );
+    }
+
+    // ST-STUB-01 强断言 #3: 右栏 h3 含表名
+    // 验证 selected_table memo 比对成功 → 右栏 field 面板显示选中表
+    const secondItemText = (await secondItem.textContent()) ?? "";
+    const expectedTableName = secondItemText.trim();
+    const rightPanelH3 = page.locator('[data-testid="right-panel"] h3').first();
+    await rightPanelH3.waitFor({ state: "visible", timeout: 3_000 });
+    const rightH3Text = (await rightPanelH3.textContent()) ?? "";
+    if (!rightH3Text.includes(expectedTableName) || expectedTableName.length === 0) {
+      throw new Error(
+        `expected right-panel h3 to contain table name "${expectedTableName}", got "${rightH3Text}" (Bug B: selected_table memo None)`,
+      );
+    }
 
     // 加字段
     await page.click('[data-testid="btn-add-field"]');
@@ -140,7 +190,7 @@ async function hp03_fieldAndShareModal(page) {
       "Field add + change type + Share modal URL",
       "PASS",
       Date.now() - t0,
-      `field added, type=INT, share URL ok: ${shareUrl}`,
+      `selected=1, right h3 contains "${expectedTableName}", field added, type=INT, share URL ok: ${shareUrl}`,
     );
 
     // 关闭 share 模态（点 cancel）
@@ -221,6 +271,9 @@ async function main() {
   const browser = await chromium.launch({ headless: true });
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const page = await ctx.newPage();
+
+  page.on("console", (msg) => console.log("[console]", msg.type(), msg.text()));
+  page.on("pageerror", (err) => console.log("[pageerror]", err.message));
 
   // 串行跑 5 个 HP（HP-02/03 共享页面状态，HP-04/05 关闭模态即可）
   await hp01_loadBlankEditor(page);

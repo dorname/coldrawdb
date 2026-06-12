@@ -6,3 +6,9 @@ dist = "dist"
 # Rust's release profile (opt-level = "z" in Cargo.toml) does the optimization.
 [tools]
 wasm-opt = false
+
+# Disable live-reload WebSocket to avoid e2e smoke tests reloading mid-run
+# after backend PUT requests (trunk's autoreload can trigger on unrelated
+# filesystem or websocket events in container/CI environments).
+[serve]
+no_autoreload = true

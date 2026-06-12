@@ -32,6 +32,20 @@ pub enum ApiError {
     Parse(String),
 }
 
+/// Backend standard success envelope: `{ code: 0, data: T, request_id: String }`.
+/// All 200-OK responses from v1 API use this wrapper.
+#[derive(Deserialize)]
+struct ApiResp<T> {
+    code: i32,
+    data: T,
+}
+
+/// Inner data for POST /diagrams success envelope (`data.id`).
+#[derive(Deserialize)]
+struct IdData {
+    id: String,
+}
+
 /// Save (PUT) specific errors, including the 409 revision conflict.
 #[derive(Debug, Error)]
 pub enum SaveError {
@@ -59,14 +73,18 @@ pub struct SaveResponse {
 
 /// HTTP client for the drawdb v1 REST API.
 ///
-/// Construct with `DiagramClient::new("http://127.0.0.1:6666")`.
+/// Construct with `DiagramClient::new("http://127.0.0.1:3000")`.
 /// All methods are async and return `Result` with typed error enums.
 ///
 /// # Example
 /// ```ignore
-/// let client = DiagramClient::new("http://127.0.0.1:6666");
+/// let client = DiagramClient::new("http://127.0.0.1:3000");
 /// let diagram = client.get("diagram-id-123").await?;
 /// ```
+/// HTTP client to backend, clone-cheap (inner `String` is owned so clone is cheap).
+/// 派生 Clone 以支持 schedule_save helper 跨 spawn_local 边界 clone client
+/// （fix-add-frontend-stub-leftover 提案 Bug A 修复需要）
+#[derive(Clone)]
 pub struct DiagramClient {
     base_url: String,
 }
@@ -91,12 +109,12 @@ impl DiagramClient {
 
         match resp.status() {
             200 => {
-                // Map backend DiagramOut to our Diagram DTO
-                let out: DiagramOut = resp
+                // Backend wraps success in `{ code: 0, data: DiagramOut, request_id }`
+                let out: ApiResp<DiagramOut> = resp
                     .json()
                     .await
                     .map_err(|e| ApiError::Parse(e.to_string()))?;
-                Ok(out.into_diagram())
+                Ok(out.data.into_diagram())
             }
             s => Err(ApiError::Server(
                 s,
@@ -130,12 +148,13 @@ impl DiagramClient {
 
         match resp.status() {
             200 => {
-                let out: SaveResp = resp
+                // Backend wraps success in `{ code: 0, data: SaveResp, request_id }`
+                let out: ApiResp<SaveResp> = resp
                     .json()
                     .await
                     .map_err(|e| SaveError::Network(e.to_string()))?;
                 Ok(SaveResponse {
-                    revision: out.revision.unwrap_or(expected_revision + 1),
+                    revision: out.data.revision.unwrap_or(expected_revision + 1),
                     saved_at: Utc::now(),
                 })
             }
@@ -188,15 +207,12 @@ impl DiagramClient {
 
         match resp.status() {
             200 => {
-                #[derive(Deserialize)]
-                struct CreateResp {
-                    id: String,
-                }
-                let out: CreateResp = resp
+                // Backend wraps success in `{ code: 0, data: { id }, request_id }`
+                let out: ApiResp<IdData> = resp
                     .json()
                     .await
                     .map_err(|e| ApiError::Parse(e.to_string()))?;
-                Ok(out.id)
+                Ok(out.data.id)
             }
             s => Err(ApiError::Server(
                 s,
