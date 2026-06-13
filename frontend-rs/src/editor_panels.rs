@@ -237,11 +237,11 @@ pub fn ConflictDialog(
     on_force_overwrite: Rc<dyn Fn()>,
     on_reload: Rc<dyn Fn()>,
 ) -> impl IntoView {
-    fn render(
-        conflict: RwSignal<Option<ConflictInfo>>,
-        on_force_overwrite: Rc<dyn Fn()>,
-        on_reload: Rc<dyn Fn()>,
-    ) -> impl IntoView {
+    let on_force_overwrite_inner = on_force_overwrite.clone();
+    let on_reload_inner = on_reload.clone();
+    let render = move || {
+        let on_force_overwrite_inner = on_force_overwrite_inner.clone();
+        let on_reload_inner = on_reload_inner.clone();
         match conflict.get() {
             Some(info) => view! {
                 <div class="cdb-conflict-dialog-overlay">
@@ -257,7 +257,7 @@ pub fn ConflictDialog(
                                 data-testid="btn-force-overwrite"
                                 on:click=move |_| {
                                     conflict.set(None);
-                                    on_force_overwrite();
+                                    on_force_overwrite_inner();
                                 }
                             >
                                 "强制覆盖"
@@ -267,7 +267,7 @@ pub fn ConflictDialog(
                                 data-testid="btn-reload"
                                 on:click=move |_| {
                                     conflict.set(None);
-                                    on_reload();
+                                    on_reload_inner();
                                 }
                             >
                                 "重新加载"
@@ -278,15 +278,15 @@ pub fn ConflictDialog(
             }.into_view(),
             None => view! { <></> }.into_view(),
         }
-    }
+    };
 
-    {render(conflict, on_force_overwrite, on_reload)}
+    render
 }
 
 /// 错误提示
 #[component]
 pub fn ErrorToast(error: RwSignal<Option<String>>) -> impl IntoView {
-    fn render(error: RwSignal<Option<String>>) -> impl IntoView {
+    let render = move || {
         match error.get() {
             Some(msg) => view! {
                 <div class="cdb-error-toast" data-testid="error-toast">
@@ -296,9 +296,9 @@ pub fn ErrorToast(error: RwSignal<Option<String>>) -> impl IntoView {
             }.into_view(),
             None => view! { <></> }.into_view(),
         }
-    }
+    };
 
-    {render(error)}
+    render
 }
 
 /// 顶部菜单栏 (B1)：4 下拉空壳 + B4 File 下拉接通 4 个模态
