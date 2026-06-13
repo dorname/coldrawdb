@@ -43,3 +43,6 @@ backend/*.sqlite
 frontend-rs/target/
 frontend-rs/dist/
 frontend-rs/.trunk/
+
+# Accidentally tracked debug script (untracked by change remove-debug-smoke-artifact)
+frontend-rs/scripts/debug-smoke.mjs
