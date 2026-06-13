@@ -156,7 +156,40 @@
 - 表缺失 → 重新执行 `init.sql`
 - 磁盘不足 → 清理备份
 
-## 8. 通用要求
+## 8. SMOKE-core-06 — 本地脚本启停验证
+
+### 8.1 目的
+
+验证 `scripts/start-local.sh` 能正确拉起前后端服务，`scripts/stop-local.sh` 能安全停止服务。
+
+### 8.2 步骤
+
+1. 确保本地无占用 3000 / 8080 端口的进程
+2. 从仓库根目录执行 `./scripts/start-local.sh`
+3. 等待脚本输出 "Services started successfully"
+4. 验证 `logs/backend.pid` 与 `logs/frontend.pid` 存在且对应进程存活
+5. `curl http://127.0.0.1:3000/` → 期望 200，body 含 `Hello, world!`
+6. `curl http://127.0.0.1:8080/` → 期望 200，body 含 `<div id="root">`
+7. 执行 `./scripts/stop-local.sh`
+8. 验证前后端 PID 文件被删除
+9. 等待 5 秒后 `curl` 前后端地址 → 期望连接失败
+
+### 8.3 断言
+
+- `start-local.sh` 退出码为 0
+- 后端健康检查在 60 秒内通过
+- 前端 HTTP 入口在 30 秒内可达
+- `stop-local.sh` 退出码为 0
+- 停止后 3000 / 8080 端口无监听进程
+
+### 8.4 失败处理
+
+- 端口冲突 → 提示用户检查占用进程或修改 `COLDRAWDB_BACKEND_PORT` / `COLDRAWDB_FRONTEND_PORT`
+- 后端启动失败 → 查看 `logs/backend.log`
+- 前端启动失败 → 查看 `logs/frontend.log`
+- 停止失败 → 手动 `kill -9` 对应 PID 后排查脚本
+
+## 9. 通用要求
 
 | 维度 | 要求 |
 |---|---|
@@ -167,7 +200,7 @@
 | 重试策略 | 网络错误自动重试 1 次；其他错误不重试 |
 | 前置条件 | staging 已部署 + 后端进程存活 + 数据库可达 |
 
-## 9. SMOKE 报告示例
+## 10. SMOKE 报告示例
 
 ```markdown
 # Staging Smoke Report — 2026-06-08 10:00:00
@@ -189,13 +222,13 @@
 ## SMOKE_PASS
 ```
 
-## 10. V1 边界
+## 11. V1 边界
 
-- ❌ 完整功能回归（V1 仅 smoke 5 项；完整回归在 UT/ST 阶段）
+- ❌ 完整功能回归（V1 仅 smoke 6 项；完整回归在 UT/ST 阶段）
 - ❌ 性能压测（V1 smoke 仅功能）
 - ❌ 跨 staging 多实例（V1 单 staging）
 
-## 11. 对齐参考源
+## 12. 对齐参考源
 
 - `core-01-deployment-plan.md`（smoke 入口）
 - `core-02-diagram-persistence.md`（API 端点）
