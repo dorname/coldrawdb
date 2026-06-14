@@ -1,0 +1,183 @@
+# Delta — core-01d-import-export.md（新文件）
+
+> merge 时作为新文件写入 `logos/resources/prd/2-product-design/1-feature-specs/core-01d-import-export.md`
+
+## ADDED — 全文
+
+> 模块：core | 提案：redesign-phase-c-import-export
+> 路径：`logos/resources/prd/2-product-design/1-feature-specs/core-01d-import-export.md`
+> 对齐：`core-03-bridge-io.md`、`bridge.yaml`、`editor_panels.rs::modals::ImportModal`
+> 最后更新：2026-06-14
+
+# 导入 / 导出 IO 抽屉规格（V2 / Phase C）
+
+## 1. 概述
+
+Phase C 将 V1 居中 **Import 模态** 与占位 **Export 按钮** 升级为画布右侧 **非模态 IO 抽屉**：
+
+- 不占用 `ModalRoot` 遮罩层（L4），与 Inspector（L3）同级侧栏语义
+- 导入走 `POST /api/v1/bridge/import/local`
+- 导出在**客户端**从当前 `EditorStore` 生成 SQL / DBML / JSON 预览（V1 无服务端 export 端点）
+
+## 2. 组件树
+
+```
+AppRoot
+├── AppBar                    ← btn-import / btn-export 触发
+├── ...
+├── IoDrawer                  ← data-testid="io-drawer"
+│   ├── ImportDrawer          ← import-drawer（format/engine/textarea/preview/submit）
+│   └── ExportDrawer          ← export-drawer（format/engine/preview/copy/download）
+└── EmptyGuide                ← guide-import-sql 触发 ImportDrawer
+```
+
+## 3. 状态模型
+
+```rust
+enum IoDrawerKind {
+    None,
+    Import,
+    Export,
+}
+```
+
+| 信号 | 类型 | 说明 |
+|------|------|------|
+| `io_drawer` | `RwSignal<IoDrawerKind>` | 当前打开的抽屉 |
+| `inspector_open_before_io` | 可选缓存 | 打开 IO 抽屉前 Inspector 是否展开，关闭时恢复 |
+
+### 3.1 互斥规则
+
+| 事件 | 行为 |
+|------|------|
+| 打开 Import / Export | 若 Inspector 展开 → 折叠并缓存状态 |
+| 关闭 IO 抽屉 | 恢复缓存的 Inspector 展开态 |
+| Inspector 手动展开且 IO 抽屉已开 | IO 抽屉关闭（Inspector 优先） |
+
+## 4. ImportDrawer
+
+### 4.1 布局
+
+```
+┌─ 导入 ───────────────────────────── [×] ─┐
+│ [ SQL ] [ DBML ] [ JSON ]                 │  ← format tabs
+│ 数据库引擎: [ generic ▼ ]  （SQL 时显示）  │
+│ ┌─────────────────────────────────────┐ │
+│ │ 粘贴 SQL / 拖放 .sql 文件            │ │  ← import-textarea
+│ └─────────────────────────────────────┘ │
+│ 解析摘要: 3 条语句 · 预计 2 张表          │  ← import-parse-summary
+│ [ 取消 ]              [ 导入并打开 ▶ ]   │
+└──────────────────────────────────────────┘
+```
+
+- 宽度：**400px**（与 Inspector 默认 320px 区分，可挤压画布）
+- testid：`import-drawer` / `import-format-tabs` / `import-engine-select` / `import-textarea` / `import-parse-summary` / `import-submit` / `import-cancel`
+
+### 4.2 格式 Tab
+
+| format | 引擎选择 | 解析预览 |
+|--------|----------|----------|
+| `sql` | 必填（默认 `generic`） | `parse_sql_statements` 语句数 + 简单表名启发式（可选） |
+| `dbml` | 隐藏 | 行数 / `Table` 块计数（纯函数 `count_dbml_tables`） |
+| `json` | 隐藏 | `serde_json` 校验 + tables 数组长度 |
+
+### 4.3 文件拖放
+
+- 接受扩展名：`.sql` / `.dbml` / `.json`
+- 拖入后：自动切换对应 format Tab，内容写入 textarea
+- 大小上限：读取 `bridge/config` 的 `maxImportSizeKb`（V1 可硬编码 5120 KB，与 bridge 默认一致）
+
+### 4.4 提交行为
+
+1. 校验：内容非空；SQL 需选引擎；JSON 需合法
+2. `POST /api/v1/bridge/import/local` body：`{ format, content, engine?, title? }`
+3. 成功（`status: success` 或返回 `diagramId`）→ `window.location` 跳转 `/editor/{diagramId}`
+4. 失败 → 抽屉内 inline 错误 + ErrorToast
+5. 按钮文案：**导入并打开**；提交中 disabled + `导入中...`
+
+### 4.5 入口汇总
+
+| 入口 | testid | 行为 |
+|------|--------|------|
+| AppBar | `btn-import` | 打开 ImportDrawer |
+| File 菜单 | `cdb-menu-import` | 打开 ImportDrawer（不再开 Import 模态） |
+| EmptyGuide | `guide-import-sql` | 打开 ImportDrawer |
+
+## 5. ExportDrawer
+
+### 5.1 布局
+
+```
+┌─ 导出 ───────────────────────────── [×] ─┐
+│ [ SQL ] [ DBML ] [ JSON ]                 │
+│ 数据库引擎: [ mysql ▼ ]  （SQL 时显示）    │
+│ ┌─────────────────────────────────────┐ │
+│ │ CREATE TABLE users ( ... );         │ │  ← export-preview（只读）
+│ │ ...                                 │ │
+│ └─────────────────────────────────────┘ │
+│ [ 复制 ]  [ 下载 .sql ]                   │
+└──────────────────────────────────────────┘
+```
+
+- testid：`export-drawer` / `export-format-tabs` / `export-engine-select` / `export-preview` / `export-copy` / `export-download`
+
+### 5.2 预览生成（客户端）
+
+| format | 函数 | V1 范围 |
+|--------|------|---------|
+| SQL | `export_diagram_sql(store, engine)` | 最小可用：`CREATE TABLE` + 列定义 + PK；FK 引用 `references` |
+| DBML | `export_diagram_dbml(store)` | 表 + 字段 + `ref:` 关系 |
+| JSON | `serde_json::to_string_pretty(diagram)` | 与 persistence JSON 同构 |
+
+空 diagram：预览区显示「暂无表，无法导出」；复制/下载 disabled。
+
+### 5.3 复制 / 下载
+
+- **复制**：`navigator.clipboard.writeText`；成功按钮文案 `已复制` 2s
+- **下载**：触发 `<a download>` blob；文件名 `{diagram_title}.{sql|dbml|json}`
+
+## 6. 与 V1 模态的关系
+
+| V1 组件 | Phase C 处理 |
+|---------|--------------|
+| `ImportModal` | 保留代码供 UT-MM-10；File 菜单与 AppBar **不再**打开；可标记 `#[deprecated]` 注释 |
+| `ImportSourceModal` | 不变；ImportDrawer 内嵌 `local` 源（不单独弹源选择） |
+| Export 模态（未实现） | 由 ExportDrawer 完全替代 |
+
+## 7. 样式
+
+```css
+.cdb-io-drawer {
+  width: 400px;
+  border-left: 1px solid var(--cdb-color-border);
+  background: var(--cdb-color-bg);
+  display: flex;
+  flex-direction: column;
+  z-index: 30; /* L3，与 Inspector 同级 */
+}
+.cdb-main.cdb-has-io-drawer {
+  grid-template-columns: 48px 1fr 0 auto; /* 折叠 Inspector，显示 IO 抽屉 */
+}
+```
+
+## 8. 测试 ID 索引
+
+| TC ID | 描述 |
+|-------|------|
+| UT-PC-01 | `parse_sql_statements` 驱动导入摘要 |
+| UT-PC-02 | `export_diagram_sql` 非空 diagram 输出含 `CREATE TABLE` |
+| UT-PC-03 | `export_diagram_dbml` 含 `Table` 块 |
+| UT-PC-04 | `IoDrawerKind` 互斥：开 Import 折叠 Inspector |
+| UT-PC-05 | `count_dbml_tables` 纯函数 |
+| ST-PC-01 | e2e：btn-import → 粘贴 SQL → 解析摘要可见 |
+
+详细步骤见 `core-PC-import-export-test-cases.md`。
+
+## 9. Phase C 边界
+
+- ❌ SQL/DBML 全屏代码视图（`btn-code-view`）— Phase D
+- ❌ Mermaid / PNG 导出 — 后续提案
+- ❌ 导入任务异步轮询 UI（logs/retry）— V1 仅同步成功路径 + 错误展示
+- ✅ 右侧 IO 抽屉（Import + Export）
+- ✅ bridge import API 接线
+- ✅ 客户端 SQL/DBML/JSON 导出预览
