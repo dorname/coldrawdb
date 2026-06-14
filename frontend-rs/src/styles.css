@@ -84,13 +84,21 @@ body {
 
 .cdb-main {
   display: grid;
-  grid-template-columns: 48px 1fr auto;
+  grid-template-columns: 48px 1fr auto auto;
   overflow: hidden;
   min-height: 0;
 }
 
 .cdb-main.cdb-is-inspector-collapsed {
-  grid-template-columns: 48px 1fr 0;
+  grid-template-columns: 48px 1fr 0 auto;
+}
+
+.cdb-main.cdb-has-io-drawer {
+  grid-template-columns: 48px 1fr 0 400px;
+}
+
+.cdb-main.cdb-has-io-drawer.cdb-is-inspector-collapsed {
+  grid-template-columns: 48px 1fr 0 400px;
 }
 
 .cdb-side-panel {
@@ -287,6 +295,92 @@ body {
   overflow-y: auto;
   padding: var(--cdb-space-4);
   min-height: 0;
+}
+
+/* ============================================================
+ * Phase C: IO Drawer (import / export)
+ * ============================================================ */
+.cdb-io-drawer {
+  width: 400px;
+  min-width: 400px;
+  border-left: 1px solid var(--cdb-color-border);
+  background: var(--cdb-color-bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 30;
+}
+
+.cdb-io-drawer__header {
+  padding: var(--cdb-space-3) var(--cdb-space-4);
+  border-bottom: 1px solid var(--cdb-color-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  font-size: var(--cdb-text-sm);
+  flex-shrink: 0;
+}
+
+.cdb-io-drawer__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--cdb-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--cdb-space-3);
+  min-height: 0;
+}
+
+.cdb-io-drawer__footer {
+  padding: var(--cdb-space-3) var(--cdb-space-4);
+  border-top: 1px solid var(--cdb-color-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--cdb-space-2);
+  flex-shrink: 0;
+}
+
+.cdb-format-tabs {
+  display: flex;
+  gap: var(--cdb-space-2);
+  flex-wrap: wrap;
+}
+
+.cdb-format-tabs .cdb-btn.cdb-is-active {
+  background: var(--cdb-color-primary-bg);
+  border-color: var(--cdb-color-primary);
+  color: var(--cdb-color-primary);
+}
+
+.cdb-io-textarea {
+  width: 100%;
+  min-height: 160px;
+  padding: var(--cdb-space-3);
+  border: 1px solid var(--cdb-color-border);
+  border-radius: var(--cdb-radius-sm);
+  font-family: ui-monospace, monospace;
+  font-size: var(--cdb-text-xs);
+  resize: vertical;
+}
+
+.cdb-export-preview {
+  width: 100%;
+  min-height: 200px;
+  max-height: 320px;
+  padding: var(--cdb-space-3);
+  border: 1px solid var(--cdb-color-border);
+  border-radius: var(--cdb-radius-sm);
+  font-family: ui-monospace, monospace;
+  font-size: var(--cdb-text-xs);
+  background: var(--cdb-color-bg-subtle);
+  white-space: pre-wrap;
+  overflow: auto;
+}
+
+.cdb-parse-summary {
+  font-size: var(--cdb-text-xs);
+  color: var(--cdb-color-text-muted);
 }
 
 .cdb-form-group {

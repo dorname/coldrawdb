@@ -68,7 +68,7 @@ main() {
     log_info "Starting frontend (trunk serve --port $COLDRAWDB_FRONTEND_PORT) ..."
     (
         cd frontend-rs
-        exec trunk serve --port "$COLDRAWDB_FRONTEND_PORT"
+        exec env -u NO_COLOR -u FORCE_COLOR trunk serve --port "$COLDRAWDB_FRONTEND_PORT"
     ) >> "$frontend_log" 2>&1 &
     local frontend_pid_value=$!
     echo "$frontend_pid_value" > "$frontend_pid"

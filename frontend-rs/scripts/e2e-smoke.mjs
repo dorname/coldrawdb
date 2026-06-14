@@ -67,17 +67,21 @@ async function hp01_loadBlankEditor(page) {
   const t0 = Date.now();
   try {
     await waitEditorReady(page);
-    await page.locator('[data-testid="top-menu-bar"]').waitFor({ state: "visible" });
-    await page.locator('[data-testid="toolbar"]').waitFor({ state: "visible" });
-    await page.locator('[data-testid="left-panel"]').waitFor({ state: "visible" });
+    await page.locator('[data-testid="app-bar"]').waitFor({ state: "visible" });
+    await page.locator('[data-testid="tool-rail"]').waitFor({ state: "visible" });
     await page.locator('[data-testid="editor-canvas"]').waitFor({ state: "visible" });
+    await page.locator('[data-testid="canvas-empty-guide"]').waitFor({ state: "visible" });
     await page.locator('[data-testid="revision-display"]').waitFor({ state: "visible" });
+    const hasToolbar = await page.locator('[data-testid="toolbar"]').count();
+    if (hasToolbar > 0) {
+      throw new Error("Phase A: toolbar testid should be removed");
+    }
     record(
       "HP-01",
       "Load blank editor",
       "PASS",
       Date.now() - t0,
-      "editor + top menu + toolbar + side panel + canvas + revision display",
+      "editor + app-bar + tool-rail + canvas + empty-guide + revision in status-bar",
     );
   } catch (e) {
     record("HP-01", "Load blank editor", "FAIL", Date.now() - t0, e.message);
@@ -94,29 +98,29 @@ async function hp02_createTableAndAutoSave(page) {
   };
   page.on("request", handler);
   try {
-    // btn-create-table 直接建表（不开模态，命名"新表"），无需输入 name
-    await page.click('[data-testid="btn-create-table"]');
-    console.log("[debug] clicked btn-create-table");
+    // Phase A: 空白引导卡片创建第一张表
+    await page.click('[data-testid="guide-create-table"]');
+    console.log("[debug] clicked guide-create-table");
 
-    // ST-STUB-01 强断言 #1：table 出现且 revision 推进（save 链路真接通）
-    await waitTableCountAtLeast(page, 1, 12_000);
-    const revNum = await waitRevisionAtLeast(page, 1, 8_000);
+    await waitRevisionAtLeast(page, 1, 12_000);
 
-    // 再稍等确保 request 事件已被收集
     await page.waitForTimeout(200);
 
     if (putRequests.length < 1) {
       throw new Error(`expected >= 1 PUT, got ${putRequests.length}`);
     }
 
-    const tableCount = await page.locator('[data-testid^="table-list-item-"]').count();
+    const guideVisible = await page.locator('[data-testid="canvas-empty-guide"]').isVisible();
+    if (guideVisible) {
+      throw new Error("empty guide should disappear after creating first table");
+    }
 
     record(
       "HP-02",
       "Create table + 1s debounce auto-save + revision推进",
       "PASS",
       Date.now() - t0,
-      `${putRequests.length} PUT(s) fired, revision=${revNum}, tables=${tableCount}`,
+      `${putRequests.length} PUT(s) fired, revision>=1, empty guide hidden`,
     );
   } catch (e) {
     const shotPath = "/tmp/hp02-fail.png";
@@ -133,41 +137,23 @@ async function hp02_createTableAndAutoSave(page) {
 async function hp03_fieldAndShareModal(page) {
   const t0 = Date.now();
   try {
-    // 第二张表（hp02 已有一张"新表"），btn-create-table 直接建表不开模态
+    // 第二张表：Tool Rail 新建菜单
+    await page.click('[data-testid="tool-new-menu"]');
+    await page.locator('[data-testid="tool-new-menu-dropdown"]').waitFor({ state: "visible" });
     await page.click('[data-testid="btn-create-table"]');
-    await waitTableCountAtLeast(page, 2, 8_000);
+    await page.waitForTimeout(500);
 
-    // 选中第二张表（侧栏列表中第二项）
-    const secondItem = page.locator('[data-testid^="table-list-item-"]').nth(1);
-    await secondItem.click();
-
-    // ST-STUB-01 强断言 #2: .cdb-list-item.cdb-is-selected 数 = 1
-    // 验证 Bug B 已修复：传真 table_id（不是 testid）后，class 比对成功
-    const selectedCount = await page
-      .locator(".cdb-list-item.cdb-is-selected")
-      .count();
-    if (selectedCount !== 1) {
-      throw new Error(
-        `expected exactly 1 .cdb-list-item.cdb-is-selected, got ${selectedCount} (Bug B: on_click 传错 id)`,
-      );
-    }
-
-    // ST-STUB-01 强断言 #3: 右栏 h3 含表名
-    // 验证 selected_table memo 比对成功 → 右栏 field 面板显示选中表
-    const secondItemText = (await secondItem.textContent()) ?? "";
-    const expectedTableName = secondItemText.trim();
-    const rightPanelH3 = page.locator('[data-testid="right-panel"] h3').first();
-    await rightPanelH3.waitFor({ state: "visible", timeout: 3_000 });
-    const rightH3Text = (await rightPanelH3.textContent()) ?? "";
-    if (!rightH3Text.includes(expectedTableName) || expectedTableName.length === 0) {
-      throw new Error(
-        `expected right-panel h3 to contain table name "${expectedTableName}", got "${rightH3Text}" (Bug B: selected_table memo None)`,
-      );
+    // 新建表自动选中，Inspector 应显示表名
+    const inspectorName = page.locator('[data-testid="inspector-table-name"]').first();
+    await inspectorName.waitFor({ state: "visible", timeout: 5_000 });
+    const tableNameText = (await inspectorName.textContent()) ?? "";
+    if (!tableNameText.includes("新表")) {
+      throw new Error(`expected inspector-table-name to contain 新表, got "${tableNameText}"`);
     }
 
     // 加字段
     await page.click('[data-testid="btn-add-field"]');
-    const fieldRow = page.locator('[data-testid^="field-"]').first();
+    const fieldRow = page.locator('[data-testid^="field-row-"]').first();
     await fieldRow.waitFor({ state: "visible" });
 
     // 改字段类型
@@ -190,7 +176,7 @@ async function hp03_fieldAndShareModal(page) {
       "Field add + change type + Share modal URL",
       "PASS",
       Date.now() - t0,
-      `selected=1, right h3 contains "${expectedTableName}", field added, type=INT, share URL ok: ${shareUrl}`,
+      `inspector shows "${tableNameText.trim()}", field added, type=INT, share URL ok: ${shareUrl}`,
     );
 
     // 关闭 share 模态（点 cancel）
@@ -204,31 +190,29 @@ async function hp03_fieldAndShareModal(page) {
 async function hp04_sqlImportParse(page) {
   const t0 = Date.now();
   try {
-    await openFileMenu(page);
-    await page.click('[data-testid="cdb-menu-import"]');
-    await page.locator('[data-testid="modal-import"]').waitFor({ state: "visible" });
+    await page.click('[data-testid="btn-import"]');
+    await page.locator('[data-testid="import-drawer"]').waitFor({ state: "visible" });
 
     const sql = "CREATE TABLE smoke_test (id INT PRIMARY KEY, name VARCHAR(64) NOT NULL);";
-    await page.fill('[data-testid="modal-input-sql"]', sql);
+    await page.fill('[data-testid="import-textarea"]', sql);
 
-    // 解析提示（parse_sql_statements 应该返回 1 条）
-    await page.locator('[data-testid="modal-parse-count"]').waitFor({ state: "visible", timeout: 3_000 });
-    const parseText = (await page.textContent('[data-testid="modal-parse-count"]')) ?? "";
+    // 解析摘要（parse_sql_statements 应该返回 1 条）
+    await page.locator('[data-testid="import-parse-summary"]').waitFor({ state: "visible", timeout: 3_000 });
+    const parseText = (await page.textContent('[data-testid="import-parse-summary"]')) ?? "";
     if (!parseText.includes("1")) {
       throw new Error(`parse count unexpected: "${parseText}"`);
     }
 
     record(
       "HP-04",
-      "SQL import modal + parse (UI shell + parser)",
+      "ImportDrawer SQL parse (Phase C)",
       "PASS",
       Date.now() - t0,
       `parsed: ${parseText.trim()}`,
     );
 
-    // 关闭模态
-    await page.click('[data-testid="modal-cancel-import-btn"]');
-    await page.locator('[data-testid="modal-import"]').waitFor({ state: "hidden" });
+    await page.click('[data-testid="import-cancel"]');
+    await page.locator('[data-testid="import-drawer"]').waitFor({ state: "hidden" });
   } catch (e) {
     record("HP-04", "SQL import", "FAIL", Date.now() - t0, e.message);
   }

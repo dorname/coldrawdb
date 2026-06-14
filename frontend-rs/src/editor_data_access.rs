@@ -239,6 +239,46 @@ impl DiagramClient {
             )),
         }
     }
+
+    /// POST /api/v1/bridge/import/local
+    ///
+    /// 从本地 payload 创建新 diagram（Phase C ImportDrawer）。
+    pub async fn import_local(
+        &self,
+        source: &str,
+        payload: serde_json::Value,
+    ) -> Result<ImportLocalResponse, ApiError> {
+        let url = format!("{}/api/v1/bridge/import/local", self.base_url);
+        let req = ImportLocalReq {
+            source: source.to_string(),
+            payload,
+        };
+
+        let resp = Request::post(&url)
+            .json(&req)
+            .map_err(|e| ApiError::Network(e.to_string()))?
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+
+        match resp.status() {
+            200 => {
+                let out: ApiResp<ImportLocalData> = resp
+                    .json()
+                    .await
+                    .map_err(|e| ApiError::Parse(e.to_string()))?;
+                Ok(ImportLocalResponse {
+                    diagram_id: out.data.diagram_id,
+                    log_id: out.data.log_id,
+                    status: out.data.status,
+                })
+            }
+            s => Err(ApiError::Server(
+                s,
+                resp.text().await.unwrap_or_default(),
+            )),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -338,6 +378,28 @@ struct SaveResp {
 struct CreateReq {
     name: String,
     database: Option<String>,
+}
+
+/// POST /bridge/import/local body.
+#[derive(Serialize)]
+struct ImportLocalReq {
+    source: String,
+    payload: serde_json::Value,
+}
+
+#[derive(Deserialize)]
+struct ImportLocalData {
+    log_id: String,
+    diagram_id: String,
+    status: String,
+}
+
+/// Phase C：bridge 本地导入响应
+#[derive(Debug, Clone)]
+pub struct ImportLocalResponse {
+    pub diagram_id: String,
+    pub log_id: String,
+    pub status: String,
 }
 
 #[allow(dead_code)]

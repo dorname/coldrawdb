@@ -14,7 +14,7 @@ use crate::editor_core::{
     ConflictAction, ConflictInfo, DebounceTrigger, EditorStore,
 };
 use crate::editor_core::types::{Field, Reference, Table};
-use crate::editor_data_access::{DiagramClient, SaveError, SaveResponse};
+use crate::editor_data_access::{DiagramClient, SaveError, SaveResponse, ImportLocalResponse};
 use crate::editor_render::Canvas;
 use crate::editor_render::{Transform, zoom_in, zoom_out, zoom_reset};
 use leptos::*;
@@ -255,6 +255,252 @@ pub fn toggle_field_primary(tables: &mut [Table], table_id: &str, field_id: &str
         }
     } else if let Some(f) = table.fields.iter_mut().find(|f| f.id == field_id) {
         f.primary = false;
+    }
+}
+
+/// Phase C：IO 抽屉类型
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IoDrawerKind {
+    None,
+    Import,
+    Export,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImportFormat {
+    Sql,
+    Dbml,
+    Json,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExportFormat {
+    Sql,
+    Dbml,
+    Json,
+}
+
+/// 打开 IO 抽屉前缓存 Inspector 状态；返回 (折叠后 inspector_open, cache)
+pub fn snapshot_before_io_drawer(inspector_open: bool) -> (bool, Option<bool>) {
+    if inspector_open {
+        (false, Some(true))
+    } else {
+        (false, None)
+    }
+}
+
+/// 关闭 IO 抽屉后恢复 Inspector
+pub fn restore_inspector_after_io_drawer(cache: Option<bool>) -> bool {
+    cache.unwrap_or(false)
+}
+
+/// DBML Table 块计数（Phase C UT-PC-05）
+pub fn count_dbml_tables(text: &str) -> usize {
+    text.lines()
+        .filter(|line| {
+            let t = line.trim();
+            t.starts_with("Table ") || t.starts_with("table ")
+        })
+        .count()
+}
+
+/// 导入解析摘要
+pub fn import_parse_summary(format: ImportFormat, content: &str) -> Result<String, String> {
+    match format {
+        ImportFormat::Sql => {
+            let n = modals::parse_sql_statements(content)?.len();
+            Ok(format!("{n} 条语句"))
+        }
+        ImportFormat::Dbml => Ok(format!(
+            "{} 个 Table 块",
+            count_dbml_tables(content)
+        )),
+        ImportFormat::Json => {
+            let v: serde_json::Value =
+                serde_json::from_str(content).map_err(|e| e.to_string())?;
+            let n = v
+                .get("tables")
+                .and_then(|t| t.as_array())
+                .map(|a| a.len())
+                .unwrap_or(0);
+            Ok(format!("{n} 张表"))
+        }
+    }
+}
+
+/// 构建 bridge import payload
+pub fn build_import_payload(
+    format: ImportFormat,
+    content: &str,
+    _engine: &str,
+    title: &str,
+) -> Result<serde_json::Value, String> {
+    match format {
+        ImportFormat::Json => {
+            let mut v: serde_json::Value =
+                serde_json::from_str(content).map_err(|e| e.to_string())?;
+            if let Some(obj) = v.as_object_mut() {
+                if !obj.contains_key("name") {
+                    obj.insert(
+                        "name".into(),
+                        serde_json::Value::String(title.to_string()),
+                    );
+                }
+            }
+            Ok(v)
+        }
+        ImportFormat::Sql => {
+            let _ = modals::parse_sql_statements(content)?;
+            Ok(serde_json::json!({
+                "name": title,
+                "source_format": "sql",
+            }))
+        }
+        ImportFormat::Dbml => {
+            Ok(serde_json::json!({
+                "name": title,
+                "source_format": "dbml",
+                "table_count": count_dbml_tables(content),
+            }))
+        }
+    }
+}
+
+/// 客户端 SQL 导出（Phase C UT-PC-02）
+pub fn export_diagram_sql(tables: &[Table], _references: &[Reference], engine: &str) -> String {
+    let mut out = String::new();
+    if !engine.is_empty() && engine != "generic" {
+        out.push_str(&format!("-- engine: {engine}\n\n"));
+    }
+    for table in tables {
+        out.push_str(&format!("CREATE TABLE {} (\n", table.name));
+        for (i, field) in table.fields.iter().enumerate() {
+            let comma = if i + 1 < table.fields.len() { "," } else { "" };
+            let pk = if field.primary { " PRIMARY KEY" } else { "" };
+            let nn = if field.not_null { " NOT NULL" } else { "" };
+            out.push_str(&format!(
+                "  {} {}{}{}{}\n",
+                field.name, field.type_, pk, nn, comma
+            ));
+        }
+        out.push_str(");\n\n");
+    }
+    out
+}
+
+/// 客户端 DBML 导出（Phase C UT-PC-03）
+pub fn export_diagram_dbml(tables: &[Table], references: &[Reference]) -> String {
+    let mut out = String::new();
+    for table in tables {
+        out.push_str(&format!("Table {} {{\n", table.name));
+        for field in &table.fields {
+            let mut attrs = Vec::new();
+            if field.primary {
+                attrs.push("pk");
+            }
+            if field.not_null {
+                attrs.push("not null");
+            }
+            let attr_str = if attrs.is_empty() {
+                String::new()
+            } else {
+                format!(" [{}]", attrs.join(", "))
+            };
+            out.push_str(&format!(
+                "  {} {}{}\n",
+                field.name, field.type_, attr_str
+            ));
+        }
+        out.push_str("}\n\n");
+    }
+    for r in references {
+        let start = tables.iter().find(|t| t.id == r.start_table_id);
+        let end = tables.iter().find(|t| t.id == r.end_table_id);
+        let sf = start
+            .and_then(|t| t.fields.iter().find(|f| f.id == r.start_field_id))
+            .map(|f| f.name.as_str())
+            .unwrap_or("?");
+        let ef = end
+            .and_then(|t| t.fields.iter().find(|f| f.id == r.end_field_id))
+            .map(|f| f.name.as_str())
+            .unwrap_or("?");
+        let st = start.map(|t| t.name.as_str()).unwrap_or("?");
+        let et = end.map(|t| t.name.as_str()).unwrap_or("?");
+        out.push_str(&format!("Ref: {}.{} > {}.{}\n", st, sf, et, ef));
+    }
+    out
+}
+
+/// 客户端 JSON 导出
+pub fn export_diagram_json(
+    name: &str,
+    tables: &[Table],
+    references: &[Reference],
+) -> String {
+    serde_json::to_string_pretty(&serde_json::json!({
+        "name": name,
+        "tables": tables,
+        "references": references,
+    }))
+    .unwrap_or_else(|_| "{}".into())
+}
+
+fn navigate_to_editor(diagram_id: &str) {
+    if let Some(window) = web_sys::window() {
+        let _ = window
+            .location()
+            .set_href(&format!("/editor/{diagram_id}"));
+    }
+}
+
+fn copy_text_to_clipboard(text: &str) -> bool {
+    use wasm_bindgen::JsCast;
+    let Some(window) = web_sys::window() else {
+        return false;
+    };
+    let Some(document) = window.document() else {
+        return false;
+    };
+    let Ok(el) = document.create_element("textarea") else {
+        return false;
+    };
+    let Ok(ta) = el.dyn_into::<web_sys::HtmlTextAreaElement>() else {
+        return false;
+    };
+    ta.set_value(text);
+    let Some(body) = document.body() else {
+        return false;
+    };
+    let _ = body.append_child(&ta);
+    ta.select();
+    let ok = document
+        .dyn_ref::<web_sys::HtmlDocument>()
+        .and_then(|d| d.exec_command("copy").ok())
+        .unwrap_or(false);
+    let _ = body.remove_child(&ta);
+    ok
+}
+
+fn download_text(filename: &str, text: &str) {
+    if let Some(window) = web_sys::window() {
+        if let Some(document) = window.document() {
+            if let Ok(el) = document.create_element("a") {
+                use wasm_bindgen::JsCast;
+                if let Ok(a) = el.dyn_into::<web_sys::HtmlAnchorElement>() {
+                    let href = format!(
+                        "data:text/plain;charset=utf-8,{}",
+                        js_sys::encode_uri_component(text)
+                    );
+                    a.set_href(&href);
+                    a.set_download(filename);
+                    let _ = document.body().map(|body| {
+                        let _ = body.append_child(&a);
+                        a.click();
+                        let _ = body.remove_child(&a);
+                    });
+                }
+            }
+        }
     }
 }
 
@@ -741,9 +987,14 @@ pub fn AppBar(
     transform: RwSignal<Transform>,
     error: RwSignal<Option<String>>,
     on_title_blur: Rc<dyn Fn(String)>,
+    on_open_import: Rc<dyn Fn()>,
+    on_open_export: Rc<dyn Fn()>,
 ) -> impl IntoView {
     let file_open = create_rw_signal(false);
     let view_open = create_rw_signal(false);
+    let import_handler = on_open_import.clone();
+    let import_handler_menu = on_open_import.clone();
+    let export_handler = on_open_export.clone();
 
     view! {
         <header class="cdb-app-bar" data-testid="app-bar">
@@ -774,18 +1025,15 @@ pub fn AppBar(
             <button
                 class="cdb-btn"
                 data-testid="btn-import"
-                disabled=true
-                title="导入功能即将推出"
+                on:click=move |_| import_handler()
             >
                 "导入"
             </button>
             <button
                 class="cdb-btn"
                 data-testid="btn-export"
-                title="Export"
-                on:click=move |_| {
-                    error.set(Some("Export 模态待 B5 实现".to_string()));
-                }
+                title="导出"
+                on:click=move |_| export_handler()
             >
                 "导出 ▾"
             </button>
@@ -808,6 +1056,7 @@ pub fn AppBar(
                     }
                 >"文件 ▾"</div>
                 {move || if file_open.get() {
+                    let import_menu = import_handler_menu.clone();
                     view! {
                         <div class="cdb-menu-dropdown" data-testid="cdb-menu-file-dropdown">
                             <button
@@ -830,7 +1079,7 @@ pub fn AppBar(
                                 class="cdb-menu-dropdown-item"
                                 data-testid="cdb-menu-import"
                                 on:click=move |_| {
-                                    modal_kind.set(Some(modals::ModalKind::Import));
+                                    import_menu();
                                     file_open.set(false);
                                 }
                             >"导入"</button>
@@ -1117,9 +1366,302 @@ pub fn RelationshipConfirmBar(
     }
 }
 
+/// Phase C：IO 抽屉（导入 / 导出）
+#[component]
+pub fn IoDrawer(
+    kind: RwSignal<IoDrawerKind>,
+    store: EditorStore,
+    current_title: RwSignal<String>,
+    client: DiagramClient,
+    error: RwSignal<Option<String>>,
+    on_close: Rc<dyn Fn()>,
+) -> impl IntoView {
+    view! {
+        {move || match kind.get() {
+            IoDrawerKind::Import => {
+                let close = on_close.clone();
+                view! {
+                    <ImportDrawer
+                        current_title=current_title
+                        client=client.clone()
+                        error=error.clone()
+                        on_close=close
+                    />
+                }.into_view()
+            }
+            IoDrawerKind::Export => {
+                let close = on_close.clone();
+                view! {
+                    <ExportDrawer
+                        store=store.clone()
+                        current_title=current_title
+                        on_close=close
+                    />
+                }.into_view()
+            }
+            IoDrawerKind::None => view! { <></> }.into_view(),
+        }}
+    }
+}
+
+/// Phase C：导入抽屉
+#[component]
+pub fn ImportDrawer(
+    current_title: RwSignal<String>,
+    client: DiagramClient,
+    error: RwSignal<Option<String>>,
+    on_close: Rc<dyn Fn()>,
+) -> impl IntoView {
+    let format = create_rw_signal(ImportFormat::Sql);
+    let engine = create_rw_signal(String::from("generic"));
+    let content = create_rw_signal(String::new());
+    let inline_error = create_rw_signal(None::<String>);
+    let submitting = create_rw_signal(false);
+
+    let close = on_close.clone();
+    let close_btn = on_close.clone();
+
+    view! {
+        <aside class="cdb-io-drawer" data-testid="import-drawer">
+            <div class="cdb-io-drawer__header">
+                <span>"导入"</span>
+                <button class="cdb-btn cdb-btn--icon" data-testid="import-cancel" on:click=move |_| close()>"×"</button>
+            </div>
+            <div class="cdb-io-drawer__body">
+                <div class="cdb-format-tabs" data-testid="import-format-tabs">
+                    <button
+                        class="cdb-btn"
+                        class:cdb-is-active=move || format.get() == ImportFormat::Sql
+                        on:click=move |_| format.set(ImportFormat::Sql)
+                    >"SQL"</button>
+                    <button
+                        class="cdb-btn"
+                        class:cdb-is-active=move || format.get() == ImportFormat::Dbml
+                        on:click=move |_| format.set(ImportFormat::Dbml)
+                    >"DBML"</button>
+                    <button
+                        class="cdb-btn"
+                        class:cdb-is-active=move || format.get() == ImportFormat::Json
+                        on:click=move |_| format.set(ImportFormat::Json)
+                    >"JSON"</button>
+                </div>
+                {move || if format.get() == ImportFormat::Sql {
+                    view! {
+                        <div class="cdb-form-group">
+                            <label>"数据库引擎"</label>
+                            <select
+                                class="cdb-form-select"
+                                data-testid="import-engine-select"
+                                on:change=move |ev| engine.set(event_target_value(&ev))
+                            >
+                                <option value="generic" selected>"generic"</option>
+                                <option value="mysql">"mysql"</option>
+                                <option value="postgresql">"postgresql"</option>
+                                <option value="sqlite">"sqlite"</option>
+                            </select>
+                        </div>
+                    }.into_view()
+                } else {
+                    view! { <></> }.into_view()
+                }}
+                <textarea
+                    class="cdb-io-textarea"
+                    data-testid="import-textarea"
+                    placeholder="粘贴 SQL / DBML / JSON"
+                    prop:value=move || content.get()
+                    on:input=move |ev| {
+                        use wasm_bindgen::JsCast;
+                        if let Ok(ta) = ev.target().unwrap().dyn_into::<web_sys::HtmlTextAreaElement>() {
+                            content.set(ta.value());
+                        }
+                    }
+                />
+                {move || {
+                    let text = content.get();
+                    let fmt = format.get();
+                    match import_parse_summary(fmt, &text) {
+                        Ok(summary) => view! {
+                            <p class="cdb-parse-summary" data-testid="import-parse-summary">
+                                {format!("解析摘要：{summary}")}
+                            </p>
+                        }.into_view(),
+                        Err(e) if !text.is_empty() => view! {
+                            <p class="cdb-form-error">{e}</p>
+                        }.into_view(),
+                        _ => view! { <></> }.into_view(),
+                    }
+                }}
+                {move || inline_error.get().map(|e| view! {
+                    <p class="cdb-form-error">{e}</p>
+                })}
+            </div>
+            <div class="cdb-io-drawer__footer">
+                <button class="cdb-btn" data-testid="import-cancel-btn" on:click=move |_| close_btn()>"取消"</button>
+                <button
+                    class="cdb-btn cdb-btn--primary"
+                    data-testid="import-submit"
+                    disabled=move || submitting.get()
+                    on:click=move |_| {
+                        let text = content.get();
+                        if text.trim().is_empty() {
+                            inline_error.set(Some("内容不能为空".into()));
+                            return;
+                        }
+                        let fmt = format.get();
+                        let eng = engine.get();
+                        let title = current_title.get();
+                        let payload = match build_import_payload(fmt, &text, &eng, &title) {
+                            Ok(p) => p,
+                            Err(e) => {
+                                inline_error.set(Some(e));
+                                return;
+                            }
+                        };
+                        inline_error.set(None);
+                        submitting.set(true);
+                        let client = client.clone();
+                        let err = error.clone();
+                        spawn_local(async move {
+                            match client.import_local("import_drawer", payload).await {
+                                Ok(ImportLocalResponse { diagram_id, .. }) => {
+                                    navigate_to_editor(&diagram_id);
+                                }
+                                Err(e) => {
+                                    submitting.set(false);
+                                    err.set(Some(e.to_string()));
+                                }
+                            }
+                        });
+                    }
+                >
+                    {move || if submitting.get() { "导入中..." } else { "导入并打开 ▶" }}
+                </button>
+            </div>
+        </aside>
+    }
+}
+
+/// Phase C：导出抽屉
+#[component]
+pub fn ExportDrawer(
+    store: EditorStore,
+    current_title: RwSignal<String>,
+    on_close: Rc<dyn Fn()>,
+) -> impl IntoView {
+    let format = create_rw_signal(ExportFormat::Sql);
+    let engine = create_rw_signal(String::from("mysql"));
+    let copied = create_rw_signal(false);
+
+    let preview = create_memo(move |_| {
+        let tables = store.tables.get();
+        let refs = store.references.get();
+        if tables.is_empty() {
+            return "暂无表，无法导出".into();
+        }
+        match format.get() {
+            ExportFormat::Sql => export_diagram_sql(&tables, &refs, &engine.get()),
+            ExportFormat::Dbml => export_diagram_dbml(&tables, &refs),
+            ExportFormat::Json => export_diagram_json(&current_title.get_untracked(), &tables, &refs),
+        }
+    });
+
+    let has_tables = move || !store.tables.get().is_empty();
+    let close = on_close.clone();
+
+    view! {
+        <aside class="cdb-io-drawer" data-testid="export-drawer">
+            <div class="cdb-io-drawer__header">
+                <span>"导出"</span>
+                <button class="cdb-btn cdb-btn--icon" on:click=move |_| close()>"×"</button>
+            </div>
+            <div class="cdb-io-drawer__body">
+                <div class="cdb-format-tabs" data-testid="export-format-tabs">
+                    <button
+                        class="cdb-btn"
+                        class:cdb-is-active=move || format.get() == ExportFormat::Sql
+                        on:click=move |_| format.set(ExportFormat::Sql)
+                    >"SQL"</button>
+                    <button
+                        class="cdb-btn"
+                        class:cdb-is-active=move || format.get() == ExportFormat::Dbml
+                        on:click=move |_| format.set(ExportFormat::Dbml)
+                    >"DBML"</button>
+                    <button
+                        class="cdb-btn"
+                        class:cdb-is-active=move || format.get() == ExportFormat::Json
+                        on:click=move |_| format.set(ExportFormat::Json)
+                    >"JSON"</button>
+                </div>
+                {move || if format.get() == ExportFormat::Sql {
+                    view! {
+                        <div class="cdb-form-group">
+                            <label>"数据库引擎"</label>
+                            <select
+                                class="cdb-form-select"
+                                data-testid="export-engine-select"
+                                on:change=move |ev| engine.set(event_target_value(&ev))
+                            >
+                                <option value="mysql" selected>"mysql"</option>
+                                <option value="postgresql">"postgresql"</option>
+                                <option value="generic">"generic"</option>
+                            </select>
+                        </div>
+                    }.into_view()
+                } else {
+                    view! { <></> }.into_view()
+                }}
+                <pre class="cdb-export-preview" data-testid="export-preview">{move || preview.get()}</pre>
+            </div>
+            <div class="cdb-io-drawer__footer">
+                <button
+                    class="cdb-btn"
+                    data-testid="export-copy"
+                    disabled=move || !has_tables()
+                    on:click=move |_| {
+                        if copy_text_to_clipboard(&preview.get()) {
+                            copied.set(true);
+                            let copied_sig = copied;
+                            gloo_timers::callback::Timeout::new(2_000, move || {
+                                copied_sig.set(false);
+                            })
+                            .forget();
+                        }
+                    }
+                >
+                    {move || if copied.get() { "已复制" } else { "复制" }}
+                </button>
+                <button
+                    class="cdb-btn cdb-btn--primary"
+                    data-testid="export-download"
+                    disabled=move || !has_tables()
+                    on:click=move |_| {
+                        let ext = match format.get() {
+                            ExportFormat::Sql => "sql",
+                            ExportFormat::Dbml => "dbml",
+                            ExportFormat::Json => "json",
+                        };
+                        let name = current_title.get_untracked();
+                        let safe: String = name
+                            .chars()
+                            .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+                            .collect();
+                        let filename = format!("{safe}.{ext}");
+                        download_text(&filename, &preview.get());
+                    }
+                >
+                    "下载"
+                </button>
+            </div>
+        </aside>
+    }
+}
+
 /// Phase A：空白画布引导卡片
 #[component]
-pub fn EmptyGuide(on_create_table: Rc<dyn Fn()>) -> impl IntoView {
+pub fn EmptyGuide(
+    on_create_table: Rc<dyn Fn()>,
+    on_import: Rc<dyn Fn()>,
+) -> impl IntoView {
     view! {
         <div class="cdb-empty-guide" data-testid="canvas-empty-guide">
             <h2>"开始设计你的数据库"</h2>
@@ -1131,7 +1673,11 @@ pub fn EmptyGuide(on_create_table: Rc<dyn Fn()>) -> impl IntoView {
                 >
                     "+ 创建第一张表"
                 </button>
-                <button class="cdb-btn" disabled=true title="导入功能即将推出">
+                <button
+                    class="cdb-btn"
+                    data-testid="guide-import-sql"
+                    on:click=move |_| on_import()
+                >
                     "↑ 导入 SQL"
                 </button>
             </div>
@@ -2274,6 +2820,56 @@ pub fn AppRoot(
         rel_tool_active.set(picking);
     });
 
+    // Phase C：IO 抽屉
+    let io_drawer: RwSignal<IoDrawerKind> = create_rw_signal(IoDrawerKind::None);
+    let inspector_before_io: RwSignal<Option<bool>> = create_rw_signal(None);
+
+    create_effect(move |_| {
+        if inspector_open.get() && io_drawer.get() != IoDrawerKind::None {
+            io_drawer.set(IoDrawerKind::None);
+            inspector_before_io.set(None);
+        }
+    });
+
+    let close_io_drawer = {
+        let io_drawer = io_drawer.clone();
+        let inspector_open = inspector_open.clone();
+        let inspector_before_io = inspector_before_io.clone();
+        Rc::new(move || {
+            io_drawer.set(IoDrawerKind::None);
+            inspector_open.set(restore_inspector_after_io_drawer(
+                inspector_before_io.get_untracked(),
+            ));
+            inspector_before_io.set(None);
+        })
+    };
+
+    let open_import_drawer = {
+        let io_drawer = io_drawer.clone();
+        let inspector_open = inspector_open.clone();
+        let inspector_before_io = inspector_before_io.clone();
+        Rc::new(move || {
+            let (collapsed, cache) =
+                snapshot_before_io_drawer(inspector_open.get_untracked());
+            inspector_before_io.set(cache);
+            inspector_open.set(collapsed);
+            io_drawer.set(IoDrawerKind::Import);
+        })
+    };
+
+    let open_export_drawer = {
+        let io_drawer = io_drawer.clone();
+        let inspector_open = inspector_open.clone();
+        let inspector_before_io = inspector_before_io.clone();
+        Rc::new(move || {
+            let (collapsed, cache) =
+                snapshot_before_io_drawer(inspector_open.get_untracked());
+            inspector_before_io.set(cache);
+            inspector_open.set(collapsed);
+            io_drawer.set(IoDrawerKind::Export);
+        })
+    };
+
     // B4: 模态提交回调 (New/Rename 共享)
     // - New: 创建空 diagram，更新 current_diagram_id + current_title
     // - Rename: 更新 current_title
@@ -2295,6 +2891,7 @@ pub fn AppRoot(
 
     // HTTP client to backend (port 3000, CORS middleware 在 fix-modal-overlay-blocking 已配)
     let client = DiagramClient::new("http://127.0.0.1:3000");
+    let client_for_io = client.clone();
     // 4 个 save handler 各 clone 一份（避免 move 闭包互抢 client）
     let client_for_create = client.clone();
     let client_for_save = client.clone();
@@ -2662,10 +3259,15 @@ pub fn AppRoot(
                 transform=canvas_transform
                 error=error.clone()
                 on_title_blur=on_title_blur
+                on_open_import=open_import_drawer.clone()
+                on_open_export=open_export_drawer.clone()
             />
             <div
                 class="cdb-main"
-                class:cdb-is-inspector-collapsed=move || !inspector_open.get()
+                class:cdb-is-inspector-collapsed=move || {
+                    !inspector_open.get() || io_drawer.get() != IoDrawerKind::None
+                }
+                class:cdb-has-io-drawer=move || io_drawer.get() != IoDrawerKind::None
             >
                 <ToolRail
                     store=store.clone()
@@ -2678,7 +3280,10 @@ pub fn AppRoot(
                 <div class="cdb-canvas-container" data-testid="editor-canvas-container">
                     {move || if store.tables.get().is_empty() {
                         view! {
-                            <EmptyGuide on_create_table=on_create_table.clone() />
+                            <EmptyGuide
+                                on_create_table=on_create_table.clone()
+                                on_import=open_import_drawer.clone()
+                            />
                         }.into_view()
                     } else {
                         view! { <></> }.into_view()
@@ -2713,6 +3318,14 @@ pub fn AppRoot(
                     on_flip_ref=on_flip_ref
                     on_delete_ref=on_delete_ref
                     on_jump_to_table=on_jump_to_table
+                />
+                <IoDrawer
+                    kind=io_drawer
+                    store=store.clone()
+                    current_title=current_title
+                    client=client_for_io.clone()
+                    error=error.clone()
+                    on_close=close_io_drawer.clone()
                 />
             </div>
             <StatusBar
@@ -4073,7 +4686,11 @@ mod tests {
         );
         assert!(
             css.contains("grid-template-columns: 48px 1fr auto"),
-            "UT-PA-06: .cdb-main 栅格应为 48px 1fr auto",
+            "UT-PA-06: .cdb-main 栅格含 ToolRail + Canvas + 侧栏",
+        );
+        assert!(
+            css.contains("cdb-has-io-drawer"),
+            "Phase C: IO 抽屉栅格类",
         );
         assert!(
             panels.contains("data-testid=\"floating-controls\""),
@@ -4132,6 +4749,96 @@ mod tests {
             !is_table_selected(&Some("t1".to_string()), "t2"),
             "UT-STUB-01 case 4: Some('t1') + 't2' 应 false"
         );
+    }
+
+    // ─── UT-PC — Phase C 导入/导出抽屉 ─────────────────────────────────────
+
+    #[test]
+    fn test_import_parse_summary_ut_pc_01() {
+        let sql = "CREATE TABLE a (id INT); CREATE TABLE b (id INT);";
+        let summary = import_parse_summary(ImportFormat::Sql, sql).unwrap();
+        assert!(summary.contains('2'), "UT-PC-01: 应含 2 条语句");
+    }
+
+    #[test]
+    fn test_export_diagram_sql_ut_pc_02() {
+        let tables = vec![Table {
+            id: "t1".into(),
+            name: "users".into(),
+            x: 0.0,
+            y: 0.0,
+            color: "#000".into(),
+            comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(),
+                name: "id".into(),
+                type_: "INT".into(),
+                default: String::new(),
+                check: String::new(),
+                primary: true,
+                unique: false,
+                not_null: true,
+                increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(),
+        }];
+        let out = export_diagram_sql(&tables, &[], "generic");
+        assert!(out.contains("CREATE TABLE users"), "UT-PC-02: 应含 CREATE TABLE");
+    }
+
+    #[test]
+    fn test_export_diagram_dbml_ut_pc_03() {
+        let tables = vec![make_table("t1", "users")];
+        let refs = vec![Reference {
+            id: "r1".into(),
+            name: String::new(),
+            start_table_id: "t1".into(),
+            end_table_id: "t1".into(),
+            start_field_id: "f1".into(),
+            end_field_id: "f2".into(),
+            type_: "one_to_many".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+        }];
+        let out = export_diagram_dbml(&tables, &refs);
+        assert!(out.contains("Table users"), "UT-PC-03: 应含 Table 块");
+        assert!(out.contains("Ref:"), "UT-PC-03: 应含 ref");
+    }
+
+    #[test]
+    fn test_snapshot_before_io_drawer_ut_pc_04() {
+        let (collapsed, cache) = snapshot_before_io_drawer(true);
+        assert!(!collapsed, "UT-PC-04: 打开 IO 抽屉应折叠 Inspector");
+        assert_eq!(cache, Some(true), "UT-PC-04: 应缓存 Inspector 展开态");
+        assert!(restore_inspector_after_io_drawer(Some(true)));
+        let (_, cache2) = snapshot_before_io_drawer(false);
+        assert_eq!(cache2, None);
+    }
+
+    #[test]
+    fn test_count_dbml_tables_ut_pc_05() {
+        let text = "Table users {\n  id int\n}\nTable orders {\n  id int\n}";
+        assert_eq!(count_dbml_tables(text), 2, "UT-PC-05: 应计数 2 个 Table");
+    }
+
+    #[test]
+    fn test_phase_c_io_drawer_components_ut_pc_06() {
+        let panels = include_str!("editor_panels.rs");
+        let css = include_str!("styles.css");
+        assert!(
+            panels.contains("data-testid=\"import-drawer\""),
+            "UT-PC-06: ImportDrawer testid",
+        );
+        assert!(
+            panels.contains("data-testid=\"guide-import-sql\""),
+            "UT-PC-06: EmptyGuide 导入按钮 testid",
+        );
+        assert!(
+            !panels.contains("btn-import\"\n                disabled=true"),
+            "UT-AB-04: btn-import Phase C 应启用",
+        );
+        assert!(css.contains(".cdb-io-drawer"), "Phase C IO 抽屉样式");
     }
 
     // ─── UT-PB — Phase B 关系工具纯函数 ─────────────────────────────────────

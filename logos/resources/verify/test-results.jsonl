@@ -68,3 +68,11 @@
 {"id":"UT-PB-04","status":"pass","timestamp":"2026-06-14T07:35:00Z","duration_ms":1,"batch":"Phase B","note":"test_toggle_field_primary_ut_pb_04 in editor_panels::tests (cargo test --lib)"}
 {"id":"UT-PB-05","status":"pass","timestamp":"2026-06-14T07:35:00Z","duration_ms":1,"batch":"Phase B","note":"test_confirm_create_increments_refs_ut_pb_05 in editor_panels::tests (cargo test --lib)"}
 {"id":"ST-PB-01","status":"skip","timestamp":"2026-06-14T07:35:00Z","error":"Phase B: 关系工具 e2e 需 headless browser，deferred to e2e-smoke 增补","batch":"Phase B","note":"UT 层已覆盖 build_reference / hit_test_field；ST-PB-01 待 e2e 脚本扩展"}
+{"id":"UT-PC-01","status":"pass","timestamp":"2026-06-14T12:00:00Z","duration_ms":1,"batch":"Phase C","note":"test_import_parse_summary_ut_pc_01 in editor_panels::tests (cargo test --lib)"}
+{"id":"UT-PC-02","status":"pass","timestamp":"2026-06-14T12:00:00Z","duration_ms":1,"batch":"Phase C","note":"test_export_diagram_sql_ut_pc_02 in editor_panels::tests (cargo test --lib)"}
+{"id":"UT-PC-03","status":"pass","timestamp":"2026-06-14T12:00:00Z","duration_ms":1,"batch":"Phase C","note":"test_export_diagram_dbml_ut_pc_03 in editor_panels::tests (cargo test --lib)"}
+{"id":"UT-PC-04","status":"pass","timestamp":"2026-06-14T12:00:00Z","duration_ms":1,"batch":"Phase C","note":"test_snapshot_before_io_drawer_ut_pc_04 in editor_panels::tests (cargo test --lib)"}
+{"id":"UT-PC-05","status":"pass","timestamp":"2026-06-14T12:00:00Z","duration_ms":1,"batch":"Phase C","note":"test_count_dbml_tables_ut_pc_05 in editor_panels::tests (cargo test --lib)"}
+{"id":"UT-PC-06","status":"pass","timestamp":"2026-06-14T12:00:00Z","duration_ms":1,"batch":"Phase C","note":"test_phase_c_io_drawer_components_ut_pc_06 in editor_panels::tests (cargo test --lib)"}
+{"id":"UT-AB-04","status":"pass","timestamp":"2026-06-14T12:00:00Z","duration_ms":1,"batch":"Phase C","note":"btn-import enabled 断言含于 test_phase_c_io_drawer_components_ut_pc_06 (cargo test --lib)"}
+{"id":"ST-PC-01","status":"skip","timestamp":"2026-06-14T12:00:00Z","error":"Phase C: ImportDrawer e2e 待 e2e-smoke.mjs 增补","batch":"Phase C","note":"UT 层已覆盖 IO 抽屉组件与解析摘要；ST-PC-01 deferred"}
