@@ -10,7 +10,7 @@
 use crate::editor_core::types::{
     Area, Diagram, Field, Note, Reference, Table,
 };
-use gloo::utils::window;
+use leptos::{RwSignal, SignalGet, SignalSet, SignalUpdate};
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, MouseEvent, WheelEvent};
 
@@ -82,10 +82,14 @@ mod leptos_canvas {
     #[component]
     pub fn Canvas(
         store: EditorStore,
+        transform: RwSignal<Transform>,
         on_select: Option<Box<dyn Fn(String) + 'static>>,
+        on_deselect: Option<Box<dyn Fn() + 'static>>,
+        on_dblclick_blank: Option<Box<dyn Fn() + 'static>>,
+        rel_tool_active: RwSignal<bool>,
+        on_field_pick: Option<Box<dyn Fn(String, String) + 'static>>,
     ) -> impl IntoView {
         let canvas_ref = create_node_ref::<html::Canvas>();
-        let transform = create_rw_signal(Transform::default());
         let selected_id = create_rw_signal(None::<String>);
         let drag_state = create_rw_signal(None::<DragState>);
 
@@ -108,15 +112,26 @@ mod leptos_canvas {
                 _ => return,
             };
 
+            // 使 canvas 内部分辨率匹配容器尺寸
+            if let Some(parent) = canvas.parent_element() {
+                let w = parent.client_width().max(1) as u32;
+                let h = parent.client_height().max(1) as u32;
+                if canvas.width() != w || canvas.height() != h {
+                    canvas.set_width(w);
+                    canvas.set_height(h);
+                }
+            }
+
             let t = transform.get();
             let tables = store.tables.get();
             let refs = store.references.get();
-            // B3: connect areas/notes to store (was `Vec::new()` placeholder)
             let areas = store.areas.get();
             let notes = store.notes.get();
             let sel = selected_id.get();
 
-            super::draw_canvas(&ctx, &t, &tables, &refs, &areas, &notes, sel.as_deref());
+            let width = canvas.width() as f64;
+            let height = canvas.height() as f64;
+            super::draw_canvas(&ctx, &t, width, height, &tables, &refs, &areas, &notes, sel.as_deref());
         });
 
         let on_mousedown = move |ev: MouseEvent| {
@@ -133,6 +148,16 @@ mod leptos_canvas {
 
             let tables = store.tables.get_untracked();
             let refs = store.references.get_untracked();
+            // 关系工具：优先字段命中
+            if rel_tool_active.get_untracked() {
+                if let Some((tid, fid)) = super::hit_test_field(&tables, dx, dy) {
+                    if let Some(cb) = &on_field_pick {
+                        cb(tid, fid);
+                    }
+                    return;
+                }
+                return;
+            }
             // B3: hit-test endpoint first (priority over table body)
             if let Some((ref_id, end)) = super::hit_test_endpoint(&tables, &refs, dx, dy) {
                 drag_state.set(Some(DragState {
@@ -166,6 +191,9 @@ mod leptos_canvas {
                 }));
             } else {
                 selected_id.set(None);
+                if let Some(cb) = &on_deselect {
+                    cb();
+                }
                 let t = transform.get_untracked();
                 drag_state.set(Some(DragState {
                     table_id: None,
@@ -265,18 +293,36 @@ mod leptos_canvas {
             });
         };
 
+        let on_dblclick = move |ev: MouseEvent| {
+            let canvas = match canvas_ref.get() {
+                Some(c) => c,
+                None => return,
+            };
+            let (dx, dy) = screen_to_diagram(
+                ev.client_x() as f64,
+                ev.client_y() as f64,
+                &canvas,
+                &transform.get_untracked(),
+            );
+            let tables = store.tables.get_untracked();
+            if super::hit_test(&tables, dx, dy).is_none() {
+                if let Some(cb) = &on_dblclick_blank {
+                    cb();
+                }
+            }
+        };
+
         view! {
             <canvas
                 id="editor-canvas"
                 data-testid="editor-canvas"
-                width="1200"
-                height="800"
-                class="w-full h-full touch-none"
+                class="cdb-canvas-element"
                 node_ref=canvas_ref
                 on:mousedown=on_mousedown
                 on:mousemove=on_mousemove
                 on:mouseup=on_mouseup
                 on:wheel=on_wheel
+                on:dblclick=on_dblclick
             ></canvas>
         }
     }
@@ -290,20 +336,19 @@ pub use leptos_canvas::Canvas;
 pub fn draw_canvas(
     ctx: &CanvasRenderingContext2d,
     t: &Transform,
+    width: f64,
+    height: f64,
     tables: &[Table],
     refs: &[Reference],
     areas: &[Area],
     notes: &[Note],
     selected_id: Option<&str>,
 ) {
-    let width = 1200.0;
-    let height = 800.0;
-
     ctx.clear_rect(0.0, 0.0, width, height);
     let _ = ctx.set_fill_style_str("#ffffff");
     ctx.fill_rect(0.0, 0.0, width, height);
 
-    draw_grid(ctx, t);
+    draw_grid(ctx, t, width, height);
 
     ctx.save();
     let _ = ctx.translate(t.pan_x, t.pan_y);
@@ -317,7 +362,7 @@ pub fn draw_canvas(
         let from = tables.iter().find(|tbl| tbl.id == r.start_table_id);
         let to = tables.iter().find(|tbl| tbl.id == r.end_table_id);
         if let (Some(f), Some(tbl)) = (from, to) {
-            draw_bezier(ctx, f, tbl);
+            draw_bezier_fields(ctx, f, &r.start_field_id, tbl, &r.end_field_id);
         }
     }
 
@@ -333,17 +378,20 @@ pub fn draw_canvas(
     ctx.restore();
 }
 
-fn draw_grid(ctx: &CanvasRenderingContext2d, t: &Transform) {
+fn draw_grid(ctx: &CanvasRenderingContext2d, t: &Transform, width: f64, height: f64) {
     let _ = ctx.set_fill_style_str("rgb(99, 102, 241)");
-    let _ = ctx.set_global_alpha(0.15);
+    let _ = ctx.set_global_alpha(0.12);
 
     let start_x = (-(t.pan_x % (GRID_SIZE * t.zoom)) / t.zoom).floor() * GRID_SIZE;
     let start_y = (-(t.pan_y % (GRID_SIZE * t.zoom)) / t.zoom).floor() * GRID_SIZE;
 
+    let end_x = width / t.zoom + GRID_SIZE;
+    let end_y = height / t.zoom + GRID_SIZE;
+
     let mut y = start_y;
-    while y < 800.0 / t.zoom + GRID_SIZE {
+    while y < end_y {
         let mut x = start_x;
-        while x < 1200.0 / t.zoom + GRID_SIZE {
+        while x < end_x {
             ctx.begin_path();
             let _ = ctx.arc(x, y, 0.85, 0.0, std::f64::consts::TAU);
             ctx.fill();
@@ -353,6 +401,25 @@ fn draw_grid(ctx: &CanvasRenderingContext2d, t: &Transform) {
     }
 
     let _ = ctx.set_global_alpha(1.0);
+}
+
+/// 画布缩放：放大（步进 1.25x，上限 5x）
+pub fn zoom_in(transform: RwSignal<Transform>) {
+    transform.update(|t| {
+        t.zoom = (t.zoom * 1.25).min(5.0);
+    });
+}
+
+/// 画布缩放：缩小（步进 0.8x，下限 0.1x）
+pub fn zoom_out(transform: RwSignal<Transform>) {
+    transform.update(|t| {
+        t.zoom = (t.zoom / 1.25).max(0.1);
+    });
+}
+
+/// 画布缩放：重置为 1x，平移归零
+pub fn zoom_reset(transform: RwSignal<Transform>) {
+    transform.set(Transform::default());
 }
 
 fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool) {
@@ -416,6 +483,44 @@ fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool) {
         round_rect(ctx, x - 2.0, y - 2.0, TABLE_WIDTH + 4.0, total_height + 4.0, 8.0);
         ctx.stroke();
     }
+}
+
+fn field_anchor_y(table: &Table, field_id: &str) -> f64 {
+    let idx = table
+        .fields
+        .iter()
+        .position(|f| f.id == field_id)
+        .unwrap_or(0);
+    table.y + TABLE_HEADER_HEIGHT + idx as f64 * FIELD_ROW_HEIGHT + FIELD_ROW_HEIGHT / 2.0
+}
+
+fn draw_bezier_fields(
+    ctx: &CanvasRenderingContext2d,
+    from: &Table,
+    from_field_id: &str,
+    to: &Table,
+    to_field_id: &str,
+) {
+    let x1 = from.x + TABLE_WIDTH;
+    let y1 = field_anchor_y(from, from_field_id);
+    let x2 = to.x;
+    let y2 = field_anchor_y(to, to_field_id);
+    let cx1 = x1 + (x2 - x1) * 0.5;
+    let cx2 = x1 + (x2 - x1) * 0.5;
+
+    let _ = ctx.set_stroke_style_str("#6366f1");
+    ctx.set_line_width(1.5);
+    ctx.begin_path();
+    ctx.move_to(x1, y1);
+    ctx.bezier_curve_to(cx1, y1, cx2, y2, x2, y2);
+    ctx.stroke();
+
+    draw_arrow_head(ctx, cx2, y2, x2, y2);
+
+    let _ = ctx.set_fill_style_str("#6366f1");
+    ctx.begin_path();
+    ctx.arc(x1, y1, 4.0, 0.0, std::f64::consts::TAU).ok();
+    ctx.fill();
 }
 
 fn draw_bezier(ctx: &CanvasRenderingContext2d, from: &Table, to: &Table) {
@@ -521,6 +626,28 @@ fn draw_note(ctx: &CanvasRenderingContext2d, note: &Note) {
 }
 
 // ─── Hit testing ─────────────────────────────────────────────────────────────
+
+pub fn hit_test_field(tables: &[Table], x: f64, y: f64) -> Option<(String, String)> {
+    for table in tables.iter().rev() {
+        if x < table.x || x > table.x + TABLE_WIDTH {
+            continue;
+        }
+        if y < table.y + TABLE_HEADER_HEIGHT {
+            continue;
+        }
+        let field_count = table.fields.len().max(1);
+        let body_bottom =
+            table.y + TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT * field_count as f64;
+        if y > body_bottom {
+            continue;
+        }
+        let idx = ((y - table.y - TABLE_HEADER_HEIGHT) / FIELD_ROW_HEIGHT).floor() as usize;
+        if let Some(field) = table.fields.get(idx) {
+            return Some((table.id.clone(), field.id.clone()));
+        }
+    }
+    None
+}
 
 pub fn hit_test(tables: &[Table], x: f64, y: f64) -> Option<String> {
     for table in tables.iter().rev() {
@@ -677,5 +804,42 @@ mod tests {
         assert_eq!(result.len(), 1, "UT-CR-05: 返回 Vec 长度应为 1");
         assert_eq!(result[0].start_field_id, original_first.start_field_id, "UT-CR-05: 不存在的 ref_id 应 no-op");
         assert_eq!(result[0].end_field_id, original_first.end_field_id, "UT-CR-05: end_field_id 也应不变");
+    }
+
+    // --- UT-PB-01 — 字段级 hit test ---
+
+    #[test]
+    fn test_hit_test_field_ut_pb_01() {
+        use crate::editor_core::types::{Field, Table};
+
+        let table = Table {
+            id: "t1".into(),
+            name: "users".into(),
+            x: 100.0,
+            y: 130.0,
+            color: "#000".into(),
+            comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(),
+                name: "id".into(),
+                type_: "INT".into(),
+                default: String::new(),
+                check: String::new(),
+                primary: true,
+                unique: false,
+                not_null: false,
+                increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(),
+        };
+        let tables = vec![table];
+        let hit_y = 130.0 + TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT / 2.0;
+        let result = hit_test_field(&tables, 150.0, hit_y);
+        assert_eq!(
+            result,
+            Some(("t1".into(), "f1".into())),
+            "UT-PB-01: 字段行命中应返回 (table_id, field_id)"
+        );
     }
 }
