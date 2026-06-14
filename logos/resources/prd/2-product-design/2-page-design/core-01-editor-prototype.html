@@ -1,297 +1,159 @@
-<!DOCTYPE html>
 <!--
-  ADDED — 编辑器主页面 HTML 原型
-  模块：core | 提案：add-baseline-docs
-  路径：logos/resources/prd/2-product-design/2-page-design/core-01-editor-prototype.html
-  对齐参考源：drawdb §2.1 Workspace.jsx 顶层布局
-
-  本文件是**静态原型**（Phase 2 页面设计），用于视觉对账与评审。
-  实际运行时由 frontend-rs (Leptos WASM) 渲染，本原型不直接参与构建。
+  Delta — core-01-editor-prototype.html (Phase C)
+  merge 操作：
+  1. MODIFIED：btn-import 移除 disabled；guide-import-sql 移除 disabled
+  2. ADDED：.cdb-io-drawer 样式与 ImportDrawer 示例节点（见下方 <style> 与 <aside class="cdb-io-drawer">）
+  3. MODIFIED：.cdb-main 增加 cdb-has-io-drawer 示例态（Inspector 隐藏，IO 抽屉显示）
 -->
-<html lang="zh">
+<!DOCTYPE html>
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <title>coldrawdb — Editor Prototype</title>
+  <title>coldrawdb Editor Prototype — Phase C IO Drawer</title>
   <style>
-    /* === Design Tokens (与 styles.css :root 保持完全一致) === */
     :root {
       --cdb-color-primary: #175e7a;
-      --cdb-color-primary-hover: #134c63;
       --cdb-color-primary-bg: #e6f1f5;
-      --cdb-color-success: #10b981;
-      --cdb-color-warning: #f59e0b;
-      --cdb-color-error: #ef4444;
+      --cdb-color-border: #e5e7eb;
+      --cdb-color-bg: #fff;
+      --cdb-color-bg-canvas: #f3f4f6;
       --cdb-color-text: #1f2937;
       --cdb-color-text-muted: #6b7280;
-      --cdb-color-border: #e5e7eb;
-      --cdb-color-bg: #ffffff;
-      --cdb-color-bg-subtle: #f9fafb;
-      --cdb-color-bg-canvas: #f3f4f6;
-      --cdb-space-1: 4px; --cdb-space-2: 8px; --cdb-space-3: 12px;
-      --cdb-space-4: 16px; --cdb-space-6: 24px; --cdb-space-8: 32px;
-      --cdb-text-xs: 11px; --cdb-text-sm: 12px; --cdb-text-base: 14px;
-      --cdb-text-lg: 16px; --cdb-text-xl: 18px;
-      --cdb-radius-sm: 4px; --cdb-radius-md: 6px; --cdb-radius-lg: 8px;
-      --cdb-shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
-      --cdb-shadow-md: 0 4px 6px rgba(0,0,0,0.07);
-      --cdb-shadow-lg: 0 10px 15px rgba(0,0,0,0.1);
+      --cdb-space-2: 8px;
+      --cdb-space-3: 12px;
+      --cdb-space-4: 16px;
+      --cdb-radius-sm: 4px;
+      --cdb-radius-md: 8px;
+      --cdb-text-sm: 13px;
+      --cdb-text-xs: 11px;
+      --cdb-shadow-md: 0 4px 12px rgba(0,0,0,.08);
     }
-
-    /* === Reset === */
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      color: var(--cdb-color-text);
-      background: var(--cdb-color-bg-canvas);
-      font-size: var(--cdb-text-base);
-      height: 100vh; overflow: hidden;
-    }
-    .cdb-app { display: grid; grid-template-rows: auto auto 1fr auto; height: 100vh; }
-
-    /* === Top Menu Bar === */
-    .cdb-header {
-      background: var(--cdb-color-bg);
-      border-bottom: 1px solid var(--cdb-color-border);
-      padding: var(--cdb-space-2) var(--cdb-space-4);
-      display: flex; align-items: center; gap: var(--cdb-space-4);
-    }
-    .cdb-logo { font-weight: 700; color: var(--cdb-color-primary); font-size: var(--cdb-text-xl); }
-    .cdb-menu { display: flex; gap: var(--cdb-space-3); }
-    .cdb-menu-item {
-      padding: var(--cdb-space-1) var(--cdb-space-2);
-      cursor: pointer; border-radius: var(--cdb-radius-sm);
-      color: var(--cdb-color-text);
-    }
-    .cdb-menu-item:hover, .cdb-menu-item.cdb-is-open { background: var(--cdb-color-bg-subtle); }
-    .cdb-header-right { margin-left: auto; display: flex; align-items: center; gap: var(--cdb-space-3); }
-    .cdb-save-state { font-size: var(--cdb-text-sm); color: var(--cdb-color-success); }
-    .cdb-save-state.cdb-is-saving { color: var(--cdb-color-warning); }
-    .cdb-save-state.cdb-is-error { color: var(--cdb-color-error); }
-
-    /* === Toolbar (Undo / Redo / Share / Export) === */
-    .cdb-toolbar {
-      background: var(--cdb-color-bg);
-      border-bottom: 1px solid var(--cdb-color-border);
-      padding: var(--cdb-space-2) var(--cdb-space-4);
+    * { box-sizing: border-box; margin: 0; }
+    body { font-family: system-ui, sans-serif; color: var(--cdb-color-text); }
+    .cdb-app { display: grid; grid-template-rows: 48px 1fr 28px; height: 100vh; }
+    .cdb-app-bar {
       display: flex; align-items: center; gap: var(--cdb-space-3);
+      padding: 0 var(--cdb-space-4); border-bottom: 1px solid var(--cdb-color-border);
     }
-    .cdb-title-edit {
-      font-size: var(--cdb-text-base); padding: var(--cdb-space-1) var(--cdb-space-2);
-      border: 1px solid transparent; border-radius: var(--cdb-radius-sm);
-    }
-    .cdb-title-edit:hover { border-color: var(--cdb-color-border); }
-    .cdb-rev-tag {
-      font-size: var(--cdb-text-sm); color: var(--cdb-color-text-muted);
-      background: var(--cdb-color-bg-subtle); padding: 2px var(--cdb-space-2); border-radius: var(--cdb-radius-sm);
-    }
-    .cdb-toolbar-right { margin-left: auto; display: flex; gap: var(--cdb-space-2); }
-
-    /* === Buttons === */
     .cdb-btn {
-      background: var(--cdb-color-bg); color: var(--cdb-color-text);
-      border: 1px solid var(--cdb-color-border); padding: var(--cdb-space-1) var(--cdb-space-3);
-      border-radius: var(--cdb-radius-sm); cursor: pointer; font-size: var(--cdb-text-base);
-    }
-    .cdb-btn:hover { background: var(--cdb-color-bg-subtle); }
-    .cdb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .cdb-btn--primary { background: var(--cdb-color-primary); color: white; border-color: var(--cdb-color-primary); }
-    .cdb-btn--primary:hover { background: var(--cdb-color-primary-hover); }
-    .cdb-btn--icon { padding: var(--cdb-space-1) var(--cdb-space-2); }
-
-    /* === Main: Side Panel + Canvas + Side Panel === */
-    .cdb-main { display: grid; grid-template-columns: 240px 1fr 320px; overflow: hidden; }
-    .cdb-side-panel--left { background: var(--cdb-color-bg-subtle); border-right: 1px solid var(--cdb-color-border); }
-    .cdb-side-panel--right { background: var(--cdb-color-bg-subtle); border-left: 1px solid var(--cdb-color-border); }
-    .cdb-side-panel { display: flex; flex-direction: column; }
-
-    /* === Side Panel: Search + Tabs === */
-    .cdb-search-box { padding: var(--cdb-space-2); border-bottom: 1px solid var(--cdb-color-border); }
-    .cdb-search-box input {
-      width: 100%; padding: var(--cdb-space-1) var(--cdb-space-2);
-      border: 1px solid var(--cdb-color-border); border-radius: var(--cdb-radius-sm);
-      font-size: var(--cdb-text-sm);
-    }
-    .cdb-tabs {
-      display: flex; border-bottom: 1px solid var(--cdb-color-border);
-      background: var(--cdb-color-bg); overflow-x: auto;
-    }
-    .cdb-tab {
-      padding: var(--cdb-space-2) var(--cdb-space-3); cursor: pointer;
-      font-size: var(--cdb-text-sm); border-bottom: 2px solid transparent; white-space: nowrap;
-    }
-    .cdb-tab.cdb-is-active { border-bottom-color: var(--cdb-color-primary); color: var(--cdb-color-primary); font-weight: 600; }
-    .cdb-tab-content { flex: 1; overflow-y: auto; padding: var(--cdb-space-2); }
-    .cdb-list-item {
-      padding: var(--cdb-space-1) var(--cdb-space-2);
-      background: var(--cdb-color-bg); border: 1px solid var(--cdb-color-border);
-      border-radius: var(--cdb-radius-sm); margin-bottom: var(--cdb-space-1);
+      padding: 6px 12px; border: 1px solid var(--cdb-color-border);
+      border-radius: var(--cdb-radius-sm); background: var(--cdb-color-bg);
       font-size: var(--cdb-text-sm); cursor: pointer;
     }
-    .cdb-list-item:hover { background: var(--cdb-color-bg-subtle); }
-    .cdb-list-item.cdb-is-selected { background: var(--cdb-color-primary-bg); border-color: var(--cdb-color-primary); }
-
-    /* === Canvas === */
-    .cdb-canvas {
+    .cdb-btn--primary { background: var(--cdb-color-primary); color: #fff; border-color: var(--cdb-color-primary); }
+    .cdb-main {
+      display: grid;
+      grid-template-columns: 48px 1fr 0 400px; /* Phase C: IO drawer open, Inspector collapsed */
+      min-height: 0;
+    }
+    .cdb-tool-rail {
+      width: 48px; border-right: 1px solid var(--cdb-color-border);
+      display: flex; flex-direction: column; align-items: center; padding: var(--cdb-space-2) 0; gap: var(--cdb-space-2);
+    }
+    .cdb-canvas-wrap {
+      background: var(--cdb-color-bg-canvas); position: relative; overflow: hidden;
+    }
+    /* Phase C — IO Drawer */
+    .cdb-io-drawer {
+      border-left: 1px solid var(--cdb-color-border);
       background: var(--cdb-color-bg);
-      position: relative; overflow: auto;
-      background-image:
-        linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px);
-      background-size: 24px 24px;
+      display: flex; flex-direction: column;
+      font-size: var(--cdb-text-sm);
     }
-    .cdb-table-card {
-      position: absolute; background: var(--cdb-color-bg);
-      border: 1px solid #d1d5db; border-radius: var(--cdb-radius-md);
-      min-width: 220px; box-shadow: var(--cdb-shadow-sm);
-    }
-    .cdb-table-card.cdb-is-selected { border-color: var(--cdb-color-primary); box-shadow: 0 0 0 2px var(--cdb-color-primary-bg); }
-    .cdb-table-header {
-      background: var(--cdb-color-primary); color: white;
-      padding: var(--cdb-space-1) var(--cdb-space-2) + 2px; font-weight: 600;
-      font-size: var(--cdb-text-sm); border-radius: var(--cdb-radius-md) var(--cdb-radius-md) 0 0; cursor: move;
-    }
-    .cdb-field-row {
-      padding: var(--cdb-space-1) var(--cdb-space-2); font-size: var(--cdb-text-sm);
-      border-bottom: 1px solid var(--cdb-color-bg-subtle);
-      display: flex; justify-content: space-between;
-    }
-    .cdb-field-row:last-child { border-bottom: none; }
-    .cdb-field-pk { color: var(--cdb-color-warning); font-weight: 600; }
-
-    /* === Footer (Status Bar) === */
-    .cdb-footer {
-      background: var(--cdb-color-bg);
-      border-top: 1px solid var(--cdb-color-border);
-      padding: var(--cdb-space-1) var(--cdb-space-4);
-      font-size: var(--cdb-text-xs); color: var(--cdb-color-text-muted);
-      display: flex; gap: var(--cdb-space-4);
-    }
-
-    /* === Modal (B1 占位，B4 完整实现) === */
-    .cdb-modal-overlay {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.4);
-      display: flex; align-items: center; justify-content: center;
-      z-index: 1000;
-    }
-    .cdb-modal {
-      background: var(--cdb-color-bg);
-      border-radius: var(--cdb-radius-lg);
-      box-shadow: var(--cdb-shadow-lg);
-      min-width: 400px; max-width: 600px;
-    }
-    .cdb-modal__header { padding: var(--cdb-space-3) var(--cdb-space-4); border-bottom: 1px solid var(--cdb-color-border); font-weight: 600; }
-    .cdb-modal__body { padding: var(--cdb-space-4); }
-    .cdb-modal__footer { padding: var(--cdb-space-3) var(--cdb-space-4); border-top: 1px solid var(--cdb-color-border); display: flex; gap: var(--cdb-space-2); justify-content: flex-end; }
-
-    /* === Conflict Dialog (409 弹窗) === */
-    .cdb-conflict-dialog-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1100; }
-    .cdb-conflict-dialog { background: var(--cdb-color-bg); border-radius: var(--cdb-radius-lg); padding: var(--cdb-space-6); max-width: 480px; box-shadow: var(--cdb-shadow-lg); }
-    .cdb-conflict-dialog h2 { color: var(--cdb-color-warning); margin-bottom: var(--cdb-space-3); font-size: var(--cdb-text-lg); }
-    .cdb-dialog-buttons { display: flex; gap: var(--cdb-space-2); margin-top: var(--cdb-space-4); justify-content: flex-end; }
-
-    /* === Error Toast === */
-    .cdb-error-toast {
-      position: fixed; bottom: var(--cdb-space-6); right: var(--cdb-space-6);
-      background: var(--cdb-color-error); color: white;
+    .cdb-io-drawer__header {
       padding: var(--cdb-space-3) var(--cdb-space-4);
-      border-radius: var(--cdb-radius-md);
-      box-shadow: var(--cdb-shadow-md);
-      z-index: 1200;
-      display: flex; align-items: center; gap: var(--cdb-space-3);
+      border-bottom: 1px solid var(--cdb-color-border);
+      display: flex; justify-content: space-between; align-items: center;
+      font-weight: 600;
     }
-    .cdb-error-toast button { background: none; border: none; color: white; cursor: pointer; font-size: var(--cdb-text-lg); }
-
-    /* === Sample table positions (visual only) === */
-    .cdb-t1 { top: 60px; left: 80px; }
-    .cdb-t2 { top: 220px; left: 360px; }
+    .cdb-io-drawer__body { flex: 1; overflow-y: auto; padding: var(--cdb-space-4); }
+    .cdb-format-tabs { display: flex; gap: var(--cdb-space-2); margin-bottom: var(--cdb-space-3); }
+    .cdb-format-tabs button {
+      padding: 4px 10px; border: 1px solid var(--cdb-color-border);
+      border-radius: var(--cdb-radius-sm); background: var(--cdb-color-bg); cursor: pointer;
+    }
+    .cdb-format-tabs button.cdb-is-active {
+      background: var(--cdb-color-primary-bg); border-color: var(--cdb-color-primary); color: var(--cdb-color-primary);
+    }
+    .cdb-io-textarea {
+      width: 100%; min-height: 160px; padding: var(--cdb-space-3);
+      border: 1px solid var(--cdb-color-border); border-radius: var(--cdb-radius-sm);
+      font-family: ui-monospace, monospace; font-size: var(--cdb-text-xs);
+    }
+    .cdb-parse-summary {
+      margin: var(--cdb-space-3) 0; color: var(--cdb-color-text-muted); font-size: var(--cdb-text-xs);
+    }
+    .cdb-io-drawer__footer {
+      padding: var(--cdb-space-3) var(--cdb-space-4);
+      border-top: 1px solid var(--cdb-color-border);
+      display: flex; justify-content: flex-end; gap: var(--cdb-space-2);
+    }
+    .cdb-status-bar {
+      border-top: 1px solid var(--cdb-color-border); padding: 0 var(--cdb-space-4);
+      height: 28px; display: flex; align-items: center; gap: var(--cdb-space-4);
+      font-size: var(--cdb-text-xs); color: var(--cdb-color-text-muted);
+    }
   </style>
 </head>
 <body>
-  <!--
-    B1 样式底座升级（add-frontend-completeness 提案）
-    - 所有 class 改 cdb- 前缀（与 styles.css 命名空间一致）
-    - 颜色 / 间距 / 字号 / 圆角 / 阴影全部走 CSS 变量
-    - Modal / ConflictDialog / ErrorToast 视觉基线已纳入（占位实现见 B4）
-    - 7 个侧栏 Tab 全部列出（Areas/Enums/Notes/Relationships/Types/Issues 由 B2 实现）
-  -->
   <div class="cdb-app">
-    <header class="cdb-header">
-      <div class="cdb-logo">coldrawdb</div>
-      <nav class="cdb-menu">
-        <div class="cdb-menu-item">File ▾</div>
-        <div class="cdb-menu-item">Edit ▾</div>
-        <div class="cdb-menu-item">View ▾</div>
-        <div class="cdb-menu-item">Help ▾</div>
-      </nav>
-      <div class="cdb-header-right">
-        <span class="cdb-save-state">● Saved</span>
-        <button class="cdb-btn cdb-btn--icon" title="设置">⚙</button>
-      </div>
+    <header class="cdb-app-bar" data-testid="app-bar">
+      <strong>C</strong>
+      <span data-testid="diagram-title">电商 ER 图</span>
+      <span>● 已保存</span>
+      <!-- Phase C: 导入已启用 -->
+      <button class="cdb-btn" data-testid="btn-import">导入</button>
+      <button class="cdb-btn" data-testid="btn-export">导出 ▾</button>
+      <button class="cdb-btn cdb-btn--primary" data-testid="btn-share">分享</button>
     </header>
 
-    <div class="cdb-toolbar">
-      <button class="cdb-btn cdb-btn--icon" title="撤销 (Ctrl+Z)">↶</button>
-      <button class="cdb-btn cdb-btn--icon" title="重做 (Ctrl+Shift+Z)">↷</button>
-      <input class="cdb-title-edit" value="Untitled Diagram" />
-      <span class="cdb-rev-tag">rev: 0</span>
-      <div class="cdb-toolbar-right">
-        <button class="cdb-btn">Share</button>
-        <button class="cdb-btn cdb-btn--primary">Export ▾</button>
-      </div>
-    </div>
+    <div class="cdb-main cdb-has-io-drawer">
+      <nav class="cdb-tool-rail" data-testid="tool-rail">
+        <button title="选择">↖</button>
+        <button title="新建">⊕</button>
+        <button title="关系">🔗</button>
+      </nav>
 
-    <div class="cdb-main">
-      <aside class="cdb-side-panel cdb-side-panel--left">
-        <div class="cdb-search-box">
-          <input type="text" placeholder="Search tables, fields..." />
-        </div>
-        <div class="cdb-tabs">
-          <div class="cdb-tab cdb-is-active">Tables</div>
-          <div class="cdb-tab">Areas</div>
-          <div class="cdb-tab">Enums</div>
-          <div class="cdb-tab">Notes</div>
-          <div class="cdb-tab">Relationships</div>
-          <div class="cdb-tab">Types</div>
-          <div class="cdb-tab">Issues</div>
-        </div>
-        <div class="cdb-tab-content">
-          <div class="cdb-list-item cdb-is-selected">users</div>
-          <div class="cdb-list-item">orders</div>
-          <div class="cdb-list-item">products</div>
-        </div>
-      </aside>
-
-      <main class="cdb-canvas">
-        <div class="cdb-table-card cdb-t1">
-          <div class="cdb-table-header">users</div>
-          <div class="cdb-field-row"><span class="cdb-field-pk">id</span><span>INT</span></div>
-          <div class="cdb-field-row"><span>email</span><span>VARCHAR(255)</span></div>
-          <div class="cdb-field-row"><span>created_at</span><span>TIMESTAMP</span></div>
-        </div>
-        <div class="cdb-table-card cdb-t2">
-          <div class="cdb-table-header">orders</div>
-          <div class="cdb-field-row"><span class="cdb-field-pk">id</span><span>INT</span></div>
-          <div class="cdb-field-row"><span>user_id</span><span>INT</span></div>
-          <div class="cdb-field-row"><span>total</span><span>DECIMAL</span></div>
-        </div>
+      <main class="cdb-canvas-wrap" data-testid="editor-canvas">
+        <p style="padding:24px;color:var(--cdb-color-text-muted);">画布区域（Inspector 已折叠）</p>
       </main>
 
-      <aside class="cdb-side-panel cdb-side-panel--right">
-        <div class="cdb-tabs">
-          <div class="cdb-tab cdb-is-active">Fields</div>
+      <!-- Inspector 折叠（width 0） -->
+
+      <!-- Phase C: Import Drawer -->
+      <aside class="cdb-io-drawer" data-testid="import-drawer">
+        <div class="cdb-io-drawer__header">
+          <span>导入</span>
+          <button class="cdb-btn" data-testid="import-cancel">×</button>
         </div>
-        <div class="cdb-tab-content">
-          <p style="color: var(--cdb-color-text-muted); font-size: var(--cdb-text-sm);">
-            Select a field to edit
-          </p>
+        <div class="cdb-io-drawer__body">
+          <div class="cdb-format-tabs" data-testid="import-format-tabs">
+            <button class="cdb-is-active">SQL</button>
+            <button>DBML</button>
+            <button>JSON</button>
+          </div>
+          <label style="font-size:var(--cdb-text-xs);color:var(--cdb-color-text-muted);">数据库引擎</label>
+          <select data-testid="import-engine-select" style="width:100%;margin:4px 0 12px;padding:6px;">
+            <option>generic</option>
+            <option>mysql</option>
+            <option>postgresql</option>
+          </select>
+          <textarea class="cdb-io-textarea" data-testid="import-textarea" placeholder="粘贴 SQL 或拖放 .sql 文件">CREATE TABLE users (
+  id INT PRIMARY KEY
+);</textarea>
+          <p class="cdb-parse-summary" data-testid="import-parse-summary">解析摘要：1 条语句</p>
+        </div>
+        <div class="cdb-io-drawer__footer">
+          <button class="cdb-btn" data-testid="import-cancel-btn">取消</button>
+          <button class="cdb-btn cdb-btn--primary" data-testid="import-submit">导入并打开 ▶</button>
         </div>
       </aside>
     </div>
 
-    <footer class="cdb-footer">
-      <span>● 100 tables / 200 relationships / 60fps target</span>
-      <span>db: generic</span>
+    <footer class="cdb-status-bar" data-testid="status-bar">
+      <span>缩放 100%</span>
+      <span>0 张表 / 0 条关系</span>
+      <span data-testid="revision-display">rev: 1</span>
     </footer>
   </div>
 </body>
