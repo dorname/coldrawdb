@@ -1,0 +1,2 @@
+{"id":"UT-E1-01","module":"core","result":"PASS","duration_ms":12,"ts":"2026-06-15T15:42:00Z","note":"100 --cdb-* tokens (>=100) + 373 var refs; all conform to naming convention"}
+{"id":"UT-E1-02","module":"core","result":"PASS","duration_ms":3,"ts":"2026-06-15T15:42:00Z","note":"[data-mode=\"dark\"] selector + @media (prefers-color-scheme: dark) present"}

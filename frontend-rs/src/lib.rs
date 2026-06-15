@@ -5,6 +5,10 @@ pub mod editor_core;
 pub mod editor_render;
 pub mod editor_panels;
 pub mod editor_data_access;
+pub mod icons;
+pub mod components;
+pub mod code_view;
+pub mod command_palette;
 
 use editor_panels::AppRoot;
 use editor_core::{DebounceTrigger, EditorStore};

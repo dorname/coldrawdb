@@ -12,50 +12,220 @@
 
 /* ============================================================
  * Design Tokens (CSS variables)
+ * Phase E1: 完整设计 token（~100 个，13 类）
+ * Spec: logos/resources/prd/2-product-design/1-feature-specs/core-07-design-tokens.md
  * ============================================================ */
 :root {
-  /* Color — primary (coldrawdb teal, matches Logo) */
+  /* Color — primary (coldrawdb teal, matches Logo / main defaultBlue) */
   --cdb-color-primary: #175e7a;
   --cdb-color-primary-hover: #134c63;
-  --cdb-color-primary-bg: #e6f1f5;
+  --cdb-color-primary-active: #0e3a4d;
+  --cdb-color-primary-disabled: #a3bcc6;
+  --cdb-color-primary-soft: #e6f1f5;
+  --cdb-color-primary-soft-hover: #d2e4ec;
+  --cdb-color-primary-on: #ffffff;
+  --cdb-color-primary-bg: #e6f1f5; /* V1 alias, keep backward-compat */
+
+  /* Color — neutral (grey scale, aligned main --semi-grey-0..9) */
+  --cdb-color-grey-0: #ffffff;
+  --cdb-color-grey-1: #f9fafb;
+  --cdb-color-grey-2: #f3f4f6;
+  --cdb-color-grey-3: #e5e7eb;
+  --cdb-color-grey-4: #d1d5db;
+  --cdb-color-grey-5: #9ca3af;
+  --cdb-color-grey-6: #6b7280;
+  --cdb-color-grey-7: #4b5563;
+  --cdb-color-grey-8: #374151;
+  --cdb-color-grey-9: #1f2937;
 
   /* Color — semantic */
   --cdb-color-success: #10b981;
+  --cdb-color-success-soft: #d1fae5;
   --cdb-color-warning: #f59e0b;
+  --cdb-color-warning-soft: #fef3c7;
   --cdb-color-error: #ef4444;
+  --cdb-color-error-soft: #fee2e2;
+  --cdb-color-info: #3b82f6;
+  --cdb-color-info-soft: #dbeafe;
 
-  /* Color — neutral */
-  --cdb-color-text: #1f2937;
-  --cdb-color-text-muted: #6b7280;
+  /* Color — text (aligned main --semi-color-text-0..4) */
+  --cdb-color-text-0: #1f2937; /* V1 alias --cdb-color-text */
+  --cdb-color-text-1: #374151;
+  --cdb-color-text-2: #6b7280; /* V1 alias --cdb-color-text-muted */
+  --cdb-color-text-3: #9ca3af;
+  --cdb-color-text-on-primary: #ffffff;
+  --cdb-color-text: #1f2937; /* V1 alias */
+  --cdb-color-text-muted: #6b7280; /* V1 alias */
+
+  /* Color — background (aligned main --semi-color-bg-0..3) */
+  --cdb-color-bg-0: #ffffff; /* V1 alias --cdb-color-bg */
+  --cdb-color-bg-1: #f9fafb; /* V1 alias --cdb-color-bg-subtle */
+  --cdb-color-bg-2: #f3f4f6;
+  --cdb-color-bg-3: #e5e7eb; /* V1 alias --cdb-color-bg-canvas */
+  --cdb-color-bg-overlay: rgba(0, 0, 0, 0.45);
+  --cdb-color-bg: #ffffff; /* V1 alias */
+  --cdb-color-bg-subtle: #f9fafb; /* V1 alias */
+  --cdb-color-bg-canvas: #f3f4f6; /* V1 alias */
+
+  /* Color — border */
   --cdb-color-border: #e5e7eb;
-  --cdb-color-bg: #ffffff;
-  --cdb-color-bg-subtle: #f9fafb;
-  --cdb-color-bg-canvas: #f3f4f6;
+  --cdb-color-border-strong: #d1d5db;
+  --cdb-color-border-muted: rgba(31, 41, 55, 0.08);
 
-  /* Spacing (4px grid) */
+  /* Shadow — 5 levels (aligned Semi shadow-1/2/3 + extended) */
+  --cdb-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --cdb-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --cdb-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --cdb-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05);
+  --cdb-shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.1), 0 10px 10px rgba(0, 0, 0, 0.04);
+
+  /* Motion — duration */
+  --cdb-duration-fast: 120ms;
+  --cdb-duration-base: 200ms;
+  --cdb-duration-slow: 300ms;
+
+  /* Motion — easing */
+  --cdb-easing-in: cubic-bezier(0.4, 0, 1, 1);
+  --cdb-easing-out: cubic-bezier(0, 0, 0.2, 1);
+  --cdb-easing-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Font family */
+  --cdb-font-family-base: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --cdb-font-family-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* Font size (6 levels) */
+  --cdb-font-size-xs: 11px;  /* V1 alias --cdb-text-xs */
+  --cdb-font-size-sm: 12px;  /* V1 alias --cdb-text-sm */
+  --cdb-font-size-base: 14px; /* V1 alias --cdb-text-base */
+  --cdb-font-size-md: 16px;   /* V1 alias --cdb-text-lg */
+  --cdb-font-size-lg: 18px;   /* V1 alias --cdb-text-xl */
+  --cdb-font-size-xl: 24px;
+  --cdb-text-xs: 11px;        /* V1 alias */
+  --cdb-text-sm: 12px;        /* V1 alias */
+  --cdb-text-base: 14px;      /* V1 alias */
+  --cdb-text-lg: 16px;        /* V1 alias */
+  --cdb-text-xl: 18px;        /* V1 alias */
+
+  /* Font weight (4 levels) */
+  --cdb-font-weight-regular: 400;
+  --cdb-font-weight-medium: 500;
+  --cdb-font-weight-semibold: 600;
+  --cdb-font-weight-bold: 700;
+
+  /* Line height (3 levels) */
+  --cdb-line-height-tight: 1.25;
+  --cdb-line-height-base: 1.5;
+  --cdb-line-height-loose: 1.75;
+
+  /* Radius (4 levels) */
+  --cdb-radius-sm: 4px;
+  --cdb-radius-md: 6px;
+  --cdb-radius-lg: 8px;
+  --cdb-radius-xl: 12px;
+
+  /* Spacing (4px grid, 8 levels) */
   --cdb-space-1: 4px;
   --cdb-space-2: 8px;
   --cdb-space-3: 12px;
   --cdb-space-4: 16px;
+  --cdb-space-5: 20px;
   --cdb-space-6: 24px;
   --cdb-space-8: 32px;
+  --cdb-space-10: 40px;
+  --cdb-space-12: 48px;
 
-  /* Font size */
-  --cdb-text-xs: 11px;
-  --cdb-text-sm: 12px;
-  --cdb-text-base: 14px;
-  --cdb-text-lg: 16px;
-  --cdb-text-xl: 18px;
+  /* z-index (6 levels + utility) */
+  --cdb-z-base: 1;
+  --cdb-z-canvas-overlay: 10;
+  --cdb-z-app-bar: 20;
+  --cdb-z-side-rail: 25;
+  --cdb-z-inspector: 30;
+  --cdb-z-drawer: 30;
+  --cdb-z-tooltip: 40;
+  --cdb-z-popover: 45;
+  --cdb-z-modal: 50;
+  --cdb-z-notification: 60;
+}
 
-  /* Radius */
-  --cdb-radius-sm: 4px;
-  --cdb-radius-md: 6px;
-  --cdb-radius-lg: 8px;
+/* ============================================================
+ * E5 暗色模式 token 完整映射
+ * Spec: core-0b-dark-mode.md §2
+ * main `darkBgTheme = #16161A` 作为 base，所有 token 在 dark 模式下反转/加深
+ * ============================================================ */
+[data-mode="dark"] {
+  /* Primary */
+  --cdb-color-primary: #4ba3c4;
+  --cdb-color-primary-hover: #6cb8d4;
+  --cdb-color-primary-active: #2a8aaa;
+  --cdb-color-primary-disabled: #2a4a55;
+  --cdb-color-primary-soft: #1a3a48;
+  --cdb-color-primary-soft-hover: #234a5a;
+  --cdb-color-primary-bg: #1a3a48;
 
-  /* Shadow */
-  --cdb-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --cdb-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
-  --cdb-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+  /* Neutral grey 反转 */
+  --cdb-color-grey-0: #16161a;
+  --cdb-color-grey-1: #1f1f23;
+  --cdb-color-grey-2: #2a2a2e;
+  --cdb-color-grey-3: #3a3a3e;
+  --cdb-color-grey-4: #4a4a4e;
+  --cdb-color-grey-5: #6b7280;
+  --cdb-color-grey-6: #9ca3af;
+  --cdb-color-grey-7: #d1d5db;
+  --cdb-color-grey-8: #e5e7eb;
+  --cdb-color-grey-9: #f9fafb;
+
+  /* Semantic — 文字提亮，背景加深 */
+  --cdb-color-success: #34d399;
+  --cdb-color-success-soft: #0e4f3a;
+  --cdb-color-warning: #fbbf24;
+  --cdb-color-warning-soft: #5c4a0e;
+  --cdb-color-error: #f87171;
+  --cdb-color-error-soft: #5c1a1a;
+  --cdb-color-info: #60a5fa;
+  --cdb-color-info-soft: #1a3a5c;
+
+  /* Text */
+  --cdb-color-text-0: #f9fafb;
+  --cdb-color-text-1: #e5e7eb;
+  --cdb-color-text-2: #9ca3af;
+  --cdb-color-text-3: #6b7280;
+  --cdb-color-text: #f9fafb;
+  --cdb-color-text-muted: #9ca3af;
+
+  /* Background */
+  --cdb-color-bg-0: #16161a; /* main darkBgTheme */
+  --cdb-color-bg-1: #1f1f23;
+  --cdb-color-bg-2: #2a2a2e;
+  --cdb-color-bg-3: #0e0e10;
+  --cdb-color-bg-overlay: rgba(0, 0, 0, 0.7);
+  --cdb-color-bg: #16161a;
+  --cdb-color-bg-subtle: #1f1f23;
+  --cdb-color-bg-canvas: #0e0e10;
+
+  /* Border */
+  --cdb-color-border: #2a2a2e;
+  --cdb-color-border-strong: #3a3a3e;
+  --cdb-color-border-muted: rgba(249, 250, 251, 0.08);
+
+  /* Shadow — 暗色下更深 */
+  --cdb-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --cdb-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --cdb-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --cdb-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5), 0 4px 6px rgba(0, 0, 0, 0.3);
+  --cdb-shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.6), 0 10px 10px rgba(0, 0, 0, 0.4);
+}
+
+/* ============================================================
+ * E5 跟随系统偏好
+ * 完整实现见 core-0b-dark-mode.md
+ * ============================================================ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-mode="light"]):not([data-mode="dark"]) {
+    /* 引用 [data-mode="dark"] 同一组 token；CSS variable alias 实现 */
+    --cdb-color-primary: #4ba3c4;
+    --cdb-color-bg-0: #16161a;
+    --cdb-color-text-0: #f9fafb;
+  }
 }
 
 /* ============================================================
@@ -1388,4 +1558,168 @@ body {
 
 .cdb-btn--danger:hover {
   background: rgba(239, 68, 68, 0.08);
+}
+
+/* ============================================================
+ * E4 CodeView / CommandPalette 样式（V1 placeholder 样式）
+ * Spec: core-0a-code-editor.md §3.4 / §7
+ * 完整 Monaco 集成需 wasm-pack 环境，V1 仅提供占位容器样式
+ * ============================================================ */
+.cdb-monaco-container {
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+  background: var(--cdb-color-bg-1);
+  border: 1px solid var(--cdb-color-border);
+  border-radius: var(--cdb-radius-md);
+  position: relative;
+}
+
+.cdb-code-view__copy {
+  position: absolute;
+  right: var(--cdb-space-6);
+  bottom: var(--cdb-space-2);
+  z-index: var(--cdb-z-modal);
+}
+
+.cdb-command-palette {
+  display: flex;
+  flex-direction: column;
+  width: 640px;
+  max-width: calc(100vw - 32px);
+  max-height: 60vh;
+  background: var(--cdb-color-bg-0);
+  border-radius: var(--cdb-radius-xl);
+  box-shadow: var(--cdb-shadow-xl);
+  position: fixed;
+  top: 20%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--cdb-z-modal);
+  padding: 0;
+}
+
+.cdb-command-palette__input {
+  padding: var(--cdb-space-4);
+  border: none;
+  border-bottom: 1px solid var(--cdb-color-border);
+  font-size: var(--cdb-font-size-md);
+  outline: none;
+  background: transparent;
+  color: var(--cdb-color-text-0);
+}
+
+.cdb-command-palette__results {
+  flex: 1;
+  overflow: auto;
+  padding: var(--cdb-space-1) 0;
+}
+
+.cdb-command-palette__item {
+  padding: var(--cdb-space-2) var(--cdb-space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--cdb-space-3);
+  cursor: pointer;
+  font-size: var(--cdb-font-size-base);
+}
+
+.cdb-command-palette__item:hover,
+.cdb-command-palette__item--highlight {
+  background: var(--cdb-color-primary-soft);
+}
+
+/* ============================================================
+ * E6 动效 @keyframes + 组件接线 + reduced-motion
+ * Spec: core-0c-motion.md
+ * ============================================================ */
+@keyframes cdb-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes cdb-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@keyframes cdb-slide-in-right {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+@keyframes cdb-slide-out-right {
+  from { transform: translateX(0); }
+  to   { transform: translateX(100%); }
+}
+
+@keyframes cdb-slide-down {
+  from { transform: translateY(-20px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes cdb-slide-up {
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes cdb-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.08); }
+}
+
+@keyframes cdb-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* 组件动效接线（E6 §4） */
+.cdb-modal {
+  animation: cdb-fade-in var(--cdb-duration-slow) var(--cdb-easing-out),
+             cdb-slide-down var(--cdb-duration-slow) var(--cdb-easing-out);
+}
+
+.cdb-side-sheet {
+  animation: cdb-slide-in-right var(--cdb-duration-slow) var(--cdb-easing-out);
+}
+
+.cdb-tooltip {
+  animation: cdb-fade-in var(--cdb-duration-base) var(--cdb-easing-out);
+  animation-delay: 200ms;
+}
+
+.cdb-dropdown-menu,
+.cdb-popover {
+  animation: cdb-slide-down var(--cdb-duration-base) var(--cdb-easing-out);
+  transform-origin: top left;
+}
+
+.cdb-btn {
+  transition: background-color var(--cdb-duration-fast) var(--cdb-easing-out),
+              color var(--cdb-duration-fast) var(--cdb-easing-out),
+              border-color var(--cdb-duration-fast) var(--cdb-easing-out),
+              box-shadow var(--cdb-duration-fast) var(--cdb-easing-out);
+}
+
+.cdb-tag--warning {
+  animation: cdb-pulse 2s ease-in-out infinite;
+}
+
+.cdb-spinner {
+  animation: cdb-spin 1s linear infinite;
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+}
+
+/* Reduced motion (E6 §6) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

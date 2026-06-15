@@ -33,6 +33,11 @@ web-sys = { version = "0.3", features = [
   "HtmlDocument",
 ] }
 
+# E4 Monaco 依赖（V1 占位：需 wasm-pack + 浏览器环境激活）
+# monaco-editor-wasm = "0.45"  # uncomment when wasm32 target + wasm-pack available
+# wasm-bindgen-futures = "0.4" # uncomment with monaco
+# js-sys = "0.3"                # 已有
+
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
 
