@@ -1,9 +1,3 @@
-## ADDED — V1 技术架构
-
-> 模块：core | 提案：add-baseline-docs
-> 路径：`logos/resources/prd/3-technical-plan/1-architecture/core-01-architecture-overview.md`
-> 对齐参考源：`docs/phase4/PHASE4_DONE.md` + `docs/phase4/architecture.mmd` + `docs/phase4/module-mapping.md`
-
 # V1 技术架构（How 层 — 第 1 步：架构）
 
 ## 1. 系统上下文
@@ -85,6 +79,34 @@ editor_panels  editor_render
 - 任何反向依赖（panels → data_access，render → data_access）**禁止**
 - 模块间通信通过 `editor_core` 暴露的 signals（Leptos `Signal<T>` / `RwSignal<T>`）
 - HTTP 请求必须经过 `editor_data_access`，其他模块不可直接 `fetch`
+
+## 2.5 V2 前端布局层（redesign-phase-a/b/c 落地，2026-06-14）
+
+V2 重构后的前端分为 **4 个 UI 层**（z-index 体系见 `core-00-information-architecture.md` §1）：
+
+| 层 | 容器 | z-index | 职责 |
+|---|---|---|---|
+| L1 | `AppBar`（顶栏） | `--cdb-z-app-bar` (10) | 标题 + 主菜单 + 全局操作（Share / Undo / Redo） |
+| L2 | `ToolRail`（左侧工具轨） | `--cdb-z-tool-rail` (20) | 选中 / 表 / 关系 / 区域 / 便签 / 缩放 6 个工具按钮 |
+| L3 | `Inspector`（右侧检查器） | `--cdb-z-inspector` (30) | 当前选中对象的属性编辑面板（替代 V1 模态中的字段编辑） |
+| L4 | `ModalRoot`（模态根） | `--cdb-z-modal` (40) | New / Open / Share / Rename / Settings / Confirm 6 个模态 |
+| L5 | `Palette` / `Tooltip` / `Popover` | `--cdb-z-overlay` (50) | 颜色选择器 / 工具提示 / 弹出层 |
+| L6 | `Drawer`（IO 抽屉） | `--cdb-z-drawer` (35) | 导入 / 导出抽屉（与 Inspector 同级侧栏语义，不占用模态层） |
+
+> V1 vs V2 关键差异：V1 所有编辑操作集中在中央模态（L4），V2 拆分为侧栏（L3）+ 抽屉（L6）+ 模态（L4），降低上下文切换成本。
+
+## 2.6 设计系统层（redesign-phase-d/e 落地，2026-06-15）
+
+| 组件 | 来源 | 引用规格 |
+|---|---|---|
+| Design Tokens | 13 类约 100 个 `--cdb-*` CSS 变量 | `core-07-design-tokens.md` |
+| Icon Library | 自建 SVG 模板 + `@douyinfe/semi-icons` 命名规范 | `core-08-icon-library.md` |
+| Core Components | 8 类（Button / Modal / Dropdown / Tooltip / Popover / Tag / Collapse / SideSheet） | `core-09-core-components.md` |
+| Code Editor | Monaco + DBML setup + 复制按钮（E4 替代 V1 `<textarea readonly>`） | `core-0a-code-editor.md` |
+| Dark Mode | `<html data-mode="light\|dark">` 全局切换（E5） | `core-0b-dark-mode.md` |
+| Motion | CSS `@keyframes` + transition + 工具类（E6 不引入 framer-motion） | `core-0c-motion.md` |
+
+> **依赖方向（强制）**：所有组件 / icon / 动效 都依赖 token 层（`core-07`），不得越过 token 直接引用硬编码值。
 
 ## 3. 后端 11 子模块
 
@@ -277,3 +299,4 @@ CMD ["backend"]
 - `backend/Cargo.toml` + `frontend-rs/Cargo.toml`
 - `database_design.json`（字段命名对账）
 - `docs/drawdb-capability-checklist.md` §4
+

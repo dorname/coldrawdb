@@ -1,0 +1,420 @@
+## MODIFIED — 顶部元数据剥离
+
+> 模块：core | 提案：add-baseline-docs
+> 路径：`logos/resources/api/diagrams.yaml`
+> 策略：移除文件开头的 `# ADDED — ...` 与紧随的 `#` 元数据注释行（提案 / 模块 / 路径 / 对齐参考源），保留 `openapi:` 以下全部 endpoints 定义不变。
+
+openapi: 3.0.3
+info:
+  title: coldrawdb diagrams API
+  description: |
+    V1 diagram CRUD + JSON import API for coldrawdb.
+
+    **Coverage**: 5 endpoints under `/api/v1/diagrams/*`.
+    **Concurrency**: revision-based optimistic lock with 409 Conflict on stale writes.
+    **Alignment**: 与 `backend/src/diagrams_v1.rs` 5 个 `#[*]` 路由一一对应.
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000
+    description: Local dev
+  - url: https://staging.coldrawdb.example.com
+    description: Staging
+
+paths:
+  /api/v1/diagrams:
+    post:
+      summary: Create a new diagram with nested entities
+      description: |
+        Creates a new diagram along with all nested tables, fields, references, areas, and notes
+        in a single transaction. Returns the created diagram with its assigned `id` and `revision: 0`.
+      operationId: createDiagram
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiagramCreateRequest'
+      responses:
+        '201':
+          description: Diagram created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Diagram'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/diagrams/{id}:
+    parameters:
+      - $ref: '#/components/parameters/DiagramId'
+    get:
+      summary: Read a diagram with all nested entities
+      description: |
+        Returns the full diagram tree (tables, fields, references, areas, notes).
+        Note: V1 does not persist `enums` or `custom_types` — those are frontend-only state.
+      operationId: readDiagram
+      responses:
+        '200':
+          description: Diagram found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Diagram'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      summary: Full update of a diagram with revision optimistic lock
+      description: |
+        Replaces the diagram and all nested entities in a single transaction.
+        Client must send the last known `revision`; server compares and returns 409 if stale.
+        The new `revision` is `old + 1` after a successful update.
+      operationId: updateDiagram
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiagramUpdateRequest'
+      responses:
+        '200':
+          description: Diagram updated, returns new revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Diagram'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      summary: Delete a diagram (cascade)
+      description: |
+        Cascade-deletes the diagram along with all its tables, fields, references,
+        areas, notes, and association rows in `table_link` / `diagram_link`.
+      operationId: deleteDiagram
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/diagrams/import:
+    post:
+      summary: Import a diagram from drawdb JSON format
+      description: |
+        Accepts a drawdb-compatible JSON payload and creates a new diagram.
+        V1 only persists tables / fields / references / areas / notes.
+        Indices, enums, custom types, colors, and locked flags are discarded.
+      operationId: importDiagram
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiagramImportRequest'
+      responses:
+        '201':
+          description: Diagram imported
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Diagram'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+components:
+  parameters:
+    DiagramId:
+      name: id
+      in: path
+      required: true
+      description: UUID of the diagram
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Diagram not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: Revision conflict — returns current server state for client merge
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConflictResponse'
+
+  schemas:
+    Diagram:
+      type: object
+      required: [id, title, revision, createdAt, updatedAt, tables, references, areas, notes]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          minLength: 1
+          maxLength: 64
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        tables:
+          type: array
+          items:
+            $ref: '#/components/schemas/Table'
+        references:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reference'
+        areas:
+          type: array
+          items:
+            $ref: '#/components/schemas/Area'
+        notes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Note'
+
+    DiagramCreateRequest:
+      type: object
+      required: [title, tables]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 64
+        tables:
+          type: array
+          items:
+            $ref: '#/components/schemas/Table'
+        references:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reference'
+        areas:
+          type: array
+          items:
+            $ref: '#/components/schemas/Area'
+        notes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Note'
+
+    DiagramUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/DiagramCreateRequest'
+        - type: object
+          required: [revision]
+          properties:
+            revision:
+              type: integer
+              format: int64
+              description: Last known revision (for optimistic lock)
+
+    DiagramImportRequest:
+      type: object
+      required: [title, tables]
+      properties:
+        title:
+          type: string
+        tables:
+          type: array
+          items:
+            $ref: '#/components/schemas/Table'
+        references:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reference'
+        areas:
+          type: array
+          items:
+            $ref: '#/components/schemas/Area'
+        notes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Note'
+
+    Table:
+      type: object
+      required: [id, name, x, y, fields]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^[A-Za-z_][A-Za-z0-9_]*$'
+        x:
+          type: number
+          format: double
+        y:
+          type: number
+          format: double
+        comment:
+          type: string
+        color:
+          type: string
+          description: V1 frontend-only state, not persisted
+        locked:
+          type: boolean
+          description: V1 frontend-only state, not persisted
+        width:
+          type: number
+          description: V1 frontend-only state, not persisted
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/Field'
+
+    Field:
+      type: object
+      required: [id, name, type]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^[A-Za-z_][A-Za-z0-9_]*$'
+        type:
+          type: string
+        size:
+          type: integer
+          nullable: true
+        default:
+          type: string
+        check:
+          type: string
+        primary:
+          type: boolean
+        unique:
+          type: boolean
+        notNull:
+          type: boolean
+        increment:
+          type: boolean
+        comment:
+          type: string
+
+    Reference:
+      type: object
+      required: [id, startTableId, startFieldId, endTableId, endFieldId, cardinality, onUpdate, onDelete]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        startTableId:
+          type: string
+          format: uuid
+        startFieldId:
+          type: string
+          format: uuid
+        endTableId:
+          type: string
+          format: uuid
+        endFieldId:
+          type: string
+          format: uuid
+        cardinality:
+          type: string
+          enum: [one_to_one, one_to_many, many_to_one, many_to_many]
+        onUpdate:
+          type: string
+          enum: [CASCADE, RESTRICT, "SET NULL", "NO ACTION", "SET DEFAULT"]
+        onDelete:
+          type: string
+          enum: [CASCADE, RESTRICT, "SET NULL", "NO ACTION", "SET DEFAULT"]
+
+    Area:
+      type: object
+      required: [id, name, x, y, width, height]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        x:
+          type: number
+          format: double
+        y:
+          type: number
+          format: double
+        width:
+          type: number
+          format: double
+        height:
+          type: number
+          format: double
+        color:
+          type: string
+
+    Note:
+      type: object
+      required: [id, x, y]
+      properties:
+        id:
+          type: string
+          format: uuid
+        x:
+          type: number
+          format: double
+        y:
+          type: number
+          format: double
+        content:
+          type: string
+        color:
+          type: string
+
+    ConflictResponse:
+      type: object
+      required: [error, current]
+      properties:
+        error:
+          type: string
+          enum: [revision_conflict]
+          description: "Special: colon-free enum value (per CLAUDE.md YAML quoting rule)"
+        current:
+          $ref: '#/components/schemas/Diagram'
+          description: Current server state for client merge
+
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+

@@ -1,9 +1,3 @@
-## ADDED — 侧边栏规格
-
-> 模块：core | 提案：add-baseline-docs
-> 路径：`logos/resources/prd/2-product-design/1-feature-specs/core-04-side-panel-tabs.md`
-> 对齐参考源：drawdb §2.4 侧边栏 6 Tab + Issues + DBMLEditor
-
 # 侧边栏规格（V1）
 
 ## 1. 侧边栏布局
@@ -339,3 +333,4 @@ V1 Issues 是 7 Tab 之一。V2 升级为 AppBar 下方全宽折叠条带，由 
 - header 高度 40px，hover `--cdb-color-grey-1`
 - 列表项 `--cdb-font-size-sm`，`color: var(--cdb-color-text-1)`
 - Tag `color=Warning` 背景 `--cdb-color-warning-soft`
+

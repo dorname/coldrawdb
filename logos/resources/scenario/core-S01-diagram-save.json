@@ -2,7 +2,6 @@
   "scenario_id": "core-S01",
   "scenario_name": "编辑 + 自动保存",
   "module": "core",
-  "proposal": "add-baseline-docs",
   "description": "E2E API 编排：创建空 diagram → 创建 5 表 20 字段 → PUT 全量更新（正确 revision）→ 409 冲突 → DELETE",
   "alignment": "core-S01-edit-and-save-diagram.md",
   "version": "1.0.0",
@@ -241,3 +240,4 @@
     "tolerance": "0 failures"
   }
 }
+

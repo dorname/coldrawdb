@@ -1,9 +1,3 @@
-## ADDED — 图表持久化规格
-
-> 模块：core | 提案：add-baseline-docs
-> 路径：`logos/resources/prd/2-product-design/1-feature-specs/core-02-diagram-persistence.md`
-> 对齐参考源：drawdb §2.5 + `backend/src/diagrams_v1.rs`（5 端点）+ 11 张表对账
-
 # 图表持久化规格（V1）
 
 ## 1. 持久化对象
@@ -167,3 +161,4 @@ V1 不实现实时协作；同一 diagram 同时被多个浏览器编辑会触�
 - `backend/init.sql`（11 张表 DDL）
 - `database_design.json`（字段命名对账）
 - `docs/drawdb-capability-checklist.md` §2.5
+

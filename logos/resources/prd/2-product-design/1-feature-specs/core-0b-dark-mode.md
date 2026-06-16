@@ -1,10 +1,3 @@
-# Delta — core-0b-dark-mode.md（新文件）
-
-> 模块：core | 提案：redesign-phase-e-design-system-migration（E5）
-> 路径：`logos/resources/prd/2-product-design/1-feature-specs/core-0b-dark-mode.md`
-> 对齐参考源：main `src/data/constants.js` `darkBgTheme = "#16161A"`、`settings.mode === "dark"`
-> 最后更新：2026-06-15
-
 # Dark Mode 规格（E5）
 
 ## 1. 概述
@@ -214,3 +207,4 @@ E4 CodeView 在 `setup_dbml()` 中根据当前 mode 设置 Monaco 主题：
 - 暗色 + 高对比度（accessibility）模式 — V2+
 - 用户自定义主题色（替换 `--cdb-color-primary`）— V2+
 - 自动切换（按时间 19:00 切暗色）— V2+
+

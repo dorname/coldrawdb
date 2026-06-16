@@ -1,0 +1,250 @@
+## MODIFIED — 顶部元数据剥离
+
+> 模块：core | 提案：add-baseline-docs
+> 路径：`logos/resources/api/bridge.yaml`
+> 策略：移除文件开头的 `# ADDED — ...` 与紧随的 `#` 元数据注释行（提案 / 模块 / 路径 / 对齐参考源），保留 `openapi:` 以下全部 endpoints 定义不变。
+
+openapi: 3.0.3
+info:
+  title: coldrawdb bridge API
+  description: |
+    V1 bridge I/O API: SQL / DBML / JSON import-export, bridge configuration,
+    and import task log management.
+
+    **Coverage**: 5 endpoints under `/api/v1/bridge/*`.
+    **Alignment**: 与 `backend/src/phase3_bridge.rs` 5 个 `#[*]` 路由一一对应.
+    **Storage**: import tasks persist to the `task` table (one of the 11 V1 tables).
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000
+    description: Local dev
+  - url: https://staging.coldrawdb.example.com
+    description: Staging
+
+paths:
+  /api/v1/bridge/import/local:
+    post:
+      summary: Import a diagram from local SQL / DBML / JSON content
+      description: |
+        Accepts raw text content with a specified `format`, parses it into a diagram,
+        creates the diagram, and returns a `task_id` for tracking.
+        Max upload size is `max_import_size_kb` from bridge config (default 5 MB).
+      operationId: importLocal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportLocalRequest'
+      responses:
+        '201':
+          description: Import task created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportTask'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/v1/bridge/import/local/logs:
+    get:
+      summary: List recent import task logs
+      description: |
+        Returns the most recent 50 import tasks ordered by `created_at` desc.
+        Supports `limit` and `offset` query params for pagination.
+      operationId: listImportLogs
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, success, failed]
+      responses:
+        '200':
+          description: List of import tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ImportTask'
+
+  /api/v1/bridge/import/local/retry/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TaskId'
+    post:
+      summary: Retry a failed import task
+      description: |
+        Resets the task to `pending` status and re-runs the import with the original payload.
+        Only tasks with `status: failed` are eligible.
+      operationId: retryImport
+      responses:
+        '200':
+          description: Retry started, returns updated task
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportTask'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: "Task is not in a failed state"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/bridge/config:
+    get:
+      summary: Get bridge configuration
+      description: |
+        Returns the singleton bridge configuration. Stored in the `entity` table
+        (one of the 11 V1 tables).
+      operationId: getBridgeConfig
+      responses:
+        '200':
+          description: Current bridge config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BridgeConfig'
+    put:
+      summary: Update bridge configuration
+      description: |
+        Replaces the singleton bridge configuration.
+      operationId: updateBridgeConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BridgeConfig'
+      responses:
+        '200':
+          description: Updated bridge config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BridgeConfig'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+components:
+  parameters:
+    TaskId:
+      name: id
+      in: path
+      required: true
+      description: Task id (BIGINT)
+      schema:
+        type: integer
+        format: int64
+
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    ImportLocalRequest:
+      type: object
+      required: [format, content]
+      properties:
+        format:
+          type: string
+          enum: [sql, dbml, json]
+        content:
+          type: string
+          description: Raw text content of the file
+        title:
+          type: string
+          description: Optional diagram title; defaults to filename
+        engine:
+          type: string
+          enum: [mysql, postgresql, sqlite, mariadb, mssql, oraclesql, generic]
+          description: Required when format is `sql`; ignored for dbml/json
+
+    ImportTask:
+      type: object
+      required: [id, type, status, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        type:
+          type: string
+          enum: [import_sql, import_dbml, import_json]
+        status:
+          type: string
+          enum: [pending, success, failed]
+        message:
+          type: string
+          description: Error message when status is `failed`
+        diagramId:
+          type: string
+          format: uuid
+          description: Set when status becomes `success`
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    BridgeConfig:
+      type: object
+      required: [defaultEngine, sqlIndent, sqlNaming, sqlIncludeDropTable, sqlIncludeComments, maxImportSizeKb]
+      properties:
+        defaultEngine:
+          type: string
+          enum: [mysql, postgresql, sqlite, mariadb, mssql, oraclesql, generic]
+        sqlIndent:
+          type: string
+          description: "Indent string (e.g. two spaces, tab)"
+        sqlNaming:
+          type: string
+          enum: [snake_case, camelCase, PascalCase, "lower"]
+        sqlIncludeDropTable:
+          type: boolean
+        sqlIncludeComments:
+          type: boolean
+        maxImportSizeKb:
+          type: integer
+          minimum: 64
+          maximum: 102400
+
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+

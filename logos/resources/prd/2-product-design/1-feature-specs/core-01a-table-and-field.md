@@ -1,9 +1,3 @@
-## ADDED — 表与字段编辑规格
-
-> 模块：core | 提案：add-baseline-docs
-> 路径：`logos/resources/prd/2-product-design/1-feature-specs/core-01a-table-and-field.md`
-> 对齐参考源：drawdb `Table.jsx` + `src/data/datatypes.js`
-
 # 表与字段编辑规格（V1）
 
 ## 1. 表（Table）
@@ -185,3 +179,4 @@ V1 字段类型用 `text-orange-500`（main `stringColor`）等 Tailwind 颜色 
 - 索引：`<IconIndex />` + `<Tag color=Neutral size=Small>IDX</Tag>`
 - 唯一约束：`<IconUnique />` + `<Tag color=Success size=Small>UQ</Tag>`
 - 非空：`<IconNotNull />`（无 Tag，纯图标 hover 提示）
+

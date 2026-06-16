@@ -1,9 +1,3 @@
-## ADDED — 关系编辑规格
-
-> 模块：core | 提案：add-baseline-docs
-> 路径：`logos/resources/prd/2-product-design/1-feature-specs/core-01b-relationship.md`
-> 对齐参考源：drawdb `Relationship.jsx`
-
 # 关系编辑规格（V1）
 
 ## 1. 关系（Relationship）对象结构
@@ -175,3 +169,4 @@ interface Relationship {
 - 终点端点：`<IconCaretDown />` 旋转 90°（one-to-many 视觉）
 - 颜色：`var(--cdb-color-primary)`（默认）、`var(--cdb-color-warning)`（hover）
 - 选中态：线粗 2.5px，色 `--cdb-color-primary-active`
+

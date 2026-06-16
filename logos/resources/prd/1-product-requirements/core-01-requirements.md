@@ -1,9 +1,3 @@
-## ADDED — V1 需求文档
-
-> 模块：core | 提案：add-baseline-docs
-> 路径：`logos/resources/prd/1-product-requirements/core-01-requirements.md`
-> 对齐参考源：drawdb 主分支 + `database_design.json` + Phase 4 收官报告
-
 # V1 产品需求（事实锚点）
 
 ## 1. 用户故事
@@ -56,6 +50,11 @@
 | NFR-11 | 离线模式 | V1 不实现（drawdb 客户端 Dexie 缓存；coldrawdb V1 完全依赖 SQLite 后端） |
 | NFR-12 | 安全 | 无用户系统；diagram 数据仅按 diagram id 区分，不鉴权；适合开发/内部使用 |
 
+| NFR-13 | 前端 WASM 体积（启用 Monaco 后） | Monaco 语言包增量 ≤ 3 MB（gzipped），按需 lazy-load，不阻塞首屏 |
+| NFR-14 | 设计 token 体系 | 全部视觉属性通过 `--cdb-*` CSS 变量引用，禁止硬编码色值；token 列表见 `core-07-design-tokens.md` |
+| NFR-15 | 主题切换 | 支持 light / dark 模式全局切换，token 覆盖规则见 `core-0b-dark-mode.md`；默认 light，遵循 `prefers-color-scheme` |
+| NFR-16 | 动效一致性 | 模态/抽屉/按钮 hover/active 使用统一动效 token（`--cdb-duration-*` + `--cdb-easing-*`），规范见 `core-0c-motion.md` |
+
 ## 4. 范围边界（V1 不做）
 
 - ❌ 用户注册/登录（V2）
@@ -64,7 +63,6 @@
 - ❌ PNG/JPG/SVG/PDF/ZIP 导出（V2 候选）
 - ❌ 模板（V2 候选）
 - ❌ 国际化（V2 候选）
-- ❌ 主题切换（V2 候选）
 - ❌ 客户端 Dexie 离线缓存（V1 完全后端化）
 - ❌ 全屏模式（V2 候选）
 - ❌ 自动布局（V2 候选）
@@ -77,3 +75,4 @@ V1 通过条件：
 - [ ] 11 张表可读写无错
 - [ ] 7 引擎 SQL 导入导出可演示
 - [ ] 409 revision 冲突可演示
+

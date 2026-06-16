@@ -1,9 +1,3 @@
-## ADDED — 信息架构
-
-> 模块：core | 提案：add-baseline-docs
-> 路径：`logos/resources/prd/2-product-design/1-feature-specs/core-00-information-architecture.md`
-> 对齐参考源：drawdb §2.1 顶层布局 + §4 路由 + Phase 4 4 模块前端
-
 # 信息架构（V1）
 
 ## 1. 顶层布局（Workspace）
@@ -269,3 +263,4 @@ backend/src/
 | `localStorage["cdb-mode"]` | 持久化 | 同上 | E5 实现 |
 
 E1 阶段 `lib.rs` 不实现主题切换逻辑，**仅在 mount 时设置 `<html data-mode="light">` 作为初始值**。E5 阶段补全 JS 切换 + 持久化 + 媒体查询监听。
+

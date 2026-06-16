@@ -2,7 +2,6 @@
   "scenario_id": "core-S02",
   "scenario_name": "分享链接加载",
   "module": "core",
-  "proposal": "add-baseline-docs",
   "description": "E2E API 编排：A 创建 diagram → A 编辑保存 → B 通过链接 GET 加载 → 验证 A 与 B 数据一致",
   "alignment": "core-S02-load-shared-diagram.md",
   "version": "1.0.0",
@@ -225,3 +224,4 @@
     "tolerance": "0 failures"
   }
 }
+

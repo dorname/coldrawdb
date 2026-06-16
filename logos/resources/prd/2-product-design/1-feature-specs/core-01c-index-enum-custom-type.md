@@ -1,9 +1,3 @@
-## ADDED — 索引/枚举/自定义类型规格
-
-> 模块：core | 提案：add-baseline-docs
-> 路径：`logos/resources/prd/2-product-design/1-feature-specs/core-01c-index-enum-custom-type.md`
-> 对齐参考源：drawdb `Indices.jsx` + `Enums.jsx` + `Types.jsx` + `src/data/datatypes.js`
-
 # 索引 / 枚举 / 自定义类型规格（V1）
 
 > **V1 关键边界**：本章三个对象（Index / Enum / CustomType）在 coldrawdb V1 中**仅前端 state**；后端 11 张表未独立建表承载，导出 SQL 时由前端组合生成。
@@ -232,3 +226,4 @@ V1 枚举详情用模态（`cdb-modal-enum`）。E3 升级为 E3 `<Collapse>` �
 | 域（domain） | `Primary` | `<IconType />` |
 | 复合类型（composite） | `Info` | `<IconString />` |
 | 范围（range） | `Neutral` | `<IconInt />` |
+

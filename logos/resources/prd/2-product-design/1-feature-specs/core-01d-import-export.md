@@ -1,9 +1,5 @@
 # 导入 / 导出 IO 抽屉规格（V2 / Phase C）
 
-> 模块：core | 提案：redesign-phase-c-import-export
-> 路径：`logos/resources/prd/2-product-design/1-feature-specs/core-01d-import-export.md`
-> 最后更新：2026-06-14
-
 ## 1. 概述
 
 Phase C 将 V1 居中 **Import 模态** 与占位 **Export 按钮** 升级为画布右侧 **非模态 IO 抽屉**：
@@ -220,3 +216,4 @@ V1 IO 抽屉用内嵌 `<aside class="cdb-io-drawer">` 自实现。E3 升级为 `
 | 切换数据库（MySQL/PostgreSQL/SQLite/...） | `<Dropdown trigger=Click position=BottomLeft>` | E3 Dropdown |
 
 **ImportDrawer** 头部增加 `<Tag color=Info size=Small>SQL/DBML/JSON</Tag>` 标识当前 format。
+

@@ -1,8 +1,3 @@
-# ADDED — S02 测试用例规格
-# 模块：core | 提案：add-baseline-docs
-# 路径：`logos/resources/test/core-S02-test-cases.md`
-# 对齐参考源：`core-S02-load-shared-diagram.md` + `core-02-diagram-persistence.md`
-
 ## 1. 范围
 
 本文件覆盖场景 S02（分享链接加载）的全部 UT 和 ST 用例规格。
@@ -272,3 +267,4 @@ pub fn make_full_diagram() -> Diagram {
 | ST-S02-04 | 网络断开重试 | `backend/tests/scenarios/s02.rs` |
 | ST-S02-05 | 浏览器渲染 | `frontend-rs/tests/wasm/` |
 | ST-S02-06 | 并发分享会话 | `backend/tests/scenarios/s02.rs` |
+

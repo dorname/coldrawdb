@@ -1,9 +1,3 @@
-## ADDED — 桥接导入/导出规格
-
-> 模块：core | 提案：add-baseline-docs
-> 路径：`logos/resources/prd/2-product-design/1-feature-specs/core-03-bridge-io.md`
-> 对齐参考源：drawdb §2.6 + `backend/src/phase3_bridge.rs`（5 端点）+ 7 引擎 SQL 适配
-
 # 桥接导入 / 导出规格（V1）
 
 ## 1. Bridge API 端点（5 个）
@@ -234,3 +228,4 @@ Phase C **不新增** bridge export 端点。导出预览由前端纯函数生�
 ## MODIFIED — §3.1 SQL 导入流程（补充前端路径）
 
 0. **（Phase C）** 用户在 ImportDrawer 粘贴 SQL → 客户端 `parse_sql_statements` 预览 → 提交 bridge import
+

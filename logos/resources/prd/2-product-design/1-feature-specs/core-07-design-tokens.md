@@ -1,14 +1,3 @@
-# Delta — core-07-design-tokens.md（新文件）
-
-> merge 时作为新文件写入 `logos/resources/prd/2-product-design/1-feature-specs/core-07-design-tokens.md`
-
-## ADDED — 全文
-
-> 模块：core | 提案：redesign-phase-e-design-system-migration（E1）
-> 路径：`logos/resources/prd/2-product-design/1-feature-specs/core-07-design-tokens.md`
-> 对齐参考源：main `src/index.css`（Semi Design CSS variables）、`@douyinfe/semi-ui` 设计 token
-> 最后更新：2026-06-15
-
 # Design Tokens 规格（E1）
 
 ## 1. 概述
@@ -209,3 +198,4 @@
 - 暗色模式具体值（→ E5 `core-0b-dark-mode.md`）
 - 动效曲线应用（→ E6 `core-0c-motion.md`）
 - Token 在组件中的具体使用（→ E3 `core-09-core-components.md`）
+

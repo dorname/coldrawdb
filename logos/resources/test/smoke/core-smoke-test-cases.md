@@ -1,8 +1,3 @@
-# ADDED — staging 冒烟测试用例规格
-# 模块：core | 提案：add-baseline-docs
-# 路径：`logos/resources/test/smoke/core-smoke-test-cases.md`
-# 对齐参考源：`core-01-deployment-plan.md` §6 + `core-02-diagram-persistence.md` + `core-03-bridge-io.md`
-
 ## 1. 范围
 
 本文件覆盖 staging 环境的冒烟测试（smoke test）规格。
@@ -238,3 +233,4 @@
 - `backend/init.sql`（11 张表对账）
 - `logos/spec/smoke-report.md`（报告格式）
 - `logos/skills/deployment-executor/SKILL.md`（smoke 执行）
+

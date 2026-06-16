@@ -1,8 +1,3 @@
--- ADDED — V1 DDL（11 张表）
--- 模块：core | 提案：add-baseline-docs
--- 路径：`logos/resources/database/coldrawdb-v1.sql`
--- 对齐参考源：`backend/init.sql` + `database_design.json` + `backend/src/entity/*`
-
 -- V1 schema for coldrawdb. 11 tables total. Aligned with `backend/init.sql` and
 -- `database_design.json` for column naming and types.
 -- -- Engine: SQLite 3.40+ (WAL mode)
@@ -204,3 +199,4 @@ CREATE INDEX IF NOT EXISTS idx_note_diagram_id ON note(diagram_id);
 -- ============================================================
 -- 实际存储在 `entity` 表 / 或独立 config 表；本 DDL 仅涵盖 11 张业务表。
 -- bridge config 在 V1 实际用 backend 的 config.toml；SQL 端不再单建表。
+

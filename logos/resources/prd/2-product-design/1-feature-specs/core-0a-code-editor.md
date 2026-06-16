@@ -1,10 +1,3 @@
-# Delta — core-0a-code-editor.md（新文件）
-
-> 模块：core | 提案：redesign-phase-e-design-system-migration（E4）
-> 路径：`logos/resources/prd/2-product-design/1-feature-specs/core-0a-code-editor.md`
-> 对齐参考源：main `src/components/CodeEditor/index.jsx` + `setUpDBML.js`、Phase D 已归档的 `core-01f-code-view.md`（archive 目录）
-> 最后更新：2026-06-15
-
 # Code Editor 规格（E4 — Monaco 集成）
 
 ## 1. 概述
@@ -259,3 +252,4 @@ pub fn CommandPalette(
 - 代码视图**双向编辑**（粘贴 SQL 应用回画布）— V2+
 - Monaco IntelliSense / autocomplete 配置（V1 仅语法高亮）
 - 多 Tab 同时打开（V1 单视图）
+

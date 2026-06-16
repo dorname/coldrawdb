@@ -1,8 +1,3 @@
-# ADDED — V1 + V2 代码实现清单
-# 模块：core | 提案：add-baseline-docs
-# 路径：`logos/resources/implementation/core-implementation-checklist.md`
-# 对齐参考源：Phase 4 已实现 + 批次 1/2 文档
-
 ## 1. 范围
 
 本文件追踪 coldrawdb V1（已实现）+ V2（待实现）代码行勾选状态。
@@ -275,3 +270,4 @@
 - `docs/phase4/PHASE4_DONE.md`
 - `docs/drawdb-capability-checklist.md`
 - `backend/Cargo.toml` + `frontend-rs/Cargo.toml`
+

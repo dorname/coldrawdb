@@ -1,9 +1,3 @@
-## ADDED — S02 时序图：分享链接加载
-
-> 模块：core | 提案：add-baseline-docs
-> 路径：`logos/resources/prd/3-technical-plan/2-scenario-implementation/core-S02-load-shared-diagram.md`
-> 对齐参考源：`core-01-architecture-overview.md` + `core-02-diagram-persistence.md` + `core-05-top-menu-modals.md` §5.7
-
 # S02 时序图：分享链接加载（How 层 — 第 2 步：场景）
 
 ## 1. 场景描述
@@ -273,3 +267,4 @@ sequenceDiagram
 - `frontend-rs/src/lib.rs`（mount_to_body + 路由）
 - `frontend-rs/src/editor_data_access.rs`（fetch_diagram）
 - `docs/drawdb-capability-checklist.md` §2.5
+

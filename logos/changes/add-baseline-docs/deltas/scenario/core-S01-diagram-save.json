@@ -1,0 +1,249 @@
+## MODIFIED — 顶部元数据剥离
+
+> 模块：core | 提案：add-baseline-docs
+> 路径：`logos/resources/scenario/core-S01-diagram-save.json`
+> 策略：移除 JSON 体内 `"proposal": "add-baseline-docs"` 字段，保留 `scenario_id` / `steps` / `preconditions` 等全部业务字段不变。
+
+{
+  "scenario_id": "core-S01",
+  "scenario_name": "编辑 + 自动保存",
+  "module": "core",
+  "description": "E2E API 编排：创建空 diagram → 创建 5 表 20 字段 → PUT 全量更新（正确 revision）→ 409 冲突 → DELETE",
+  "alignment": "core-S01-edit-and-save-diagram.md",
+  "version": "1.0.0",
+  "base_url": "http://localhost:3000",
+  "preconditions": [
+    "后端服务运行中",
+    "数据库为干净状态（或使用事务隔离）"
+  ],
+  "variables": {},
+  "steps": [
+    {
+      "step_id": 1,
+      "name": "创建空 diagram",
+      "method": "POST",
+      "path": "/api/v1/diagrams",
+      "request": {
+        "headers": { "Content-Type": "application/json" },
+        "body": {
+          "title": "S01 Smoke Test",
+          "tables": [],
+          "references": [],
+          "areas": [],
+          "notes": []
+        }
+      },
+      "expect": {
+        "status": 201,
+        "json": {
+          "id": { "type": "uuid" },
+          "title": { "equals": "S01 Smoke Test" },
+          "revision": { "equals": 0 },
+          "tables": { "length": 0 }
+        }
+      },
+      "extract": {
+        "diagram_id": "$.id"
+      }
+    },
+    {
+      "step_id": 2,
+      "name": "PUT 创建 5 表 20 字段",
+      "method": "PUT",
+      "path": "/api/v1/diagrams/${diagram_id}",
+      "request": {
+        "headers": { "Content-Type": "application/json" },
+        "body": {
+          "title": "S01 Smoke Test",
+          "revision": 0,
+          "tables": [
+            {
+              "id": "t1-id",
+              "name": "users",
+              "x": 100,
+              "y": 100,
+              "comment": "",
+              "fields": [
+                { "id": "f1", "name": "id", "type": "INT", "primary": true, "increment": true, "notNull": true, "unique": false },
+                { "id": "f2", "name": "name", "type": "VARCHAR(255)", "primary": false, "notNull": true, "unique": false },
+                { "id": "f3", "name": "email", "type": "VARCHAR(255)", "primary": false, "notNull": false, "unique": true },
+                { "id": "f4", "name": "created_at", "type": "TIMESTAMP", "primary": false, "notNull": false, "unique": false }
+              ]
+            },
+            {
+              "id": "t2-id",
+              "name": "posts",
+              "x": 400,
+              "y": 100,
+              "comment": "",
+              "fields": [
+                { "id": "f5", "name": "id", "type": "INT", "primary": true, "increment": true, "notNull": true, "unique": false },
+                { "id": "f6", "name": "user_id", "type": "INT", "primary": false, "notNull": true, "unique": false },
+                { "id": "f7", "name": "title", "type": "VARCHAR(255)", "primary": false, "notNull": true, "unique": false },
+                { "id": "f8", "name": "body", "type": "TEXT", "primary": false, "notNull": false, "unique": false }
+              ]
+            },
+            {
+              "id": "t3-id",
+              "name": "comments",
+              "x": 100,
+              "y": 400,
+              "comment": "",
+              "fields": [
+                { "id": "f9", "name": "id", "type": "INT", "primary": true, "increment": true, "notNull": true, "unique": false },
+                { "id": "f10", "name": "post_id", "type": "INT", "primary": false, "notNull": true, "unique": false },
+                { "id": "f11", "name": "user_id", "type": "INT", "primary": false, "notNull": true, "unique": false },
+                { "id": "f12", "name": "content", "type": "TEXT", "primary": false, "notNull": true, "unique": false }
+              ]
+            },
+            {
+              "id": "t4-id",
+              "name": "tags",
+              "x": 400,
+              "y": 400,
+              "comment": "",
+              "fields": [
+                { "id": "f13", "name": "id", "type": "INT", "primary": true, "increment": true, "notNull": true, "unique": false },
+                { "id": "f14", "name": "name", "type": "VARCHAR(64)", "primary": false, "notNull": true, "unique": true },
+                { "id": "f15", "name": "slug", "type": "VARCHAR(64)", "primary": false, "notNull": true, "unique": true },
+                { "id": "f16", "name": "description", "type": "TEXT", "primary": false, "notNull": false, "unique": false }
+              ]
+            },
+            {
+              "id": "t5-id",
+              "name": "post_tags",
+              "x": 700,
+              "y": 250,
+              "comment": "",
+              "fields": [
+                { "id": "f17", "name": "id", "type": "INT", "primary": true, "increment": true, "notNull": true, "unique": false },
+                { "id": "f18", "name": "post_id", "type": "INT", "primary": false, "notNull": true, "unique": false },
+                { "id": "f19", "name": "tag_id", "type": "INT", "primary": false, "notNull": true, "unique": false },
+                { "id": "f20", "name": "created_at", "type": "TIMESTAMP", "primary": false, "notNull": false, "unique": false }
+              ]
+            }
+          ],
+          "references": [
+            {
+              "id": "r1",
+              "name": "user_posts",
+              "startTableId": "t1-id",
+              "startFieldId": "f1",
+              "endTableId": "t2-id",
+              "endFieldId": "f6",
+              "cardinality": "one_to_many",
+              "onUpdate": "CASCADE",
+              "onDelete": "CASCADE"
+            }
+          ],
+          "areas": [],
+          "notes": []
+        }
+      },
+      "expect": {
+        "status": 200,
+        "json": {
+          "revision": { "equals": 1 },
+          "tables": { "length": 5 }
+        }
+      },
+      "extract": {
+        "current_revision": "$.revision"
+      }
+    },
+    {
+      "step_id": 3,
+      "name": "GET 验证保存",
+      "method": "GET",
+      "path": "/api/v1/diagrams/${diagram_id}",
+      "request": {},
+      "expect": {
+        "status": 200,
+        "json": {
+          "revision": { "equals": 1 },
+          "tables": { "length": 5 },
+          "references": { "length": 1 }
+        }
+      }
+    },
+    {
+      "step_id": 4,
+      "name": "PUT 用过期 revision 触发 409",
+      "method": "PUT",
+      "path": "/api/v1/diagrams/${diagram_id}",
+      "request": {
+        "headers": { "Content-Type": "application/json" },
+        "body": {
+          "title": "Stale Write",
+          "revision": 0,
+          "tables": [],
+          "references": [],
+          "areas": [],
+          "notes": []
+        }
+      },
+      "expect": {
+        "status": 409,
+        "json": {
+          "error": { "equals": "revision_conflict" },
+          "current": {
+            "revision": { "equals": 1 }
+          }
+        }
+      }
+    },
+    {
+      "step_id": 5,
+      "name": "PUT 用正确 revision 成功",
+      "method": "PUT",
+      "path": "/api/v1/diagrams/${diagram_id}",
+      "request": {
+        "headers": { "Content-Type": "application/json" },
+        "body": {
+          "title": "S01 Smoke Test Updated",
+          "revision": 1,
+          "tables": "$$ref:step2.body.tables",
+          "references": "$$ref:step2.body.references",
+          "areas": [],
+          "notes": []
+        }
+      },
+      "expect": {
+        "status": 200,
+        "json": {
+          "revision": { "equals": 2 },
+          "title": { "equals": "S01 Smoke Test Updated" }
+        }
+      }
+    },
+    {
+      "step_id": 6,
+      "name": "DELETE diagram",
+      "method": "DELETE",
+      "path": "/api/v1/diagrams/${diagram_id}",
+      "request": {},
+      "expect": {
+        "status": 204
+      }
+    },
+    {
+      "step_id": 7,
+      "name": "GET 验证已删除",
+      "method": "GET",
+      "path": "/api/v1/diagrams/${diagram_id}",
+      "request": {},
+      "expect": {
+        "status": 404
+      }
+    }
+  ],
+  "postconditions": [
+    "数据库中 ${diagram_id} 相关行已全部清理（diagram + table + field + reference）"
+  ],
+  "expected_outcome": {
+    "total_steps": 7,
+    "expected_pass": 7,
+    "tolerance": "0 failures"
+  }
+}
+

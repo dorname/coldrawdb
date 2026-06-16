@@ -1,9 +1,3 @@
-## ADDED — V1 部署方案
-
-> 模块：core | 提案：add-baseline-docs
-> 路径：`logos/resources/prd/3-technical-plan/3-deployment/core-01-deployment-plan.md`
-> 对齐参考源：`core-01-architecture-overview.md` §7 + Phase 4 CI 配置 + 11 张表 DDL
-
 # V1 部署方案（How 层 — 第 3 步：部署）
 
 ## 1. 部署目标
@@ -153,6 +147,38 @@ COLDRAWDB_BACKEND_PORT=3001 COLDRAWDB_FRONTEND_PORT=8081 ./scripts/start-local.s
 - 所有脚本日志统一输出到 `logs/` 目录
 - 运行产生的 `logs/`、`*.pid` 已加入 `.gitignore`，不会被提交
 - 如需排查启动失败，查看 `logs/backend.log` 与 `logs/frontend.log`
+
+#### 3.4.5 日志与 PID
+
+- 所有脚本日志统一输出到 `logs/` 目录
+- 运行产生的 `logs/`、`*.pid` 已加入 `.gitignore`，不会被提交
+- 如需排查启动失败，查看 `logs/backend.log` 与 `logs/frontend.log`
+
+#### 3.4.6 WASM 缓存策略（Monaco 启用后，redesign-phase-e E4）
+
+启用 Monaco Editor（`core-0a-code-editor.md`）后，前端 WASM 总体积约 +3 MB（gzipped）。为避免重复下载与首屏延迟，部署方案要求：
+
+| 资源 | Cache-Control | 说明 |
+|---|---|---|
+| `*.wasm` / `editor*.js` | `public, max-age=31536000, immutable` | trunk 打包文件名带 hash，永久缓存 |
+| `monaco-editor/*` chunk | `public, max-age=2592000, immutable`（30 天） | Monaco 语言包按需 lazy-load |
+| `index.html` | `no-cache` | SPA 入口必须每次校验更新 |
+
+nginx 配置示例（在 `nginx.conf` 的 `location /` 中）：
+
+```nginx
+location ~* \.(wasm|js)$ {
+  add_header Cache-Control "public, max-age=31536000, immutable";
+}
+location ~* /monaco-editor/ {
+  add_header Cache-Control "public, max-age=2592000, immutable";
+}
+location = / {
+  add_header Cache-Control "no-cache";
+}
+```
+
+Docker 镜像层复用：`Dockerfile` 的 wasm-build 阶段产物 `dist/` 在镜像 tag 不变时复用率约 95%，多 staging 间共享层可显著降低带宽。
 
 ## 4. Docker 部署
 
@@ -349,3 +375,4 @@ V1 部署**不包含**：
 - `.github/workflows/ci.yml`（CI 配置，参考部署镜像构建）
 - `docs/phase4/PHASE4_DONE.md`（WASM 产物路径）
 - `docs/drawdb-capability-checklist.md` §5
+

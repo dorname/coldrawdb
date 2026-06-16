@@ -1,10 +1,3 @@
-# Delta — core-0c-motion.md（新文件）
-
-> 模块：core | 提案：redesign-phase-e-design-system-migration（E6）
-> 路径：`logos/resources/prd/2-product-design/1-feature-specs/core-0c-motion.md`
-> 对齐参考源：main `framer-motion` + `@douyinfe/semi-ui` 内置 transition 曲线
-> 最后更新：2026-06-15
-
 # Motion 规格（E6 — 动效与微交互）
 
 ## 1. 概述
@@ -222,3 +215,4 @@ view! {
 - 复杂路径动画（贝塞尔曲线轨迹）— V2+
 - Spring 物理动画（framer-motion 风格）— V2+
 - 滚动视差（parallax）— 不做
+

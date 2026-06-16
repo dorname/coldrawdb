@@ -1,9 +1,3 @@
-## ADDED — S01 时序图：编辑保存
-
-> 模块：core | 提案：add-baseline-docs
-> 路径：`logos/resources/prd/3-technical-plan/2-scenario-implementation/core-S01-edit-and-save-diagram.md`
-> 对齐参考源：`docs/phase4/PHASE4_DONE.md` + `core-01-architecture-overview.md` + `core-02-diagram-persistence.md`
-
 # S01 时序图：编辑 + 自动保存（How 层 — 第 2 步：场景）
 
 ## 1. 场景描述
@@ -224,3 +218,4 @@ sequenceDiagram
 - `frontend-rs/src/editor_core.rs`（状态机）
 - `frontend-rs/src/editor_data_access.rs`（HTTP + debounce）
 - `docs/drawdb-capability-checklist.md` §2.5
+

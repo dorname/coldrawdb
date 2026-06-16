@@ -1,9 +1,3 @@
-## ADDED — 顶部菜单 + 模态规格
-
-> 模块：core | 提案：add-baseline-docs
-> 路径：`logos/resources/prd/2-product-design/1-feature-specs/core-05-top-menu-modals.md`
-> 对齐参考源：drawdb §2.2 顶部菜单 + 9 个模态（New/Open/Import/ImportSource/Language/SetTableWidth/Share/Rename/ConfigureCustomTypes）
-
 # 顶部菜单 + 模态规格（V1）
 
 ## 1. 顶部菜单布局
@@ -514,3 +508,4 @@ V1 双行顶栏（菜单 + 工具栏）已在 **Phase A** 中合并为单行 App
 | 关闭 × | `<IconClose />`, 32×32 圆形按钮, hover `--cdb-color-grey-1` | E3 Button Tertiary |
 
 **Code/Image 模态特殊**：body `overflow: hidden`（避免 Monaco 滚动冲突），高度自适应内容。E4 Code View 用 `XLarge` (1200px)。
+

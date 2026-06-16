@@ -1,9 +1,3 @@
-## ADDED — 编辑器画布总规格
-
-> 模块：core | 提案：add-baseline-docs
-> 路径：`logos/resources/prd/2-product-design/1-feature-specs/core-01-editor-canvas.md`
-> 对齐参考源：drawdb §2.3 + CAP-CANVAS-01..09
-
 # 编辑器画布总规格（V1）
 
 ## 1. 概述
@@ -297,3 +291,4 @@ Inspector 抽屉（L3）承载画布选中态的属性编辑。E3 阶段用 E3 �
 - 选中态用 `--cdb-color-primary-soft` 高亮
 - 拖拽用 `--cdb-cursor-grab` / `--cdb-cursor-grabbing`
 - 画布背景：浅色 `--cdb-color-bg-3`，暗色（E5）`--cdb-color-bg-2`
+

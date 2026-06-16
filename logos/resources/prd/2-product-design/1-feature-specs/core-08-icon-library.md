@@ -1,14 +1,3 @@
-# Delta — core-08-icon-library.md（新文件）
-
-> merge 时作为新文件写入 `logos/resources/prd/2-product-design/1-feature-specs/core-08-icon-library.md`
-
-## ADDED — 全文
-
-> 模块：core | 提案：redesign-phase-e-design-system-migration（E2）
-> 路径：`logos/resources/prd/2-product-design/1-feature-specs/core-08-icon-library.md`
-> 对齐参考源：main `src/icons/IconAdd{Area,Note,Table}.jsx`（自建 SVG 模板）、`@douyinfe/semi-icons` 命名规范
-> 最后更新：2026-06-15
-
 # Icon Library 规格（E2）
 
 ## 1. 概述
@@ -213,3 +202,4 @@ view! {
 - 动画图标（loading spinner）— E6
 - 自定义图标上传（用户上传 SVG）— V2+
 - 图标包版本管理（lockfile）— 50 个 SVG 内联在 icons.rs，无外部依赖
+

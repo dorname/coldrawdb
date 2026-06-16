@@ -1,8 +1,3 @@
-# ADDED — S01 测试用例规格
-# 模块：core | 提案：add-baseline-docs
-# 路径：`logos/resources/test/core-S01-test-cases.md`
-# 对齐参考源：`core-S01-edit-and-save-diagram.md` + `core-02-diagram-persistence.md`
-
 ## 1. 范围
 
 本文件覆盖场景 S01（编辑 + 自动保存）的全部 UT（单元测试）和 ST（场景测试）用例规格。
@@ -277,3 +272,4 @@ pub fn make_diagram() -> DiagramCreateRequest {
 | ST-S01-01 | 编辑保存端到端 | `backend/src/diagrams_v1.rs::tests` |
 | ST-S01-02 | 导入端到端 | `backend/src/diagrams_v1.rs::tests` |
 | ST-S01-03 | 浏览器 wasm 渲染 | `frontend-rs/tests/wasm/` |
+

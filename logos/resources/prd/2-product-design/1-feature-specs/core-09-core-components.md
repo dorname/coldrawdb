@@ -1,14 +1,3 @@
-# Delta — core-09-core-components.md（新文件）
-
-> merge 时作为新文件写入 `logos/resources/prd/2-product-design/1-feature-specs/core-09-core-components.md`
-
-## ADDED — 全文
-
-> 模块：core | 提案：redesign-phase-e-design-system-migration（E3）
-> 路径：`logos/resources/prd/2-product-design/1-feature-specs/core-09-core-components.md`
-> 对齐参考源：main `@douyinfe/semi-ui` Button/Modal/Dropdown/Tooltip/Popover/Tag/Collapse/SideSheet
-> 最后更新：2026-06-15
-
 # Core Components 规格（E3）
 
 ## 1. 概述
@@ -309,3 +298,4 @@ Tag (无 z-index)
 - 主题切换按钮（→ E5）
 - Modal/SideSheet 入场动画（→ E6）
 - 复杂组合组件（DatePicker / ColorPicker / Tree）— V2+
+
