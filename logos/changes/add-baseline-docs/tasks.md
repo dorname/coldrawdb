@@ -63,5 +63,5 @@
 
 > README.md / AGENTS.md 不在 `logos/resources/` 目录下，按 OpenLogos 规范属于项目级源文档，**不走 delta 流程**，直接修改源文件（与 `add-baseline-docs` 20260612 archive 中 [code] section 的处理方式一致）。`openlogos merge add-baseline-docs` 执行并写回 SPEC_MERGED 后才能开始。
 
-- [ ] 修改仓库根 `README.md` — 补充 5 个 redesign phase 归档索引 + 当前技术栈摘要（Semi Design tokens + Leptos 0.5 + WASM）
-- [ ] 修改仓库根 `AGENTS.md` — 补充 5 个 redesign phase 归档索引 + `core` 模块当前 phase 状态（`lifecycle: launched`）
+- [x] 修改仓库根 `README.md` — 补充 5 个 redesign phase 归档索引 + 当前技术栈摘要（Semi Design tokens + Leptos 0.5 + WASM）
+- [x] 修改仓库根 `AGENTS.md` — 补充 5 个 redesign phase 归档索引 + `core` 模块当前 phase 状态（`lifecycle: launched`）

@@ -114,11 +114,25 @@ cd <项目根目录> && openlogos <command>
 
 - **模块**：`core`（核心功能）
 - **生命周期**：`launched`（`logos/logos-project.yaml`）
-- **当前阶段**：Phase 4 已完成，前端全面替换为 Rust Web（WASM + Leptos）
-- **最近归档变更**：
-  - `add-frontend-completeness`
-  - `fix-modal-overlay-blocking`
-  - `fix-add-frontend-stub-leftover`
+- **当前阶段**：Phase 4（Rust Web/WASM 重构）+ redesign phases A–E（V2 布局 + 设计系统迁移）规格完成，代码分批实现中
+- **当前模块清单**（16 个）：
+  - 前端：`editor_data_access` / `editor_core` / `editor_panels` / `editor_render`
+  - 后端：`diagrams` / `tables` / `fields` / `references` / `areas` / `notes` / `indices` / `todos`（7 领域子模块）+ `common` / `entity` / `error` / `repository`（4 支撑子模块）
+- **API 端点**：10 个（diagrams × 5 + bridge × 5）
+- **数据表**：11 张（task / diagram / diagram_link / table / field / table_link / indice / indice_link / reference / area / note）
+- **最近归档变更（按时间倒序）**：
+  - `redesign-phase-e-design-system-migration` — E1–E6 设计系统迁移（tokens / icons / components / Monaco / dark mode / motion）
+  - `redesign-phase-d-command-code` — Command Palette + Code View（已 archive，E4 Monaco 升级版生效）
+  - `redesign-phase-c-import-export` — IO 抽屉（替代 V1 Import 模态）
+  - `redesign-phase-b-relationship` — 关系工具栏 + Tooltip/Popover
+  - `redesign-phase-a-layout` — V2 布局（AppBar + ToolRail + Inspector + ModalRoot）+ 6 层 z-index
+  - `wire-editor-canvas` — 接线画布到 editor core
+  - `remove-debug-smoke-artifact` — 移除 debug 残留 smoke 产物
+  - `add-local-run-scripts` — `scripts/start-local.sh` + `stop-local.sh`
+  - `fix-add-frontend-stub-leftover` — save handler stubs + selection id wiring
+  - `fix-modal-overlay-blocking` — ModalRoot 遮罩 + CORS + e2e 修正
+  - `add-frontend-completeness` — B1–B5 五批次（styles + 7-Tab + 5 模态 + 撤销/重做）
+- **完整归档索引**：`logos/changes/archive/`（15 个已归档提案）
 
 ## OpenLogos 快速链接
 

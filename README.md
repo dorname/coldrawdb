@@ -40,17 +40,21 @@ DrawDB is a robust and user-friendly database entity relationship (DBER) editor 
 
 | Layer | Tech |
 |-------|------|
-| Frontend | **Rust + Leptos 0.x + WASM**（`frontend-rs/` crate，1 crate + 4 modules） |
+| Frontend | **Rust + Leptos 0.5 + WASM**（`frontend-rs/` crate，4 modules：data_access / core / panels / render） |
 | Bundler | `trunk`（WASM bundler） |
-| State | Leptos signals / `create_store` 细粒度响应式 |
+| State | Leptos signals / `create_store` 细粒度响应式（`features=["csr"]`） |
 | Rendering | HTML5 `<canvas>` + 贝塞尔连线（自渲染，无 vDOM diff） |
+| Design System | `--cdb-*` 设计 token 体系（13 类 ~100 个）+ SVG 图标库 + 8 类核心组件（redesign-phase-e E1–E3） |
+| Layout (V2) | AppBar + ToolRail + Inspector + ModalRoot + IO Drawer（6 层 z-index 体系，redesign-phase-a/b/c） |
+| Code Editor | Monaco Editor + DBML setup + 复制按钮（E4 替代 V1 `<textarea readonly>`） |
+| Theme | Light / Dark 全局切换（`core-0b-dark-mode.md`） |
 | Backend | **Rust + actix-web 4**（`backend/`，端口 `127.0.0.1:3000`） |
-| Persistence | SQLite（`backend/db.sqlite`）+ `sqlx` 迁移 |
-| API | REST v1（`/api/v1/diagrams/*`），含 409 revision 冲突语义 |
+| Persistence | SQLite（`backend/db.sqlite`，11 张表，WAL 模式）+ SeaORM |
+| API | REST v1（`/api/v1/diagrams/*` 5 端点 + `/api/v1/bridge/*` 5 端点），含 409 revision 冲突语义 |
 | E2E | `wasm-pack test --chrome` + Playwright（CI 强制） |
 | CI | GitHub Actions：`cargo build --release` + `trunk build` + `mmdc` 渲染 + ast-grep module gate |
 
-架构图：[`docs/phase4/architecture.mmd`](docs/phase4/architecture.mmd)（4 modules + 单向依赖）。
+架构图：[`docs/phase4/architecture.mmd`](docs/phase4/architecture.mmd)（4 modules + 单向依赖）；V2 布局与设计系统详见 `logos/resources/reference/core-baseline-reference.md`。
 
 ## Getting Started
 
@@ -148,3 +152,32 @@ docker run -p 3000:80 drawdb
 ```
 
 If you wish to work with sharing, set up [server](https://github.com/drawdb-io/drawdb-server) and environment variables according to `.env.sample`. This is not required unless you want to share files.
+
+## Project Status & Recent Archives
+
+> **当前状态**：coldrawdb 处于 `core` 模块 `launched` 生命周期。Rust Web/WASM 重构（Phase 4）已完成；V2 UI 布局（redesign-phase-a/b/c）与设计系统迁移（redesign-phase-d/e）已完成规格，代码实现分批推进中。
+
+### 最近归档变更（2026-06）
+
+| 提案 slug | 类型 | 关键产出 |
+|---|---|---|
+| `add-frontend-completeness` | B1–B5 五批次 | styles + top menu/toolbar shell + 7-Tab 侧栏 + 5 个核心模态 + 撤销/重做快捷键 |
+| `fix-modal-overlay-blocking` | 修复 | ModalRoot 遮罩 + canvas testid + CORS + e2e 修正 |
+| `fix-add-frontend-stub-leftover` | 修复 | save handler stubs + selection id wiring + e2e 5/5 |
+| `add-local-run-scripts` | 工具 | `scripts/start-local.sh` + `stop-local.sh` 一键启动 |
+| `remove-debug-smoke-artifact` | 清理 | 移除 debug 残留 smoke 产物 |
+| `wire-editor-canvas` | 重构 | 接线画布到 editor core |
+| `redesign-phase-a-layout` | 重构 | V2 布局（AppBar + ToolRail + Inspector + ModalRoot）+ 6 层 z-index |
+| `redesign-phase-b-relationship` | 重构 | 关系工具栏 + Tooltip/Popover |
+| `redesign-phase-c-import-export` | 重构 | IO 抽屉（替代 V1 Import 模态） |
+| `redesign-phase-d-command-code` | 重构 | Command Palette + Code View 规格（已被 E4 Monaco 升级版覆盖） |
+| `redesign-phase-e-design-system-migration` | 重构 | E1–E6 设计系统迁移（tokens / icons / components / Monaco / dark mode / motion） |
+
+> 完整归档索引见 `logos/changes/archive/`（15 个已归档提案）。
+
+### 下一步建议
+
+```bash
+openlogos next     # 查看下一步推荐
+openlogos status   # 查看完整项目状态
+```
