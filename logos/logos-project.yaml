@@ -117,6 +117,20 @@ resource_index:
   - path: logos/resources/prd/3-technical-plan/1-architecture/core-01-architecture-overview.md
     desc: 系统架构概要（系统上下文 / 前端 4 模块 / 后端 11 子模块 / 11 张表 / 数据流 / 技术选型 / 非功能约束 / 外部依赖）。涉及技术栈、模块边界、性能预算时必读。
 
+  # Phase 3-1 — 场景建模（本次新增）
+  - path: logos/resources/prd/3-technical-plan/2-scenario-implementation/core-00-scenario-overview.md
+    desc: Phase 3 技术实现状态总览（V1 ✅ / V2 deferred 场景地图 + 依赖关系 + 场景索引）。涉及 Phase 3 Step 1 完成度、API 推导、跨场景依赖时必读。
+  - path: logos/resources/prd/3-technical-plan/2-scenario-implementation/core-S01-edit-and-save-diagram.md
+    desc: S01 编辑并保存图表场景时序图（含 Mermaid + 步骤详解 + 错误处理 + 性能资源 + 测试映射 + V1 边界）。涉及 S01 实现细节、API 设计、异常分支时必读。
+  - path: logos/resources/prd/3-technical-plan/2-scenario-implementation/core-S02-load-shared-diagram.md
+    desc: S02 加载分享链接图表场景时序图（含 Mermaid + 步骤详解 + 错误处理 + 性能资源 + 与 S01 对比）。涉及 S02 实现细节、API 设计、异常分支时必读。
+
+  # Phase 3-4b — API 编排测试（API 项目）
+  - path: logos/resources/scenario/core-S01-diagram-save.json
+    desc: S01 编辑保存 E2E API 编排测试（7 步 POST/PUT/GET/DELETE 链路，含 409 冲突覆盖）。涉及 S01 端到端验证、test-orchestrator 编排时必读。
+  - path: logos/resources/scenario/core-S02-shared-link-load.json
+    desc: S02 分享加载 E2E API 编排测试。涉及 S02 端到端验证、test-orchestrator 编排时必读。
+
 conventions:
   - "遵循 OpenLogos 三层推进模型（Why → What → How）"
   - "每次变更必须先创建 logos/changes/ 变更提案"
