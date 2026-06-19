@@ -1,3 +1,14 @@
+## MODIFIED — §1 插入 Mermaid 系统架构图 + §6 选型表改三列 + 新增 §11/§12
+
+> 模块：core | 提案：fill-baseline-gaps
+> 路径：`logos/resources/prd/3-technical-plan/1-architecture/core-01-architecture-overview.md`
+> 策略：
+> 1. §1 系统上下文 末尾追加 Mermaid 系统架构图（与 ASCII 图并存，Mermaid 为 machine-readable 主版本）
+> 2. §6 关键技术选型 表头由「V1 选型 / 备注」改为「选型 / 选型理由 / 备选方案」，所有 11 行补理由与备选
+> 3. §10 之后新增 §11 非功能性约束（含性能 / 安全 / 可扩展 / 可观测 / 开发体验五维）
+> 4. §11 之后新增 §12 外部依赖与测试策略（明示 V1 无外部依赖）
+> 5. §2-§5、§7-§10 正文保持不变
+
 # V1 技术架构（How 层 — 第 1 步：架构）
 
 ## 1. 系统上下文

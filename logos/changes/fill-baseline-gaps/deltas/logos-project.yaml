@@ -1,3 +1,14 @@
+## MODIFIED — 填 tech_stack + 新增 scenarios / external_dependencies / resource_index
+
+> 模块：core | 提案：fill-baseline-gaps
+> 路径：`logos/logos-project.yaml`
+> 策略：
+> 1. `tech_stack: {}` → 填入 11 项技术选型（与 `core-01-architecture-overview.md` §6 一致）
+> 2. 新增 `scenarios` 字段（S01~S05 五条），锚定 `core-00-scenario-overview.md`
+> 3. 新增 `external_dependencies` 字段（明示 V1 空数组）
+> 4. 新增 `resource_index` 字段（18 条 baseline 文档索引，便于 AI Agent 发现）
+> 5. `modules[]` 与 `deployment_gates` / `conventions` 保持不变
+
 project:
   name: "coldrawdb"
   description: "自托管、浏览器端的数据库 ER 图设计工具（Rust Web 重写版 drawdb）"
