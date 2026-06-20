@@ -1,0 +1,79 @@
+# resource_index 字段追加（仅 resource_index 段落，merge 时整体替换该字段）
+
+> 模块：core | 提案：v1-register-scenario-docs
+> 路径：`logos/logos-project.yaml`
+> 策略：
+> 1. 保留现有 18 条 `resource_index`（Phase 1 / Phase 2 / Phase 3-0 文档索引）
+> 2. 在末尾追加 5 条 Phase 3 场景建模相关登记
+> 3. 其他字段（tech_stack / scenarios / scenario_counter / modules / deployment_gates / conventions）保持不变
+
+## MODIFIED — resource_index（追加 5 条登记）
+
+> 完整 resource_index 字段如下（现有 18 条 + 新增 5 条，merge 时替换整个 `resource_index` 字段）
+
+resource_index:
+  # Phase 1 — 需求文档
+  - path: logos/resources/prd/1-product-requirements/core-00-scenario-overview.md
+    desc: 场景总览（S01~S05 全量），含场景索引、图谱、文档映射。涉及场景编号与 Phase 1/2/3 衔接时必读。
+  - path: logos/resources/prd/1-product-requirements/core-01-requirements.md
+    desc: V1 产品需求（US/FR/NFR + 场景总览 + 约束与边界 + 验收）。涉及需求追溯、FR 编号、NFR 度量时必读。
+  - path: logos/resources/prd/1-product-requirements/core-02-product-vision.md
+    desc: 产品背景与目标（定位 / 用户画像 / 成功指标）。涉及产品定位、launch gate、目标用户时必读。
+  - path: logos/resources/prd/1-product-requirements/core-03-pain-points.md
+    desc: 用户痛点分析（P01~P04 因果链）。涉及痛点溯源、场景关联锚点时必读。
+  - path: logos/resources/prd/1-product-requirements/core-04-scenario-detail.md
+    desc: 核心场景详述（S01/S02 GIVEN/WHEN/THEN）。涉及 V1 场景验收条件时必读。
+
+  # Phase 2 — 产品设计（17 份功能规格 + 1 份原型）
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-00-information-architecture.md
+    desc: 信息架构（顶层布局 / 路由 / 模块）。涉及页面结构、UI 层 z-index 时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-01-editor-canvas.md
+    desc: 编辑器画布总规格（9 类对象 + 11 个交互手势）。涉及画布渲染、性能预算时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-01a-table-and-field.md
+    desc: 表与字段编辑规格（CAP-CANVAS-01/02）。涉及表/字段交互时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-01b-relationship.md
+    desc: 关系编辑规格（CAP-CANVAS-03）。涉及关系连线/端点编辑时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-01c-index-enum-custom-type.md
+    desc: 索引 / 枚举 / 自定义类型规格（CAP-CANVAS-04/07/08）。涉及索引/枚举编辑时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-01d-import-export.md
+    desc: 导入/导出 IO 抽屉规格（redesign-phase-c）。涉及 IO 抽屉交互时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-02-diagram-persistence.md
+    desc: 图表持久化规格（diagram CRUD + revision 乐观锁）。涉及 409 冲突处理时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-03-bridge-io.md
+    desc: 桥接层 IO 规格（7 引擎 SQL + DBML + JSON）。涉及导入导出能力时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-04-side-panel-tabs.md
+    desc: 侧栏 7 Tab + 搜索/筛选规格。涉及侧栏交互时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-05-top-menu-modals.md
+    desc: AppBar + 6 模态规格（New/Open/Share/Rename/Settings/Confirm）。涉及顶栏/模态交互时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-07-design-tokens.md
+    desc: 设计 token 体系（13 类约 100 个 `--cdb-*` CSS 变量）。涉及样式取值时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-08-icon-library.md
+    desc: SVG 图标库规格。涉及图标选型/命名时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-09-core-components.md
+    desc: 8 类核心组件规格（Button/Modal/Dropdown/Tooltip/Popover/Tag/Collapse/SideSheet）。涉及组件复用时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-0a-code-editor.md
+    desc: Monaco 代码编辑器 + DBML setup 规格（E4）。涉及代码编辑场景时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-0b-dark-mode.md
+    desc: 暗色模式规格（`<html data-mode="light|dark">`）。涉及主题切换时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-0c-motion.md
+    desc: 动效 token + 过渡/微交互规格。涉及动效取值时必读。
+  - path: logos/resources/prd/2-product-design/2-page-design/core-01-editor-prototype.html
+    desc: 编辑器 HTML 原型。涉及页面布局参考时必读。
+
+  # Phase 3-0 — 技术架构
+  - path: logos/resources/prd/3-technical-plan/1-architecture/core-01-architecture-overview.md
+    desc: 系统架构概要（系统上下文 / 前端 4 模块 / 后端 11 子模块 / 11 张表 / 数据流 / 技术选型 / 非功能约束 / 外部依赖）。涉及技术栈、模块边界、性能预算时必读。
+
+  # Phase 3-1 — 场景建模（本次新增）
+  - path: logos/resources/prd/3-technical-plan/2-scenario-implementation/core-00-scenario-overview.md
+    desc: Phase 3 技术实现状态总览（V1 ✅ / V2 deferred 场景地图 + 依赖关系 + 场景索引）。涉及 Phase 3 Step 1 完成度、API 推导、跨场景依赖时必读。
+  - path: logos/resources/prd/3-technical-plan/2-scenario-implementation/core-S01-edit-and-save-diagram.md
+    desc: S01 编辑并保存图表场景时序图（含 Mermaid + 步骤详解 + 错误处理 + 性能资源 + 测试映射 + V1 边界）。涉及 S01 实现细节、API 设计、异常分支时必读。
+  - path: logos/resources/prd/3-technical-plan/2-scenario-implementation/core-S02-load-shared-diagram.md
+    desc: S02 加载分享链接图表场景时序图（含 Mermaid + 步骤详解 + 错误处理 + 性能资源 + 与 S01 对比）。涉及 S02 实现细节、API 设计、异常分支时必读。
+
+  # Phase 3-4b — API 编排测试（API 项目）
+  - path: logos/resources/scenario/core-S01-diagram-save.json
+    desc: S01 编辑保存 E2E API 编排测试（7 步 POST/PUT/GET/DELETE 链路，含 409 冲突覆盖）。涉及 S01 端到端验证、test-orchestrator 编排时必读。
+  - path: logos/resources/scenario/core-S02-shared-link-load.json
+    desc: S02 分享加载 E2E API 编排测试。涉及 S02 端到端验证、test-orchestrator 编排时必读。
