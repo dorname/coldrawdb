@@ -8,13 +8,13 @@
 |--------|-------|
 | Defined cases | 79 |
 | Manual cases (excluded) | 0 |
-| Executed cases | 36 |
-| Passed | 16 |
+| Executed cases | 47 |
+| Passed | 27 |
 | Failed | 0 |
 | Skipped | 20 |
 | Uncovered | 51 |
 | Coverage | 35% |
-| Pass rate | 44% |
+| Pass rate | 57% |
 | **Gate 3.5** | **FAIL** |
 
 ## Uncovered Cases
