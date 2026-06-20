@@ -236,7 +236,11 @@ mod tests {
     use crate::verify_reporter;
 
     async fn build_db() -> DatabaseConnection {
-        let db_path = format!("{}/drawdb_api_v1_{}.sqlite", std::env::temp_dir().display(), std::process::id());
+        let db_path = format!(
+            "{}/drawdb_api_v1_{}.sqlite",
+            std::env::temp_dir().display(),
+            uuid::Uuid::new_v4()
+        );
         if std::path::Path::new(&db_path).exists() { let _ = std::fs::remove_file(&db_path); }
         std::fs::File::create(&db_path).unwrap();
         let db = Database::connect(format!("sqlite://{}?", db_path)).await.unwrap();

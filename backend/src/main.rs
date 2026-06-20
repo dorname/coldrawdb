@@ -15,6 +15,8 @@ mod fields;
 mod repository;
 mod diagrams_v1;
 mod phase3_bridge;
+mod auth;
+mod auth_v1;
 mod verify_reporter;
 use error::DrawDBError;
 use init::{get_config, init};
@@ -79,6 +81,7 @@ async fn main() -> Result<(), DrawDBError> {
             .service(web::scope("/tables").configure(tables::tables_routes))
             .service(web::scope("/diagrams").configure(diagrams::diagrams_routes))
             .service(web::scope("/api/v1").configure(diagrams_v1::diagrams_v1_routes))
+            .service(web::scope("/api/v1").configure(auth_v1::auth_v1_routes))
             .service(web::scope("/api/v1").configure(phase3_bridge::phase3_bridge_routes))
 
     })

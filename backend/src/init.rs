@@ -215,7 +215,7 @@ mod test {
         let db_path = format!(
             "{}/drawdb_phase1_{}.sqlite",
             std::env::temp_dir().display(),
-            std::process::id()
+            uuid::Uuid::new_v4()
         );
 
         if std::path::Path::new(&db_path).exists() {

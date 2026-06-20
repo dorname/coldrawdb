@@ -18,3 +18,10 @@ rs-snowflake = "0.6.0"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }
 itertools = "0.14.0"
+argon2 = "0.5"
+jsonwebtoken = "9"
+uuid = { version = "1", features = ["v4"] }
+sha2 = "0.10"
+hex = "0.4"
+rand = "0.8"
+chrono = { version = "0.4", features = ["serde"] }

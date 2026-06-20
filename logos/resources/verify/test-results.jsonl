@@ -1,99 +1,36 @@
-{"id":"ST-S01-01","status":"pass","timestamp":"2026-06-08T10:05:13Z","duration_ms":0}
-{"id":"ST-S01-02","status":"pass","timestamp":"2026-06-08T10:05:13Z","duration_ms":0}
-{"id":"UT-S01-01","status":"pass","timestamp":"2026-06-08T10:05:13Z","duration_ms":0}
-{"id":"UT-S01-03","status":"pass","timestamp":"2026-06-08T10:05:13Z","duration_ms":0}
-{"id":"UT-S01-04","status":"pass","timestamp":"2026-06-08T10:05:13Z","duration_ms":0}
-{"id":"UT-S01-05","status":"pass","timestamp":"2026-06-08T10:05:14Z","duration_ms":0}
-{"id":"UT-S02-01","status":"pass","timestamp":"2026-06-08T10:05:14Z","duration_ms":0}
-{"id":"UT-S02-02","status":"pass","timestamp":"2026-06-08T10:05:14Z","duration_ms":0}
-{"id":"UT-S01-02","status":"skip","timestamp":"2026-06-08T10:05:14Z","error":"spec-defined, no Rust impl in this batch (import path covered by ST-S01-02)"}
-{"id":"UT-S01-06","status":"skip","timestamp":"2026-06-08T10:05:14Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S01-07","status":"pass","timestamp":"2026-06-09T10:00:00Z","duration_ms":2,"batch":"B1","note":"3 Rust unit tests in editor_core::tests pass (cargo test --lib): push_addtable, rejects_duplicate_id, delete_field"}
-{"id":"UT-S01-08","status":"skip","timestamp":"2026-06-09T10:00:00Z","error":"B1: gloo-timers callback needs Send + 'static, deferred to B5 wasm-pack test","batch":"B1","note":"2 test stubs with #[ignore]; logic verified via cargo test --lib --include-ignored (out-of-scope panic)"}
-{"id":"UT-SP-02","status":"pass","timestamp":"2026-06-09T07:00:00Z","duration_ms":3,"batch":"B2","note":"4 Rust unit tests in editor_panels::tests pass (cargo test --lib): filter_tables, case_insensitive, empty_query, type_filter"}
-{"id":"UT-SP-09","status":"pass","timestamp":"2026-06-09T07:00:00Z","duration_ms":1,"batch":"B2","note":"2 Rust unit tests pass: testid_completeness (7 unique testids), label_nonempty (7 non-empty labels)"}
-{"id":"UT-SP-10","status":"pass","timestamp":"2026-06-09T07:00:00Z","duration_ms":2,"batch":"B2","note":"3 Rust unit tests pass: cross_tab (Table/AreaStub/EnumStub), generic (NoteStub), filter_references (Reference)"}
-{"id":"ST-SP-01","status":"skip","timestamp":"2026-06-09T07:00:00Z","error":"B2: 端到端 e2e test in headless chrome, deferred to B5 wasm-pack test","batch":"B2","note":"B2 实现基础 Issues Tab 派生（表名重复/主键缺失/字段类型不兼容/关系端点不存在），ST-SP-01 需 headless browser e2e 跑"}
-{"id":"UT-S01-09","status":"skip","timestamp":"2026-06-08T10:05:14Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S01-10","status":"skip","timestamp":"2026-06-08T10:05:14Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"ST-S01-03","status":"skip","timestamp":"2026-06-08T10:05:14Z","error":"spec-defined, requires wasm-pack headless harness, deferred"}
-{"id":"UT-S02-03","status":"skip","timestamp":"2026-06-08T10:05:14Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S02-04","status":"skip","timestamp":"2026-06-08T10:05:14Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S02-05","status":"skip","timestamp":"2026-06-08T10:05:14Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S02-06","status":"skip","timestamp":"2026-06-08T10:05:14Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S02-07","status":"skip","timestamp":"2026-06-08T10:05:14Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S02-08","status":"skip","timestamp":"2026-06-08T10:05:14Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S02-09","status":"skip","timestamp":"2026-06-08T10:05:14Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"ST-S02-01","status":"skip","timestamp":"2026-06-08T10:05:14Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"ST-S02-02","status":"skip","timestamp":"2026-06-08T10:05:14Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"ST-S02-03","status":"skip","timestamp":"2026-06-08T10:05:14Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"ST-S02-04","status":"skip","timestamp":"2026-06-08T10:05:14Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"ST-S02-05","status":"skip","timestamp":"2026-06-08T10:05:14Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"ST-S02-06","status":"skip","timestamp":"2026-06-08T10:05:14Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-CR-01","status":"pass","timestamp":"2026-06-09T08:00:00Z","duration_ms":1,"batch":"B3","note":"2 Rust unit tests pass: areas_default_empty (EditorStore::new() 时 areas 为空) + areas_load (load(diagram) 后 store.areas.get().len() == 2)"}
-{"id":"UT-CR-02","status":"pass","timestamp":"2026-06-09T08:00:00Z","duration_ms":1,"batch":"B3","note":"1 Rust unit test pass: notes_load (load(diagram_with_3_notes) 后 store.notes.get().len() == 3)"}
-{"id":"UT-CR-03","status":"pass","timestamp":"2026-06-09T08:00:00Z","duration_ms":1,"batch":"B3","note":"update_reference_endpoint(refs, r1, Start, f2) — start_field_id 更新为 f2，end_field_id 保持 f2，原始 Vec 未被修改（pure function）"}
-{"id":"UT-CR-04","status":"pass","timestamp":"2026-06-09T08:00:00Z","duration_ms":1,"batch":"B3","note":"update_reference_endpoint(refs, r1, End, f3) — end_field_id 更新为 f3，start_field_id 保持 f1"}
-{"id":"UT-CR-05","status":"pass","timestamp":"2026-06-09T08:00:00Z","duration_ms":1,"batch":"B3","note":"update_reference_endpoint(refs, nonexistent, Start, f2) — 返回 Vec 不变（no-op）"}
-{"id":"ST-CR-01","status":"skip","timestamp":"2026-06-09T08:00:00Z","error":"B3: 完整 e2e 跑在 B5 wasm-pack test 接入后；B3 实现保证 draw_canvas 函数逻辑正确","batch":"B3","note":"bezier e2e in headless chrome, requires wasm-pack test harness (B5)"}
-{"id":"UT-MM-01","status":"pass","timestamp":"2026-06-09T13:00:00Z","duration_ms":1,"batch":"B4","note":"2 Rust unit tests pass: validate_title_happy (正常 title 通过) + build_create_url (build_create_url(\"d-new\") == \"/editor/d-new\")"}
-{"id":"UT-MM-04","status":"skip","timestamp":"2026-06-09T13:00:00Z","error":"B4 stub 实现 ModalRoot 背景点击关闭；UT-MM-04 完整 DOM 断言放 B5 wasm-pack test","batch":"B4","note":"requires wasm-pack test harness (B5)"}
-{"id":"UT-MM-05","status":"skip","timestamp":"2026-06-09T13:00:00Z","error":"B4 stub 不实现 ESC 关闭（依赖 window_event_listener）；B5 接入","batch":"B4","note":"requires wasm-pack test harness (B5)"}
-{"id":"UT-MM-06","status":"pass","timestamp":"2026-06-09T13:00:00Z","duration_ms":1,"batch":"B4","note":"3 Rust unit tests pass: validate_title_empty/whitespace_only/too_long 均返回 Err"}
-{"id":"UT-MM-07","status":"pass","timestamp":"2026-06-09T13:00:00Z","duration_ms":1,"batch":"B4","note":"validate_title(\"\") 返回 Err → NewModal is_valid() = false → submit 按钮 disabled"}
-{"id":"UT-MM-08","status":"pass","timestamp":"2026-06-09T13:00:00Z","duration_ms":1,"batch":"B4","note":"build_share_url(\"abc-123\") == \"/editor?share=abc-123\" + build_share_url(\"d-uuid\") == \"/editor?share=d-uuid\""}
-{"id":"UT-MM-09","status":"pass","timestamp":"2026-06-09T13:00:00Z","duration_ms":1,"batch":"B4","note":"2 Rust unit tests pass: parse_diagram_json_happy (合法 Diagram JSON → Ok) + parse_diagram_json_invalid (非法 JSON → Err with 'JSON parse error')"}
-{"id":"ST-MM-01","status":"skip","timestamp":"2026-06-09T13:00:00Z","error":"B4: 完整 e2e 跑在 B5 wasm-pack test 接入后","batch":"B4","note":"e2e full chain (File→New→title→OK→跳转 等) requires wasm-pack headless harness (B5)"}
-{"id":"UT-MM-10","status":"pass","timestamp":"2026-06-09T15:00:00Z","duration_ms":1,"batch":"B5","note":"3 Rust unit tests pass: parse_sql_statements_multi (2 statements split by ;) / empty / strips_comments (-- removed)"}
-{"id":"UT-MM-11","status":"pass","timestamp":"2026-06-09T15:00:00Z","duration_ms":1,"batch":"B5","note":"2 Rust unit tests pass: parse_table_width_happy ('200'/'0' → Ok) + parse_table_width_invalid ('abc'/'' → Err)"}
-{"id":"UT-MM-12","status":"pass","timestamp":"2026-06-09T15:00:00Z","duration_ms":1,"batch":"B5","note":"validate_language('en')/('zh') → Ok; ('fr') → Err"}
-{"id":"UT-MM-13","status":"pass","timestamp":"2026-06-09T15:00:00Z","duration_ms":1,"batch":"B5","note":"5 Rust unit tests pass: add / add_replaces_duplicate / remove / remove_nonexistent / type signatures"}
-{"id":"UT-MM-14","status":"pass","timestamp":"2026-06-09T15:00:00Z","duration_ms":1,"batch":"B5","note":"resolve_import_source('local') → Local; ('remote') → Remote; ('http') → Err"}
-{"id":"UT-MM-15","status":"pass","timestamp":"2026-06-09T15:00:00Z","duration_ms":1,"batch":"B5","note":"2 Rust unit tests pass: CommandStack::undo (pop + push to redo) + empty undo (None)"}
-{"id":"UT-MM-16","status":"pass","timestamp":"2026-06-09T15:00:00Z","duration_ms":1,"batch":"B5","note":"2 Rust unit tests pass: CommandStack::redo (pop from redo + push back to undo) + empty redo (None)"}
-{"id":"UT-KB-01","status":"pass","timestamp":"2026-06-09T15:00:00Z","duration_ms":1,"batch":"B5","note":"2 Rust unit tests pass: is_undo_shortcut (Ctrl+Z true, !Ctrl false, Ctrl+Shift false) + is_redo_shortcut (Ctrl+Shift+Z true)"}
-{"id":"ST-MM-02","status":"skip","timestamp":"2026-06-09T15:00:00Z","error":"B5: 完整 e2e 跑在 B5 wasm-pack test 接入后","batch":"B5","note":"e2e Import 模态 SQL 解析 + 跳转 requires wasm-pack headless harness (B5 e2e defer)"}
-{"id":"ST-MM-03","status":"skip","timestamp":"2026-06-09T15:00:00Z","error":"B5: V1 限制 — ConfigureCustomTypes 仅 session state，不跨刷新","batch":"B5","note":"V1 spec §5.9 限制"}
-{"id":"ST-UI-05","status":"skip","timestamp":"2026-06-09T15:00:00Z","error":"B5: 完整 e2e 跑在 B5 wasm-pack test 接入后","batch":"B5","note":"e2e Ctrl+Z/Ctrl+Shift+Z requires wasm-pack headless harness (B5 e2e defer)"}
-{"id":"UT-FIX-01","status":"pass","timestamp":"2026-06-10T22:30:00Z","duration_ms":15,"note":"ModalRoot 条件隐藏遮罩：style:display=move || if kind.get().is_some() { \"flex\" } else { \"none\" }，源码含此表达式即满足（注：因 leptos `move ||` 嵌套导致 FnOnce E0525 编译错误，选用 style:display 而非 DOM 移除，行为等价）"}
-{"id":"UT-FIX-02","status":"pass","timestamp":"2026-06-10T22:30:00Z","duration_ms":8,"note":"cdb-canvas-container 含 data-testid=\"editor-canvas\" (frontend-rs/src/editor_panels.rs:1215)"}
-{"id": "UT-E1-01", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E1-02", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E2-01", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E2-02", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E3-01", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E3-02", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E3-03", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E3-04", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E3-05", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E3-06", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E3-07", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E3-08", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E4-01", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E4-02", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E4-03", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E4-04", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E4-05", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E4-06", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E4-07", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E5-01", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E5-02", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E5-03", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E6-01", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E6-02", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E6-03", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-E6-04", "status": "pass", "timestamp": "2026-06-15T16:05:00Z", "duration_ms": 5}
-{"id": "UT-PB-01", "status": "pass", "timestamp": "2026-06-20T02:06:00Z", "duration_ms": 0, "test_file": "tests/phase_b_relationship.rs", "subtests": ["hit_test_field_returns_table_and_field_id", "hit_test_field_returns_first_field", "misses_when_outside_table", "misses_header_area"]}
-{"id": "UT-PB-02", "status": "pass", "timestamp": "2026-06-20T02:06:00Z", "duration_ms": 0, "test_file": "tests/phase_b_relationship.rs", "subtest": "build_reference_one_to_many_with_restrict"}
-{"id": "UT-PB-03", "status": "pass", "timestamp": "2026-06-20T02:06:00Z", "duration_ms": 0, "test_file": "tests/phase_b_relationship.rs", "subtest": "flip_reference_endpoints_swaps_start_and_end"}
-{"id": "UT-PB-04", "status": "pass", "timestamp": "2026-06-20T02:06:00Z", "duration_ms": 0, "test_file": "tests/phase_b_relationship.rs", "subtests": ["toggle_field_primary_sets_target_and_unsets_others", "toggle_field_primary_false_unsets_only_target", "toggle_field_primary_missing_table_is_noop"]}
-{"id": "UT-PB-05", "status": "pass", "timestamp": "2026-06-20T02:06:00Z", "duration_ms": 0, "test_file": "tests/phase_b_relationship.rs + editor_panels.rs::tests L4935-4936", "subtest": "confirm_bar_increments_references_count"}
-{"id": "UT-PC-01", "status": "pass", "timestamp": "2026-06-20T02:06:00Z", "duration_ms": 0, "test_file": "tests/phase_c_import_export.rs", "subtests": ["parse_two_create_statements_returns_two_statements_summary", "parse_with_comments_strips_line_comments", "parse_empty_returns_zero_statements"]}
-{"id": "UT-PC-02", "status": "pass", "timestamp": "2026-06-20T02:06:00Z", "duration_ms": 0, "test_file": "tests/phase_c_import_export.rs", "subtests": ["export_diagram_sql_generic_contains_create_table", "export_diagram_sql_engine_specific_adds_header_comment"]}
-{"id": "UT-PC-03", "status": "pass", "timestamp": "2026-06-20T02:06:00Z", "duration_ms": 0, "test_file": "tests/phase_c_import_export.rs", "subtest": "export_diagram_dbml_contains_table_and_ref"}
-{"id": "UT-PC-04", "status": "pass", "timestamp": "2026-06-20T02:06:00Z", "duration_ms": 0, "test_file": "tests/phase_c_import_export.rs", "subtests": ["snapshot_before_io_drawer_collapses_inspector", "snapshot_before_io_drawer_keeps_cache_none_when_already_closed", "io_drawer_kind_transitions_to_import_on_open"]}
-{"id": "UT-PC-05", "status": "pass", "timestamp": "2026-06-20T02:06:00Z", "duration_ms": 0, "test_file": "tests/phase_c_import_export.rs", "subtests": ["count_dbml_tables_returns_table_block_count", "count_dbml_tables_lowercase_table_keyword", "count_dbml_tables_empty_returns_zero"]}
-{"id": "UT-PC-06", "status": "pass", "timestamp": "2026-06-20T02:06:00Z", "duration_ms": 0, "test_file": "tests/phase_c_import_export.rs", "subtest": "guide_import_sql_triggers_io_drawer"}
-{"id": "UT-AB-04", "status": "pass", "timestamp": "2026-06-20T02:06:00Z", "duration_ms": 0, "test_file": "tests/phase_c_import_export.rs", "subtests": ["btn_import_is_enabled_in_phase_c", "import_summary_dbml_uses_count_dbml_tables", "import_summary_json_counts_tables_field"]}
-{"id": "ST-PB-01", "status": "skip", "timestamp": "2026-06-20T02:06:00Z", "duration_ms": 0, "test_file": "tests/e2e/16_relationship_tool.spec.ts (Playwright 未跑：缺前后端启动)", "reason": "E2E 需 Playwright + 前后端启动，本地未执行"}
-{"id": "ST-PC-01", "status": "skip", "timestamp": "2026-06-20T02:06:00Z", "duration_ms": 0, "test_file": "tests/e2e/17_import_drawer.spec.ts (Playwright 未跑：缺前后端启动)", "reason": "E2E 需 Playwright + 前后端启动，本地未执行"}
+{"id":"ST-S03-01","status":"pass","timestamp":"2026-06-20T12:15:50Z","duration_ms":0}
+{"id":"UT-S03-01","status":"pass","timestamp":"2026-06-20T12:15:50Z","duration_ms":0}
+{"id":"UT-S03-02","status":"pass","timestamp":"2026-06-20T12:15:50Z","duration_ms":0}
+{"id":"UT-S03-03","status":"pass","timestamp":"2026-06-20T12:15:50Z","duration_ms":0}
+{"id":"UT-S03-04","status":"pass","timestamp":"2026-06-20T12:15:50Z","duration_ms":0}
+{"id":"UT-S03-05","status":"pass","timestamp":"2026-06-20T12:15:50Z","duration_ms":0}
+{"id":"UT-S03-06","status":"pass","timestamp":"2026-06-20T12:15:50Z","duration_ms":0}
+{"id":"UT-S03-07","status":"pass","timestamp":"2026-06-20T12:15:50Z","duration_ms":0}
+{"id":"UT-S01-01","status":"pass","timestamp":"2026-06-20T12:15:50Z","duration_ms":0}
+{"id":"ST-S01-01","status":"pass","timestamp":"2026-06-20T12:15:50Z","duration_ms":0}
+{"id":"ST-S01-02","status":"pass","timestamp":"2026-06-20T12:15:50Z","duration_ms":0}
+{"id":"UT-S01-03","status":"pass","timestamp":"2026-06-20T12:15:50Z","duration_ms":0}
+{"id":"UT-S01-04","status":"pass","timestamp":"2026-06-20T12:15:50Z","duration_ms":0}
+{"id":"UT-S01-05","status":"pass","timestamp":"2026-06-20T12:15:50Z","duration_ms":0}
+{"id":"UT-S02-01","status":"pass","timestamp":"2026-06-20T12:15:50Z","duration_ms":0}
+{"id":"UT-S02-02","status":"pass","timestamp":"2026-06-20T12:15:50Z","duration_ms":0}
+{"id":"UT-S01-02","status":"skip","timestamp":"2026-06-20T12:15:51Z","error":"spec-defined, no Rust impl in this batch (import path covered by ST-S01-02)"}
+{"id":"UT-S01-06","status":"skip","timestamp":"2026-06-20T12:15:51Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S01-07","status":"skip","timestamp":"2026-06-20T12:15:51Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S01-08","status":"skip","timestamp":"2026-06-20T12:15:51Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S01-09","status":"skip","timestamp":"2026-06-20T12:15:51Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S01-10","status":"skip","timestamp":"2026-06-20T12:15:51Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"ST-S01-03","status":"skip","timestamp":"2026-06-20T12:15:51Z","error":"spec-defined, requires wasm-pack headless harness, deferred"}
+{"id":"UT-S02-03","status":"skip","timestamp":"2026-06-20T12:15:51Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S02-04","status":"skip","timestamp":"2026-06-20T12:15:51Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S02-05","status":"skip","timestamp":"2026-06-20T12:15:51Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S02-06","status":"skip","timestamp":"2026-06-20T12:15:51Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S02-07","status":"skip","timestamp":"2026-06-20T12:15:51Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S02-08","status":"skip","timestamp":"2026-06-20T12:15:51Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S02-09","status":"skip","timestamp":"2026-06-20T12:15:51Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"ST-S02-01","status":"skip","timestamp":"2026-06-20T12:15:51Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"ST-S02-02","status":"skip","timestamp":"2026-06-20T12:15:51Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"ST-S02-03","status":"skip","timestamp":"2026-06-20T12:15:51Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"ST-S02-04","status":"skip","timestamp":"2026-06-20T12:15:51Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"ST-S02-05","status":"skip","timestamp":"2026-06-20T12:15:51Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"ST-S02-06","status":"skip","timestamp":"2026-06-20T12:15:51Z","error":"spec-defined, no Rust impl in this batch"}

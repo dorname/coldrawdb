@@ -350,7 +350,7 @@ mod tests {
         let db_path = format!(
             "{}/drawdb_phase3_bridge_{}.sqlite",
             std::env::temp_dir().display(),
-            std::process::id()
+            uuid::Uuid::new_v4()
         );
         if std::path::Path::new(&db_path).exists() {
             let _ = std::fs::remove_file(&db_path);

@@ -155,52 +155,88 @@ async fn delete(
 #[cfg(test)]
 mod test {
     use actix_web::{test, web, App};
-    use sea_orm::Database;
+    use sea_orm::{ActiveModelTrait, ActiveValue::Set, Database};
     use serde_json::json;
+
+    use crate::entity::{diagram_link, task};
+    use crate::init::{apply_migrations, init_table};
 
     use super::*;
 
-    #[actix_web::test]
-    async fn test_query_all_todos() {
-        // 创建测试数据库连接
-        let db = Database::connect("sqlite://test.sqlite").await.unwrap();
-        let db = web::Data::new(db);
-        // 创建测试应用
-        let app = test::init_service(
-            App::new()
-                .app_data(db.clone())
-                .configure(todos_routes)
-        ).await;
-
-        // 创建测试请求
-        let req = test::TestRequest::get()
-            .uri("/query/1/1")
-            .to_request();
-
-        // 发送请求并获取响应
-        let resp = test::call_service(&app, req).await;
-        println!("Status: {:?}", resp.status());
-        assert!(resp.status().is_success());
-
-        // 解析响应体
-        let body = test::read_body(resp).await;
-        println!("Response body: {:?}", String::from_utf8(body.to_vec()));
+    async fn build_db() -> DatabaseConnection {
+        let db_path = format!(
+            "{}/drawdb_todos_{}.sqlite",
+            std::env::temp_dir().display(),
+            uuid::Uuid::new_v4()
+        );
+        if std::path::Path::new(&db_path).exists() {
+            let _ = std::fs::remove_file(&db_path);
+        }
+        std::fs::File::create(&db_path).unwrap();
+        let db = Database::connect(format!("sqlite://{}?", db_path))
+            .await
+            .unwrap();
+        init_table("init.sql", &db).await.unwrap();
+        apply_migrations("migrations", &db).await.unwrap();
+        db
     }
 
-    /// 新增todo
+    async fn seed_task(db: &DatabaseConnection, task_id: &str, diagram_id: &str) {
+        task::ActiveModel {
+            id: Set(task_id.to_string()),
+            complete: Set(Some(false)),
+            order: Set(Some(0)),
+            details: Set(Some("test".into())),
+            title: Set(Some("test".into())),
+            ..Default::default()
+        }
+        .insert(db)
+        .await
+        .unwrap();
+
+        diagram_link::ActiveModel::from(diagram_link::Model::new(
+            next_id(),
+            Some(diagram_id.to_string()),
+            Some(task_id.to_string()),
+            None,
+            None,
+            None,
+            None,
+        ))
+        .insert(db)
+        .await
+        .unwrap();
+    }
+
     #[actix_web::test]
-    async fn test_add_todo() {
-        let db = Database::connect("sqlite://test.sqlite").await.unwrap();
+    async fn test_query_all_todos() {
+        let db = build_db().await;
+        seed_task(&db, "todo-query-1", "diagram-1").await;
         let db = web::Data::new(db);
         let app = test::init_service(
-            App::new()
-                .app_data(db.clone())
-                .configure(todos_routes)
-        ).await;
+            App::new().app_data(db.clone()).configure(todos_routes),
+        )
+        .await;
+
+        let req = test::TestRequest::get()
+            .uri("/query/diagram-1/1")
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+    }
+
+    #[actix_web::test]
+    async fn test_add_todo() {
+        let db = build_db().await;
+        let db = web::Data::new(db);
+        let app = test::init_service(
+            App::new().app_data(db.clone()).configure(todos_routes),
+        )
+        .await;
         let req = test::TestRequest::post()
             .uri("/add")
             .set_json(json!({
-                "diagram_id": "1",
+                "diagram_id": "diagram-1",
                 "complete": false,
                 "order": 0,
                 "details": "test",
@@ -208,56 +244,47 @@ mod test {
             }))
             .to_request();
         let resp = test::call_service(&app, req).await;
-        println!("Status: {:?}", resp.status());
         assert!(resp.status().is_success());
-        let body = test::read_body(resp).await;
-        println!("Response body: {:?}", String::from_utf8(body.to_vec()));
     }
 
-    /// 更新todo
     #[actix_web::test]
     async fn test_update_todo() {
-        let db = Database::connect("sqlite://test.sqlite").await.unwrap();
+        let db = build_db().await;
+        let task_id = "todo-update-1";
+        seed_task(&db, task_id, "diagram-1").await;
         let db = web::Data::new(db);
         let app = test::init_service(
-            App::new()
-                .app_data(db.clone())
-                .configure(todos_routes)
-        ).await;
+            App::new().app_data(db.clone()).configure(todos_routes),
+        )
+        .await;
         let req = test::TestRequest::post()
             .uri("/update")
             .set_json(json!({
-                "id": "7338216606830563329",
+                "id": task_id,
                 "complete": true,
                 "order": 1,
                 "details": "test66",
-                "title": "test1122" 
+                "title": "test1122"
             }))
             .to_request();
         let resp = test::call_service(&app, req).await;
-        println!("Status: {:?}", resp.status());
         assert!(resp.status().is_success());
-        let body = test::read_body(resp).await; 
-        println!("Response body: {:?}", String::from_utf8(body.to_vec()));
     }
 
-    /// 删除todo
     #[actix_web::test]
     async fn test_delete_todo() {
-        let db = Database::connect("sqlite://test.sqlite").await.unwrap();
+        let db = build_db().await;
+        let task_id = "todo-delete-1";
+        seed_task(&db, task_id, "diagram-1").await;
         let db = web::Data::new(db);
         let app = test::init_service(
-            App::new()
-                .app_data(db.clone())
-                .configure(todos_routes)
-        ).await;
+            App::new().app_data(db.clone()).configure(todos_routes),
+        )
+        .await;
         let req = test::TestRequest::delete()
-            .uri("/delete/7338216606830563329")
+            .uri(&format!("/delete/{task_id}"))
             .to_request();
         let resp = test::call_service(&app, req).await;
-        println!("Status: {:?}", resp.status());
         assert!(resp.status().is_success());
-        let body = test::read_body(resp).await;
-        println!("Response body: {:?}", String::from_utf8(body.to_vec()));
     }
 }
