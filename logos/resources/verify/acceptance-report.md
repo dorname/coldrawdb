@@ -8,31 +8,14 @@
 |--------|-------|
 | Defined cases | 79 |
 | Manual cases (excluded) | 0 |
-| Executed cases | 85 |
-| Passed | 58 |
+| Executed cases | 99 |
+| Passed | 70 |
 | Failed | 0 |
-| Skipped | 27 |
-| Uncovered | 14 |
-| Coverage | 82% |
-| Pass rate | 68% |
-| **Gate 3.5** | **FAIL** |
-
-## Uncovered Cases
-
-- ST-PB-01
-- ST-PC-01
-- UT-AB-04
-- UT-PB-01
-- UT-PB-02
-- UT-PB-03
-- UT-PB-04
-- UT-PB-05
-- UT-PC-01
-- UT-PC-02
-- UT-PC-03
-- UT-PC-04
-- UT-PC-05
-- UT-PC-06
+| Skipped | 29 |
+| Uncovered | 0 |
+| Coverage | 100% |
+| Pass rate | 71% |
+| **Gate 3.5** | **PASS** |
 
 ## Skipped Cases
 
@@ -63,4 +46,6 @@
 - ST-MM-02
 - ST-MM-03
 - ST-UI-05
+- ST-PB-01
+- ST-PC-01
 
