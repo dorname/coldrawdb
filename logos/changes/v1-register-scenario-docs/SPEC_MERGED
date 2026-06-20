@@ -1,9 +1,0 @@
-2026-06-20T00:00:00Z — v1-register-scenario-docs SPEC MERGED
-
-delta 1 (ADDED): logos/resources/prd/3-technical-plan/2-scenario-implementation/core-00-scenario-overview.md
-delta 2 (MODIFIED): logos/logos-project.yaml — resource_index 23 → 28 条
-
-合并执行者：AI（按用户授权）
-合并验证：Python yaml.safe_load 解析成功；新增 5 条登记齐全；顶级字段全部保留（project / tech_stack / scenarios / scenario_counter / modules / deployment_gates / conventions / external_dependencies）。
-
-下一步：openlogos verify v1-register-scenario-docs

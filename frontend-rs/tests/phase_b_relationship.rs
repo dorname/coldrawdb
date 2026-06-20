@@ -58,26 +58,37 @@ fn fixture_table_two_fields() -> Table {
 
 #[test]
 fn ut_pb_01_hit_test_field_returns_table_and_field_id() {
-    // Given: 1 张表在 (100, 100)，含 2 字段，字段 y 范围 [130, 152)
+    // Given: 1 张表在 (100, 100)，含 2 字段
+    // FIELD_ROW_HEIGHT = 22, TABLE_HEADER_HEIGHT = 30
+    // f0 中心 y = 100 + 30 + 22*0.5 = 141
+    // f1 中心 y = 100 + 30 + 22*1.5 = 163
     let tables = vec![fixture_table_two_fields()];
 
-    // When: 点击第二个字段中心 (y=141 = 100 + 30 + 22*0.5)
-    let hit = hit_test_field(&tables, 150.0, 141.0);
+    // When: 点击第二个字段中心 (y=163)
+    let hit = hit_test_field(&tables, 150.0, 163.0);
 
     // Then: 返回 (table_id, field_id) = ("t1", "f2")
     assert_eq!(hit, Some(("t1".to_string(), "f2".to_string())));
 }
 
 #[test]
-fn ut_pb_01b_hit_test_field_misses_when_outside_table() {
+fn ut_pb_01b_hit_test_field_returns_first_field() {
+    // 回归：第一个字段中心 (y=141)
+    let tables = vec![fixture_table_two_fields()];
+    let hit = hit_test_field(&tables, 150.0, 141.0);
+    assert_eq!(hit, Some(("t1".to_string(), "f1".to_string())));
+}
+
+#[test]
+fn ut_pb_01c_hit_test_field_misses_when_outside_table() {
     let tables = vec![fixture_table_two_fields()];
     // 点在 table 右侧外面（x=400 > 100+200）
-    let hit = hit_test_field(&tables, 400.0, 141.0);
+    let hit = hit_test_field(&tables, 400.0, 163.0);
     assert_eq!(hit, None);
 }
 
 #[test]
-fn ut_pb_01c_hit_test_field_misses_header_area() {
+fn ut_pb_01d_hit_test_field_misses_header_area() {
     let tables = vec![fixture_table_two_fields()];
     // 点在 header 区（y=110 < 100+30=130）
     let hit = hit_test_field(&tables, 150.0, 110.0);
@@ -178,19 +189,27 @@ fn ut_pb_04c_toggle_field_primary_missing_table_is_noop() {
 fn ut_pb_05_confirm_bar_increments_references_count() {
     // 该用例为组件层断言（确认条 visible + 点击 create 后 references.len()+1）。
     // 在纯单元测试中无法直接渲染 Leptos 组件，改用源码扫描方式验证：
-    // 1) 编辑器暴露 references 信号（EditorStore 中）
-    // 2) 确认条 (rel-confirm-bar) testid 存在
-    // 3) on:click 处理器触发 references.push
+    // 1) 关系确认条组件 RelationshipConfirmBar 存在（L1268）
+    // 2) 创建逻辑使用 `refs.push(reference) + store.references.set(refs)` 模式（L3077-3079）
+    // 3) editor_panels.rs::tests 模块内已有内联 UT-PB-05 断言（L4935-4936 验证 len==1）
     //
-    // 实际行为由 ST-PB-01（E2E 测试）覆盖，此处确保测试基础设施就位。
+    // 完整 E2E 由 ST-PB-01 覆盖，此处确保测试基础设施与内联测试就位。
 
     let panels_src = include_str!("../src/editor_panels.rs");
+
     assert!(
-        panels_src.contains("rel-confirm") || panels_src.contains("confirm-relation"),
-        "UT-PB-05 FAIL: 关系确认条 testid 缺失"
+        panels_src.contains("RelationshipConfirmBar"),
+        "UT-PB-05 FAIL: RelationshipConfirmBar 组件缺失"
     );
+
     assert!(
-        panels_src.contains("references.push") || panels_src.contains("references.update"),
-        "UT-PB-05 FAIL: 关系创建 push/update 逻辑缺失"
+        panels_src.contains("refs.push(reference") && panels_src.contains("store.references.set(refs)"),
+        "UT-PB-05 FAIL: 关系创建模式（refs.push + references.set）缺失"
+    );
+
+    // 验证 editor_panels.rs::tests 模块内已有内联 UT-PB-05 测试
+    assert!(
+        panels_src.contains("UT-PB-05"),
+        "UT-PB-05 FAIL: 内联测试用例缺失（应在 editor_panels.rs::tests 模块内）"
     );
 }
