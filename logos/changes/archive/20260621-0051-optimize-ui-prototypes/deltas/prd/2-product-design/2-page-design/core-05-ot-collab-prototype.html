@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-mode="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>coldrawdb S05 OT 实时协作原型</title>
+  <link rel="stylesheet" href="core-00-prototype-shared.css" />
+  <style>
+    :root {
+      --cdb-color-primary: #175e7a;
+      --cdb-color-primary-soft: #e6f1f5;
+      --cdb-color-text: #1f2937;
+      --cdb-color-text-muted: #6b7280;
+      --cdb-color-border: #e5e7eb;
+      --cdb-color-bg: #fff;
+      --cdb-color-bg-subtle: #f9fafb;
+      --cdb-color-bg-canvas: #f3f4f6;
+      --cdb-color-success: #10b981;
+      --cdb-color-warning: #f59e0b;
+      --cdb-color-error: #ef4444;
+      --cdb-color-info: #3b82f6;
+      --cdb-color-alice: #8b5cf6;
+      --cdb-shadow-md: 0 4px 12px rgba(0,0,0,.08);
+    }
+    [data-mode="dark"] {
+      --cdb-color-text: #f9fafb;
+      --cdb-color-text-muted: #9ca3af;
+      --cdb-color-border: #374151;
+      --cdb-color-bg: #16161a;
+      --cdb-color-bg-subtle: #1f2937;
+      --cdb-color-bg-canvas: #111827;
+    }
+    body { background: var(--cdb-color-bg-subtle); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+    .cdb-topbar {
+      height: 48px; padding: 0 16px; display: flex; align-items: center; gap: 10px;
+      background: var(--cdb-color-bg); border-bottom: 1px solid var(--cdb-color-border);
+    }
+    .cdb-logo { width: 28px; height: 28px; border-radius: 4px; background: var(--cdb-color-primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+    .cdb-room-badge { padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--cdb-color-primary-soft); color: var(--cdb-color-primary); border: 1px solid var(--cdb-color-primary); }
+    .cdb-presence { display: flex; align-items: center; gap: 0; }
+    .cdb-av-wrap { position: relative; margin-left: -6px; }
+    .cdb-av-wrap:first-child { margin-left: 0; }
+    .cdb-av { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--cdb-color-bg); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; }
+    .cdb-av--me { background: var(--cdb-color-primary-soft); color: var(--cdb-color-primary); }
+    .cdb-av--alice { background: #ede9fe; color: var(--cdb-color-alice); }
+    .cdb-av--bob { background: #dbeafe; color: var(--cdb-color-info); }
+    .cdb-online-dot {
+      position: absolute; bottom: 0; right: 0; width: 8px; height: 8px;
+      border-radius: 50%; background: var(--cdb-color-success); border: 2px solid var(--cdb-color-bg);
+    }
+    .cdb-online-dot.is-offline { background: var(--cdb-color-text-muted); }
+    .cdb-spacer { flex: 1; }
+    .cdb-btn { padding: 6px 12px; border: 1px solid var(--cdb-color-border); border-radius: 4px; background: var(--cdb-color-bg); font-size: 13px; }
+    .cdb-btn--primary { background: var(--cdb-color-primary); color: #fff; border-color: var(--cdb-color-primary); }
+    .cdb-btn:disabled { opacity: .45; cursor: not-allowed; }
+    .cdb-banner {
+      padding: 8px 16px; font-size: 13px; display: none; align-items: center; justify-content: center; gap: 12px;
+    }
+    .cdb-banner.is-visible { display: flex; }
+    .cdb-banner--warn { background: #fef3c7; color: #92400e; border-bottom: 1px solid #fcd34d; }
+    .cdb-banner--err { background: #fee2e2; color: #991b1b; border-bottom: 1px solid #fca5a5; }
+    .cdb-main { flex: 1; display: grid; grid-template-columns: 48px 1fr 260px 220px; min-height: 0; }
+    .cdb-tool-rail { border-right: 1px solid var(--cdb-color-border); background: var(--cdb-color-bg); display: flex; flex-direction: column; align-items: center; padding: 8px 0; gap: 4px; }
+    .cdb-tool-btn { width: 36px; height: 36px; border: 1px solid transparent; border-radius: 4px; background: transparent; }
+    .cdb-tool-btn:disabled { opacity: .35; cursor: not-allowed; }
+    .cdb-canvas-wrap {
+      background: var(--cdb-color-bg-canvas); position: relative; overflow: hidden;
+      background-image: radial-gradient(circle, var(--cdb-color-border) 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+    .cdb-table {
+      position: absolute; width: 170px; background: var(--cdb-color-bg);
+      border: 1px solid var(--cdb-color-border); border-radius: 6px; box-shadow: var(--cdb-shadow-md);
+      transition: opacity .3s, transform .3s;
+    }
+    .cdb-table.is-remote-new { animation: popIn .4s ease-out; }
+    @keyframes popIn { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: scale(1); } }
+    .cdb-table__h { padding: 8px 10px; color: #fff; font-size: 12px; font-weight: 600; border-radius: 5px 5px 0 0; background: var(--cdb-color-primary); }
+    .cdb-table__r { padding: 5px 10px; font-size: 11px; border-top: 1px solid var(--cdb-color-border); }
+    .cdb-remote-cursor {
+      position: absolute; pointer-events: none; z-index: 20;
+      transition: left .08s linear, top .08s linear;
+    }
+    .cdb-remote-cursor__label {
+      padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; color: #fff;
+      background: var(--cdb-color-alice); white-space: nowrap;
+    }
+    .cdb-remote-cursor__pointer {
+      width: 0; height: 0;
+      border-left: 6px solid transparent; border-right: 6px solid transparent;
+      border-top: 10px solid var(--cdb-color-alice); margin-left: 4px;
+    }
+    .cdb-members { border-left: 1px solid var(--cdb-color-border); background: var(--cdb-color-bg); overflow-y: auto; }
+    .cdb-members__h { padding: 10px 12px; font-weight: 600; font-size: 13px; border-bottom: 1px solid var(--cdb-color-border); }
+    .cdb-member { padding: 8px 12px; display: flex; align-items: center; gap: 8px; font-size: 12px; border-bottom: 1px solid var(--cdb-color-border); }
+    .cdb-activity { border-left: 1px solid var(--cdb-color-border); background: var(--cdb-color-bg); display: flex; flex-direction: column; min-height: 0; }
+    .cdb-activity__h { padding: 10px 12px; font-weight: 600; font-size: 13px; border-bottom: 1px solid var(--cdb-color-border); }
+    .cdb-activity__list { flex: 1; overflow-y: auto; padding: 8px; }
+    .cdb-activity__item {
+      padding: 8px; margin-bottom: 6px; border-radius: 4px; font-size: 11px;
+      background: var(--cdb-color-bg-subtle); cursor: pointer; line-height: 1.4;
+    }
+    .cdb-activity__item:hover { background: var(--cdb-color-primary-soft); }
+    .cdb-activity__item time { display: block; color: var(--cdb-color-text-muted); font-size: 10px; margin-bottom: 2px; }
+    .cdb-status-bar {
+      height: 28px; padding: 0 16px; display: flex; align-items: center; gap: 16px;
+      font-size: 11px; color: var(--cdb-color-text-muted); border-top: 1px solid var(--cdb-color-border); background: var(--cdb-color-bg);
+    }
+    .cdb-ws-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cdb-color-success); display: inline-block; }
+    .cdb-ws-dot.is-reconnecting { background: var(--cdb-color-warning); animation: pulse 1s infinite; }
+    .cdb-ws-dot.is-offline { background: var(--cdb-color-error); }
+    @keyframes pulse { 50% { opacity: .4; } }
+    .cdb-demo-bar {
+      position: fixed; bottom: 36px; left: 16px; display: flex; flex-wrap: wrap; gap: 6px; z-index: 30;
+    }
+    .cdb-demo-bar button { padding: 6px 10px; font-size: 11px; border: 1px solid var(--cdb-color-border); border-radius: 4px; background: var(--cdb-color-bg); }
+    .cdb-toast {
+      position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+      padding: 10px 16px; background: var(--cdb-color-text); color: var(--cdb-color-bg);
+      border-radius: 6px; font-size: 13px; opacity: 0; transition: opacity .2s; z-index: 40;
+    }
+    .cdb-toast.is-visible { opacity: .95; }
+  </style>
+</head>
+<body>
+  <header class="cdb-topbar">
+    <div class="cdb-logo">C</div>
+    <span class="cdb-room-badge">评审周会</span>
+    <span style="font-weight:600;font-size:14px;">电商 ER 图</span>
+    <div class="cdb-presence" data-testid="room-presence">
+      <div class="cdb-av-wrap"><span class="cdb-av cdb-av--me">D</span><span class="cdb-online-dot" data-testid="presence-online"></span></div>
+      <div class="cdb-av-wrap" id="av-alice"><span class="cdb-av cdb-av--alice">A</span><span class="cdb-online-dot" id="dot-alice"></span></div>
+      <div class="cdb-av-wrap" id="av-bob"><span class="cdb-av cdb-av--bob">B</span><span class="cdb-online-dot" id="dot-bob"></span></div>
+    </div>
+    <span class="cdb-spacer"></span>
+    <button type="button" class="cdb-btn" id="btn-create-local" data-testid="btn-create-local">本地新建表</button>
+  </header>
+
+  <div class="cdb-banner cdb-banner--warn" id="banner-reconnect" data-testid="reconnect-banner">
+    <span id="banner-text">连接已断开，正在重连… (1/5)</span>
+    <button type="button" class="cdb-btn" id="banner-dismiss" hidden>忽略</button>
+  </div>
+  <div class="cdb-banner cdb-banner--err" id="banner-fail" data-testid="reconnect-fail-banner">
+    <span>无法连接协作服务</span>
+    <button type="button" class="cdb-btn" id="btn-reload">刷新页面</button>
+    <button type="button" class="cdb-btn" id="btn-offline-edit">仅本地编辑</button>
+  </div>
+
+  <div class="cdb-main">
+    <nav class="cdb-tool-rail" data-testid="tool-rail">
+      <button type="button" class="cdb-tool-btn" id="tool-add" title="新建" aria-label="新建表">
+        <span class="cdb-icon"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg></span>
+      </button>
+      <button type="button" class="cdb-tool-btn" title="关系" aria-label="关系">
+        <span class="cdb-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+      </button>
+    </nav>
+
+    <main class="cdb-canvas-wrap" data-testid="editor-canvas" id="canvas">
+      <div class="cdb-table" id="table-users" style="left:50px;top:40px;" data-testid="table-users">
+        <div class="cdb-table__h">users</div>
+        <div class="cdb-table__r">id · BIGINT</div>
+        <div class="cdb-table__r" id="field-email">email · VARCHAR</div>
+      </div>
+      <div class="cdb-remote-cursor" id="remote-cursor" data-testid="remote-cursor" style="left:200px;top:120px;display:none;">
+        <div class="cdb-remote-cursor__label">Alice</div>
+        <div class="cdb-remote-cursor__pointer"></div>
+      </div>
+    </main>
+
+    <aside class="cdb-members" data-testid="room-members-panel">
+      <div class="cdb-members__h">在线成员</div>
+      <div class="cdb-member"><span class="cdb-av cdb-av--me" style="width:24px;height:24px;font-size:9px;">D</span> Demo 用户 (你)</div>
+      <div class="cdb-member"><span class="cdb-av cdb-av--alice" style="width:24px;height:24px;font-size:9px;">A</span> Alice</div>
+      <div class="cdb-member"><span class="cdb-av cdb-av--bob" style="width:24px;height:24px;font-size:9px;">B</span> Bob</div>
+    </aside>
+
+    <aside class="cdb-activity" data-testid="activity-feed">
+      <div class="cdb-activity__h">协作动态</div>
+      <div class="cdb-activity__list" id="activity-list">
+        <div class="cdb-activity__item"><time>14:30</time>已加入房间「评审周会」</div>
+      </div>
+    </aside>
+  </div>
+
+  <footer class="cdb-status-bar" data-testid="status-bar">
+    <span data-testid="ws-status"><span class="cdb-ws-dot" id="ws-dot"></span> <span id="ws-label">已连接 · OT 同步</span></span>
+    <span data-testid="ot-rev" id="ot-rev">server_rev: 42</span>
+    <span id="save-hint">快照 checkpoint 每 5s</span>
+  </footer>
+
+  <nav class="cdb-demo-bar" aria-label="S05 演示">
+    <button type="button" id="demo-remote-table">模拟 Alice 创建表</button>
+    <button type="button" id="demo-remote-field">模拟 Alice 改字段</button>
+    <button type="button" id="demo-cursor">模拟 Alice 光标</button>
+    <button type="button" id="demo-reconnect">模拟断线重连</button>
+    <button type="button" id="demo-fail">模拟重连失败</button>
+    <button type="button" id="demo-viewer">Viewer 模式</button>
+  </nav>
+  <div class="cdb-toast" id="toast"></div>
+
+  <script>
+    let serverRev = 42;
+    let wsState = 'connected';
+    let cursorAnim;
+    let isViewer = false;
+
+    function toast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('is-visible');
+      setTimeout(() => t.classList.remove('is-visible'), 2200);
+    }
+    function bumpRev() {
+      serverRev++;
+      document.getElementById('ot-rev').textContent = 'server_rev: ' + serverRev;
+    }
+    function addActivity(text) {
+      const now = new Date();
+      const time = now.toTimeString().slice(0, 5);
+      const el = document.createElement('div');
+      el.className = 'cdb-activity__item';
+      el.innerHTML = '<time>' + time + '</time>' + text;
+      document.getElementById('activity-list').prepend(el);
+    }
+    function setWsState(state) {
+      wsState = state;
+      const dot = document.getElementById('ws-dot');
+      const label = document.getElementById('ws-label');
+      dot.className = 'cdb-ws-dot';
+      if (state === 'connected') { label.textContent = '已连接 · OT 同步'; }
+      else if (state === 'reconnecting') { dot.classList.add('is-reconnecting'); label.textContent = '重连中…'; }
+      else if (state === 'offline') { dot.classList.add('is-offline'); label.textContent = '协作离线 · 409 风险'; }
+    }
+
+    document.getElementById('demo-remote-table').onclick = () => {
+      if (document.getElementById('table-orders')) { toast('orders 已存在'); return; }
+      const t = document.createElement('div');
+      t.className = 'cdb-table is-remote-new';
+      t.id = 'table-orders';
+      t.dataset.testid = 'table-orders';
+      t.style.cssText = 'left:280px;top:50px;';
+      t.innerHTML = '<div class="cdb-table__h" style="background:#0e7490;">orders</div><div class="cdb-table__r">id · BIGINT</div><div class="cdb-table__r">user_id · BIGINT</div>';
+      document.getElementById('canvas').appendChild(t);
+      bumpRev();
+      addActivity('Alice 创建了表 <strong>orders</strong>');
+      toast('收到远端 op · 无 409 模态');
+    };
+
+    document.getElementById('demo-remote-field').onclick = () => {
+      const el = document.getElementById('field-email');
+      el.textContent = 'email · VARCHAR NOT NULL';
+      el.style.background = 'var(--cdb-color-primary-soft)';
+      setTimeout(() => el.style.background = '', 600);
+      bumpRev();
+      addActivity('Alice 将 <strong>users.email</strong> 设为 NOT NULL');
+    };
+
+    document.getElementById('demo-cursor').onclick = () => {
+      const cur = document.getElementById('remote-cursor');
+      cur.style.display = 'block';
+      clearInterval(cursorAnim);
+      let x = 200, y = 120, dx = 3, dy = 2;
+      cursorAnim = setInterval(() => {
+        x += dx; y += dy;
+        if (x > 400 || x < 120) dx *= -1;
+        if (y > 280 || y < 80) dy *= -1;
+        cur.style.left = x + 'px';
+        cur.style.top = y + 'px';
+      }, 50);
+    };
+
+    document.getElementById('demo-reconnect').onclick = () => {
+      const banner = document.getElementById('banner-reconnect');
+      banner.classList.add('is-visible');
+      setWsState('reconnecting');
+      let n = 1;
+      const txt = document.getElementById('banner-text');
+      const iv = setInterval(() => {
+        n++;
+        txt.textContent = '连接已断开，正在重连… (' + n + '/5)';
+        if (n >= 3) {
+          clearInterval(iv);
+          banner.classList.remove('is-visible');
+          setWsState('connected');
+          bumpRev();
+          toast('已恢复协作');
+        }
+      }, 800);
+    };
+
+    document.getElementById('demo-fail').onclick = () => {
+      document.getElementById('banner-reconnect').classList.remove('is-visible');
+      document.getElementById('banner-fail').classList.add('is-visible');
+      setWsState('offline');
+      document.getElementById('dot-alice').classList.add('is-offline');
+    };
+
+    document.getElementById('btn-reload').onclick = () => toast('刷新页面（演示）');
+    document.getElementById('btn-offline-edit').onclick = () => {
+      document.getElementById('banner-fail').classList.remove('is-visible');
+      toast('已进入仅本地编辑模式');
+    };
+
+    document.getElementById('demo-viewer').onclick = () => {
+      isViewer = !isViewer;
+      document.getElementById('tool-add').disabled = isViewer;
+      document.getElementById('btn-create-local').disabled = isViewer;
+      document.getElementById('save-hint').textContent = isViewer ? '只读 · 查看者（可收远端 op）' : '快照 checkpoint 每 5s';
+      toast(isViewer ? 'Viewer：不可发 op，仍可见协作' : 'Editor 模式');
+    };
+
+    document.getElementById('btn-create-local').onclick = () => {
+      if (isViewer) return;
+      bumpRev();
+      addActivity('你 创建了表 <strong>products</strong>（本地 optimistic）');
+      toast('op 已发送 · 等待 ack');
+    };
+  </script>
+</body>
+</html>
