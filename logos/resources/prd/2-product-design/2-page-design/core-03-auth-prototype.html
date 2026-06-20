@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-mode="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>coldrawdb S03 鉴权原型 — 登录 / 注册 / Token 续期</title>
+  <link rel="stylesheet" href="core-00-prototype-shared.css" />
+  <style>
+    :root {
+      --cdb-color-primary: #175e7a;
+      --cdb-color-primary-hover: #134c63;
+      --cdb-color-primary-soft: #e6f1f5;
+      --cdb-color-primary-on: #ffffff;
+      --cdb-color-text: #1f2937;
+      --cdb-color-text-muted: #6b7280;
+      --cdb-color-border: #e5e7eb;
+      --cdb-color-bg: #ffffff;
+      --cdb-color-bg-subtle: #f9fafb;
+      --cdb-color-error: #ef4444;
+      --cdb-color-error-soft: #fee2e2;
+      --cdb-color-success: #10b981;
+      --cdb-color-warning: #f59e0b;
+      --cdb-shadow-sm: 0 1px 3px rgba(0,0,0,.06);
+      --cdb-shadow-md: 0 4px 12px rgba(0,0,0,.08);
+      --cdb-radius-sm: 4px;
+      --cdb-radius-md: 8px;
+      --cdb-radius-lg: 12px;
+      --cdb-duration: 200ms;
+    }
+    [data-mode="dark"] {
+      --cdb-color-text: #f9fafb;
+      --cdb-color-text-muted: #9ca3af;
+      --cdb-color-border: #374151;
+      --cdb-color-bg: #16161a;
+      --cdb-color-bg-subtle: #1f2937;
+      --cdb-color-primary-soft: #1e3a47;
+    }
+    body { background: var(--cdb-color-bg-subtle); min-height: 100vh; }
+    .cdb-auth-shell {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      min-height: 100vh;
+    }
+    @media (max-width: 768px) {
+      .cdb-auth-shell { grid-template-columns: 1fr; }
+      .cdb-auth-brand { display: none; }
+    }
+    .cdb-auth-brand {
+      background: var(--cdb-color-primary);
+      color: var(--cdb-color-primary-on);
+      padding: 48px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .cdb-auth-brand h1 { font-size: 28px; margin-bottom: 12px; }
+    .cdb-auth-brand p { opacity: 0.9; line-height: 1.6; max-width: 360px; }
+    .cdb-auth-brand ul { margin-top: 24px; padding-left: 18px; line-height: 2; opacity: 0.85; font-size: 14px; }
+    .cdb-auth-panel {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 32px 24px;
+    }
+    .cdb-auth-card {
+      width: min(400px, 100%);
+      background: var(--cdb-color-bg);
+      border: 1px solid var(--cdb-color-border);
+      border-radius: var(--cdb-radius-lg);
+      box-shadow: var(--cdb-shadow-md);
+      padding: 32px;
+    }
+    .cdb-auth-card h2 { font-size: 22px; margin-bottom: 4px; }
+    .cdb-auth-card .subtitle { font-size: 13px; color: var(--cdb-color-text-muted); margin-bottom: 24px; }
+    .cdb-field { margin-bottom: 16px; }
+    .cdb-field label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+    .cdb-field input {
+      width: 100%; padding: 10px 12px;
+      border: 1px solid var(--cdb-color-border);
+      border-radius: var(--cdb-radius-sm);
+      background: var(--cdb-color-bg);
+      color: var(--cdb-color-text);
+    }
+    .cdb-field--password { position: relative; }
+    .cdb-field--password input { padding-right: 40px; }
+    .cdb-pw-toggle {
+      position: absolute; right: 8px; bottom: 10px;
+      width: 28px; height: 28px; border: none; background: transparent;
+      color: var(--cdb-color-text-muted); display: inline-flex; align-items: center; justify-content: center;
+    }
+    .cdb-field input.cdb-is-error { border-color: var(--cdb-color-error); }
+    .cdb-field-error { font-size: 12px; color: var(--cdb-color-error); margin-top: 4px; display: none; }
+    .cdb-field-error.is-visible { display: block; }
+    .cdb-strength { height: 4px; background: var(--cdb-color-border); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+    .cdb-strength-bar { height: 100%; width: 0; background: var(--cdb-color-success); transition: width var(--cdb-duration); }
+    .cdb-btn {
+      width: 100%; padding: 10px 16px; border: none;
+      border-radius: var(--cdb-radius-sm); font-weight: 600; font-size: 14px;
+      transition: background var(--cdb-duration);
+    }
+    .cdb-btn--primary { background: var(--cdb-color-primary); color: var(--cdb-color-primary-on); }
+    .cdb-btn--primary:hover { background: var(--cdb-color-primary-hover); }
+    .cdb-btn--primary:disabled { opacity: 0.6; cursor: not-allowed; }
+    .cdb-btn--ghost { background: transparent; color: var(--cdb-color-primary); border: 1px solid var(--cdb-color-border); margin-top: 8px; }
+    .cdb-switch { text-align: center; margin-top: 20px; font-size: 13px; color: var(--cdb-color-text-muted); }
+    .cdb-switch button { background: none; border: none; color: var(--cdb-color-primary); font-weight: 600; padding: 0; }
+    .cdb-view { display: none; }
+    .cdb-view.is-active { display: block; }
+    .cdb-demo-bar {
+      position: fixed; top: 0; left: 0; right: 0; height: 48px;
+      background: var(--cdb-color-bg); border-bottom: 1px solid var(--cdb-color-border);
+      display: none; align-items: center; padding: 0 16px; gap: 12px;
+      box-shadow: var(--cdb-shadow-sm); z-index: 10;
+    }
+    .cdb-demo-bar.is-visible { display: flex; }
+    .cdb-logo-sm {
+      width: 28px; height: 28px; border-radius: 4px;
+      background: var(--cdb-color-primary); color: #fff;
+      display: flex; align-items: center; justify-content: center; font-weight: 700;
+    }
+    .cdb-user-menu {
+      margin-left: auto; display: flex; align-items: center; gap: 8px;
+      padding: 4px 10px 4px 4px; border: 1px solid var(--cdb-color-border);
+      border-radius: 999px; font-size: 13px;
+    }
+    .cdb-avatar {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: var(--cdb-color-primary-soft); color: var(--cdb-color-primary);
+      display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px;
+    }
+    .cdb-session {
+      font-size: 11px; color: var(--cdb-color-text-muted);
+      display: flex; align-items: center; gap: 6px;
+    }
+    .cdb-session-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cdb-color-success); }
+    .cdb-session.is-refreshing .cdb-session-dot { background: var(--cdb-color-warning); animation: pulse 0.8s infinite; }
+    @keyframes pulse { 50% { opacity: 0.4; } }
+    .cdb-logged-in {
+      display: none; padding-top: 48px; min-height: 100vh;
+      flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+    }
+    .cdb-logged-in.is-visible { display: flex; }
+    .cdb-logged-in-card {
+      width: min(480px, 92vw); padding: 24px;
+      background: var(--cdb-color-bg); border: 1px solid var(--cdb-color-border);
+      border-radius: var(--cdb-radius-lg); text-align: center;
+    }
+    .cdb-toolbar-demo { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 16px; }
+    .cdb-toolbar-demo button {
+      padding: 8px 14px; border: 1px solid var(--cdb-color-border);
+      border-radius: var(--cdb-radius-sm); background: var(--cdb-color-bg);
+      font-size: 13px;
+    }
+    .cdb-theme-toggle {
+      position: fixed; bottom: 16px; right: 16px;
+      padding: 8px 12px; border: 1px solid var(--cdb-color-border);
+      border-radius: var(--cdb-radius-sm); background: var(--cdb-color-bg); font-size: 12px;
+    }
+    .cdb-toast {
+      position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%);
+      padding: 10px 18px; background: var(--cdb-color-text); color: var(--cdb-color-bg);
+      border-radius: var(--cdb-radius-md); font-size: 13px; opacity: 0; pointer-events: none;
+      transition: opacity var(--cdb-duration);
+    }
+    .cdb-toast.is-visible { opacity: 0.95; }
+  </style>
+</head>
+<body>
+  <!-- 登录后 AppBar 预览 -->
+  <header class="cdb-demo-bar" id="demo-bar" data-testid="app-bar-authed">
+    <div class="cdb-logo-sm">C</div>
+    <span style="font-weight:600;font-size:14px;">电商 ER 图</span>
+    <span class="cdb-session" data-testid="session-indicator" id="session-indicator">
+      <span class="cdb-session-dot"></span>
+      <span id="session-text">会话有效 · 续期 14:32</span>
+    </span>
+    <div class="cdb-user-menu" data-testid="user-menu">
+      <span class="cdb-avatar" id="avatar">D</span>
+      <span id="display-name">Demo 用户</span>
+    </div>
+  </header>
+
+  <!-- 鉴权表单区 -->
+  <div class="cdb-auth-shell" id="auth-shell">
+    <aside class="cdb-auth-brand">
+      <h1>coldrawdb</h1>
+      <p>自托管数据库 ER 图设计工具。V2 鉴权为协作（S04/S05）奠定基础。</p>
+      <ul>
+        <li>Argon2id 密码哈希</li>
+        <li>JWT access + HttpOnly refresh</li>
+        <li>静默 Token 续期</li>
+        <li>分享链接仍匿名只读（S02）</li>
+      </ul>
+    </aside>
+
+    <main class="cdb-auth-panel">
+      <!-- 登录 -->
+      <div class="cdb-auth-card cdb-view is-active" id="view-login" data-testid="login-view">
+        <h2>登录</h2>
+        <p class="subtitle">访问私有 diagram 与协作功能</p>
+        <form id="login-form" data-testid="login-form" onsubmit="return false;">
+          <div class="cdb-field">
+            <label for="login-email">邮箱</label>
+            <input type="email" id="login-email" data-testid="login-email" placeholder="you@company.com" autocomplete="username" />
+          </div>
+          <div class="cdb-field cdb-field--password">
+            <label for="login-password">密码</label>
+            <input type="password" id="login-password" data-testid="login-password" placeholder="••••••••" autocomplete="current-password" />
+            <button type="button" class="cdb-pw-toggle" id="login-pw-toggle" aria-label="显示密码">
+              <span class="cdb-icon cdb-icon--sm"><svg viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg></span>
+            </button>
+            <p class="cdb-field-error" id="login-error">邮箱或密码错误</p>
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:16px;">
+            <input type="checkbox" id="remember-device" /> 记住此设备
+          </label>
+          <button type="submit" class="cdb-btn cdb-btn--primary" data-testid="login-submit" id="login-submit">登录</button>
+        </form>
+        <p class="cdb-switch">还没有账户？<button type="button" id="go-register">创建账户</button></p>
+        <p style="margin-top:12px;font-size:11px;color:var(--cdb-color-text-muted);text-align:center;">
+          演示账号：demo@coldrawdb.local / demo1234
+        </p>
+      </div>
+
+      <!-- 注册 -->
+      <div class="cdb-auth-card cdb-view" id="view-register" data-testid="register-view">
+        <h2>注册</h2>
+        <p class="subtitle">创建 coldrawdb 账户</p>
+        <form id="register-form" data-testid="register-form" onsubmit="return false;">
+          <div class="cdb-field">
+            <label for="reg-email">邮箱</label>
+            <input type="email" id="reg-email" data-testid="register-email" placeholder="you@company.com" />
+            <p class="cdb-field-error" id="reg-email-error">该邮箱已注册，<button type="button" style="background:none;border:none;color:var(--cdb-color-primary);padding:0;cursor:pointer;" id="go-login-prefill">去登录</button></p>
+          </div>
+          <div class="cdb-field">
+            <label for="reg-name">显示名称（可选）</label>
+            <input type="text" id="reg-name" data-testid="register-display-name" placeholder="张三" maxlength="32" />
+          </div>
+          <div class="cdb-field">
+            <label for="reg-password">密码</label>
+            <input type="password" id="reg-password" data-testid="register-password" placeholder="至少 8 位，含字母和数字" />
+            <div class="cdb-strength"><div class="cdb-strength-bar" id="strength-bar"></div></div>
+          </div>
+          <div class="cdb-field">
+            <label for="reg-confirm">确认密码</label>
+            <input type="password" id="reg-confirm" data-testid="register-confirm" placeholder="再次输入密码" />
+            <p class="cdb-field-error" id="reg-confirm-error">两次密码不一致</p>
+          </div>
+          <button type="submit" class="cdb-btn cdb-btn--primary" data-testid="register-submit" id="register-submit">注册</button>
+        </form>
+        <p class="cdb-switch">已有账户？<button type="button" id="go-login">返回登录</button></p>
+      </div>
+    </main>
+  </div>
+
+  <!-- 已登录预览 -->
+  <section class="cdb-logged-in" id="logged-in" data-testid="logged-in-preview">
+    <div class="cdb-logged-in-card">
+      <h2 style="margin-bottom:8px;">已登录</h2>
+      <p style="font-size:14px;color:var(--cdb-color-text-muted);">JWT 已签发，可访问 <code>/editor</code> 私有 diagram</p>
+      <div class="cdb-toolbar-demo">
+        <button type="button" id="btn-simulate-expire" data-testid="btn-simulate-expire">模拟 Token 过期</button>
+        <button type="button" id="btn-logout" data-testid="btn-logout">退出登录</button>
+      </div>
+    </div>
+  </section>
+
+  <button type="button" class="cdb-theme-toggle" id="btn-theme" data-testid="btn-theme-toggle">切换主题</button>
+  <div class="cdb-toast" id="toast"></div>
+
+  <script>
+    const views = { login: document.getElementById('view-login'), register: document.getElementById('view-register') };
+    const authShell = document.getElementById('auth-shell');
+    const loggedIn = document.getElementById('logged-in');
+    const demoBar = document.getElementById('demo-bar');
+    const sessionEl = document.getElementById('session-indicator');
+    const sessionText = document.getElementById('session-text');
+    const toast = document.getElementById('toast');
+
+    function showView(name) {
+      Object.values(views).forEach(v => v.classList.remove('is-active'));
+      views[name].classList.add('is-active');
+    }
+
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add('is-visible');
+      setTimeout(() => toast.classList.remove('is-visible'), 2500);
+    }
+
+    function enterLoggedIn(displayName) {
+      authShell.style.display = 'none';
+      loggedIn.classList.add('is-visible');
+      demoBar.classList.add('is-visible');
+      document.getElementById('display-name').textContent = displayName;
+      document.getElementById('avatar').textContent = displayName.charAt(0).toUpperCase();
+      updateSessionTime();
+    }
+
+    function exitLoggedIn() {
+      authShell.style.display = '';
+      loggedIn.classList.remove('is-visible');
+      demoBar.classList.remove('is-visible');
+      showView('login');
+      document.getElementById('login-password').value = '';
+    }
+
+    function updateSessionTime() {
+      const d = new Date(Date.now() + 15 * 60 * 1000);
+      sessionText.textContent = '会话有效 · 续期 ' + d.toTimeString().slice(0, 5);
+    }
+
+    document.getElementById('go-register').onclick = () => showView('register');
+    document.getElementById('go-login').onclick = () => showView('login');
+    document.getElementById('go-login-prefill').onclick = () => {
+      showView('login');
+      document.getElementById('login-email').value = document.getElementById('reg-email').value;
+    };
+
+    document.getElementById('reg-password').oninput = (e) => {
+      const v = e.target.value;
+      let score = 0;
+      if (v.length >= 8) score++;
+      if (/[A-Za-z]/.test(v) && /\d/.test(v)) score++;
+      if (/[^A-Za-z0-9]/.test(v)) score++;
+      document.getElementById('strength-bar').style.width = (score / 3 * 100) + '%';
+    };
+
+    document.getElementById('register-submit').onclick = () => {
+      const email = document.getElementById('reg-email').value.trim();
+      const pw = document.getElementById('reg-password').value;
+      const confirm = document.getElementById('reg-confirm').value;
+      const emailErr = document.getElementById('reg-email-error');
+      const confirmErr = document.getElementById('reg-confirm-error');
+      emailErr.classList.remove('is-visible');
+      confirmErr.classList.remove('is-visible');
+      document.getElementById('reg-email').classList.remove('cdb-is-error');
+      document.getElementById('reg-confirm').classList.remove('cdb-is-error');
+
+      if (email === 'taken@example.com') {
+        document.getElementById('reg-email').classList.add('cdb-is-error');
+        emailErr.classList.add('is-visible');
+        return;
+      }
+      if (pw !== confirm) {
+        document.getElementById('reg-confirm').classList.add('cdb-is-error');
+        confirmErr.classList.add('is-visible');
+        return;
+      }
+      if (pw.length < 8 || !/[A-Za-z]/.test(pw) || !/\d/.test(pw)) {
+        showToast('密码需至少 8 位且含字母和数字');
+        return;
+      }
+      const btn = document.getElementById('register-submit');
+      btn.disabled = true;
+      btn.textContent = '注册中…';
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = '注册';
+        const name = document.getElementById('reg-name').value.trim() || email.split('@')[0];
+        enterLoggedIn(name);
+        showToast('注册成功，已自动登录');
+      }, 1200);
+    };
+
+    document.getElementById('login-submit').onclick = () => {
+      const email = document.getElementById('login-email').value.trim();
+      const pw = document.getElementById('login-password').value;
+      const err = document.getElementById('login-error');
+      err.classList.remove('is-visible');
+      document.getElementById('login-password').classList.remove('cdb-is-error');
+
+      const ok = (email === 'demo@coldrawdb.local' && pw === 'demo1234') ||
+                 (email && pw.length >= 6);
+      if (!ok) {
+        document.getElementById('login-password').classList.add('cdb-is-error');
+        err.classList.add('is-visible');
+        document.getElementById('login-password').value = '';
+        return;
+      }
+      const btn = document.getElementById('login-submit');
+      btn.disabled = true;
+      btn.textContent = '登录中…';
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = '登录';
+        enterLoggedIn(email.split('@')[0]);
+      }, 1000);
+    };
+
+    document.getElementById('btn-simulate-expire').onclick = () => {
+      sessionEl.classList.add('is-refreshing');
+      sessionText.textContent = '正在续期…';
+      setTimeout(() => {
+        sessionEl.classList.remove('is-refreshing');
+        updateSessionTime();
+        showToast('Token 已静默续期（用户无感知）');
+      }, 900);
+    };
+
+    document.getElementById('btn-logout').onclick = () => {
+      showToast('已退出登录');
+      exitLoggedIn();
+    };
+
+    document.getElementById('btn-theme').onclick = () => {
+      const h = document.documentElement;
+      h.dataset.mode = h.dataset.mode === 'dark' ? 'light' : 'dark';
+    };
+
+    document.getElementById('login-pw-toggle').onclick = () => {
+      const input = document.getElementById('login-password');
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      document.getElementById('login-pw-toggle').setAttribute('aria-label', show ? '隐藏密码' : '显示密码');
+    };
+  </script>
+</body>
+</html>

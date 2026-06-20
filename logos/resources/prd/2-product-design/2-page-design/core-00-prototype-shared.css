@@ -1,0 +1,207 @@
+/**
+ * coldrawdb HTML 原型共享样式
+ * 对齐 core-07-design-tokens.md 子集 + core-08 图标尺寸 + ui-ux-pro-max 无障碍清单
+ * 各原型通过 <link rel="stylesheet" href="core-00-prototype-shared.css"> 引用
+ */
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap");
+
+:root {
+  --cdb-color-primary: #175e7a;
+  --cdb-color-primary-hover: #134c63;
+  --cdb-color-primary-active: #0e3a4d;
+  --cdb-color-primary-soft: #e6f1f5;
+  --cdb-color-primary-on: #ffffff;
+  --cdb-color-text: #1f2937;
+  --cdb-color-text-muted: #6b7280;
+  --cdb-color-border: #e5e7eb;
+  --cdb-color-border-strong: #d1d5db;
+  --cdb-color-bg: #ffffff;
+  --cdb-color-bg-subtle: #f9fafb;
+  --cdb-color-bg-canvas: #f3f4f6;
+  --cdb-color-bg-overlay: rgba(0, 0, 0, 0.45);
+  --cdb-color-success: #10b981;
+  --cdb-color-success-soft: #d1fae5;
+  --cdb-color-warning: #f59e0b;
+  --cdb-color-warning-soft: #fef3c7;
+  --cdb-color-error: #ef4444;
+  --cdb-color-error-soft: #fee2e2;
+  --cdb-color-info: #3b82f6;
+  --cdb-color-info-soft: #dbeafe;
+  --cdb-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --cdb-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --cdb-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05);
+  --cdb-shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.1), 0 10px 10px rgba(0, 0, 0, 0.04);
+  --cdb-radius-sm: 4px;
+  --cdb-radius-md: 6px;
+  --cdb-radius-lg: 8px;
+  --cdb-radius-xl: 12px;
+  --cdb-space-2: 8px;
+  --cdb-space-3: 12px;
+  --cdb-space-4: 16px;
+  --cdb-text-xs: 11px;
+  --cdb-text-sm: 13px;
+  --cdb-text-base: 14px;
+  --cdb-duration-base: 200ms;
+  --cdb-easing-out: cubic-bezier(0, 0, 0.2, 1);
+  --cdb-z-app-bar: 20;
+  --cdb-z-sidesheet: 40;
+  --cdb-z-modal: 50;
+  --cdb-focus-ring: 0 0 0 2px var(--cdb-color-bg), 0 0 0 4px var(--cdb-color-primary);
+}
+
+[data-mode="dark"] {
+  color-scheme: dark;
+  --cdb-color-text: #f9fafb;
+  --cdb-color-text-muted: #9ca3af;
+  --cdb-color-border: #374151;
+  --cdb-color-border-strong: #4b5563;
+  --cdb-color-bg: #16161a;
+  --cdb-color-bg-subtle: #1f2937;
+  --cdb-color-bg-canvas: #111827;
+  --cdb-color-primary-soft: #1e3a47;
+  --cdb-color-primary-on-surface: #7ec8e3;
+  --cdb-color-error-soft: #450a0a;
+  --cdb-color-warning-soft: #451a03;
+  --cdb-color-info-soft: #1e3a5f;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; }
+
+body {
+  font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+  color: var(--cdb-color-text);
+  background: var(--cdb-color-bg);
+  line-height: 1.5;
+}
+
+button, input, select, textarea { font: inherit; }
+
+input, select, textarea {
+  color: var(--cdb-color-text);
+  background-color: var(--cdb-color-bg);
+}
+
+select option {
+  background-color: var(--cdb-color-bg);
+  color: var(--cdb-color-text);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--cdb-color-text-muted);
+}
+
+button:not(:disabled) { cursor: pointer; }
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex="0"]:focus-visible {
+  outline: none;
+  box-shadow: var(--cdb-focus-ring);
+}
+
+/* E2 图标基类 — SVG stroke 继承 currentColor */
+.cdb-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 0;
+}
+.cdb-icon svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.cdb-icon--sm svg { width: 14px; height: 14px; }
+.cdb-icon--lg svg { width: 20px; height: 20px; }
+
+.cdb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--cdb-color-border);
+  border-radius: var(--cdb-radius-sm);
+  background: var(--cdb-color-bg);
+  color: var(--cdb-color-text);
+  font-size: var(--cdb-text-sm);
+  transition: background var(--cdb-duration-base) var(--cdb-easing-out),
+              border-color var(--cdb-duration-base) var(--cdb-easing-out);
+}
+.cdb-btn:hover:not(:disabled) { background: var(--cdb-color-bg-subtle); }
+.cdb-btn--primary {
+  background: var(--cdb-color-primary);
+  color: var(--cdb-color-primary-on);
+  border-color: var(--cdb-color-primary);
+}
+.cdb-btn--primary:hover:not(:disabled) { background: var(--cdb-color-primary-hover); }
+.cdb-btn--ghost { border-color: transparent; background: transparent; }
+.cdb-btn--icon {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}
+.cdb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.cdb-tool-btn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid transparent;
+  border-radius: var(--cdb-radius-sm);
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--cdb-color-text-muted);
+  transition: background var(--cdb-duration-base) var(--cdb-easing-out);
+}
+.cdb-tool-btn:hover:not(:disabled) { background: var(--cdb-color-bg-subtle); color: var(--cdb-color-text); }
+.cdb-tool-btn.cdb-is-active {
+  background: var(--cdb-color-primary-soft);
+  border-color: var(--cdb-color-primary);
+  color: var(--cdb-color-primary);
+}
+
+.cdb-toast {
+  position: fixed;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 18px;
+  background: var(--cdb-color-text);
+  color: var(--cdb-color-bg);
+  border-radius: var(--cdb-radius-md);
+  font-size: var(--cdb-text-sm);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--cdb-duration-base);
+  z-index: calc(var(--cdb-z-modal) + 10);
+}
+.cdb-toast.is-visible { opacity: 0.95; }
+
+.cdb-kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+  border: 1px solid var(--cdb-color-border);
+  border-radius: 3px;
+  background: var(--cdb-color-bg-subtle);
+  color: var(--cdb-color-text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

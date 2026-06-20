@@ -1,256 +1,828 @@
-<!--
-  Delta — core-01-editor-prototype.html (Phase C)
-  merge 操作：
-  1. MODIFIED：btn-import 移除 disabled；guide-import-sql 移除 disabled
-  2. ADDED：.cdb-io-drawer 样式与 ImportDrawer 示例节点（见下方 <style> 与 <aside class="cdb-io-drawer">）
-  3. MODIFIED：.cdb-main 增加 cdb-has-io-drawer 示例态（Inspector 隐藏，IO 抽屉显示）
--->
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-mode="light">
 <head>
   <meta charset="UTF-8" />
-  <title>coldrawdb Editor Prototype — Phase C IO Drawer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>coldrawdb 编辑器原型 — 对齐 drawdb main + V2 布局</title>
+  <link rel="stylesheet" href="core-00-prototype-shared.css" />
   <style>
-    :root {
-      --cdb-color-primary: #175e7a;
-      --cdb-color-primary-bg: #e6f1f5;
-      --cdb-color-border: #e5e7eb;
-      --cdb-color-bg: #fff;
-      --cdb-color-bg-canvas: #f3f4f6;
-      --cdb-color-text: #1f2937;
-      --cdb-color-text-muted: #6b7280;
-      --cdb-space-2: 8px;
-      --cdb-space-3: 12px;
-      --cdb-space-4: 16px;
-      --cdb-radius-sm: 4px;
-      --cdb-radius-md: 8px;
-      --cdb-text-sm: 13px;
-      --cdb-text-xs: 11px;
-      --cdb-shadow-md: 0 4px 12px rgba(0,0,0,.08);
-    }
-    * { box-sizing: border-box; margin: 0; }
-    body { font-family: system-ui, sans-serif; color: var(--cdb-color-text); }
+    body { overflow: hidden; }
     .cdb-app { display: grid; grid-template-rows: 48px 1fr 28px; height: 100vh; }
     .cdb-app-bar {
-      display: flex; align-items: center; gap: var(--cdb-space-3);
-      padding: 0 var(--cdb-space-4); border-bottom: 1px solid var(--cdb-color-border);
+      display: flex; align-items: center; gap: var(--cdb-space-2);
+      padding: 0 var(--cdb-space-4);
+      border-bottom: 1px solid var(--cdb-color-border);
+      box-shadow: var(--cdb-shadow-sm);
+      z-index: var(--cdb-z-app-bar);
+      background: var(--cdb-color-bg);
     }
-    .cdb-btn {
-      padding: 6px 12px; border: 1px solid var(--cdb-color-border);
-      border-radius: var(--cdb-radius-sm); background: var(--cdb-color-bg);
-      font-size: var(--cdb-text-sm); cursor: pointer;
+    .cdb-logo {
+      width: 28px; height: 28px; border-radius: var(--cdb-radius-sm);
+      background: var(--cdb-color-primary); color: var(--cdb-color-primary-on);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 14px;
     }
-    .cdb-btn--primary { background: var(--cdb-color-primary); color: #fff; border-color: var(--cdb-color-primary); }
+    .cdb-app-bar__spacer { flex: 1; }
+    .cdb-app-bar__actions {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px; border-radius: var(--cdb-radius-md);
+      background: var(--cdb-color-bg-subtle);
+      border: 1px solid var(--cdb-color-border);
+    }
+    .cdb-app-bar__actions .cdb-btn {
+      min-height: 32px; font-weight: 500;
+    }
+    .cdb-app-bar__actions .cdb-btn--io {
+      gap: 6px; padding: 6px 12px;
+    }
+    .cdb-app-bar__actions .cdb-btn.cdb-is-active {
+      background: var(--cdb-color-bg);
+      border-color: var(--cdb-color-primary);
+      color: var(--cdb-color-primary);
+      box-shadow: var(--cdb-shadow-sm);
+    }
+    .cdb-diagram-title {
+      font-weight: 600; font-size: var(--cdb-text-base);
+      padding: 4px 8px; border: 1px solid transparent; border-radius: var(--cdb-radius-sm);
+      background: transparent; color: var(--cdb-color-text); min-width: 120px;
+    }
+    .cdb-save-state { font-size: var(--cdb-text-xs); color: var(--cdb-color-text-muted); display: flex; align-items: center; gap: 6px; }
+    .cdb-save-state.is-saving { color: var(--cdb-color-warning); }
+    .cdb-save-state.is-error { color: var(--cdb-color-error); }
+    .cdb-save-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cdb-color-success); }
+    .cdb-save-state.is-saving .cdb-save-dot { background: var(--cdb-color-warning); animation: pulse 1s infinite; }
+    .cdb-save-state.is-error .cdb-save-dot { background: var(--cdb-color-error); }
+    @keyframes pulse { 50% { opacity: 0.4; } }
     .cdb-main {
-      display: grid;
-      grid-template-columns: 48px 1fr 0 400px; /* Phase C: IO drawer open, Inspector collapsed */
+      display: grid; grid-template-columns: 48px 1fr 320px 0;
       min-height: 0;
+      transition: grid-template-columns var(--cdb-duration-base) var(--cdb-easing-out);
     }
+    .cdb-main.cdb-is-inspector-collapsed { grid-template-columns: 48px 1fr 0 0; }
+    .cdb-main.cdb-has-io-drawer { grid-template-columns: 48px 1fr 0 400px; }
+    .cdb-main.cdb-is-code-view { grid-template-columns: 1fr; }
+    .cdb-main.cdb-is-code-view .cdb-tool-rail,
+    .cdb-main.cdb-is-code-view .cdb-inspector,
+    .cdb-main.cdb-is-code-view .cdb-io-drawer { display: none !important; }
     .cdb-tool-rail {
-      width: 48px; border-right: 1px solid var(--cdb-color-border);
-      display: flex; flex-direction: column; align-items: center; padding: var(--cdb-space-2) 0; gap: var(--cdb-space-2);
+      border-right: 1px solid var(--cdb-color-border);
+      display: flex; flex-direction: column; align-items: center;
+      padding: var(--cdb-space-2) 0; gap: 4px; background: var(--cdb-color-bg);
+    }
+    .cdb-tool-rail__divider { width: 28px; height: 1px; background: var(--cdb-color-border); margin: 4px 0; }
+    .cdb-issues-badge {
+      width: 36px; height: 36px; border-radius: var(--cdb-radius-sm);
+      background: var(--cdb-color-error-soft); color: var(--cdb-color-error);
+      font-size: var(--cdb-text-xs); font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      border: none;
     }
     .cdb-canvas-wrap {
       background: var(--cdb-color-bg-canvas); position: relative; overflow: hidden;
+      background-image: radial-gradient(circle, var(--cdb-color-border) 1px, transparent 1px);
+      background-size: 20px 20px;
     }
-    /* Phase C — IO Drawer */
-    .cdb-io-drawer {
+    .cdb-canvas-table {
+      position: absolute; width: 220px; border-radius: var(--cdb-radius-md);
+      box-shadow: var(--cdb-shadow-md); background: var(--cdb-color-bg);
+      border: 1px solid var(--cdb-color-border);
+    }
+    .cdb-canvas-table.cdb-is-selected { outline: 2px solid var(--cdb-color-primary); outline-offset: 2px; }
+    .cdb-table-header { padding: 8px 12px; font-weight: 600; font-size: var(--cdb-text-sm); color: #fff; }
+    .cdb-table-field {
+      display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+      font-size: var(--cdb-text-xs); border-top: 1px solid var(--cdb-color-border);
+    }
+    .cdb-field-type { margin-left: auto; padding: 1px 6px; border-radius: 3px; font-size: 10px; color: #fff; }
+    .cdb-rel-hint {
+      position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+      padding: 6px 14px; background: var(--cdb-color-bg); border: 1px solid var(--cdb-color-border);
+      border-radius: 999px; font-size: var(--cdb-text-xs); box-shadow: var(--cdb-shadow-md); display: none;
+    }
+    .cdb-rel-hint.is-visible { display: block; }
+    .cdb-inspector {
       border-left: 1px solid var(--cdb-color-border);
-      background: var(--cdb-color-bg);
-      display: flex; flex-direction: column;
-      font-size: var(--cdb-text-sm);
+      display: flex; flex-direction: column; background: var(--cdb-color-bg); overflow: hidden;
+      width: 320px; min-width: 320px;
     }
+    .cdb-main.cdb-is-inspector-collapsed .cdb-inspector {
+      width: 0; min-width: 0; border-left: none; overflow: hidden; visibility: hidden;
+    }
+    .cdb-main.cdb-has-io-drawer .cdb-inspector {
+      width: 0; min-width: 0; border-left: none; overflow: hidden; visibility: hidden;
+    }
+    .cdb-inspector__tabs { display: flex; flex-wrap: wrap; gap: 2px; padding: var(--cdb-space-2); border-bottom: 1px solid var(--cdb-color-border); }
+    .cdb-tab {
+      padding: 4px 8px; border: none; border-radius: var(--cdb-radius-sm);
+      background: transparent; font-size: var(--cdb-text-xs); color: var(--cdb-color-text-muted);
+    }
+    .cdb-tab.cdb-is-active { background: var(--cdb-color-primary-soft); color: var(--cdb-color-primary); font-weight: 600; }
+    .cdb-inspector__search { padding: var(--cdb-space-2) var(--cdb-space-3); border-bottom: 1px solid var(--cdb-color-border); }
+    .cdb-inspector__search input {
+      width: 100%; padding: 6px 10px; border: 1px solid var(--cdb-color-border);
+      border-radius: var(--cdb-radius-sm); background: var(--cdb-color-bg-subtle); font-size: var(--cdb-text-sm);
+      color: var(--cdb-color-text);
+    }
+    .cdb-inspector__body { flex: 1; overflow-y: auto; padding: var(--cdb-space-3); }
+    .cdb-list-item {
+      padding: 8px 10px; border-radius: var(--cdb-radius-sm); cursor: pointer;
+      font-size: var(--cdb-text-sm); display: flex; align-items: center; gap: 8px;
+    }
+    .cdb-list-item:hover { background: var(--cdb-color-bg-subtle); }
+    .cdb-list-item.cdb-is-active { background: var(--cdb-color-primary-soft); }
+    .cdb-color-dot { width: 10px; height: 10px; border-radius: 2px; }
+    .cdb-form-row { margin-bottom: var(--cdb-space-3); }
+    .cdb-form-row label { display: block; font-size: var(--cdb-text-xs); color: var(--cdb-color-text-muted); margin-bottom: 4px; }
+    .cdb-form-row input, .cdb-form-row select {
+      width: 100%; padding: 6px 8px; border: 1px solid var(--cdb-color-border);
+      border-radius: var(--cdb-radius-sm); background: var(--cdb-color-bg);
+      color: var(--cdb-color-text);
+    }
+    .cdb-checkbox-row { display: flex; gap: 12px; flex-wrap: wrap; font-size: var(--cdb-text-xs); }
+    .cdb-io-drawer {
+      border-left: 1px solid var(--cdb-color-border); background: var(--cdb-color-bg);
+      display: none; flex-direction: column;
+      width: 400px; min-width: 400px;
+      box-shadow: var(--cdb-shadow-lg);
+      z-index: 30;
+    }
+    .cdb-main.cdb-has-io-drawer .cdb-io-drawer { display: flex; }
     .cdb-io-drawer__header {
-      padding: var(--cdb-space-3) var(--cdb-space-4);
-      border-bottom: 1px solid var(--cdb-color-border);
-      display: flex; justify-content: space-between; align-items: center;
-      font-weight: 600;
+      padding: var(--cdb-space-3) var(--cdb-space-4); border-bottom: 1px solid var(--cdb-color-border);
+      display: flex; justify-content: space-between; align-items: center; font-weight: 600;
+      background: linear-gradient(to bottom, var(--cdb-color-bg), var(--cdb-color-bg-subtle));
+    }
+    .cdb-io-drawer__title { display: flex; align-items: center; gap: 8px; font-size: var(--cdb-text-sm); }
+    .cdb-io-drawer__title .cdb-icon { color: var(--cdb-color-primary); }
+    [data-mode="dark"] .cdb-io-drawer__title .cdb-icon {
+      color: var(--cdb-color-primary-on-surface, #7ec8e3);
     }
     .cdb-io-drawer__body { flex: 1; overflow-y: auto; padding: var(--cdb-space-4); }
-    .cdb-format-tabs { display: flex; gap: var(--cdb-space-2); margin-bottom: var(--cdb-space-3); }
+    .cdb-format-tabs { display: flex; gap: 4px; margin-bottom: var(--cdb-space-3); padding: 3px; background: var(--cdb-color-bg-subtle); border-radius: var(--cdb-radius-md); border: 1px solid var(--cdb-color-border); }
     .cdb-format-tabs button {
-      padding: 4px 10px; border: 1px solid var(--cdb-color-border);
-      border-radius: var(--cdb-radius-sm); background: var(--cdb-color-bg); cursor: pointer;
+      flex: 1; padding: 6px 10px; border: 1px solid transparent; border-radius: var(--cdb-radius-sm);
+      background: transparent; font-size: var(--cdb-text-xs); font-weight: 500; color: var(--cdb-color-text-muted);
     }
     .cdb-format-tabs button.cdb-is-active {
-      background: var(--cdb-color-primary-bg); border-color: var(--cdb-color-primary); color: var(--cdb-color-primary);
+      background: var(--cdb-color-bg); border-color: var(--cdb-color-border);
+      color: var(--cdb-color-primary); font-weight: 600; box-shadow: var(--cdb-shadow-sm);
+    }
+    [data-mode="dark"] .cdb-format-tabs button.cdb-is-active {
+      color: var(--cdb-color-primary-on-surface, #7ec8e3);
+    }
+    .cdb-io-label { display: block; font-size: var(--cdb-text-xs); font-weight: 600; color: var(--cdb-color-text-muted); margin-bottom: 6px; }
+    .cdb-io-select {
+      width: 100%; padding: 8px 10px; margin-bottom: var(--cdb-space-3);
+      border: 1px solid var(--cdb-color-border); border-radius: var(--cdb-radius-sm);
+      background: var(--cdb-color-bg-subtle); font-size: var(--cdb-text-sm);
+      color: var(--cdb-color-text);
+    }
+    .cdb-io-dropzone {
+      border: 2px dashed var(--cdb-color-border); border-radius: var(--cdb-radius-md);
+      padding: var(--cdb-space-3); text-align: center; font-size: var(--cdb-text-xs);
+      color: var(--cdb-color-text-muted); margin-bottom: var(--cdb-space-3);
+      background: var(--cdb-color-bg-subtle);
+    }
+    .cdb-io-dropzone strong { color: var(--cdb-color-primary); }
+    [data-mode="dark"] .cdb-io-dropzone strong {
+      color: var(--cdb-color-primary-on-surface, #7ec8e3);
     }
     .cdb-io-textarea {
       width: 100%; min-height: 160px; padding: var(--cdb-space-3);
       border: 1px solid var(--cdb-color-border); border-radius: var(--cdb-radius-sm);
       font-family: ui-monospace, monospace; font-size: var(--cdb-text-xs);
+      background: var(--cdb-color-bg-subtle); line-height: 1.5; resize: vertical;
+      color: var(--cdb-color-text);
     }
+    .cdb-io-textarea:focus { border-color: var(--cdb-color-primary); background: var(--cdb-color-bg); color: var(--cdb-color-text); }
     .cdb-parse-summary {
-      margin: var(--cdb-space-3) 0; color: var(--cdb-color-text-muted); font-size: var(--cdb-text-xs);
+      font-size: var(--cdb-text-xs); color: var(--cdb-color-text);
+      padding: 8px 10px; background: var(--cdb-color-primary-soft);
+      border-radius: var(--cdb-radius-sm); margin-top: var(--cdb-space-2);
+      border: 1px solid var(--cdb-color-border);
+    }
+    .cdb-io-preview {
+      flex: 1; min-height: 200px; padding: var(--cdb-space-3);
+      border: 1px solid var(--cdb-color-border); border-radius: var(--cdb-radius-sm);
+      font-family: ui-monospace, monospace; font-size: var(--cdb-text-xs);
+      background: var(--cdb-color-bg-subtle); line-height: 1.5; overflow: auto;
+      white-space: pre-wrap; color: var(--cdb-color-text);
+    }
+    .cdb-io-drawer__header,
+    .cdb-io-drawer__title,
+    .cdb-io-drawer__footer {
+      color: var(--cdb-color-text);
     }
     .cdb-io-drawer__footer {
-      padding: var(--cdb-space-3) var(--cdb-space-4);
-      border-top: 1px solid var(--cdb-color-border);
+      padding: var(--cdb-space-3) var(--cdb-space-4); border-top: 1px solid var(--cdb-color-border);
       display: flex; justify-content: flex-end; gap: var(--cdb-space-2);
     }
+    .cdb-code-panel {
+      display: none; flex-direction: column; background: var(--cdb-color-bg); min-height: 0;
+    }
+    .cdb-main.cdb-is-code-view .cdb-code-panel { display: flex; }
+    .cdb-main.cdb-is-code-view .cdb-canvas-wrap { display: none; }
+    .cdb-code-panel__tabs {
+      display: flex; gap: 4px; padding: var(--cdb-space-2) var(--cdb-space-4);
+      border-bottom: 1px solid var(--cdb-color-border);
+    }
+    .cdb-code-panel__tabs button {
+      padding: 6px 12px; border: none; border-radius: var(--cdb-radius-sm);
+      background: transparent; font-size: var(--cdb-text-sm); color: var(--cdb-color-text-muted);
+    }
+    .cdb-code-panel__tabs button.cdb-is-active {
+      background: var(--cdb-color-primary-soft); color: var(--cdb-color-primary); font-weight: 600;
+    }
+    .cdb-code-panel__body { flex: 1; position: relative; min-height: 0; }
+    .cdb-code-editor {
+      width: 100%; height: 100%; min-height: 400px;
+      padding: var(--cdb-space-4); margin: 0; border: none; resize: none;
+      font-family: ui-monospace, "Cascadia Code", monospace; font-size: 13px; line-height: 1.6;
+      background: var(--cdb-color-bg-subtle); color: var(--cdb-color-text);
+    }
+    .cdb-code-panel__copy {
+      position: absolute; right: var(--cdb-space-4); bottom: var(--cdb-space-3);
+    }
     .cdb-status-bar {
-      border-top: 1px solid var(--cdb-color-border); padding: 0 var(--cdb-space-4);
-      height: 28px; display: flex; align-items: center; gap: var(--cdb-space-4);
-      font-size: var(--cdb-text-xs); color: var(--cdb-color-text-muted);
+      border-top: 1px solid var(--cdb-color-border); padding: 0 var(--cdb-space-4); height: 28px;
+      display: flex; align-items: center; gap: var(--cdb-space-4);
+      font-size: var(--cdb-text-xs); color: var(--cdb-color-text-muted); background: var(--cdb-color-bg);
+    }
+    .cdb-modal-overlay {
+      position: fixed; inset: 0; background: var(--cdb-color-bg-overlay);
+      display: none; align-items: flex-start; justify-content: center;
+      padding-top: min(15vh, 120px); z-index: var(--cdb-z-modal);
+    }
+    .cdb-modal-overlay.cdb-is-open { display: flex; }
+    .cdb-modal {
+      background: var(--cdb-color-bg); border-radius: var(--cdb-radius-xl);
+      box-shadow: var(--cdb-shadow-xl); width: min(640px, 92vw);
+    }
+    .cdb-modal--sm { width: min(440px, 92vw); border-radius: var(--cdb-radius-lg); box-shadow: var(--cdb-shadow-lg); }
+    .cdb-modal__header {
+      padding: var(--cdb-space-4); border-bottom: 1px solid var(--cdb-color-border);
+      display: flex; justify-content: space-between; align-items: center; font-weight: 600;
+    }
+    .cdb-modal__body { padding: var(--cdb-space-4); }
+    .cdb-modal__footer {
+      padding: var(--cdb-space-3) var(--cdb-space-4); border-top: 1px solid var(--cdb-color-border);
+      display: flex; justify-content: flex-end; gap: var(--cdb-space-2);
+    }
+    .cdb-palette-search {
+      display: flex; align-items: center; gap: var(--cdb-space-2);
+      padding: var(--cdb-space-3) var(--cdb-space-4);
+      border-bottom: 1px solid var(--cdb-color-border);
+    }
+    .cdb-palette-search input {
+      flex: 1; border: none; background: transparent; font-size: var(--cdb-text-base);
+      color: var(--cdb-color-text);
+    }
+    .cdb-palette-search input::placeholder { color: var(--cdb-color-text-muted); }
+    .cdb-palette-list { max-height: 320px; overflow-y: auto; padding: var(--cdb-space-2); }
+    .cdb-palette-item {
+      display: flex; align-items: center; gap: var(--cdb-space-3);
+      padding: 10px 12px; border-radius: var(--cdb-radius-sm); cursor: pointer;
+      font-size: var(--cdb-text-sm);
+    }
+    .cdb-palette-item:hover, .cdb-palette-item.cdb-is-active {
+      background: var(--cdb-color-primary-soft);
+    }
+    .cdb-palette-item__meta { flex: 1; min-width: 0; }
+    .cdb-palette-item__meta small { display: block; color: var(--cdb-color-text-muted); font-size: var(--cdb-text-xs); }
+    .cdb-palette-item__kind {
+      font-size: 10px; font-weight: 600; text-transform: uppercase;
+      color: var(--cdb-color-text-muted); letter-spacing: 0.04em;
+    }
+    .cdb-conflict-options { display: flex; flex-direction: column; gap: var(--cdb-space-2); margin-top: var(--cdb-space-3); }
+    .cdb-hint-bar {
+      position: fixed; bottom: 36px; left: 50%; transform: translateX(-50%);
+      padding: 6px 12px; background: var(--cdb-color-bg); border: 1px solid var(--cdb-color-border);
+      border-radius: 999px; font-size: var(--cdb-text-xs); color: var(--cdb-color-text-muted);
+      box-shadow: var(--cdb-shadow-sm); z-index: 10;
+    }
+    [data-mode="dark"] .cdb-app-bar__actions {
+      background: var(--cdb-color-bg-subtle);
+      border-color: var(--cdb-color-border);
+    }
+    [data-mode="dark"] .cdb-app-bar__actions .cdb-btn.cdb-is-active {
+      color: var(--cdb-color-primary-on-surface, #7ec8e3);
+      border-color: var(--cdb-color-primary-on-surface, #7ec8e3);
     }
   </style>
 </head>
 <body>
   <div class="cdb-app">
     <header class="cdb-app-bar" data-testid="app-bar">
-      <strong>C</strong>
-      <span data-testid="diagram-title">电商 ER 图</span>
-      <span>● 已保存</span>
-      <!-- Phase C: 导入已启用 -->
-      <button class="cdb-btn" data-testid="btn-import">导入</button>
-      <button class="cdb-btn" data-testid="btn-export">导出 ▾</button>
-      <button class="cdb-btn cdb-btn--primary" data-testid="btn-share">分享</button>
+      <div class="cdb-logo" aria-hidden="true">C</div>
+      <button type="button" class="cdb-btn cdb-btn--ghost cdb-btn--icon" data-testid="btn-undo" aria-label="撤销" title="撤销">
+        <span class="cdb-icon"><svg viewBox="0 0 24 24"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg></span>
+      </button>
+      <button type="button" class="cdb-btn cdb-btn--ghost cdb-btn--icon" data-testid="btn-redo" aria-label="重做" title="重做">
+        <span class="cdb-icon"><svg viewBox="0 0 24 24"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg></span>
+      </button>
+      <input class="cdb-diagram-title" data-testid="diagram-title" value="电商 ER 图" aria-label="图表标题" />
+      <div class="cdb-save-state" data-testid="save-state" id="save-state">
+        <span class="cdb-save-dot" aria-hidden="true"></span>
+        <span id="save-label">已保存</span>
+        <span data-testid="revision-display" id="revision-display">rev: 5</span>
+      </div>
+      <div class="cdb-app-bar__spacer"></div>
+      <div class="cdb-app-bar__actions">
+        <button type="button" class="cdb-btn cdb-btn--io" data-testid="btn-import" id="btn-import">
+          <span class="cdb-icon cdb-icon--sm"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg></span>
+          导入
+        </button>
+        <button type="button" class="cdb-btn cdb-btn--io" data-testid="btn-export" id="btn-export">
+          <span class="cdb-icon cdb-icon--sm"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg></span>
+          导出
+        </button>
+      </div>
+      <button type="button" class="cdb-btn cdb-btn--primary" data-testid="btn-share" id="btn-share">分享</button>
+      <button type="button" class="cdb-btn cdb-btn--ghost" data-testid="btn-code-view" id="btn-code-view" aria-label="代码视图">
+        <span class="cdb-icon"><svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
+        <span id="code-view-label">代码</span>
+      </button>
+      <button type="button" class="cdb-btn cdb-btn--ghost cdb-btn--icon" data-testid="btn-theme-toggle" id="btn-theme" aria-label="切换主题">
+        <span class="cdb-icon" id="theme-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg></span>
+      </button>
+      <button type="button" class="cdb-btn cdb-btn--ghost cdb-btn--icon" data-testid="btn-inspector-toggle" id="btn-inspector-toggle" aria-label="切换侧栏">
+        <span class="cdb-icon"><svg viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg></span>
+      </button>
     </header>
 
-    <div class="cdb-main cdb-has-io-drawer">
-      <nav class="cdb-tool-rail" data-testid="tool-rail">
-        <button title="选择">↖</button>
-        <button title="新建">⊕</button>
-        <button title="关系">🔗</button>
+    <div class="cdb-main" id="cdb-main">
+      <nav class="cdb-tool-rail" data-testid="tool-rail" aria-label="工具栏">
+        <button type="button" class="cdb-tool-btn cdb-is-active" data-tool="select" aria-label="选择工具" title="选择">
+          <span class="cdb-icon"><svg viewBox="0 0 24 24"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg></span>
+        </button>
+        <button type="button" class="cdb-tool-btn" data-tool="add" aria-label="新建表" title="新建表">
+          <span class="cdb-icon"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg></span>
+        </button>
+        <button type="button" class="cdb-tool-btn" data-tool="relationship" aria-label="关系工具" title="关系">
+          <span class="cdb-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+        </button>
+        <button type="button" class="cdb-tool-btn" data-tool="pan" aria-label="平移画布" title="平移">
+          <span class="cdb-icon"><svg viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg></span>
+        </button>
+        <div class="cdb-tool-rail__divider" role="separator"></div>
+        <button type="button" class="cdb-issues-badge" data-testid="issues-badge" id="issues-badge" aria-label="2 个问题">2</button>
       </nav>
 
       <main class="cdb-canvas-wrap" data-testid="editor-canvas">
-        <p style="padding:24px;color:var(--cdb-color-text-muted);">画布区域（Inspector 已折叠）</p>
+        <div class="cdb-canvas-table cdb-is-selected" data-table="users" style="left:80px;top:60px;" data-testid="table-users">
+          <div class="cdb-table-header" style="background:#175e7a;border-radius:6px 6px 0 0;">users</div>
+          <div class="cdb-table-field"><span style="color:var(--cdb-color-warning);font-size:10px;">PK</span> id <span class="cdb-field-type" style="background:#3b82f6;">BIGINT</span></div>
+          <div class="cdb-table-field">name <span class="cdb-field-type" style="background:#10b981;">VARCHAR</span></div>
+          <div class="cdb-table-field">email <span class="cdb-field-type" style="background:#10b981;">VARCHAR</span></div>
+        </div>
+        <div class="cdb-canvas-table" data-table="posts" style="left:560px;top:60px;" data-testid="table-posts">
+          <div class="cdb-table-header" style="background:#0e7490;border-radius:6px 6px 0 0;">posts</div>
+          <div class="cdb-table-field"><span style="color:var(--cdb-color-warning);font-size:10px;">PK</span> id <span class="cdb-field-type" style="background:#3b82f6;">BIGINT</span></div>
+          <div class="cdb-table-field">user_id <span class="cdb-field-type" style="background:#3b82f6;">BIGINT</span></div>
+          <div class="cdb-table-field">title <span class="cdb-field-type" style="background:#10b981;">VARCHAR</span></div>
+        </div>
+        <div class="cdb-rel-hint" id="rel-hint">选择源字段 → 选择目标字段</div>
       </main>
 
-      <!-- Inspector 折叠（width 0） -->
+      <section class="cdb-code-panel" data-testid="code-view-modal" aria-label="代码视图">
+        <div class="cdb-code-panel__tabs" role="tablist">
+          <button type="button" class="cdb-is-active" data-lang="sql" role="tab" aria-selected="true">SQL</button>
+          <button type="button" data-lang="dbml" role="tab">DBML</button>
+          <button type="button" data-lang="json" role="tab">JSON</button>
+        </div>
+        <div class="cdb-code-panel__body">
+          <textarea class="cdb-code-editor" id="code-editor" readonly aria-label="代码内容"></textarea>
+          <button type="button" class="cdb-btn cdb-code-panel__copy" id="btn-copy-code" data-testid="btn-copy-code">
+            <span class="cdb-icon cdb-icon--sm"><svg viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></span>
+            复制
+          </button>
+        </div>
+      </section>
 
-      <!-- Phase C: Import Drawer -->
-      <aside class="cdb-io-drawer" data-testid="import-drawer">
+      <aside class="cdb-inspector" data-testid="inspector-panel">
+        <div class="cdb-inspector__tabs" data-testid="side-panel-tabs" role="tablist">
+          <button type="button" class="cdb-tab cdb-is-active" data-tab="tables" role="tab">表</button>
+          <button type="button" class="cdb-tab" data-tab="areas" role="tab">区域</button>
+          <button type="button" class="cdb-tab" data-tab="enums" role="tab">枚举</button>
+          <button type="button" class="cdb-tab" data-tab="notes" role="tab">注释</button>
+          <button type="button" class="cdb-tab" data-tab="relationships" role="tab">关系</button>
+          <button type="button" class="cdb-tab" data-tab="types" role="tab">类型</button>
+          <button type="button" class="cdb-tab" data-tab="issues" role="tab">问题</button>
+        </div>
+        <div class="cdb-inspector__search">
+          <input type="search" placeholder="搜索表 / 字段…" data-testid="side-search" aria-label="搜索" />
+        </div>
+        <div class="cdb-inspector__body">
+          <div id="tab-tables">
+            <div class="cdb-list-item cdb-is-active" data-table="users"><span class="cdb-color-dot" style="background:#175e7a;"></span> users</div>
+            <div class="cdb-list-item" data-table="posts"><span class="cdb-color-dot" style="background:#0e7490;"></span> posts</div>
+          </div>
+          <div id="tab-issues" hidden>
+            <div class="cdb-list-item">
+              <span class="cdb-icon cdb-icon--sm" style="color:var(--cdb-color-warning);"><svg viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></span>
+              演示：Issues 校验条目
+            </div>
+          </div>
+          <div id="field-editor" data-testid="field-editor" style="margin-top:12px;">
+            <h4 style="font-size:13px;margin-bottom:8px;">字段：users.email</h4>
+            <div class="cdb-form-row"><label>类型</label><select><option>VARCHAR</option></select></div>
+            <div class="cdb-checkbox-row"><label><input type="checkbox" checked /> NOT NULL</label><label><input type="checkbox" checked /> UNIQUE</label></div>
+          </div>
+        </div>
+      </aside>
+
+      <aside class="cdb-io-drawer" data-testid="io-drawer">
         <div class="cdb-io-drawer__header">
-          <span>导入</span>
-          <button class="cdb-btn" data-testid="import-cancel">×</button>
+          <span class="cdb-io-drawer__title" id="io-drawer-title">
+            <span class="cdb-icon"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg></span>
+            <span id="io-drawer-label">导入</span>
+          </span>
+          <button type="button" class="cdb-btn cdb-btn--ghost cdb-btn--icon" id="io-close" aria-label="关闭"><span class="cdb-icon"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></button>
         </div>
         <div class="cdb-io-drawer__body">
-          <div class="cdb-format-tabs" data-testid="import-format-tabs">
-            <button class="cdb-is-active">SQL</button>
-            <button>DBML</button>
-            <button>JSON</button>
+          <div class="cdb-format-tabs" data-testid="io-format-tabs">
+            <button type="button" class="cdb-is-active" data-io-format="sql">SQL</button>
+            <button type="button" data-io-format="dbml">DBML</button>
+            <button type="button" data-io-format="json">JSON</button>
           </div>
-          <label style="font-size:var(--cdb-text-xs);color:var(--cdb-color-text-muted);">数据库引擎</label>
-          <select data-testid="import-engine-select" style="width:100%;margin:4px 0 12px;padding:6px;">
-            <option>generic</option>
-            <option>mysql</option>
-            <option>postgresql</option>
-          </select>
-          <textarea class="cdb-io-textarea" data-testid="import-textarea" placeholder="粘贴 SQL 或拖放 .sql 文件">CREATE TABLE users (
-  id INT PRIMARY KEY
+          <div id="io-import-panel" data-testid="import-drawer">
+            <div class="cdb-io-dropzone" id="io-dropzone">拖放 <strong>.sql / .dbml / .json</strong> 或粘贴下方</div>
+            <div id="import-engine-wrap">
+              <label class="cdb-io-label" for="import-engine-select">数据库引擎</label>
+              <select class="cdb-io-select" id="import-engine-select" data-testid="import-engine-select">
+                <option>generic</option><option>mysql</option><option>postgresql</option>
+              </select>
+            </div>
+            <textarea class="cdb-io-textarea" id="import-textarea" data-testid="import-textarea" placeholder="粘贴 SQL / DBML / JSON…">CREATE TABLE users (
+  id BIGINT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) UNIQUE
 );</textarea>
-          <p class="cdb-parse-summary" data-testid="import-parse-summary">解析摘要：1 条语句</p>
+            <p class="cdb-parse-summary" data-testid="import-parse-summary" id="import-parse-summary">解析摘要：1 条语句 · 预计 1 张表</p>
+          </div>
+          <div id="io-export-panel" data-testid="export-drawer" hidden>
+            <div id="export-engine-wrap">
+              <label class="cdb-io-label" for="export-engine-select">数据库引擎</label>
+              <select class="cdb-io-select" id="export-engine-select" data-testid="export-engine-select">
+                <option>mysql</option><option>postgresql</option><option>generic</option>
+              </select>
+            </div>
+            <pre class="cdb-io-preview" id="export-preview" data-testid="export-preview"></pre>
+          </div>
         </div>
         <div class="cdb-io-drawer__footer">
-          <button class="cdb-btn" data-testid="import-cancel-btn">取消</button>
-          <button class="cdb-btn cdb-btn--primary" data-testid="import-submit">导入并打开 ▶</button>
+          <button type="button" class="cdb-btn" id="io-cancel">取消</button>
+          <button type="button" class="cdb-btn cdb-btn--primary" id="io-primary" data-testid="import-submit">导入并打开 ▶</button>
         </div>
       </aside>
     </div>
 
     <footer class="cdb-status-bar" data-testid="status-bar">
-      <span>缩放 100%</span>
-      <span>0 张表 / 0 条关系</span>
-      <span data-testid="revision-display">rev: 1</span>
+      <span>缩放 100%</span><span>2 张表 / 1 条关系</span><span>S01 debounce 1s</span>
+      <span class="cdb-kbd">Ctrl+K</span> 命令面板
     </footer>
   </div>
+
+  <div class="cdb-modal-overlay" id="modal-palette" data-testid="command-palette" role="dialog" aria-modal="true" aria-label="命令面板">
+    <div class="cdb-modal">
+      <div class="cdb-palette-search">
+        <span class="cdb-icon" style="color:var(--cdb-color-text-muted);"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>
+        <input type="search" id="palette-input" placeholder="搜索表 / 区域 / 枚举 / 注释 / 关系 / 类型…" autocomplete="off" />
+        <span class="cdb-kbd">Esc</span>
+      </div>
+      <div class="cdb-palette-list" id="palette-list" role="listbox">
+        <div class="cdb-palette-item cdb-is-active" data-target="users" role="option">
+          <span class="cdb-icon"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg></span>
+          <div class="cdb-palette-item__meta"><strong>users</strong><small>3 字段 · 画布 (80, 60)</small></div>
+          <span class="cdb-palette-item__kind">表</span>
+        </div>
+        <div class="cdb-palette-item" data-target="posts" role="option">
+          <span class="cdb-icon"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg></span>
+          <div class="cdb-palette-item__meta"><strong>posts</strong><small>3 字段 · 画布 (560, 60)</small></div>
+          <span class="cdb-palette-item__kind">表</span>
+        </div>
+        <div class="cdb-palette-item" data-target="rel" role="option">
+          <span class="cdb-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+          <div class="cdb-palette-item__meta"><strong>posts.user_id → users.id</strong><small>一对多</small></div>
+          <span class="cdb-palette-item__kind">关系</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cdb-modal-overlay" id="modal-share" data-testid="modal-share" role="dialog" aria-modal="true">
+    <div class="cdb-modal cdb-modal--sm">
+      <div class="cdb-modal__header"><span>分享图表</span><button type="button" class="cdb-btn cdb-btn--ghost cdb-btn--icon" data-close="modal-share" aria-label="关闭"><span class="cdb-icon"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></button></div>
+      <div class="cdb-modal__body">
+        <input readonly value="https://coldrawdb.example.com/?share=abc-123-def" style="width:100%;padding:8px;border:1px solid var(--cdb-color-border);border-radius:4px;" data-testid="share-url" />
+      </div>
+      <div class="cdb-modal__footer">
+        <button type="button" class="cdb-btn" data-close="modal-share">关闭</button>
+        <button type="button" class="cdb-btn cdb-btn--primary">复制链接</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="cdb-modal-overlay" id="modal-conflict" data-testid="modal-conflict" role="dialog" aria-modal="true">
+    <div class="cdb-modal cdb-modal--sm">
+      <div class="cdb-modal__header"><span>保存冲突 (409)</span><button type="button" class="cdb-btn cdb-btn--ghost cdb-btn--icon" data-close="modal-conflict" aria-label="关闭"><span class="cdb-icon"><svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></button></div>
+      <div class="cdb-modal__body">
+        <p style="font-size:13px;margin-bottom:8px;">服务端 revision=7，本地 expected=5</p>
+        <div class="cdb-conflict-options">
+          <button type="button" class="cdb-btn" data-testid="conflict-reload">Reload</button>
+          <button type="button" class="cdb-btn" data-testid="conflict-force">Force</button>
+          <button type="button" class="cdb-btn" data-close="modal-conflict">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cdb-toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const main = document.getElementById('cdb-main');
+    const toastEl = document.getElementById('toast');
+    let revision = 5;
+    let codeViewOpen = false;
+    let paletteIndex = 0;
+    let ioMode = 'none'; // 'import' | 'export' | 'none'
+    let ioFormat = 'sql';
+
+    const CODE_SAMPLES = {
+      sql: `-- coldrawdb export (generic)\nCREATE TABLE users (\n  id BIGINT PRIMARY KEY,\n  name VARCHAR(255) NOT NULL,\n  email VARCHAR(255) UNIQUE\n);\n\nCREATE TABLE posts (\n  id BIGINT PRIMARY KEY,\n  user_id BIGINT REFERENCES users(id),\n  title VARCHAR(255)\n);`,
+      dbml: `Table users {\n  id bigint [pk]\n  name varchar\n  email varchar [unique]\n}\n\nTable posts {\n  id bigint [pk]\n  user_id bigint [ref: > users.id]\n  title varchar\n}`,
+      json: `{\n  "tables": [\n    { "name": "users", "fields": ["id", "name", "email"] },\n    { "name": "posts", "fields": ["id", "user_id", "title"] }\n  ]\n}`
+    };
+
+    function updateExportPreview() {
+      document.getElementById('export-preview').textContent = CODE_SAMPLES[ioFormat] || CODE_SAMPLES.sql;
+    }
+
+    function updateImportSummary() {
+      const text = document.getElementById('import-textarea').value.trim();
+      const el = document.getElementById('import-parse-summary');
+      if (!text) {
+        el.textContent = '解析摘要：等待输入…';
+        return;
+      }
+      const tables = (text.match(/CREATE\s+TABLE/gi) || []).length || (text.match(/Table\s+\w+/gi) || []).length || 1;
+      const stmts = text.split(';').filter(s => s.trim()).length;
+      el.textContent = `解析摘要：${stmts} 条语句 · 预计 ${tables} 张表`;
+    }
+
+    function setIoFormat(fmt) {
+      ioFormat = fmt;
+      document.querySelectorAll('[data-io-format]').forEach(btn => {
+        btn.classList.toggle('cdb-is-active', btn.dataset.ioFormat === fmt);
+      });
+      if (ioMode === 'import') {
+        document.getElementById('import-engine-wrap').hidden = fmt !== 'sql';
+        const ta = document.getElementById('import-textarea');
+        ta.placeholder = fmt === 'dbml' ? '粘贴 DBML…' : fmt === 'json' ? '粘贴 JSON…' : '粘贴 SQL…';
+        updateImportSummary();
+      } else if (ioMode === 'export') {
+        document.getElementById('export-engine-wrap').hidden = fmt !== 'sql';
+        updateExportPreview();
+      }
+    }
+
+    function highlightIoButtons() {
+      document.getElementById('btn-import').classList.toggle('cdb-is-active', ioMode === 'import');
+      document.getElementById('btn-export').classList.toggle('cdb-is-active', ioMode === 'export');
+    }
+
+    function openIo(mode) {
+      ioMode = mode;
+      toggleCodeView(false);
+      main.classList.add('cdb-has-io-drawer', 'cdb-is-inspector-collapsed');
+      document.getElementById('io-import-panel').hidden = mode !== 'import';
+      document.getElementById('io-export-panel').hidden = mode !== 'export';
+      document.getElementById('io-drawer-label').textContent = mode === 'import' ? '导入' : '导出';
+      const iconPath = mode === 'import'
+        ? '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>'
+        : '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>';
+      document.querySelector('#io-drawer-title .cdb-icon svg').innerHTML = iconPath;
+      const primary = document.getElementById('io-primary');
+      if (mode === 'import') {
+        primary.textContent = '导入并打开 ▶';
+        primary.dataset.testid = 'import-submit';
+        updateImportSummary();
+      } else {
+        primary.textContent = '复制到剪贴板';
+        primary.dataset.testid = 'export-copy';
+        updateExportPreview();
+      }
+      document.getElementById('import-engine-wrap').hidden = ioFormat !== 'sql' || mode !== 'import';
+      document.getElementById('export-engine-wrap').hidden = ioFormat !== 'sql' || mode !== 'export';
+      highlightIoButtons();
+    }
+
+    function closeIo() {
+      ioMode = 'none';
+      main.classList.remove('cdb-has-io-drawer', 'cdb-is-inspector-collapsed');
+      highlightIoButtons();
+    }
+
+    function toast(msg) {
+      toastEl.textContent = msg;
+      toastEl.classList.add('is-visible');
+      setTimeout(() => toastEl.classList.remove('is-visible'), 2200);
+    }
+
+    function openModal(id) {
+      document.getElementById(id).classList.add('cdb-is-open');
+      if (id === 'modal-palette') {
+        const input = document.getElementById('palette-input');
+        input.value = '';
+        input.focus();
+        filterPalette('');
+      }
+    }
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('cdb-is-open');
+    }
+
+    function selectTable(id) {
+      document.querySelectorAll('.cdb-canvas-table').forEach(t => t.classList.toggle('cdb-is-selected', t.dataset.table === id));
+      document.querySelectorAll('.cdb-list-item[data-table]').forEach(t => t.classList.toggle('cdb-is-active', t.dataset.table === id));
+      triggerSave();
+    }
+
+    function toggleCodeView(open) {
+      codeViewOpen = open ?? !codeViewOpen;
+      main.classList.toggle('cdb-is-code-view', codeViewOpen);
+      main.classList.remove('cdb-has-io-drawer');
+      document.getElementById('code-view-label').textContent = codeViewOpen ? '返回' : '代码';
+      if (codeViewOpen) {
+        document.getElementById('code-editor').value = CODE_SAMPLES.sql;
+      }
+    }
+
+    function filterPalette(q) {
+      const items = [...document.querySelectorAll('.cdb-palette-item')];
+      let visible = 0;
+      items.forEach(item => {
+        const text = item.textContent.toLowerCase();
+        const show = !q || text.includes(q.toLowerCase());
+        item.hidden = !show;
+        if (show) visible++;
+      });
+      paletteIndex = 0;
+      items.filter(i => !i.hidden).forEach((item, i) => item.classList.toggle('cdb-is-active', i === 0));
+    }
+
+    document.querySelectorAll('.cdb-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.cdb-tab').forEach(t => t.classList.remove('cdb-is-active'));
+        tab.classList.add('cdb-is-active');
+        document.getElementById('tab-tables').hidden = tab.dataset.tab !== 'tables';
+        document.getElementById('tab-issues').hidden = tab.dataset.tab !== 'issues';
+        document.getElementById('field-editor').hidden = tab.dataset.tab !== 'tables';
+      });
+    });
+
+    document.querySelectorAll('[data-table]').forEach(el => {
+      el.addEventListener('click', () => selectTable(el.dataset.table));
+    });
+
+    document.querySelectorAll('[data-tool]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-tool]').forEach(b => b.classList.remove('cdb-is-active'));
+        btn.classList.add('cdb-is-active');
+        document.getElementById('rel-hint').classList.toggle('is-visible', btn.dataset.tool === 'relationship');
+      });
+    });
+
+    document.getElementById('btn-inspector-toggle').onclick = () => {
+      if (ioMode !== 'none') closeIo();
+      main.classList.toggle('cdb-is-inspector-collapsed');
+    };
+    document.getElementById('btn-import').onclick = () => openIo('import');
+    document.getElementById('btn-export').onclick = () => openIo('export');
+    document.getElementById('io-close').onclick = closeIo;
+    document.getElementById('io-cancel').onclick = closeIo;
+
+    document.querySelectorAll('[data-io-format]').forEach(btn => {
+      btn.onclick = () => setIoFormat(btn.dataset.ioFormat);
+    });
+    document.getElementById('import-textarea').oninput = updateImportSummary;
+
+    document.getElementById('io-primary').onclick = async () => {
+      if (ioMode === 'import') {
+        const text = document.getElementById('import-textarea').value.trim();
+        if (!text) { toast('请先粘贴或输入内容'); return; }
+        const btn = document.getElementById('io-primary');
+        btn.disabled = true;
+        btn.textContent = '导入中…';
+        setTimeout(() => {
+          btn.disabled = false;
+          btn.textContent = '导入并打开 ▶';
+          closeIo();
+          triggerSave();
+          toast('导入成功 · 已打开 diagram');
+        }, 900);
+      } else {
+        try {
+          await navigator.clipboard.writeText(document.getElementById('export-preview').textContent);
+          toast('已复制到剪贴板');
+        } catch {
+          toast('复制失败');
+        }
+      }
+    };
+
+    document.getElementById('btn-theme').onclick = () => {
+      const h = document.documentElement;
+      h.dataset.mode = h.dataset.mode === 'dark' ? 'light' : 'dark';
+    };
+
+    document.getElementById('btn-share').onclick = () => openModal('modal-share');
+    document.getElementById('btn-code-view').onclick = () => toggleCodeView();
+    document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => closeModal(b.dataset.close));
+
+    document.getElementById('issues-badge').onclick = () => {
+      document.querySelector('[data-tab="issues"]').click();
+      main.classList.remove('cdb-is-inspector-collapsed');
+    };
+
+    document.querySelectorAll('.cdb-code-panel__tabs button').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('.cdb-code-panel__tabs button').forEach(b => {
+          b.classList.remove('cdb-is-active');
+          b.setAttribute('aria-selected', 'false');
+        });
+        btn.classList.add('cdb-is-active');
+        btn.setAttribute('aria-selected', 'true');
+        document.getElementById('code-editor').value = CODE_SAMPLES[btn.dataset.lang];
+      };
+    });
+
+    document.getElementById('btn-copy-code').onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(document.getElementById('code-editor').value);
+        toast('已复制到剪贴板');
+      } catch {
+        toast('复制失败');
+      }
+    };
+
+    document.getElementById('palette-input').oninput = (e) => filterPalette(e.target.value);
+    document.querySelectorAll('.cdb-palette-item').forEach(item => {
+      item.onclick = () => {
+        if (item.dataset.target === 'users' || item.dataset.target === 'posts') selectTable(item.dataset.target);
+        closeModal('modal-palette');
+        toast('已聚焦：' + item.querySelector('strong').textContent);
+      };
+    });
+
+    let timer;
+    function triggerSave() {
+      const st = document.getElementById('save-state');
+      document.getElementById('save-label').textContent = '保存中…';
+      st.classList.add('is-saving');
+      st.classList.remove('is-error');
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        revision++;
+        document.getElementById('revision-display').textContent = 'rev: ' + revision;
+        document.getElementById('save-label').textContent = '已保存';
+        st.classList.remove('is-saving');
+      }, 1000);
+    }
+
+    document.querySelector('.cdb-diagram-title').ondblclick = () => openModal('modal-conflict');
+
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        openModal('modal-palette');
+      }
+      if (e.key === 'Escape') {
+        ['modal-palette', 'modal-share', 'modal-conflict'].forEach(id => closeModal(id));
+        if (codeViewOpen) toggleCodeView(false);
+        if (ioMode !== 'none') closeIo();
+      }
+      if (document.getElementById('modal-palette').classList.contains('cdb-is-open')) {
+        const visible = [...document.querySelectorAll('.cdb-palette-item:not([hidden])')];
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          paletteIndex = Math.min(paletteIndex + 1, visible.length - 1);
+          visible.forEach((item, i) => item.classList.toggle('cdb-is-active', i === paletteIndex));
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          paletteIndex = Math.max(paletteIndex - 1, 0);
+          visible.forEach((item, i) => item.classList.toggle('cdb-is-active', i === paletteIndex));
+        }
+        if (e.key === 'Enter' && visible[paletteIndex]) visible[paletteIndex].click();
+      }
+    });
+
+    document.querySelectorAll('.cdb-modal-overlay').forEach(overlay => {
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.classList.remove('cdb-is-open');
+      });
+    });
+  </script>
 </body>
 </html>
-<!--
-  Delta — core-01-editor-prototype.html (Phase E / E3)
-  merge 操作（追加到现有 Phase A/B/C delta 之后）：
-  1. MODIFIED：.cdb-app-bar 按钮全部替换为 E2 SVG icon（保留 cdb-* class 占位）
-  2. MODIFIED：.cdb-main Inspector 抽屉按钮组从 emoji 改为 E3 Button + E2 icon
-  3. MODIFIED：Issues 折叠条带改用 E3 Collapse + E3 Tag
-  4. MODIFIED：CDB token 引用全部从硬编码 hex 改为 var(--cdb-*)
-  5. ADDED：.cdb-monaco-container 占位容器（供 E4 CodeView 演示）
-  6. ADDED：data-mode="dark" 示例态（E5 预留）
--->
-<style>
-  /* E1 token 扩展（demo） */
-  :root {
-    --cdb-color-primary: #175e7a;
-    --cdb-color-primary-hover: #134c63;
-    --cdb-color-primary-soft: #e6f1f5;
-    --cdb-color-text-0: #1f2937;
-    --cdb-color-text-2: #6b7280;
-    --cdb-color-border: #e5e7eb;
-    --cdb-color-bg-0: #ffffff;
-    --cdb-color-bg-3: #f3f4f6;
-    --cdb-color-warning: #f59e0b;
-    --cdb-color-warning-soft: #fef3c7;
-    --cdb-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-    --cdb-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
-    --cdb-radius-sm: 4px;
-    --cdb-radius-md: 6px;
-    --cdb-radius-lg: 8px;
-    --cdb-z-modal: 50;
-  }
-  /* E5 dark mode demo（占位） */
-  [data-mode="dark"] {
-    --cdb-color-bg-0: #16161a;
-    --cdb-color-text-0: #f9fafb;
-  }
-</style>
-
-<!-- E3 AppBar：按钮全部用 E2 SVG icon + E3 Button class -->
-<header class="cdb-app-bar">
-  <button class="cdb-btn cdb-btn--tertiary" data-testid="btn-undo">
-    <svg width="16" height="16" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5">
-      <path d="M9 14 L4 9 L9 4 M4 9 L15 9 A7 7 0 0 1 22 16 A7 7 0 0 1 15 23 L8 23" />
-    </svg>
-    <span>撤销</span>
-  </button>
-  <button class="cdb-btn cdb-btn--tertiary" data-testid="btn-redo">
-    <svg width="16" height="16" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5">
-      <path d="M17 14 L22 9 L17 4 M22 9 L11 9 A7 7 0 0 0 4 16 A7 7 0 0 0 11 23 L18 23" />
-    </svg>
-    <span>重做</span>
-  </button>
-  <input class="cdb-diagram-title" value="my_schema" />
-  <button class="cdb-btn cdb-btn--primary" data-testid="btn-save">
-    <svg width="16" height="16" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5">
-      <path d="M4 2 L18 2 L22 6 L22 22 L4 22 Z M8 2 L8 10 L18 10 L18 2 M8 14 L18 14" />
-    </svg>
-    <span>保存</span>
-  </button>
-  <!-- E4 增量：btn-code-view -->
-  <button class="cdb-btn cdb-btn--secondary" data-testid="btn-code-view">
-    <svg width="16" height="16" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5">
-      <path d="M9 7 L4 13 L9 19 M17 7 L22 13 L17 19 M14 5 L12 21" />
-    </svg>
-    <span>代码</span>
-  </button>
-  <!-- E5 增量：theme toggle -->
-  <button class="cdb-btn cdb-btn--tertiary" data-testid="btn-theme-toggle">
-    <svg width="16" height="16" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5">
-      <circle cx="13" cy="13" r="5" />
-      <path d="M13 2 L13 5 M13 21 L13 24 M2 13 L5 13 M21 13 L24 13 M5 5 L7 7 M19 19 L21 21 M5 21 L7 19 M19 7 L21 5" />
-    </svg>
-  </button>
-</header>
-
-<!-- E3 Issues Collapse -->
-<section class="cdb-issues" data-testid="cdb-issues-collapse">
-  <div class="cdb-collapse-header">
-    <span class="cdb-tag cdb-tag--warning" data-testid="issues-badge">5</span>
-    <span>问题</span>
-  </div>
-</section>
-
-<!-- E3 Inspector 抽屉用 E3 Button -->
-<aside class="cdb-side-panel cdb-side-panel--right" data-testid="inspector">
-  <button class="cdb-btn cdb-btn--warning" data-testid="btn-delete-selected">
-    <svg width="14" height="14" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5">
-      <path d="M5 7 L21 7 M9 7 L9 4 L17 4 L17 7 M7 7 L7 22 L19 22 L19 7" />
-    </svg>
-    <span>删除</span>
-  </button>
-</aside>
-
-<!-- E4 增量：Code View 容器占位（E4 实装 Monaco） -->
-<div class="cdb-monaco-container" data-testid="code-view" hidden>
-  <textarea class="cdb-code-view-fallback" readonly><!-- E4 实装后由 Monaco 接管 --></textarea>
-</div>
