@@ -68,18 +68,17 @@ fn ensure_parent(path: &PathBuf) {
 }
 
 fn id_is_valid(id: &str) -> bool {
-    let bytes = id.as_bytes();
-    if bytes.len() < 8 {
+    if id.len() < 7 {
         return false;
     }
-    let (prefix, rest) = id.split_at(2);
-    if prefix != "UT" && prefix != "ST" {
+    let Some((kind, rest)) = id.split_once('-') else {
+        return false;
+    };
+    if kind != "UT" && kind != "ST" {
         return false;
     }
-    if !rest.starts_with("-S") {
-        return false;
-    }
-    rest.len() >= 6
+    let parts: Vec<&str> = rest.split('-').collect();
+    parts.len() >= 2 && parts.iter().all(|p| !p.is_empty())
 }
 
 fn append_record(id: &str, status: &str, duration_ms: Option<u128>, error: Option<&str>) {

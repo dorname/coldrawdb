@@ -19,9 +19,12 @@ mod auth;
 mod auth_v1;
 mod rooms;
 mod rooms_v1;
+mod collab;
+mod collab_v1;
 mod verify_reporter;
 use error::DrawDBError;
 use init::{get_config, init};
+use collab::CollabHub;
 use tracing_subscriber::fmt;
 use std::result::Result;
 use snowflake::{SnowflakeIdGenerator};
@@ -72,11 +75,13 @@ async fn main() -> Result<(), DrawDBError> {
         .map_err(|e| DrawDBError::OtherError(e.to_string()))?;
     let host = config.host.clone();
     let port = config.port.clone();
+    let collab_hub = CollabHub::new();
 
     HttpServer::new(move || {
         App::new()
             .wrap(Cors::permissive())
             .app_data(web::Data::new(db.clone().unwrap()))
+            .app_data(web::Data::new(collab_hub.clone()))
             .service(hello)
             .route("/", web::get().to(index))
             .service(web::scope("/todos").configure(todos::todos_routes))
@@ -85,7 +90,9 @@ async fn main() -> Result<(), DrawDBError> {
             .service(web::scope("/api/v1").configure(diagrams_v1::diagrams_v1_routes))
             .service(web::scope("/api/v1").configure(auth_v1::auth_v1_routes))
             .service(web::scope("/api/v1").configure(rooms_v1::rooms_v1_routes))
+            .service(web::scope("/api/v1").configure(collab_v1::collab_rest_routes))
             .service(web::scope("/api/v1").configure(phase3_bridge::phase3_bridge_routes))
+            .route("/ws/rooms/{room_id}", web::get().to(collab::collab_ws_handler))
 
     })
     .bind(format!("{}:{}", host, port))?
