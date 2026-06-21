@@ -100,3 +100,70 @@ fn ut_e6_04_reduced_motion() {
     assert!(css.contains("transition-duration: 0.01ms !important"),
         "UT-E6-04 FAIL: reduced-motion transition override missing");
 }
+
+#[test]
+fn ut_r6_01_pulse_naming_split() {
+    let css = load_css();
+    assert!(css.contains("@keyframes cdb-pulse-opacity"), "UT-R6-01 FAIL: cdb-pulse-opacity missing");
+    assert!(
+        css.contains(".cdb-save-dot--saving") && css.contains("cdb-pulse-opacity"),
+        "UT-R6-01 FAIL: save dot should use cdb-pulse-opacity"
+    );
+
+    let pulse_count = css
+        .match_indices("@keyframes ")
+        .filter(|(i, _)| {
+            let rest = &css[*i + 11..];
+            rest.starts_with("cdb-pulse {") || rest.starts_with("cdb-pulse\n")
+        })
+        .count();
+    assert_eq!(pulse_count, 1, "UT-R6-01 FAIL: expected exactly one @keyframes cdb-pulse, got {}", pulse_count);
+
+    let start = css
+        .match_indices("@keyframes ")
+        .find(|(i, _)| {
+            let rest = &css[*i + 11..];
+            rest.starts_with("cdb-pulse {") || rest.starts_with("cdb-pulse\n")
+        })
+        .map(|(i, _)| i)
+        .expect("UT-R6-01 FAIL: @keyframes cdb-pulse missing");
+    let after_start = start + 1;
+    let end = css[after_start..]
+        .find("@keyframes")
+        .map(|i| after_start + i)
+        .unwrap_or(css.len());
+    let block = &css[start..end];
+    assert!(block.contains("scale"), "UT-R6-01 FAIL: cdb-pulse should animate scale");
+    assert!(!block.contains("opacity"), "UT-R6-01 FAIL: cdb-pulse must not define opacity");
+}
+
+#[test]
+fn ut_r6_02_button_focus_and_active() {
+    let css = load_css();
+    assert!(
+        css.contains(".cdb-btn:focus-visible") && css.contains("var(--cdb-shadow-focus)"),
+        "UT-R6-02 FAIL: .cdb-btn:focus-visible should use --cdb-shadow-focus"
+    );
+    assert!(
+        css.contains(".cdb-btn--primary:active") && css.contains("var(--cdb-color-primary-active)"),
+        "UT-R6-02 FAIL: primary active state missing"
+    );
+}
+
+#[test]
+fn ut_r6_03_panel_spring_entrance() {
+    let css = load_css();
+    for (sel, label) in [
+        (".cdb-inspector", "inspector"),
+        (".cdb-has-io-drawer .cdb-io-drawer", "io drawer"),
+        (".cdb-app-bar__overflow-menu", "overflow menu"),
+    ] {
+        let idx = css.find(sel).unwrap_or_else(|| panic!("UT-R6-03 FAIL: selector `{}` missing", sel));
+        let chunk = &css[idx..idx.saturating_add(400)];
+        assert!(
+            chunk.contains("var(--cdb-easing-spring)"),
+            "UT-R6-03 FAIL: {} should use spring easing",
+            label
+        );
+    }
+}
