@@ -220,6 +220,16 @@ SVG 内部 `width/height` 由容器 100% 撑满，`stroke="currentColor"` 继承
 
 > R4 禁止 AppBar 使用非网格魔法数（如 `gap: 6px; padding: 4px` 的 IO pill 容器）；溢出菜单复用 `--cdb-z-popover` 层级。
 
+## 15.3 Inspector Tab 栅格（R5）
+
+| Token | 值 | 用途 |
+|---|---|---|
+| `--cdb-inspector-tab-size` | `36px` | 图标 Tab 单元格高度 |
+| `--cdb-inspector-tab-gap` | `var(--cdb-space-1)` | 4×2 栅格间距（4px） |
+| `--cdb-inspector-tab-columns` | `4` | Tab 栏列数 |
+
+> R5 Tab 栏使用 `.cdb-tabs--icon-grid`；禁止 Inspector 内 Tab 使用非网格 `padding: 4px 8px` 文字换行。
+
 ## 16. 主题切换接口
 
 | 接口 | 类型 | 说明 |
@@ -240,6 +250,10 @@ SVG 内部 `width/height` 由容器 100% 撑满，`stroke="currentColor"` 继承
 - 保存反馈必须通过单一 `.cdb-status-chip`（`data-testid="save-state"`）呈现
 - `revision-display` **仅**出现在状态 Chip 内（StatusBar 不得重复）
 - 导入/导出/主题通过 `btn-more-menu` 溢出菜单可达，testid 保持不变；Inspector 折叠仍用 StatusBar `btn-inspector-toggle`
+- Inspector Tab 栏必须为 `.cdb-tabs--icon-grid`（4 列 × 2 行）
+- 8 个 `tab-*` testid 均存在（含 `tab-fields`）
+- 不得存在 `.cdb-side-panel--right` 45% 高度分割
+- `field-editor` 仅在 `tab-fields` 内容区渲染
 
 ## 18. 不在 E1 范围
 

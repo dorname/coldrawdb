@@ -31,19 +31,21 @@
   - 列表项文本 == "users"
   - 内部 store 状态未变更（仅 UI 过滤）
 
-### UT-SP-09 — 6 业务 Tab 切换
+### UT-SP-09 — 8 Tab 图标栏切换（R5）
 
-- **位置**：`frontend-rs/src/editor_panels.rs::LeftPanel`（tab 栏 + 7 个 Tab 子组件）
+- **位置**：`frontend-rs/src/editor_panels.rs::LeftPanel`（图标 Tab 栏 + 8 个 Tab 子组件）
 - **前置**：AppRoot mount，store 包含 tables / areas / enums / notes / references / types（每种至少 1 项）
 - **步骤**：
   1. 默认渲染 → 验证 Tables Tab 处于激活态
-  2. 模拟点击 Areas Tab
-  3. 验证激活态切换
-  4. 依次点击 Enums / Notes / Relationships / Types / Issues
-  5. 验证每个 Tab 内容区正确切换
+  2. 验证 Tab 栏为 `.cdb-tabs--icon-grid`（4 列 × 2 行）
+  3. 依次点击 Areas / Enums / Notes / Relationships / Types / Issues / **Fields**
+  4. 验证每个 Tab 内容区正确切换
 - **断言**：
-  - `data-testid="tab-tables"`、`tab-areas`、`tab-enums`、`tab-notes`、`tab-relationships`、`tab-types`、`tab-issues` 全部存在
+  - `data-testid="tab-tables"`、`tab-areas`、`tab-enums`、`tab-notes`、`tab-relationships`、`tab-types`、`tab-issues`、**`tab-fields`** 全部存在
+  - 每个 Tab 含 `title` 属性（Tooltip 文案）
   - 每次点击后 `cdb-tab.cdb-is-active` 类正确指向当前 Tab
+  - **不存在** `.cdb-side-panel--right` 45% 分割容器
+  - `field-editor` 仅在 Fields Tab 内容区渲染
   - 切换不丢失 store 数据（只换渲染）
 
 ### UT-SP-10 — 全局搜索跨 Tab 过滤
@@ -94,6 +96,6 @@
 | ID | 标题 | 对齐实现 |
 |---|---|---|
 | UT-SP-02 | Tables Tab 搜索过滤 | `frontend-rs/src/editor_panels.rs` |
-| UT-SP-09 | 6 业务 Tab 切换 | `frontend-rs/src/editor_panels.rs` |
+| UT-SP-09 | 8 Tab 图标栏切换 | `frontend-rs/src/editor_panels.rs` |
 | UT-SP-10 | 全局搜索跨 Tab 过滤 | `frontend-rs/src/editor_panels.rs` |
 | ST-SP-01 | 端到端 5 表 0 error | `frontend-rs/tests/wasm/sp.rs` |

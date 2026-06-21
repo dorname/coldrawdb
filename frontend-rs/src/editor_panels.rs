@@ -24,9 +24,10 @@ use crate::editor_data_access::{save_with_retry, DiagramClient, SaveError, Impor
 use crate::editor_render::Canvas;
 use crate::editor_render::{Transform, zoom_in, zoom_out, zoom_reset};
 use crate::icons::{
-    IconAdd, IconBox, IconChevronLeft, IconChevronRight, IconClose, IconExport, IconImport,
-    IconMinus, IconMoon, IconMore, IconPan, IconRelationship, IconSelect, IconSettings,
-    IconSidebar, IconSun, IconRedo, IconUndo,
+    IconAdd, IconAddArea, IconAddNote, IconAddTable, IconBox, IconChevronLeft, IconChevronRight,
+    IconClose, IconEnum, IconExport, IconImport, IconKey, IconMinus, IconMoon, IconMore, IconPan,
+    IconRelationship, IconSelect, IconSettings, IconSidebar, IconSun, IconType, IconWarning,
+    IconRedo, IconUndo,
 };
 use leptos::*;
 use std::cell::RefCell;
@@ -51,6 +52,7 @@ pub enum SidePanelTab {
     Relationships,
     Types,
     Issues,
+    Fields,
 }
 
 impl SidePanelTab {
@@ -63,6 +65,7 @@ impl SidePanelTab {
             SidePanelTab::Relationships => "tab-relationships",
             SidePanelTab::Types => "tab-types",
             SidePanelTab::Issues => "tab-issues",
+            SidePanelTab::Fields => "tab-fields",
         }
     }
 
@@ -75,7 +78,25 @@ impl SidePanelTab {
             SidePanelTab::Relationships => "关系",
             SidePanelTab::Types => "类型",
             SidePanelTab::Issues => "问题",
+            SidePanelTab::Fields => "字段",
         }
+    }
+}
+
+/// R5：Inspector Tab 图标（icon-only + title tooltip）
+#[component]
+fn InspectorTabIcon(tab: SidePanelTab) -> impl IntoView {
+    match tab {
+        SidePanelTab::Tables => view! { <IconBox size="sm"><IconAddTable /></IconBox> }.into_view(),
+        SidePanelTab::Areas => view! { <IconBox size="sm"><IconAddArea /></IconBox> }.into_view(),
+        SidePanelTab::Enums => view! { <IconBox size="sm"><IconEnum /></IconBox> }.into_view(),
+        SidePanelTab::Notes => view! { <IconBox size="sm"><IconAddNote /></IconBox> }.into_view(),
+        SidePanelTab::Relationships => {
+            view! { <IconBox size="sm"><IconRelationship /></IconBox> }.into_view()
+        }
+        SidePanelTab::Types => view! { <IconBox size="sm"><IconType /></IconBox> }.into_view(),
+        SidePanelTab::Issues => view! { <IconBox size="sm"><IconWarning /></IconBox> }.into_view(),
+        SidePanelTab::Fields => view! { <IconBox size="sm"><IconKey /></IconBox> }.into_view(),
     }
 }
 
@@ -2405,7 +2426,7 @@ pub fn TopBar(
 /// - 顶部全局搜索框：跨 Tab 模糊匹配（spec §10）；query 为空时不过滤
 /// - 类型筛选下拉：仅作用于 Tables Tab（B2 简化）；其他 Tab 暂用全集
 /// - 选中态：active_tab 用 `cdb-is-active` 类指示
-/// - data-testid: tab-{key} 7 个 + search-input + type-filter + 7 个 tab-pane-{key}
+/// - data-testid: tab-{key} 8 个 + search-input + type-filter + tab-pane-{key}
 #[component]
 pub fn LeftPanel(
     store: EditorStore,
@@ -2414,6 +2435,9 @@ pub fn LeftPanel(
     on_jump_to_table: Option<Rc<dyn Fn(String)>>,
     on_create_table: Rc<dyn Fn()>,
     on_save: Rc<dyn Fn()>,
+    on_add_field: Rc<dyn Fn(String)>,
+    on_change_type: Rc<dyn Fn(String, String)>,
+    on_set_ref: Rc<dyn Fn(String)>,
 ) -> impl IntoView {
     // B2 范围：Areas/Enums/Notes/Types 暂用「仅前端 state」（spec 标 V1）
     let areas: RwSignal<Vec<AreaStub>> = create_rw_signal(Vec::new());
@@ -2433,27 +2457,37 @@ pub fn LeftPanel(
         SidePanelTab::Relationships,
         SidePanelTab::Types,
         SidePanelTab::Issues,
+        SidePanelTab::Fields,
     ];
 
+    create_effect(move |_| {
+        if selected_table_id.get().is_some() {
+            active_tab.set(SidePanelTab::Fields);
+        }
+    });
+
     view! {
-        <div class="cdb-side-panel cdb-side-panel--left" data-testid="left-panel">
-            <div class="cdb-tabs cdb-tabs--wrap" role="tablist">
+        <div class="cdb-side-panel" data-testid="left-panel">
+            <div class="cdb-tabs cdb-tabs--icon-grid" role="tablist">
                 <For each=move || tab_keys.clone() key=|t| *t children=move |tab: SidePanelTab| {
                     let tab_for_click = tab;
                     let testid = tab.testid();
+                    let tooltip = tab.label();
                     let show_badge = matches!(
                         tab_for_click,
                         SidePanelTab::Tables | SidePanelTab::Relationships
                     );
                     view! {
                         <div
-                            class="cdb-tab"
+                            class="cdb-tab cdb-tab--icon"
                             class:cdb-is-active=move || active_tab.get() == tab_for_click
                             role="tab"
                             data-testid={testid}
+                            title=tooltip
+                            aria-label=tooltip
                             on:click=move |_| active_tab.set(tab_for_click)
                         >
-                            <span>{tab_for_click.label()}</span>
+                            <InspectorTabIcon tab=tab_for_click />
                             {move || if show_badge {
                                 let count = match tab_for_click {
                                     SidePanelTab::Tables => store.tables.get().len(),
@@ -2468,33 +2502,39 @@ pub fn LeftPanel(
                     }
                 } />
             </div>
-            <div class="cdb-search-box">
-                <input
-                    type="text"
-                    class="cdb-search-input"
-                    placeholder="搜索..."
-                    data-testid="side-search"
-                    prop:value=move || search_query.get()
-                    on:input=move |ev| search_query.set(event_target_value(&ev))
-                />
-                {move || if active_tab.get() == SidePanelTab::Tables {
-                    view! {
-                        <select
-                            class="cdb-type-filter"
-                            data-testid="type-filter"
-                            on:change=move |ev| type_filter.set(event_target_value(&ev))
-                        >
-                            <option value="">"所有类型"</option>
-                            <option value="INT">"INT"</option>
-                            <option value="VARCHAR(255)">"VARCHAR(255)"</option>
-                            <option value="TEXT">"TEXT"</option>
-                            <option value="BOOLEAN">"BOOLEAN"</option>
-                        </select>
-                    }.into_view()
-                } else {
-                    view! { <></> }.into_view()
-                }}
-            </div>
+            {move || if active_tab.get() != SidePanelTab::Fields {
+                view! {
+                    <div class="cdb-search-box">
+                        <input
+                            type="text"
+                            class="cdb-search-input"
+                            placeholder="搜索..."
+                            data-testid="side-search"
+                            prop:value=move || search_query.get()
+                            on:input=move |ev| search_query.set(event_target_value(&ev))
+                        />
+                        {move || if active_tab.get() == SidePanelTab::Tables {
+                            view! {
+                                <select
+                                    class="cdb-type-filter"
+                                    data-testid="type-filter"
+                                    on:change=move |ev| type_filter.set(event_target_value(&ev))
+                                >
+                                    <option value="">"所有类型"</option>
+                                    <option value="INT">"INT"</option>
+                                    <option value="VARCHAR(255)">"VARCHAR(255)"</option>
+                                    <option value="TEXT">"TEXT"</option>
+                                    <option value="BOOLEAN">"BOOLEAN"</option>
+                                </select>
+                            }.into_view()
+                        } else {
+                            view! { <></> }.into_view()
+                        }}
+                    </div>
+                }.into_view()
+            } else {
+                view! { <></> }.into_view()
+            }}
             <div class="cdb-tab-content">
                 {move || match active_tab.get() {
                     SidePanelTab::Tables => view! {
@@ -2526,15 +2566,24 @@ pub fn LeftPanel(
                     SidePanelTab::Issues => view! {
                         <IssuesTab store=store.clone() on_jump_to_table=on_jump_to_table.clone() />
                     }.into_view(),
+                    SidePanelTab::Fields => view! {
+                        <FieldsTabContent
+                            store=store.clone()
+                            selected_table_id=selected_table_id
+                            on_add_field=on_add_field.clone()
+                            on_change_type=on_change_type.clone()
+                            on_set_ref=on_set_ref.clone()
+                        />
+                    }.into_view(),
                 }}
             </div>
         </div>
     }
 }
 
-/// 右侧面板视图
+/// R5：字段 Tab 内容（原 RightPanel，全高单栏）
 #[component]
-pub fn RightPanel(
+pub fn FieldsTabContent(
     store: EditorStore,
     selected_table_id: RwSignal<Option<String>>,
     on_add_field: Rc<dyn Fn(String)>,
@@ -2548,87 +2597,103 @@ pub fn RightPanel(
     let has_selection = create_memo(move |_| selected_table.get().is_some());
 
     view! {
-        <div class="cdb-side-panel cdb-side-panel--right" data-testid="right-panel">
-            <div class="cdb-tabs" role="tablist">
-                <div class="cdb-tab cdb-is-active" role="tab" data-testid="tab-fields">"字段"</div>
-            </div>
-            <div class="cdb-tab-content">
-            {move || match has_selection.get() {
-                true => {
-                    let t = selected_table.get().unwrap();
-                    let fields = t.fields.clone();
-                    let table_name = t.name.clone();
-                    let on_add = on_add_field.clone();
-                    let on_change = on_change_type.clone();
-                    let on_ref = on_set_ref.clone();
-                    let on_add_click = {
-                        let on_add = on_add.clone();
-                        move |_| {
-                            if let Some(id) = selected_table_id.get() {
-                                on_add(id);
-                            }
+        <div class="cdb-tab-pane" data-testid="tab-pane-fields">
+            <div class="cdb-tab-pane__scroll">
+            {move || if has_selection.get() {
+                let t = selected_table.get().unwrap();
+                let fields = t.fields.clone();
+                let table_name = t.name.clone();
+                let on_add = on_add_field.clone();
+                let on_change = on_change_type.clone();
+                let on_ref = on_set_ref.clone();
+                let on_add_click = {
+                    let on_add = on_add.clone();
+                    move |_| {
+                        if let Some(id) = selected_table_id.get() {
+                            on_add(id);
                         }
-                    };
-                    view! {
-                        <div class="cdb-field-list" data-testid="field-editor">
-                            <h3>{table_name}</h3>
-                            <button
-                                class="cdb-btn cdb-btn--primary cdb-btn--block"
-                                data-testid="btn-add-field"
-                                on:click=on_add_click
-                            >
-                                "加字段"
-                            </button>
-                            <For each=move || fields.clone() key=|f| f.id.clone() children=move |field: Field| {
-                                let field_id = field.id.clone();
-                                let field_id_for_change = field_id.clone();
-                                let field_id_for_ref = field_id.clone();
-                                let field_name = field.name.clone();
-                                let field_type = field.type_.clone();
-                                let on_change = on_change.clone();
-                                let on_ref = on_ref.clone();
-                                let testid_row = format!("field-row-{}", field_id);
-                                let testid_type = format!("type-{}", field_id);
-                                let testid_ref = format!("set-ref-{}", field_id);
-                                view! {
-                                    <div class="cdb-field-row" data-testid={testid_row}>
-                                        <span>{field_name}</span>
-                                        <select
-                                            data-testid={testid_type}
-                                            value=field_type
-                                            on:change=move |ev| {
-                                                let new_type = event_target_value(&ev);
-                                                on_change(field_id_for_change.clone(), new_type);
-                                            }
-                                        >
-                                            <option value="INT">"INT"</option>
-                                            <option value="BIGINT">"BIGINT"</option>
-                                            <option value="VARCHAR(255)">"VARCHAR(255)"</option>
-                                            <option value="TEXT">"TEXT"</option>
-                                            <option value="BOOLEAN">"BOOLEAN"</option>
-                                            <option value="DATE">"DATE"</option>
-                                            <option value="TIMESTAMP">"TIMESTAMP"</option>
-                                            <option value="FLOAT">"FLOAT"</option>
-                                            <option value="DOUBLE">"DOUBLE"</option>
-                                            <option value="DECIMAL">"DECIMAL"</option>
-                                        </select>
-                                        <button
-                                            class="cdb-btn cdb-btn--icon"
-                                            data-testid={testid_ref}
-                                            on:click=move |_| { on_ref(field_id_for_ref.clone()); }
-                                        >
-                                            "设关系"
-                                        </button>
-                                    </div>
-                                }
-                            } />
-                        </div>
-                    }.into_view()
-                }
-                false => view! { <p class="cdb-empty-hint">"请选择一个表"</p> }.into_view(),
+                    }
+                };
+                view! {
+                    <div class="cdb-field-list" data-testid="field-editor">
+                        <h3>{table_name}</h3>
+                        <button
+                            class="cdb-btn cdb-btn--primary cdb-btn--block"
+                            data-testid="btn-add-field"
+                            on:click=on_add_click
+                        >
+                            "加字段"
+                        </button>
+                        <For each=move || fields.clone() key=|f| f.id.clone() children=move |field: Field| {
+                            let field_id = field.id.clone();
+                            let field_id_for_change = field_id.clone();
+                            let field_id_for_ref = field_id.clone();
+                            let field_name = field.name.clone();
+                            let field_type = field.type_.clone();
+                            let on_change = on_change.clone();
+                            let on_ref = on_ref.clone();
+                            let testid_row = format!("field-row-{}", field_id);
+                            let testid_type = format!("type-{}", field_id);
+                            let testid_ref = format!("set-ref-{}", field_id);
+                            view! {
+                                <div class="cdb-field-row" data-testid={testid_row}>
+                                    <span>{field_name}</span>
+                                    <select
+                                        data-testid={testid_type}
+                                        value=field_type
+                                        on:change=move |ev| {
+                                            let new_type = event_target_value(&ev);
+                                            on_change(field_id_for_change.clone(), new_type);
+                                        }
+                                    >
+                                        <option value="INT">"INT"</option>
+                                        <option value="BIGINT">"BIGINT"</option>
+                                        <option value="VARCHAR(255)">"VARCHAR(255)"</option>
+                                        <option value="TEXT">"TEXT"</option>
+                                        <option value="BOOLEAN">"BOOLEAN"</option>
+                                        <option value="DATE">"DATE"</option>
+                                        <option value="TIMESTAMP">"TIMESTAMP"</option>
+                                        <option value="FLOAT">"FLOAT"</option>
+                                        <option value="DOUBLE">"DOUBLE"</option>
+                                        <option value="DECIMAL">"DECIMAL"</option>
+                                    </select>
+                                    <button
+                                        class="cdb-btn cdb-btn--icon"
+                                        data-testid={testid_ref}
+                                        on:click=move |_| { on_ref(field_id_for_ref.clone()); }
+                                    >
+                                        "设关系"
+                                    </button>
+                                </div>
+                            }
+                        } />
+                    </div>
+                }.into_view()
+            } else {
+                view! { <p class="cdb-empty-hint">"请选择一个表"</p> }.into_view()
             }}
             </div>
         </div>
+    }
+}
+
+/// 右侧面板视图（R5 废弃分割布局；保留组件供 UT 字符串引用）
+#[component]
+pub fn RightPanel(
+    store: EditorStore,
+    selected_table_id: RwSignal<Option<String>>,
+    on_add_field: Rc<dyn Fn(String)>,
+    on_change_type: Rc<dyn Fn(String, String)>,
+    on_set_ref: Rc<dyn Fn(String)>,
+) -> impl IntoView {
+    view! {
+        <FieldsTabContent
+            store=store
+            selected_table_id=selected_table_id
+            on_add_field=on_add_field
+            on_change_type=on_change_type
+            on_set_ref=on_set_ref
+        />
     }
 }
 
@@ -3818,10 +3883,6 @@ pub fn AppRoot(
                         on_jump_to_table=Some(on_jump_to_table.clone())
                         on_create_table=on_create_table_panel.clone()
                         on_save=on_save.clone()
-                    />
-                    <RightPanel
-                        store=store.clone()
-                        selected_table_id=selected_table_id
                         on_add_field=on_add_field.clone()
                         on_change_type=on_change_type.clone()
                         on_set_ref=on_set_ref.clone()
@@ -4842,9 +4903,9 @@ mod tests {
         assert_eq!(v[0].name, "users");
     }
 
-    // --- UT-SP-09 — 6 业务 Tab 切换 ---
+    // --- UT-SP-09 — 8 Tab 图标栏切换（R5） ---
 
-    /// UT-SP-09: 7 个 Tab 的 testid/label 全部存在且唯一
+    /// UT-SP-09: 8 个 Tab 的 testid/label 全部存在且唯一
     #[test]
     fn test_side_panel_tab_testid_completeness_ut_sp_09() {
         let all_tabs = [
@@ -4855,17 +4916,17 @@ mod tests {
             SidePanelTab::Relationships,
             SidePanelTab::Types,
             SidePanelTab::Issues,
+            SidePanelTab::Fields,
         ];
         let mut testids: Vec<&str> = all_tabs.iter().map(|t| t.testid()).collect();
         testids.sort();
         testids.dedup();
         assert_eq!(
             testids.len(),
-            7,
-            "UT-SP-09: 7 个 Tab testid 应全部唯一，实际 {} 个",
+            8,
+            "UT-SP-09: 8 个 Tab testid 应全部唯一，实际 {} 个",
             testids.len()
         );
-        // 验证覆盖所有 6 业务 Tab + Issues
         for expected in [
             "tab-tables",
             "tab-areas",
@@ -4874,6 +4935,7 @@ mod tests {
             "tab-relationships",
             "tab-types",
             "tab-issues",
+            "tab-fields",
         ] {
             assert!(
                 testids.contains(&expected),
@@ -4883,7 +4945,7 @@ mod tests {
         }
     }
 
-    /// UT-SP-09: 7 个 Tab label 都有非空显示文本
+    /// UT-SP-09: 8 个 Tab label 都有非空显示文本（Tooltip）
     #[test]
     fn test_side_panel_tab_label_nonempty_ut_sp_09() {
         for tab in [
@@ -4894,6 +4956,7 @@ mod tests {
             SidePanelTab::Relationships,
             SidePanelTab::Types,
             SidePanelTab::Issues,
+            SidePanelTab::Fields,
         ] {
             assert!(
                 !tab.label().is_empty(),
@@ -5250,6 +5313,18 @@ mod tests {
         assert!(
             css.contains("grid-template-columns: 48px 1fr 320px 0"),
             "UT-PA-06: .cdb-main 栅格应对齐原型 ToolRail + Canvas + Inspector + IO",
+        );
+        assert!(
+            panels.contains("cdb-tabs--icon-grid"),
+            "UT-IN-R5: Inspector Tab 栏必须使用图标栅格",
+        );
+        assert!(
+            panels.contains("SidePanelTab::Fields"),
+            "UT-IN-R5: 必须包含 Fields Tab",
+        );
+        assert!(
+            !css.contains("max-height: 45%"),
+            "UT-IN-R5: 不得保留 Inspector 45% 字段区分割",
         );
         assert!(
             css.contains("cdb-has-io-drawer"),

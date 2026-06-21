@@ -155,6 +155,11 @@
   --cdb-app-bar-gap: var(--cdb-space-3);
   --cdb-app-bar-brand-gap: var(--cdb-space-2);
   --cdb-app-bar-actions-gap: var(--cdb-space-2);
+
+  /* Inspector Tab 栅格（R5） */
+  --cdb-inspector-tab-size: 36px;
+  --cdb-inspector-tab-gap: var(--cdb-space-1);
+  --cdb-inspector-tab-columns: 4;
   --cdb-z-side-rail: 25;
   --cdb-z-inspector: 30;
   --cdb-z-drawer: 30;
@@ -686,8 +691,11 @@ textarea {
 }
 
 .cdb-inspector > .cdb-side-panel {
+  flex: 1 1 auto;
   width: 100%;
-  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .cdb-inspector > .cdb-side-panel--left {
@@ -697,11 +705,7 @@ textarea {
 }
 
 .cdb-inspector > .cdb-side-panel--right {
-  flex: 0 0 auto;
-  max-height: 45%;
-  border-left: none;
-  border-top: 1px solid var(--cdb-color-border);
-  background: linear-gradient(to bottom, var(--cdb-color-bg), var(--cdb-color-bg-subtle));
+  display: none;
 }
 
 /* ============================================================
@@ -1166,6 +1170,35 @@ textarea {
   flex-wrap: wrap;
   gap: 2px;
   padding: var(--cdb-space-2);
+}
+
+.cdb-tabs--icon-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--cdb-inspector-tab-columns, 4), 1fr);
+  gap: var(--cdb-inspector-tab-gap);
+  padding: var(--cdb-space-2);
+  border-bottom: 1px solid var(--cdb-color-border);
+  background: var(--cdb-color-bg);
+  flex-shrink: 0;
+}
+
+.cdb-tab--icon {
+  position: relative;
+  justify-content: center;
+  min-height: var(--cdb-inspector-tab-size);
+  padding: var(--cdb-space-1);
+  gap: 0;
+}
+
+.cdb-tab--icon .cdb-tab-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  font-size: 9px;
+  line-height: 14px;
 }
 
 .cdb-tab {

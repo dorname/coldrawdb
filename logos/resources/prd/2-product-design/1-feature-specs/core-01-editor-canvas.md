@@ -281,6 +281,25 @@ Inspector 抽屉（L3）承载画布选中态的属性编辑。E3 阶段用 E3 �
 
 **E4 增量**：Inspector 头部增加"Code View"入口（`<Button on_click=open_code_view_for_selected>`），仅在选中表/关系时显示。
 
+### §6.5 Inspector Tab 图标栅格（R5）
+
+> 模块：core | 提案：r5-inspector-tabs
+
+R5 将 Inspector 内 7 业务 Tab + **字段 Tab** 从文字换行栏改为 **4×2 图标栅格**：
+
+| Tab | 图标 | testid | Tooltip |
+|---|---|---|---|
+| 表 | `IconAddTable` | `tab-tables` | 表 |
+| 区域 | `IconAddArea` | `tab-areas` | 区域 |
+| 枚举 | `IconEnum` | `tab-enums` | 枚举 |
+| 注释 | `IconAddNote` | `tab-notes` | 注释 |
+| 关系 | `IconRelationship` | `tab-relationships` | 关系 |
+| 类型 | `IconType` | `tab-types` | 类型 |
+| 问题 | `IconWarning` | `tab-issues` | 问题 |
+| **字段** | `IconKey` | `tab-fields` | 字段 |
+
+**字段 Tab（R5）**：原 `.cdb-side-panel--right` 45% 底部分割废弃；`field-editor` 仅在 `tab-fields` 激活时全高渲染；选中表时自动切换至字段 Tab。
+
 ## MODIFIED — §9 详细规格（E3 验收更新）
 
 **merge 时在 §9 末尾追加**：

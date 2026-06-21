@@ -123,12 +123,23 @@
     .cdb-main.cdb-has-io-drawer .cdb-inspector {
       width: 0; min-width: 0; border-left: none; overflow: hidden; visibility: hidden;
     }
-    .cdb-inspector__tabs { display: flex; flex-wrap: wrap; gap: 2px; padding: var(--cdb-space-2); border-bottom: 1px solid var(--cdb-color-border); }
-    .cdb-tab {
-      padding: 4px 8px; border: none; border-radius: var(--cdb-radius-sm);
-      background: transparent; font-size: var(--cdb-text-xs); color: var(--cdb-color-text-muted);
+    .cdb-inspector__tabs {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: var(--cdb-space-1);
+      padding: var(--cdb-space-2);
+      border-bottom: 1px solid var(--cdb-color-border);
     }
-    .cdb-tab.cdb-is-active { background: var(--cdb-color-primary-soft); color: var(--cdb-color-primary); font-weight: 600; }
+    .cdb-tab--icon {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 36px; padding: var(--cdb-space-1);
+      border: 1px solid transparent; border-radius: var(--cdb-radius-sm);
+      background: transparent; font-size: var(--cdb-text-xs); color: var(--cdb-color-text-muted);
+      cursor: pointer;
+    }
+    .cdb-tab--icon.cdb-is-active {
+      background: var(--cdb-color-primary-soft); color: var(--cdb-color-primary); font-weight: 600;
+    }
     .cdb-inspector__search { padding: var(--cdb-space-2) var(--cdb-space-3); border-bottom: 1px solid var(--cdb-color-border); }
     .cdb-inspector__search input {
       width: 100%; padding: 6px 10px; border: 1px solid var(--cdb-color-border);
@@ -410,16 +421,17 @@
       </section>
 
       <aside class="cdb-inspector" data-testid="inspector-panel">
-        <div class="cdb-inspector__tabs" data-testid="side-panel-tabs" role="tablist">
-          <button type="button" class="cdb-tab cdb-is-active" data-tab="tables" role="tab">表</button>
-          <button type="button" class="cdb-tab" data-tab="areas" role="tab">区域</button>
-          <button type="button" class="cdb-tab" data-tab="enums" role="tab">枚举</button>
-          <button type="button" class="cdb-tab" data-tab="notes" role="tab">注释</button>
-          <button type="button" class="cdb-tab" data-tab="relationships" role="tab">关系</button>
-          <button type="button" class="cdb-tab" data-tab="types" role="tab">类型</button>
-          <button type="button" class="cdb-tab" data-tab="issues" role="tab">问题</button>
+        <div class="cdb-inspector__tabs cdb-tabs--icon-grid" data-testid="side-panel-tabs" role="tablist">
+          <button type="button" class="cdb-tab cdb-tab--icon cdb-is-active" data-tab="tables" data-testid="tab-tables" role="tab" title="表" aria-label="表">表</button>
+          <button type="button" class="cdb-tab cdb-tab--icon" data-tab="areas" data-testid="tab-areas" role="tab" title="区域" aria-label="区域">区</button>
+          <button type="button" class="cdb-tab cdb-tab--icon" data-tab="enums" data-testid="tab-enums" role="tab" title="枚举" aria-label="枚举">枚</button>
+          <button type="button" class="cdb-tab cdb-tab--icon" data-tab="notes" data-testid="tab-notes" role="tab" title="注释" aria-label="注释">注</button>
+          <button type="button" class="cdb-tab cdb-tab--icon" data-tab="relationships" data-testid="tab-relationships" role="tab" title="关系" aria-label="关系">关</button>
+          <button type="button" class="cdb-tab cdb-tab--icon" data-tab="types" data-testid="tab-types" role="tab" title="类型" aria-label="类型">型</button>
+          <button type="button" class="cdb-tab cdb-tab--icon" data-tab="issues" data-testid="tab-issues" role="tab" title="问题" aria-label="问题">!</button>
+          <button type="button" class="cdb-tab cdb-tab--icon" data-tab="fields" data-testid="tab-fields" role="tab" title="字段" aria-label="字段">键</button>
         </div>
-        <div class="cdb-inspector__search">
+        <div class="cdb-inspector__search" id="inspector-search">
           <input type="search" placeholder="搜索表 / 字段…" data-testid="side-search" aria-label="搜索" />
         </div>
         <div class="cdb-inspector__body">
@@ -433,10 +445,12 @@
               演示：Issues 校验条目
             </div>
           </div>
-          <div id="field-editor" data-testid="field-editor" style="margin-top:12px;">
-            <h4 style="font-size:13px;margin-bottom:8px;">字段：users.email</h4>
-            <div class="cdb-form-row"><label>类型</label><select><option>VARCHAR</option></select></div>
-            <div class="cdb-checkbox-row"><label><input type="checkbox" checked /> NOT NULL</label><label><input type="checkbox" checked /> UNIQUE</label></div>
+          <div id="tab-fields" hidden>
+            <div id="field-editor" data-testid="field-editor">
+              <h4 style="font-size:13px;margin-bottom:8px;">字段：users.email</h4>
+              <div class="cdb-form-row"><label>类型</label><select><option>VARCHAR</option></select></div>
+              <div class="cdb-checkbox-row"><label><input type="checkbox" checked /> NOT NULL</label><label><input type="checkbox" checked /> UNIQUE</label></div>
+            </div>
           </div>
         </div>
       </aside>
@@ -687,9 +701,11 @@
       tab.addEventListener('click', () => {
         document.querySelectorAll('.cdb-tab').forEach(t => t.classList.remove('cdb-is-active'));
         tab.classList.add('cdb-is-active');
-        document.getElementById('tab-tables').hidden = tab.dataset.tab !== 'tables';
-        document.getElementById('tab-issues').hidden = tab.dataset.tab !== 'issues';
-        document.getElementById('field-editor').hidden = tab.dataset.tab !== 'tables';
+        const tabName = tab.dataset.tab;
+        document.getElementById('tab-tables').hidden = tabName !== 'tables';
+        document.getElementById('tab-issues').hidden = tabName !== 'issues';
+        document.getElementById('tab-fields').hidden = tabName !== 'fields';
+        document.getElementById('inspector-search').hidden = tabName === 'fields';
       });
     });
 
