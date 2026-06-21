@@ -150,6 +150,11 @@
   --cdb-z-base: 1;
   --cdb-z-canvas-overlay: 10;
   --cdb-z-app-bar: 20;
+
+  /* AppBar 分区间距（R4） */
+  --cdb-app-bar-gap: var(--cdb-space-3);
+  --cdb-app-bar-brand-gap: var(--cdb-space-2);
+  --cdb-app-bar-actions-gap: var(--cdb-space-2);
   --cdb-z-side-rail: 25;
   --cdb-z-inspector: 30;
   --cdb-z-drawer: 30;
@@ -412,11 +417,40 @@ textarea {
   padding: 0 var(--cdb-space-4);
   display: flex;
   align-items: center;
-  gap: var(--cdb-space-2);
+  gap: var(--cdb-app-bar-gap);
   height: 48px;
   z-index: 20;
   position: relative;
   min-height: 48px;
+}
+
+.cdb-app-bar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--cdb-app-bar-brand-gap);
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.cdb-app-bar__status {
+  flex: 0 0 auto;
+}
+
+.cdb-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cdb-space-1);
+  padding: var(--cdb-space-1) var(--cdb-space-3);
+  border-radius: 999px;
+  background: var(--cdb-color-bg-subtle);
+  border: 1px solid var(--cdb-color-border);
+  font-size: var(--cdb-text-xs);
+  white-space: nowrap;
+}
+
+.cdb-status-chip__sep {
+  color: var(--cdb-color-text-muted);
+  opacity: 0.6;
 }
 
 .cdb-app-bar__spacer {
@@ -426,11 +460,25 @@ textarea {
 .cdb-app-bar__actions {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px;
-  border-radius: var(--cdb-radius-md);
-  background: var(--cdb-color-bg-subtle);
-  border: 1px solid var(--cdb-color-border);
+  gap: var(--cdb-app-bar-actions-gap);
+  flex: 0 0 auto;
+}
+
+.cdb-app-bar__overflow {
+  position: relative;
+}
+
+.cdb-app-bar__overflow-menu {
+  right: 0;
+  left: auto;
+  min-width: 180px;
+  z-index: var(--cdb-z-popover, 45);
+}
+
+.cdb-menu-dropdown-item--icon {
+  display: flex;
+  align-items: center;
+  gap: var(--cdb-space-2);
 }
 
 .cdb-app-bar__actions .cdb-btn {
@@ -443,10 +491,10 @@ textarea {
   padding: 6px 12px;
 }
 
-.cdb-save-state-wrap {
-  display: inline-flex;
-  align-items: center;
-  min-width: 120px;
+.cdb-app-bar__status .cdb-save-state {
+  padding: 0;
+  border: none;
+  background: transparent;
 }
 
 .cdb-save-dot {

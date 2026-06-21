@@ -9,13 +9,26 @@
     body { overflow: hidden; }
     .cdb-app { display: grid; grid-template-rows: 48px 1fr 28px; height: 100vh; }
     .cdb-app-bar {
-      display: flex; align-items: center; gap: var(--cdb-space-2);
+      display: flex; align-items: center; gap: var(--cdb-app-bar-gap, var(--cdb-space-3));
       padding: 0 var(--cdb-space-4);
       border-bottom: 1px solid var(--cdb-color-border);
       box-shadow: var(--cdb-shadow-sm);
       z-index: var(--cdb-z-app-bar);
       background: var(--cdb-color-bg);
     }
+    .cdb-app-bar__brand {
+      display: flex; align-items: center; gap: var(--cdb-app-bar-brand-gap, var(--cdb-space-2));
+      min-width: 0; flex: 0 1 auto;
+    }
+    .cdb-app-bar__status { flex: 0 0 auto; }
+    .cdb-status-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 12px; border-radius: 999px;
+      background: var(--cdb-color-bg-subtle);
+      border: 1px solid var(--cdb-color-border);
+      font-size: var(--cdb-text-xs);
+    }
+    .cdb-status-chip__sep { color: var(--cdb-color-text-muted); opacity: 0.6; }
     .cdb-logo {
       width: 28px; height: 28px; border-radius: var(--cdb-radius-sm);
       background: var(--cdb-color-primary); color: var(--cdb-color-primary-on);
@@ -24,23 +37,22 @@
     }
     .cdb-app-bar__spacer { flex: 1; }
     .cdb-app-bar__actions {
-      display: flex; align-items: center; gap: 6px;
-      padding: 4px; border-radius: var(--cdb-radius-md);
-      background: var(--cdb-color-bg-subtle);
-      border: 1px solid var(--cdb-color-border);
+      display: flex; align-items: center; gap: var(--cdb-app-bar-actions-gap, var(--cdb-space-2));
     }
-    .cdb-app-bar__actions .cdb-btn {
-      min-height: 32px; font-weight: 500;
+    .cdb-app-bar__overflow { position: relative; }
+    .cdb-app-bar__overflow-menu {
+      position: absolute; top: 100%; right: 0; margin-top: 4px;
+      background: var(--cdb-color-bg); border: 1px solid var(--cdb-color-border);
+      border-radius: var(--cdb-radius-md); box-shadow: var(--cdb-shadow-md);
+      min-width: 180px; z-index: var(--cdb-z-popover, 45); padding: 4px 0;
     }
-    .cdb-app-bar__actions .cdb-btn--io {
-      gap: 6px; padding: 6px 12px;
+    .cdb-overflow-item {
+      display: flex; align-items: center; gap: 8px; width: 100%;
+      background: transparent; border: none; text-align: left;
+      padding: 8px 16px; font-size: var(--cdb-text-sm); cursor: pointer;
+      color: var(--cdb-color-text); font-family: inherit;
     }
-    .cdb-app-bar__actions .cdb-btn.cdb-is-active {
-      background: var(--cdb-color-bg);
-      border-color: var(--cdb-color-primary);
-      color: var(--cdb-color-primary);
-      box-shadow: var(--cdb-shadow-sm);
-    }
+    .cdb-overflow-item:hover { background: var(--cdb-color-bg-subtle); }
     .cdb-diagram-title {
       font-weight: 600; font-size: var(--cdb-text-base);
       padding: 4px 8px; border: 1px solid transparent; border-radius: var(--cdb-radius-sm);
@@ -313,41 +325,39 @@
 <body>
   <div class="cdb-app">
     <header class="cdb-app-bar" data-testid="app-bar">
-      <div class="cdb-logo" aria-hidden="true">C</div>
-      <button type="button" class="cdb-btn cdb-btn--ghost cdb-btn--icon" data-testid="btn-undo" aria-label="撤销" title="撤销">
-        <span class="cdb-icon"><svg viewBox="0 0 24 24"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg></span>
-      </button>
-      <button type="button" class="cdb-btn cdb-btn--ghost cdb-btn--icon" data-testid="btn-redo" aria-label="重做" title="重做">
-        <span class="cdb-icon"><svg viewBox="0 0 24 24"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg></span>
-      </button>
-      <input class="cdb-diagram-title" data-testid="diagram-title" value="电商 ER 图" aria-label="图表标题" />
-      <div class="cdb-save-state" data-testid="save-state" id="save-state">
-        <span class="cdb-save-dot" aria-hidden="true"></span>
-        <span id="save-label">已保存</span>
-        <span data-testid="revision-display" id="revision-display">rev: 5</span>
+      <div class="cdb-app-bar__brand">
+        <div class="cdb-logo" aria-hidden="true">C</div>
+        <button type="button" class="cdb-btn cdb-btn--ghost cdb-btn--icon" data-testid="btn-undo" aria-label="撤销" title="撤销">
+          <span class="cdb-icon"><svg viewBox="0 0 24 24"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg></span>
+        </button>
+        <button type="button" class="cdb-btn cdb-btn--ghost cdb-btn--icon" data-testid="btn-redo" aria-label="重做" title="重做">
+          <span class="cdb-icon"><svg viewBox="0 0 24 24"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg></span>
+        </button>
+        <input class="cdb-diagram-title" data-testid="diagram-title" value="电商 ER 图" aria-label="图表标题" />
+      </div>
+      <div class="cdb-app-bar__status">
+        <div class="cdb-status-chip cdb-save-state" data-testid="save-state" id="save-state">
+          <span class="cdb-save-dot" aria-hidden="true"></span>
+          <span id="save-label">已保存</span>
+          <span class="cdb-status-chip__sep">·</span>
+          <span data-testid="revision-display" id="revision-display">rev: 5</span>
+        </div>
       </div>
       <div class="cdb-app-bar__spacer"></div>
       <div class="cdb-app-bar__actions">
-        <button type="button" class="cdb-btn cdb-btn--io" data-testid="btn-import" id="btn-import">
-          <span class="cdb-icon cdb-icon--sm"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg></span>
-          导入
+        <button type="button" class="cdb-btn cdb-btn--primary" data-testid="btn-share" id="btn-share">分享</button>
+        <button type="button" class="cdb-btn cdb-btn--ghost cdb-btn--icon" data-testid="btn-code-view" id="btn-code-view" aria-label="代码视图" title="代码视图">
+          <span class="cdb-icon"><svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
         </button>
-        <button type="button" class="cdb-btn cdb-btn--io" data-testid="btn-export" id="btn-export">
-          <span class="cdb-icon cdb-icon--sm"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg></span>
-          导出
-        </button>
+        <div class="cdb-app-bar__overflow">
+          <button type="button" class="cdb-btn cdb-btn--ghost cdb-btn--icon" data-testid="btn-more-menu" id="btn-more-menu" aria-label="更多" title="更多">⋯</button>
+          <div class="cdb-app-bar__overflow-menu" id="overflow-menu" hidden>
+            <button type="button" class="cdb-overflow-item" data-testid="btn-import" id="btn-import">导入</button>
+            <button type="button" class="cdb-overflow-item" data-testid="btn-export" id="btn-export">导出</button>
+            <button type="button" class="cdb-overflow-item" data-testid="btn-theme-toggle" id="btn-theme">切换主题</button>
+          </div>
+        </div>
       </div>
-      <button type="button" class="cdb-btn cdb-btn--primary" data-testid="btn-share" id="btn-share">分享</button>
-      <button type="button" class="cdb-btn cdb-btn--ghost" data-testid="btn-code-view" id="btn-code-view" aria-label="代码视图">
-        <span class="cdb-icon"><svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
-        <span id="code-view-label">代码</span>
-      </button>
-      <button type="button" class="cdb-btn cdb-btn--ghost cdb-btn--icon" data-testid="btn-theme-toggle" id="btn-theme" aria-label="切换主题">
-        <span class="cdb-icon" id="theme-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg></span>
-      </button>
-      <button type="button" class="cdb-btn cdb-btn--ghost cdb-btn--icon" data-testid="btn-inspector-toggle" id="btn-inspector-toggle" aria-label="切换侧栏">
-        <span class="cdb-icon"><svg viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg></span>
-      </button>
     </header>
 
     <div class="cdb-main" id="cdb-main">
@@ -480,6 +490,8 @@
     <footer class="cdb-status-bar" data-testid="status-bar">
       <span>缩放 100%</span><span>2 张表 / 1 条关系</span><span>S01 debounce 1s</span>
       <span class="cdb-kbd">Ctrl+K</span> 命令面板
+      <span style="flex:1"></span>
+      <button type="button" class="cdb-btn cdb-btn--ghost cdb-btn--icon" data-testid="btn-inspector-toggle" id="btn-inspector-toggle" aria-label="折叠 Inspector" title="折叠 Inspector">◀</button>
     </footer>
   </div>
 
@@ -697,8 +709,14 @@
       if (ioMode !== 'none') closeIo();
       main.classList.toggle('cdb-is-inspector-collapsed');
     };
-    document.getElementById('btn-import').onclick = () => openIo('import');
-    document.getElementById('btn-export').onclick = () => openIo('export');
+    const overflowMenu = document.getElementById('overflow-menu');
+    document.getElementById('btn-more-menu').onclick = (e) => {
+      e.stopPropagation();
+      overflowMenu.hidden = !overflowMenu.hidden;
+    };
+    document.addEventListener('click', () => { overflowMenu.hidden = true; });
+    document.getElementById('btn-import').onclick = () => { overflowMenu.hidden = true; openIo('import'); };
+    document.getElementById('btn-export').onclick = () => { overflowMenu.hidden = true; openIo('export'); };
     document.getElementById('io-close').onclick = closeIo;
     document.getElementById('io-cancel').onclick = closeIo;
 

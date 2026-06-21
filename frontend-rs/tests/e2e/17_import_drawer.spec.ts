@@ -16,7 +16,15 @@
  *  - UT-AB-04: btn-import 在 Phase C 启用
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+/** R4：导入按钮位于 AppBar 溢出菜单内 */
+async function openAppBarImport(page: Page) {
+  await page.click('[data-testid="btn-more-menu"]');
+  const importBtn = page.locator('[data-testid="btn-import"]');
+  await expect(importBtn).toBeVisible();
+  await importBtn.click();
+}
 
 test.describe("Phase C Import Drawer E2E", () => {
   test.beforeEach(async ({ page }) => {
@@ -27,7 +35,8 @@ test.describe("Phase C Import Drawer E2E", () => {
   test("ST-PC-01: AppBar → 导入 → 粘贴 SQL → 提交 → 解析摘要可见 + bridge 返回 diagramId", async ({
     page,
   }) => {
-    // Step 1: 点击 AppBar 导入按钮（btn-import 必须 enabled，UT-AB-04）
+    // Step 1: 打开溢出菜单并点击导入（btn-import 必须 enabled，UT-AB-04）
+    await page.click('[data-testid="btn-more-menu"]');
     const importBtn = page.locator('[data-testid="btn-import"]');
     await expect(importBtn).toBeEnabled();
     await importBtn.click();
@@ -62,7 +71,7 @@ test.describe("Phase C Import Drawer E2E", () => {
   });
 
   test("ST-PC-01 回归: 导入空字符串 → 摘要 0 条语句，不调用 bridge", async ({ page }) => {
-    await page.click('[data-testid="btn-import"]');
+    await openAppBarImport(page);
     await expect(page.locator('[data-testid="import-drawer"]')).toBeVisible();
 
     await page.fill('[data-testid="import-textarea"]', "");
@@ -93,7 +102,7 @@ test.describe("Phase C Import Drawer E2E", () => {
   });
 
   test("UT-PC-05 集成: 导入 DBML 文本 → 摘要显示「N 个 Table 块」", async ({ page }) => {
-    await page.click('[data-testid="btn-import"]');
+    await openAppBarImport(page);
     await expect(page.locator('[data-testid="import-drawer"]')).toBeVisible();
 
     // 切换到 DBML 格式（如有格式切换）

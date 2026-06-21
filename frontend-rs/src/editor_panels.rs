@@ -8,7 +8,7 @@
 //! data-testid 清单:
 //!   - app-bar / tool-rail / inspector-panel / status-bar / canvas-empty-guide
 //!   - btn-create-table / guide-create-table / btn-inspector-toggle
-//!   - editor-canvas / floating-controls / revision-display (StatusBar)
+//!   - editor-canvas / floating-controls / revision-display (status chip)
 
 use crate::command_palette::{
     build_palette_items, setup_command_palette_shortcut, CommandPalette, PaletteItem,
@@ -25,8 +25,8 @@ use crate::editor_render::Canvas;
 use crate::editor_render::{Transform, zoom_in, zoom_out, zoom_reset};
 use crate::icons::{
     IconAdd, IconBox, IconChevronLeft, IconChevronRight, IconClose, IconExport, IconImport,
-    IconMinus, IconMoon, IconPan, IconRelationship, IconSelect, IconSettings, IconSidebar,
-    IconSun, IconRedo, IconUndo,
+    IconMinus, IconMoon, IconMore, IconPan, IconRelationship, IconSelect, IconSettings,
+    IconSidebar, IconSun, IconRedo, IconUndo,
 };
 use leptos::*;
 use std::cell::RefCell;
@@ -1197,6 +1197,159 @@ pub fn FloatingControls(transform: RwSignal<Transform>) -> impl IntoView {
     }
 }
 
+/// R4：AppBar 状态 Chip（保存圆点 + 文案 + rev）
+#[component]
+pub fn SaveStatusChip(
+    store: EditorStore,
+    is_saving: RwSignal<bool>,
+    save_offline: RwSignal<bool>,
+) -> impl IntoView {
+    view! {
+        <div class="cdb-app-bar__status">
+            {move || {
+                if is_saving.get() {
+                    view! {
+                        <span class="cdb-status-chip cdb-save-state cdb-is-saving" data-testid="save-state">
+                            <span class="cdb-save-dot cdb-save-dot--saving"></span>
+                            "保存中..."
+                            <span class="cdb-status-chip__sep">"·"</span>
+                            <span class="cdb-rev-inline" data-testid="revision-display">
+                                {format!("rev: {}", store.revision.get())}
+                            </span>
+                        </span>
+                    }.into_view()
+                } else if save_offline.get() {
+                    view! {
+                        <span class="cdb-status-chip cdb-save-state cdb-is-error" data-testid="save-state">
+                            <span class="cdb-save-dot cdb-save-dot--error"></span>
+                            "保存失败（离线）"
+                        </span>
+                    }.into_view()
+                } else if store.dirty.get() {
+                    view! {
+                        <span class="cdb-status-chip cdb-save-state cdb-is-idle" data-testid="save-state">
+                            <span class="cdb-save-dot cdb-save-dot--dirty"></span>
+                            "未保存"
+                            <span class="cdb-status-chip__sep">"·"</span>
+                            <span class="cdb-rev-inline" data-testid="revision-display">
+                                {format!("rev: {}", store.revision.get())}
+                            </span>
+                        </span>
+                    }.into_view()
+                } else {
+                    view! {
+                        <span class="cdb-status-chip cdb-save-state" data-testid="save-state">
+                            <span class="cdb-save-dot cdb-save-dot--saved"></span>
+                            "已保存"
+                            <span class="cdb-status-chip__sep">"·"</span>
+                            <span class="cdb-rev-inline" data-testid="revision-display">
+                                {format!("rev: {}", store.revision.get())}
+                            </span>
+                        </span>
+                    }.into_view()
+                }
+            }}
+        </div>
+    }
+}
+
+/// R4：AppBar 溢出菜单（导入 / 导出 / 主题）
+#[component]
+pub fn AppBarOverflowMenu(
+    dark_mode: RwSignal<bool>,
+    on_open_import: Rc<dyn Fn()>,
+    on_open_export: Rc<dyn Fn()>,
+) -> impl IntoView {
+    let overflow_open = create_rw_signal(false);
+
+    view! {
+        <div class="cdb-app-bar__overflow">
+            <button
+                class="cdb-btn cdb-btn--icon"
+                data-testid="btn-more-menu"
+                title="更多"
+                aria-haspopup="menu"
+                aria-expanded=move || overflow_open.get()
+                on:click=move |_| overflow_open.update(|v| *v = !*v)
+            >
+                <IconBox size="sm"><IconMore /></IconBox>
+            </button>
+            {move || if overflow_open.get() {
+                view! {
+                    <div
+                        class="cdb-menu-dropdown cdb-app-bar__overflow-menu"
+                        data-testid="app-bar-overflow-menu"
+                        role="menu"
+                    >
+                        <button
+                            class="cdb-menu-dropdown-item cdb-menu-dropdown-item--icon"
+                            data-testid="btn-import"
+                            role="menuitem"
+                            on:click={
+                                let import_handler = on_open_import.clone();
+                                move |_| {
+                                    import_handler();
+                                    overflow_open.set(false);
+                                }
+                            }
+                        >
+                            <IconBox size="sm"><IconImport /></IconBox>
+                            "导入"
+                        </button>
+                        <button
+                            class="cdb-menu-dropdown-item cdb-menu-dropdown-item--icon"
+                            data-testid="btn-export"
+                            role="menuitem"
+                            on:click={
+                                let export_handler = on_open_export.clone();
+                                move |_| {
+                                    export_handler();
+                                    overflow_open.set(false);
+                                }
+                            }
+                        >
+                            <IconBox size="sm"><IconExport /></IconBox>
+                            "导出"
+                        </button>
+                        <button
+                            class="cdb-menu-dropdown-item cdb-menu-dropdown-item--icon"
+                            data-testid="btn-theme-toggle"
+                            role="menuitem"
+                            on:click=move |_| {
+                                if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
+                                    if let Some(html) = doc.document_element() {
+                                        let cur = html
+                                            .get_attribute("data-mode")
+                                            .unwrap_or_else(|| "light".into());
+                                        let next = if cur == "dark" { "light" } else { "dark" };
+                                        let _ = html.set_attribute("data-mode", next);
+                                        dark_mode.set(next == "dark");
+                                    }
+                                }
+                                overflow_open.set(false);
+                            }
+                        >
+                            {move || if dark_mode.get() {
+                                view! {
+                                    <IconBox size="sm"><IconSun /></IconBox>
+                                    "浅色模式"
+                                }.into_view()
+                            } else {
+                                view! {
+                                    <IconBox size="sm"><IconMoon /></IconBox>
+                                    "深色模式"
+                                }.into_view()
+                            }}
+                        </button>
+                    </div>
+                }.into_view()
+            } else {
+                view! { <></> }.into_view()
+            }}
+        </div>
+    }
+}
+
 /// Phase A：单行 AppBar（合并 TopMenuBar + Toolbar）
 #[component]
 pub fn AppBar(
@@ -1216,21 +1369,19 @@ pub fn AppBar(
     on_open_import: Rc<dyn Fn()>,
     on_open_export: Rc<dyn Fn()>,
 ) -> impl IntoView {
-    let _ = transform;
-    let import_handler = on_open_import.clone();
-    let export_handler = on_open_export.clone();
+    let _ = (transform, inspector_open);
     let dark_mode = create_rw_signal(read_html_data_mode() == "dark");
 
     view! {
         <header class="cdb-app-bar" data-testid="app-bar">
-            <span class="cdb-logo-mark" aria-hidden="true">"C"</span>
-            <UndoRedoButtons
-                store=store.clone()
-                stack=stack
-                on_after_change=on_after_change.clone()
-                error=error.clone()
-            />
-            <div class="cdb-diagram-title-wrap">
+            <div class="cdb-app-bar__brand">
+                <span class="cdb-logo-mark" aria-hidden="true">"C"</span>
+                <UndoRedoButtons
+                    store=store.clone()
+                    stack=stack
+                    on_after_change=on_after_change.clone()
+                    error=error.clone()
+                />
                 <input
                     class="cdb-diagram-title"
                     data-testid="diagram-title"
@@ -1238,109 +1389,28 @@ pub fn AppBar(
                     on:input=move |ev| current_title.set(event_target_value(&ev))
                     on:blur=move |ev| on_title_blur(event_target_value(&ev))
                 />
-                {move || if store.dirty.get() {
-                    view! { <span class="cdb-dirty-dot" title="未保存"></span> }.into_view()
-                } else {
-                    view! { <></> }.into_view()
-                }}
             </div>
-            <span class="cdb-save-state-wrap">
-                {move || {
-                    if is_saving.get() {
-                        view! {
-                            <span class="cdb-save-state cdb-is-saving" data-testid="save-state">
-                                <span class="cdb-save-dot cdb-save-dot--saving"></span>
-                                "保存中..."
-                                <span class="cdb-rev-inline" data-testid="revision-display">
-                                    {format!("rev: {}", store.revision.get())}
-                                </span>
-                            </span>
-                        }.into_view()
-                    } else if save_offline.get() {
-                        view! {
-                            <span class="cdb-save-state cdb-is-error" data-testid="save-state">
-                                <span class="cdb-save-dot cdb-save-dot--error"></span>
-                                "保存失败（离线）"
-                            </span>
-                        }.into_view()
-                    } else if store.dirty.get() {
-                        view! {
-                            <span class="cdb-save-state cdb-is-idle" data-testid="save-state">
-                                <span class="cdb-save-dot cdb-save-dot--dirty"></span>
-                                "未保存"
-                                <span class="cdb-rev-inline" data-testid="revision-display">
-                                    {format!("rev: {}", store.revision.get())}
-                                </span>
-                            </span>
-                        }.into_view()
-                    } else {
-                        view! {
-                            <span class="cdb-save-state" data-testid="save-state">
-                                <span class="cdb-save-dot cdb-save-dot--saved"></span>
-                                "已保存"
-                                <span class="cdb-rev-inline" data-testid="revision-display">
-                                    {format!("rev: {}", store.revision.get())}
-                                </span>
-                            </span>
-                        }.into_view()
-                    }
-                }}
-            </span>
+            <SaveStatusChip
+                store=store.clone()
+                is_saving=is_saving
+                save_offline=save_offline
+            />
             <span class="cdb-app-bar__spacer"></span>
             <div class="cdb-app-bar__actions">
                 <button
-                    class="cdb-btn cdb-btn--pill"
-                    data-testid="btn-import"
-                    on:click=move |_| import_handler()
+                    class="cdb-btn cdb-btn--primary cdb-btn--small"
+                    data-testid="btn-share"
+                    on:click=move |_| modal_kind.set(Some(modals::ModalKind::Share))
                 >
-                    "导入"
+                    "分享"
                 </button>
-                <button
-                    class="cdb-btn cdb-btn--pill"
-                    data-testid="btn-export"
-                    title="导出"
-                    on:click=move |_| export_handler()
-                >
-                    "导出"
-                </button>
+                <ViewModeToggle view_mode=view_mode code_visible=code_visible />
+                <AppBarOverflowMenu
+                    dark_mode=dark_mode
+                    on_open_import=on_open_import
+                    on_open_export=on_open_export
+                />
             </div>
-            <button
-                class="cdb-btn cdb-btn--primary cdb-btn--small"
-                data-testid="btn-share"
-                on:click=move |_| modal_kind.set(Some(modals::ModalKind::Share))
-            >
-                "分享"
-            </button>
-            <ViewModeToggle view_mode=view_mode code_visible=code_visible />
-            <button
-                class="cdb-btn cdb-btn--icon"
-                data-testid="btn-theme-toggle"
-                title="切换主题"
-                on:click=move |_| {
-                    if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
-                        if let Some(html) = doc.document_element() {
-                            let cur = html.get_attribute("data-mode").unwrap_or_else(|| "light".into());
-                            let next = if cur == "dark" { "light" } else { "dark" };
-                            let _ = html.set_attribute("data-mode", next);
-                            dark_mode.set(next == "dark");
-                        }
-                    }
-                }
-            >
-                {move || if dark_mode.get() {
-                    view! { <IconBox size="sm"><IconSun /></IconBox> }.into_view()
-                } else {
-                    view! { <IconBox size="sm"><IconMoon /></IconBox> }.into_view()
-                }}
-            </button>
-            <button
-                class="cdb-btn cdb-btn--icon"
-                data-testid="btn-inspector-toggle"
-                title="切换 Inspector"
-                on:click=move |_| inspector_open.update(|v| *v = !*v)
-            >
-                <IconBox size="sm"><IconSidebar /></IconBox>
-            </button>
         </header>
     }
 }
@@ -2267,9 +2337,6 @@ pub fn StatusBar(
                 )}
             </span>
             <span>"db: generic"</span>
-            <span class="cdb-rev-tag" data-testid="revision-display">
-                {move || format!("rev: {}", store.revision.get())}
-            </span>
             <span class="cdb-status-bar__spacer"></span>
             <button
                 class="cdb-btn cdb-btn--icon"
@@ -5150,9 +5217,28 @@ mod tests {
             "UT-PA-01: 空白引导必须带 canvas-empty-guide testid",
         );
         assert!(
-            panels.contains("data-testid=\"revision-display\""),
-            "UT-AB-05: revision-display 必须存在",
+            panels.contains("cdb-app-bar__brand"),
+            "UT-AB-R4: AppBar 必须包含品牌区分区",
         );
+        assert!(
+            panels.contains("cdb-status-chip"),
+            "UT-AB-R4: 保存状态必须使用 status chip",
+        );
+        assert!(
+            panels.contains("data-testid=\"btn-more-menu\""),
+            "UT-AB-R4: AppBar 必须有溢出菜单",
+        );
+        assert!(
+            panels.contains("data-testid=\"revision-display\""),
+            "UT-AB-05: revision-display 必须存在于状态 Chip",
+        );
+        if let Some(sb_tail) = panels.split("pub fn StatusBar").nth(1) {
+            let sb_body = sb_tail.split("\n\n///").next().unwrap_or(sb_tail);
+            assert!(
+                !sb_body.contains("data-testid=\"revision-display\""),
+                "UT-AB-R4: StatusBar 不得重复 revision-display",
+            );
+        }
         assert!(
             panels.contains("data-testid=\"status-bar\""),
             "UT-AB-05: revision 应位于 StatusBar",

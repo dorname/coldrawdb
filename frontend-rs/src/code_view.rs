@@ -1,6 +1,7 @@
 //! E4 CodeView — SQL / DBML / JSON 只读预览（Monaco 可选升级，见 E4_ACTIVATION.md）
 //! Spec: core-0a-code-editor.md / core-S01-edit-and-save-design.md §3.6
 
+use crate::icons::{IconBox, IconCode};
 use leptos::*;
 use wasm_bindgen::JsCast;
 
@@ -90,8 +91,15 @@ pub fn ViewModeToggle(
 ) -> impl IntoView {
     view! {
         <button
-            class="cdb-btn cdb-btn--secondary"
+            class="cdb-btn cdb-btn--icon"
             data-testid="btn-code-view"
+            title=move || {
+                if matches!(view_mode.get(), ViewMode::Code) {
+                    "返回画布"
+                } else {
+                    "代码视图"
+                }
+            }
             on:click=move |_| {
                 if matches!(view_mode.get(), ViewMode::Canvas) {
                     view_mode.set(ViewMode::Code);
@@ -102,7 +110,11 @@ pub fn ViewModeToggle(
                 }
             }
         >
-            {move || if matches!(view_mode.get(), ViewMode::Code) { "返回" } else { "代码" }}
+            {move || if matches!(view_mode.get(), ViewMode::Code) {
+                view! { "返回" }.into_view()
+            } else {
+                view! { <IconBox size="sm"><IconCode /></IconBox> }.into_view()
+            }}
         </button>
     }
 }

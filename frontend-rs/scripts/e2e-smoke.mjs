@@ -190,6 +190,7 @@ async function hp03_fieldAndShareModal(page) {
 async function hp04_sqlImportParse(page) {
   const t0 = Date.now();
   try {
+    await page.click('[data-testid="btn-more-menu"]');
     await page.click('[data-testid="btn-import"]');
     await page.locator('[data-testid="import-drawer"]').waitFor({ state: "visible" });
 
