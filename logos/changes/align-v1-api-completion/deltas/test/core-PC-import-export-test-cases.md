@@ -1,22 +1,4 @@
-# core-PC-import-export-test-cases.md
-
-> 模块：core | 提案：redesign-phase-c-import-export, align-v1-api-completion
-> 路径：`logos/resources/test/core-PC-import-export-test-cases.md`
-> 最后更新：2026-06-21
-
-## Phase C 导入/导出抽屉测试用例
-
-| TC ID | Given | When | Then |
-|-------|-------|------|------|
-| UT-PC-01 | SQL 含 2 条 CREATE | `parse_sql_statements` | `Ok(vec![..])` len==2；摘要显示「2 条语句」 |
-| UT-PC-02 | store 含 1 张表 | `export_diagram_sql(store, "generic")` | 输出含 `CREATE TABLE` 与表名 |
-| UT-PC-03 | store 含表+关系 | `export_diagram_dbml(store)` | 输出含 `Table` 与 `ref:` |
-| UT-PC-04 | Inspector 展开 | `open_import_drawer()` | `inspector_open==false` 且 `io_drawer==Import` |
-| UT-PC-05 | DBML 含 2 个 Table 块 | `count_dbml_tables(text)` | 返回 2 |
-| UT-PC-06 | 零表画布 | 点击 `guide-import-sql` | `import-drawer` 可见 |
-| ST-PC-01 | 编辑器已加载 | AppBar 导入 → 粘贴 SQL → 提交 | 解析摘要可见；bridge 返回 diagramId |
-
-### UT-ALIGN-B01 — DiagramClient bridge config GET/PUT
+## ADDED — UT-ALIGN-B01 — DiagramClient bridge config GET/PUT
 
 - **位置**：`frontend-rs/src/editor_data_access.rs`（`get_bridge_config` / `update_bridge_config`）
 - **Given**：mock HTTP 返回 envelope `{ "code": 0, "data": { "db_read_preferred": false, "db_write_enabled": true, "dual_write_local": false, "updated_at": "2026-06-21" }, "request_id": "r1" }`
@@ -27,7 +9,7 @@
 - **When**：调用 `update_bridge_config(&BridgeConfigUpdate { dual_write_local: Some(true), ..Default::default() })`，mock PUT 返回 200 + `{ "code": 0, "data": { "updated": true }, "request_id": "r2" }`
 - **Then**：返回 `Ok(())`
 
-### UT-ALIGN-B02 — DiagramClient 导入日志列表与重试
+## ADDED — UT-ALIGN-B02 — DiagramClient 导入日志列表与重试
 
 - **位置**：`frontend-rs/src/editor_data_access.rs`（`list_import_logs` / `retry_import_log`）
 - **Given**：mock GET `/bridge/import/local/logs` 返回 1 条 `{ id: "log-1", status: "failed", retry_count: 0, error_message: "parse error" }`
@@ -37,7 +19,7 @@
 - **When**：调用 `retry_import_log("log-1")`
 - **Then**：`RetryImportResponse.diagram_id == Some("d-new")` 且 `retry_count == 1`
 
-### UT-ALIGN-B03 — AppBar 溢出菜单与 ImportDrawer 日志区
+## ADDED — UT-ALIGN-B03 — AppBar 溢出菜单与 ImportDrawer 日志区
 
 - **位置**：`frontend-rs/src/editor_panels.rs`（`AppBarOverflow` / `ImportDrawer` / `BridgeSettingsModal`）
 - **Given**：编辑器已加载，overflow 菜单未展开
@@ -50,15 +32,10 @@
 - **When**：点击 refresh（`import-logs-refresh`）
 - **Then**：再次调用 `list_import_logs`
 
-### 回归更新
-
-| TC ID | 变更 |
-|-------|------|
-| UT-AB-04 | Phase C：`btn-import` **enabled**（替换 Phase A disabled 断言） |
-
-### 不在范围
+## MODIFIED — 不在范围
 
 | 条目 | 变更 |
 |------|------|
+| 导入任务 logs/retry UI | **移出不在范围** — 本提案 UT-ALIGN-B03 覆盖 ImportDrawer 日志区与重试按钮 |
 | SQL/DBML 全屏代码视图（Phase D） | 保持不变 |
 | Mermaid / PNG 导出 | 保持不变 |

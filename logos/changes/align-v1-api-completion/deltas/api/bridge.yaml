@@ -1,3 +1,9 @@
+## MODIFIED — 对齐 phase3_bridge 实际契约
+
+> 模块：core | 提案：align-v1-api-completion
+> 路径：`logos/resources/api/bridge.yaml`
+> 策略：将 OpenAPI 规格与 `backend/src/phase3_bridge.rs` 及 `frontend-rs/src/editor_data_access.rs` 实际请求/响应字段对齐；移除旧的 SQL 格式导入 schema（`format`/`content`/`engine`）与 SQL 导出配置字段。
+
 openapi: 3.0.3
 info:
   title: coldrawdb bridge API

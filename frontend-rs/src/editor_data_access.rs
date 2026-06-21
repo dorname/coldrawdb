@@ -279,6 +279,111 @@ impl DiagramClient {
             )),
         }
     }
+
+    /// GET /api/v1/bridge/config
+    pub async fn get_bridge_config(&self) -> Result<BridgeConfig, ApiError> {
+        let url = format!("{}/api/v1/bridge/config", self.base_url);
+        let resp = Request::get(&url)
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+
+        match resp.status() {
+            200 => {
+                let out: ApiResp<BridgeConfig> = resp
+                    .json()
+                    .await
+                    .map_err(|e| ApiError::Parse(e.to_string()))?;
+                Ok(out.data)
+            }
+            s => Err(ApiError::Server(
+                s,
+                resp.text().await.unwrap_or_default(),
+            )),
+        }
+    }
+
+    /// PUT /api/v1/bridge/config
+    pub async fn update_bridge_config(
+        &self,
+        update: &BridgeConfigUpdate,
+    ) -> Result<(), ApiError> {
+        let url = format!("{}/api/v1/bridge/config", self.base_url);
+        let resp = Request::put(&url)
+            .json(update)
+            .map_err(|e| ApiError::Network(e.to_string()))?
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+
+        match resp.status() {
+            200 => Ok(()),
+            s => Err(ApiError::Server(
+                s,
+                resp.text().await.unwrap_or_default(),
+            )),
+        }
+    }
+
+    /// GET /api/v1/bridge/import/local/logs
+    pub async fn list_import_logs(
+        &self,
+        status: Option<&str>,
+    ) -> Result<Vec<ImportLogEntry>, ApiError> {
+        let mut url = format!("{}/api/v1/bridge/import/local/logs", self.base_url);
+        if let Some(st) = status {
+            url.push_str(&format!("?status={}", st));
+        }
+        let resp = Request::get(&url)
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+
+        match resp.status() {
+            200 => {
+                let out: ApiResp<Vec<ImportLogEntry>> = resp
+                    .json()
+                    .await
+                    .map_err(|e| ApiError::Parse(e.to_string()))?;
+                Ok(out.data)
+            }
+            s => Err(ApiError::Server(
+                s,
+                resp.text().await.unwrap_or_default(),
+            )),
+        }
+    }
+
+    /// POST /api/v1/bridge/import/local/retry/{id}
+    pub async fn retry_import_log(&self, log_id: &str) -> Result<RetryImportResponse, ApiError> {
+        let url = format!(
+            "{}/api/v1/bridge/import/local/retry/{}",
+            self.base_url, log_id
+        );
+        let resp = Request::post(&url)
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+
+        match resp.status() {
+            200 => {
+                let out: ApiResp<RetryImportData> = resp
+                    .json()
+                    .await
+                    .map_err(|e| ApiError::Parse(e.to_string()))?;
+                Ok(RetryImportResponse {
+                    log_id: out.data.id,
+                    status: out.data.status,
+                    diagram_id: out.data.diagram_id,
+                    retry_count: out.data.retry_count,
+                })
+            }
+            s => Err(ApiError::Server(
+                s,
+                resp.text().await.unwrap_or_default(),
+            )),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -598,6 +703,61 @@ pub struct ImportLocalResponse {
     pub diagram_id: String,
     pub log_id: String,
     pub status: String,
+}
+
+/// Bridge 配置（对齐 `phase3_bridge::BridgeConfig`）
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BridgeConfig {
+    pub db_read_preferred: bool,
+    pub db_write_enabled: bool,
+    pub dual_write_local: bool,
+    pub updated_at: String,
+}
+
+/// PUT bridge/config 请求体（字段可选）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BridgeConfigUpdate {
+    pub db_read_preferred: Option<bool>,
+    pub db_write_enabled: Option<bool>,
+    pub dual_write_local: Option<bool>,
+}
+
+/// 导入日志条目
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ImportLogEntry {
+    pub id: String,
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub imported_diagram_id: Option<String>,
+    pub status: String,
+    #[serde(default)]
+    pub retry_count: i64,
+    #[serde(default)]
+    pub error_message: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
+/// 重试导入响应
+#[derive(Debug, Clone)]
+pub struct RetryImportResponse {
+    pub log_id: String,
+    pub status: String,
+    pub diagram_id: Option<String>,
+    pub retry_count: i64,
+}
+
+#[derive(Deserialize)]
+struct RetryImportData {
+    id: String,
+    status: String,
+    #[serde(default)]
+    diagram_id: Option<String>,
+    #[serde(default)]
+    retry_count: i64,
 }
 
 /// 自动保存重试间隔（ms）：对齐 Phase 2 / Phase 3 S01 — 3s / 6s / 12s，累计封顶 30s。

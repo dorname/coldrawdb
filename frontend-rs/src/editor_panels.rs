@@ -20,7 +20,10 @@ use crate::editor_core::{
     ConflictAction, ConflictInfo, DebounceTrigger, EditorStore,
 };
 use crate::editor_core::types::{Area, Field, Note, Reference, Table};
-use crate::editor_data_access::{save_with_retry, DiagramClient, SaveError, ImportLocalResponse};
+use crate::editor_data_access::{
+    save_with_retry, BridgeConfig, BridgeConfigUpdate, DiagramClient, ImportLocalResponse,
+    ImportLogEntry, SaveError,
+};
 use crate::editor_render::Canvas;
 use crate::editor_render::{Transform, zoom_in, zoom_out, zoom_reset};
 use crate::icons::{
@@ -1315,6 +1318,8 @@ pub fn AppBarOverflowMenu(
     dark_mode: RwSignal<bool>,
     on_open_import: Rc<dyn Fn()>,
     on_open_export: Rc<dyn Fn()>,
+    on_open_settings: Rc<dyn Fn()>,
+    on_delete_diagram: Rc<dyn Fn()>,
 ) -> impl IntoView {
     let overflow_open = create_rw_signal(false);
 
@@ -1366,6 +1371,36 @@ pub fn AppBarOverflowMenu(
                         >
                             <IconBox size="sm"><IconExport /></IconBox>
                             "导出"
+                        </button>
+                        <button
+                            class="cdb-menu-dropdown-item cdb-menu-dropdown-item--icon"
+                            data-testid="btn-settings"
+                            role="menuitem"
+                            on:click={
+                                let handler = on_open_settings.clone();
+                                move |_| {
+                                    handler();
+                                    overflow_open.set(false);
+                                }
+                            }
+                        >
+                            <IconBox size="sm"><IconSettings /></IconBox>
+                            "设置"
+                        </button>
+                        <button
+                            class="cdb-menu-dropdown-item cdb-menu-dropdown-item--icon cdb-menu-dropdown-item--danger"
+                            data-testid="btn-delete-diagram"
+                            role="menuitem"
+                            on:click={
+                                let handler = on_delete_diagram.clone();
+                                move |_| {
+                                    handler();
+                                    overflow_open.set(false);
+                                }
+                            }
+                        >
+                            <IconBox size="sm"><IconClose /></IconBox>
+                            "删除图表"
                         </button>
                         <button
                             class="cdb-menu-dropdown-item cdb-menu-dropdown-item--icon"
@@ -1424,6 +1459,8 @@ pub fn AppBar(
     on_after_change: Rc<dyn Fn()>,
     on_open_import: Rc<dyn Fn()>,
     on_open_export: Rc<dyn Fn()>,
+    on_open_settings: Rc<dyn Fn()>,
+    on_delete_diagram: Rc<dyn Fn()>,
 ) -> impl IntoView {
     let _ = (transform, inspector_open);
     let dark_mode = create_rw_signal(read_html_data_mode() == "dark");
@@ -1465,6 +1502,8 @@ pub fn AppBar(
                     dark_mode=dark_mode
                     on_open_import=on_open_import
                     on_open_export=on_open_export
+                    on_open_settings=on_open_settings
+                    on_delete_diagram=on_delete_diagram
                 />
             </div>
         </header>
@@ -1751,6 +1790,33 @@ pub fn ImportDrawer(
     let content = create_rw_signal(String::new());
     let inline_error = create_rw_signal(None::<String>);
     let submitting = create_rw_signal(false);
+    let import_logs = create_rw_signal(Vec::<ImportLogEntry>::new());
+    let logs_loading = create_rw_signal(false);
+
+    let refresh_logs = {
+        let client = client.clone();
+        let import_logs = import_logs.clone();
+        let error = error.clone();
+        let logs_loading = logs_loading.clone();
+        Rc::new(move || {
+            logs_loading.set(true);
+            let client = client.clone();
+            spawn_local(async move {
+                match client.list_import_logs(None).await {
+                    Ok(entries) => import_logs.set(entries),
+                    Err(e) => error.set(Some(e.to_string())),
+                }
+                logs_loading.set(false);
+            });
+        })
+    };
+
+    create_effect({
+        let refresh_logs = refresh_logs.clone();
+        move |_| {
+            refresh_logs();
+        }
+    });
 
     let close = on_close.clone();
     let close_btn = on_close.clone();
@@ -1838,6 +1904,76 @@ pub fn ImportDrawer(
                 {move || inline_error.get().map(|e| view! {
                     <p class="cdb-form-error">{e}</p>
                 })}
+                <div class="cdb-import-logs" data-testid="import-logs-panel">
+                    <div class="cdb-import-logs__header">
+                        <strong>"最近导入日志"</strong>
+                        <button
+                            class="cdb-btn cdb-btn--small"
+                            data-testid="import-logs-refresh"
+                            disabled=move || logs_loading.get()
+                            on:click=move |_| refresh_logs()
+                        >
+                            "刷新"
+                        </button>
+                    </div>
+                    {move || if logs_loading.get() {
+                        view! { <p class="cdb-form-hint">"加载中…"</p> }.into_view()
+                    } else if import_logs.get().is_empty() {
+                        view! { <p class="cdb-form-hint">"暂无导入记录"</p> }.into_view()
+                    } else {
+                        import_logs.get().into_iter().map(|log| {
+                            let log_id = log.id.clone();
+                            let status = log.status.clone();
+                            let diagram_id = log.imported_diagram_id.clone();
+                            let err_msg = log.error_message.clone();
+                            let can_retry = status == "failed";
+                            let client = client.clone();
+                            let error = error.clone();
+                            let refresh = refresh_logs.clone();
+                            view! {
+                                <div class="cdb-import-log-item" data-testid={format!("import-log-{}", log_id)}>
+                                    <span class={format!("cdb-tag cdb-tag--{}", if status == "success" { "success" } else if status == "failed" { "error" } else { "warning" })}>
+                                        {status.clone()}
+                                    </span>
+                                    <span class="cdb-import-log-item__id">{log_id.clone()}</span>
+                                    {diagram_id.map(|did| view! {
+                                        <button
+                                            class="cdb-btn cdb-btn--small cdb-btn--ghost"
+                                            on:click=move |_| navigate_to_editor(&did)
+                                        >"打开"</button>
+                                    })}
+                                    {can_retry.then(|| {
+                                        let log_id = log_id.clone();
+                                        view! {
+                                            <button
+                                                class="cdb-btn cdb-btn--small"
+                                                data-testid={format!("import-log-retry-{}", log_id)}
+                                                on:click=move |_| {
+                                                    let client = client.clone();
+                                                    let error = error.clone();
+                                                    let refresh = refresh.clone();
+                                                    spawn_local(async move {
+                                                        match client.retry_import_log(&log_id).await {
+                                                            Ok(resp) => {
+                                                                if let Some(did) = resp.diagram_id {
+                                                                    navigate_to_editor(&did);
+                                                                } else {
+                                                                    refresh();
+                                                                }
+                                                            }
+                                                            Err(e) => error.set(Some(e.to_string())),
+                                                        }
+                                                    });
+                                                }
+                                            >"重试"</button>
+                                        }
+                                    })}
+                                    {err_msg.map(|m| view! { <span class="cdb-form-error">{m}</span> })}
+                                </div>
+                            }
+                        }).collect_view()
+                    }}
+                </div>
             </div>
             <div class="cdb-io-drawer__footer">
                 <button class="cdb-btn" data-testid="import-cancel-btn" on:click=move |_| close_btn()>"取消"</button>
@@ -1865,9 +2001,11 @@ pub fn ImportDrawer(
                         submitting.set(true);
                         let client = client.clone();
                         let err = error.clone();
+                        let refresh = refresh_logs.clone();
                         spawn_local(async move {
                             match client.import_local("import_drawer", payload).await {
                                 Ok(ImportLocalResponse { diagram_id, .. }) => {
+                                    refresh();
                                     navigate_to_editor(&diagram_id);
                                 }
                                 Err(e) => {
@@ -3857,6 +3995,42 @@ pub fn AppRoot(
     let on_create_table_panel = on_create_table.clone();
     let on_create_table_guide = on_create_table.clone();
 
+    let on_open_settings = {
+        let modal_kind = modal_kind.clone();
+        Rc::new(move || modal_kind.set(Some(modals::ModalKind::BridgeSettings)))
+    };
+
+    let on_delete_diagram = {
+        let client = client.clone();
+        let current_diagram_id = current_diagram_id.clone();
+        let error = error.clone();
+        Rc::new(move || {
+            let id = current_diagram_id.get();
+            if id == "default" {
+                error.set(Some("无法删除默认画布".to_string()));
+                return;
+            }
+            let confirmed = web_sys::window()
+                .and_then(|w| w.confirm_with_message("确定删除当前图表？此操作不可撤销。"))
+                .unwrap_or(false);
+            if !confirmed {
+                return;
+            }
+            let client = client.clone();
+            let error = error.clone();
+            spawn_local(async move {
+                match client.delete(&id).await {
+                    Ok(()) => {
+                        if let Some(win) = web_sys::window() {
+                            let _ = win.location().set_href("/editor");
+                        }
+                    }
+                    Err(e) => error.set(Some(e.to_string())),
+                }
+            });
+        })
+    };
+
     view! {
         <div class="cdb-app" data-testid="editor-ready">
             <AppBar
@@ -3875,6 +4049,8 @@ pub fn AppRoot(
                 on_after_change=on_after_change.clone()
                 on_open_import=open_import_drawer.clone()
                 on_open_export=open_export_drawer.clone()
+                on_open_settings=on_open_settings.clone()
+                on_delete_diagram=on_delete_diagram.clone()
             />
             <div
                 class="cdb-main"
@@ -3975,6 +4151,8 @@ pub fn AppRoot(
                 kind=modal_kind
                 current_diagram_id=current_diagram_id
                 current_title=current_title
+                client=client.clone()
+                error=error.clone()
                 on_new=on_new_diagram
                 on_rename=on_rename_diagram
             />
@@ -4058,6 +4236,7 @@ pub mod modals {
         Language,
         SetTableWidth,
         ConfigureCustomTypes,
+        BridgeSettings,
     }
 
     pub const TITLE_MAX_LEN: usize = 64;
@@ -4218,6 +4397,8 @@ pub mod modals {
         kind: RwSignal<Option<ModalKind>>,
         current_diagram_id: RwSignal<String>,
         current_title: RwSignal<String>,
+        client: DiagramClient,
+        error: RwSignal<Option<String>>,
         on_new: Rc<dyn Fn(String)>,
         on_rename: Rc<dyn Fn(String)>,
     ) -> impl IntoView {
@@ -4285,6 +4466,11 @@ pub mod modals {
                     Some(ModalKind::ConfigureCustomTypes) => view! {
                         <div class="cdb-modal" data-testid="modal-custom-types" on:click=|ev| ev.stop_propagation()>
                             <ConfigureCustomTypesModal kind=kind />
+                        </div>
+                    }.into_view(),
+                    Some(ModalKind::BridgeSettings) => view! {
+                        <div class="cdb-modal" data-testid="modal-bridge-settings" on:click=|ev| ev.stop_propagation()>
+                            <BridgeSettingsModal kind=kind client=client.clone() error=error.clone() />
                         </div>
                     }.into_view(),
                     None => view! { <></> }.into_view(),
@@ -4507,6 +4693,117 @@ pub mod modals {
     }
 
     // ─── B5: 5 个剩余模态 (Import/ImportSource/Language/SetTableWidth/ConfigureCustomTypes) ────
+
+    /// Bridge 设置模态（align-v1-api-completion）
+    #[component]
+    pub fn BridgeSettingsModal(
+        kind: RwSignal<Option<ModalKind>>,
+        client: DiagramClient,
+        error: RwSignal<Option<String>>,
+    ) -> impl IntoView {
+        let read_preferred = create_rw_signal(false);
+        let write_enabled = create_rw_signal(false);
+        let dual_write = create_rw_signal(false);
+        let loading = create_rw_signal(true);
+        let saving = create_rw_signal(false);
+        let kind_close = kind;
+
+        create_effect(move |_| {
+            if kind.get() != Some(ModalKind::BridgeSettings) {
+                return;
+            }
+            loading.set(true);
+            let client = client.clone();
+            let error = error.clone();
+            spawn_local(async move {
+                match client.get_bridge_config().await {
+                    Ok(cfg) => {
+                        read_preferred.set(cfg.db_read_preferred);
+                        write_enabled.set(cfg.db_write_enabled);
+                        dual_write.set(cfg.dual_write_local);
+                    }
+                    Err(e) => error.set(Some(e.to_string())),
+                }
+                loading.set(false);
+            });
+        });
+
+        view! {
+            <div class="cdb-modal-header">
+                <h3 class="cdb-modal-title" data-testid="modal-title-bridge-settings">"Bridge 设置"</h3>
+                <button class="cdb-modal-close" on:click=move |_| kind_close.set(None)>
+                    <IconBox size="sm"><IconClose /></IconBox>
+                </button>
+            </div>
+            <div class="cdb-modal-body">
+                {move || if loading.get() {
+                    view! { <p>"加载中…"</p> }.into_view()
+                } else {
+                    view! {
+                        <label class="cdb-form-check">
+                            <input
+                                type="checkbox"
+                                prop:checked=move || read_preferred.get()
+                                on:change=move |ev| {
+                                    read_preferred.set(event_target_checked(&ev));
+                                }
+                            />
+                            "优先从数据库读取"
+                        </label>
+                        <label class="cdb-form-check">
+                            <input
+                                type="checkbox"
+                                prop:checked=move || write_enabled.get()
+                                on:change=move |ev| {
+                                    write_enabled.set(event_target_checked(&ev));
+                                }
+                            />
+                            "启用数据库写入"
+                        </label>
+                        <label class="cdb-form-check">
+                            <input
+                                type="checkbox"
+                                prop:checked=move || dual_write.get()
+                                on:change=move |ev| {
+                                    dual_write.set(event_target_checked(&ev));
+                                }
+                            />
+                            "双写本地草稿"
+                        </label>
+                    }.into_view()
+                }}
+            </div>
+            <div class="cdb-modal-footer">
+                <button class="cdb-btn" on:click=move |_| kind_close.set(None)>"取消"</button>
+                <button
+                    class="cdb-btn cdb-btn--primary"
+                    data-testid="bridge-settings-save"
+                    disabled=move || saving.get() || loading.get()
+                    on:click={
+                        let client = client.clone();
+                        let error = error.clone();
+                        move |_| {
+                            saving.set(true);
+                            let update = BridgeConfigUpdate {
+                                db_read_preferred: Some(read_preferred.get_untracked()),
+                                db_write_enabled: Some(write_enabled.get_untracked()),
+                                dual_write_local: Some(dual_write.get_untracked()),
+                            };
+                            let client = client.clone();
+                            let error = error.clone();
+                            spawn_local(async move {
+                                match client.update_bridge_config(&update).await {
+                                    Ok(()) => kind_close.set(None),
+                                    Err(e) => error.set(Some(e.to_string())),
+                                }
+                                saving.set(false);
+                            });
+                        }
+                    }
+                >"保存"</button>
+            </div>
+        }
+    }
 
     /// Import 模态: 粘贴 SQL → 调用 bridge/import
     /// - UT-MM-10: parse_sql_statements 纯函数测试
