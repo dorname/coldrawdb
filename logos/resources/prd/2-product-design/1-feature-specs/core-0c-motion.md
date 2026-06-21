@@ -57,6 +57,11 @@ E6 为 drawdb-web 引入动效与微交互，对齐 main `framer-motion` + Semi 
   50%      { transform: scale(1.08); }
 }
 
+@keyframes cdb-pulse-opacity {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+
 @keyframes cdb-spin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
@@ -156,6 +161,49 @@ let close_with_anim = move |_| {
 </Button>
 ```
 
+### 4.8 按钮 focus / active（R6）
+
+```css
+.cdb-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--cdb-shadow-focus);
+}
+
+.cdb-btn--primary:active:not(:disabled) {
+  background: var(--cdb-color-primary-active);
+  border-color: var(--cdb-color-primary-active);
+  transform: translateY(1px);
+}
+
+.cdb-tool-btn:focus-visible,
+.cdb-tab--icon:focus-visible {
+  outline: none;
+  box-shadow: var(--cdb-shadow-focus);
+}
+```
+
+> `.cdb-btn` transition 须包含 `transform` 与 `box-shadow`（与 E6 §4.5 合并，不重复定义块）。
+
+### 4.9 面板 spring 入场（R6）
+
+```css
+.cdb-inspector {
+  animation: cdb-slide-in-right var(--cdb-duration-slow) var(--cdb-easing-spring);
+}
+
+.cdb-main.cdb-has-io-drawer .cdb-io-drawer {
+  animation: cdb-slide-in-right var(--cdb-duration-slow) var(--cdb-easing-spring);
+}
+
+.cdb-app-bar__overflow-menu {
+  animation: cdb-slide-down var(--cdb-duration-base) var(--cdb-easing-spring);
+}
+```
+
+> Spring 使用 CSS `cubic-bezier` 近似（`--cdb-easing-spring`），不引入 framer-motion。
+
+> `.cdb-save-dot--saving` 使用 `animation: cdb-pulse-opacity 1s infinite`；**禁止**与 E6 `cdb-pulse` scale 混用同名 keyframes。
+
 ## 5. 关闭动画模式
 
 为支持 Modal/SideSheet/Tooltip/Dropdown 关闭时播放退出动画，引入**延迟卸载模式**：
@@ -208,11 +256,16 @@ view! {
 - Issues 徽章在 count > 0 时 pulse（UT-E6-03）
 - `prefers-reduced-motion: reduce` 时动画时长 ≤ 0.01ms（UT-E6-04）
 - ST-PE-07：Playwright 断言模态动画结束后状态
+- `styles.css` 仅 **一处** `@keyframes cdb-pulse`（scale）
+- 存在 `@keyframes cdb-pulse-opacity` 且 `.cdb-save-dot--saving` 引用
+- `.cdb-btn:focus-visible` 使用 `var(--cdb-shadow-focus)`
+- `.cdb-btn--primary:active` 使用 `var(--cdb-color-primary-active)`
+- Inspector / IO Drawer / 溢出菜单使用 `var(--cdb-easing-spring)`
 
 ## 8. 不在 E6 范围
 
 - 拖拽时元素跟随（已有原生 HTML5 drag，E6 不替换）
 - 复杂路径动画（贝塞尔曲线轨迹）— V2+
-- Spring 物理动画（framer-motion 风格）— V2+
+- Spring 物理动画（framer-motion 风格）— V2+（R6 面板 spring 入场使用 CSS `--cdb-easing-spring` 近似，见 §4.9）
 - 滚动视差（parallax）— 不做
 

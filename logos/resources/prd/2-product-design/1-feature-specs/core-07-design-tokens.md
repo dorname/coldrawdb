@@ -95,6 +95,20 @@
 | `--cdb-easing-out` | `cubic-bezier(0, 0, 0.2, 1)` | 进入动画 |
 | `--cdb-easing-in-out` | `cubic-bezier(0.4, 0, 0.2, 1)` | 状态切换 |
 
+### 9.1 Spring 与 Focus Token（R6）
+
+| Token | 值 | 用途 |
+|---|---|---|
+| `--cdb-easing-spring` | `cubic-bezier(0.34, 1.56, 0.64, 1)` | Inspector / IO Drawer / 溢出菜单 spring 入场 |
+| `--cdb-color-focus-ring` | `rgba(23, 94, 122, 0.35)` | 按钮 / Tab / ToolRail 焦点环色 |
+| `--cdb-shadow-focus` | `0 0 0 3px var(--cdb-color-focus-ring)` | `:focus-visible` 外环 |
+
+暗色模式（`[data-mode="dark"]` 与 `prefers-color-scheme: dark`）覆盖：
+
+| Token | 暗色值 |
+|---|---|
+| `--cdb-color-focus-ring` | `rgba(75, 163, 196, 0.45)` |
+
 ## 10. 字体（对齐系统字体栈）
 
 | Token | 值 | 用途 |
@@ -254,6 +268,8 @@ SVG 内部 `width/height` 由容器 100% 撑满，`stroke="currentColor"` 继承
 - 8 个 `tab-*` testid 均存在（含 `tab-fields`）
 - 不得存在 `.cdb-side-panel--right` 45% 高度分割
 - `field-editor` 仅在 `tab-fields` 内容区渲染
+- `:root` 含 `--cdb-easing-spring` 与 `--cdb-shadow-focus`
+- 暗色块含 `--cdb-color-focus-ring` 映射
 
 ## 18. 不在 E1 范围
 
