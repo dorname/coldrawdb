@@ -40,56 +40,34 @@ E5 实现 drawdb-web 的暗色模式，对齐 main `settings.mode === "dark"` �
 
 ## 3. CSS 实现
 
+`[data-mode="dark"]` 与 `@media (prefers-color-scheme: dark)` 内 `:root:not([data-mode="light"]):not([data-mode="dark"])` **必须**包含相同 Token 集合（primary / grey / semantic / text / bg / border / shadow / surface），不得仅覆写部分 Token。
+
+新增 surface Token 暗色映射：
+
+| Token | Dark 值 |
+|---|---|
+| `--cdb-color-canvas-grid` | `rgba(255, 255, 255, 0.06)` |
+| `--cdb-color-inspector-edge` | `rgba(255, 255, 255, 0.04)` |
+| `--cdb-color-focus-error` | `rgba(248, 113, 113, 0.2)` |
+| `--cdb-color-error-hover-bg` | `rgba(248, 113, 113, 0.12)` |
+
 ```css
-/* styles.css 末尾追加 */
+/* styles.css — 节选 */
 
 [data-mode="dark"] {
+  color-scheme: dark;
   --cdb-color-primary: #4ba3c4;
-  --cdb-color-primary-hover: #6cb8d4;
-  --cdb-color-primary-active: #2a8aaa;
-  --cdb-color-primary-disabled: #2a4a55;
-  --cdb-color-primary-soft: #1a3a48;
-  --cdb-color-primary-soft-hover: #234a5a;
-  --cdb-color-text-0: #f9fafb;
-  --cdb-color-text-1: #e5e7eb;
-  --cdb-color-text-2: #9ca3af;
-  --cdb-color-text-3: #6b7280;
-  --cdb-color-bg-0: #16161a;
-  --cdb-color-bg-1: #1f1f23;
-  --cdb-color-bg-2: #2a2a2e;
-  --cdb-color-bg-3: #0e0e10;
-  --cdb-color-border: #2a2a2e;
-  --cdb-color-border-strong: #3a3a3e;
-  --cdb-color-border-muted: rgba(249, 250, 251, 0.08);
-  --cdb-color-grey-0: #16161a;
-  --cdb-color-grey-1: #1f1f23;
-  --cdb-color-grey-2: #2a2a2e;
-  --cdb-color-grey-3: #3a3a3e;
-  --cdb-color-grey-4: #4a4a4e;
-  --cdb-color-grey-5: #6b7280;
-  --cdb-color-grey-6: #9ca3af;
-  --cdb-color-grey-7: #d1d5db;
-  --cdb-color-grey-8: #e5e7eb;
-  --cdb-color-grey-9: #f9fafb;
-  --cdb-color-warning-soft: #5c4a0e;
-  --cdb-color-success-soft: #0e4f3a;
-  --cdb-color-error-soft: #5c1a1a;
-  --cdb-color-info-soft: #1a3a5c;
-  --cdb-color-warning: #fbbf24;
-  --cdb-color-success: #34d399;
-  --cdb-color-error: #f87171;
-  --cdb-color-info: #60a5fa;
-  --cdb-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --cdb-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
-  --cdb-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
-  --cdb-shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.6);
-  --cdb-color-bg-overlay: rgba(0, 0, 0, 0.7);
+  /* ... 完整 dark token，含 surface 四组 ... */
+  --cdb-color-canvas-grid: rgba(255, 255, 255, 0.06);
+  --cdb-color-inspector-edge: rgba(255, 255, 255, 0.04);
+  --cdb-color-focus-error: rgba(248, 113, 113, 0.2);
+  --cdb-color-error-hover-bg: rgba(248, 113, 113, 0.12);
 }
 
-/* 跟随系统偏好（仅当用户未显式选择） */
 @media (prefers-color-scheme: dark) {
   :root:not([data-mode="light"]):not([data-mode="dark"]) {
-    /* 与 [data-mode="dark"] 相同 token — 通过 CSS 自定义属性引用 */
+    color-scheme: dark;
+    /* 与 [data-mode="dark"] 相同 token 全集（R3） */
   }
 }
 ```

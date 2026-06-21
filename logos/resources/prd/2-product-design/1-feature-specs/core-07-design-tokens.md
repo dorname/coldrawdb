@@ -199,6 +199,17 @@
 
 SVG 内部 `width/height` 由容器 100% 撑满，`stroke="currentColor"` 继承按钮文字色。
 
+## 15.1 Surface 语义色（R3，light 默认）
+
+| Token | Light 值 | 用途 |
+|---|---|---|
+| `--cdb-color-canvas-grid` | `rgba(0, 0, 0, 0.04)` | 画布点阵网格线 |
+| `--cdb-color-inspector-edge` | `rgba(15, 23, 42, 0.02)` | Inspector 左侧微妙分隔阴影 |
+| `--cdb-color-focus-error` | `rgba(239, 68, 68, 0.1)` | 表单 invalid focus ring |
+| `--cdb-color-error-hover-bg` | `rgba(239, 68, 68, 0.08)` | danger 按钮 hover 背景 |
+
+> 组件层 **禁止** 直接使用 `#fef2f2` / `rgba(15,23,42,…)` 等字面量；语义背景统一使用 `--cdb-color-{semantic}-soft`（如 error-soft / warning-soft / info-soft）。
+
 ## 16. 主题切换接口
 
 | 接口 | 类型 | 说明 |
@@ -211,8 +222,10 @@ SVG 内部 `width/height` 由容器 100% 撑满，`stroke="currentColor"` 继承
 
 - `frontend-rs/src/styles.css` 中 `var(--cdb-` 引用数 ≥ 100（E1 后）
 - E1 delta 完成后，`grep -c '^--cdb-' frontend-rs/src/styles.css` ≥ 100
-- 所有 token 必须出现在 `core-07-design-tokens.md` §2–§14 中
-- 移除硬编码颜色（`#xxx` 字面量仅允许出现在 `core-0b-dark-mode.md` dark 覆盖块中）
+- 所有 token 必须出现在 `core-07-design-tokens.md` §2–§15 中
+- Token 定义块（`:root` / `[data-mode="dark"]` / `@media`）之外，组件选择器不得出现 `#rgb` / `rgba(` 颜色字面量（`white-space` 等非颜色属性除外）
+- Issue / Badge / Overlay / Canvas grid 必须使用语义 Token
+- `prefers-color-scheme: dark` 须与 `[data-mode="dark"]` 保持同一套 Token 映射
 
 ## 18. 不在 E1 范围
 

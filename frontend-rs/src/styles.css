@@ -72,6 +72,12 @@
   --cdb-color-border-strong: #d1d5db;
   --cdb-color-border-muted: rgba(31, 41, 55, 0.08);
 
+  /* Surface / focus（R3：组件层语义 Token，禁止硬编码） */
+  --cdb-color-canvas-grid: rgba(0, 0, 0, 0.04);
+  --cdb-color-inspector-edge: rgba(15, 23, 42, 0.02);
+  --cdb-color-focus-error: rgba(239, 68, 68, 0.1);
+  --cdb-color-error-hover-bg: rgba(239, 68, 68, 0.08);
+
   /* Shadow — 5 levels (aligned Semi shadow-1/2/3 + extended) */
   --cdb-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
   --cdb-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -159,6 +165,7 @@
  * main `darkBgTheme = #16161A` 作为 base，所有 token 在 dark 模式下反转/加深
  * ============================================================ */
 [data-mode="dark"] {
+  color-scheme: dark;
   /* Primary */
   --cdb-color-primary: #4ba3c4;
   --cdb-color-primary-hover: #6cb8d4;
@@ -213,6 +220,12 @@
   --cdb-color-border-strong: #3a3a3e;
   --cdb-color-border-muted: rgba(249, 250, 251, 0.08);
 
+  /* Surface / focus — 暗色映射（R3） */
+  --cdb-color-canvas-grid: rgba(255, 255, 255, 0.06);
+  --cdb-color-inspector-edge: rgba(255, 255, 255, 0.04);
+  --cdb-color-focus-error: rgba(248, 113, 113, 0.2);
+  --cdb-color-error-hover-bg: rgba(248, 113, 113, 0.12);
+
   /* Shadow — 暗色下更深 */
   --cdb-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
   --cdb-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
@@ -227,10 +240,59 @@
  * ============================================================ */
 @media (prefers-color-scheme: dark) {
   :root:not([data-mode="light"]):not([data-mode="dark"]) {
-    /* 引用 [data-mode="dark"] 同一组 token；CSS variable alias 实现 */
+    color-scheme: dark;
+    /* 与 [data-mode="dark"] 同步 — R3 完整映射 */
     --cdb-color-primary: #4ba3c4;
-    --cdb-color-bg-0: #16161a;
+    --cdb-color-primary-hover: #6cb8d4;
+    --cdb-color-primary-active: #2a8aaa;
+    --cdb-color-primary-disabled: #2a4a55;
+    --cdb-color-primary-soft: #1a3a48;
+    --cdb-color-primary-soft-hover: #234a5a;
+    --cdb-color-primary-bg: #1a3a48;
+    --cdb-color-grey-0: #16161a;
+    --cdb-color-grey-1: #1f1f23;
+    --cdb-color-grey-2: #2a2a2e;
+    --cdb-color-grey-3: #3a3a3e;
+    --cdb-color-grey-4: #4a4a4e;
+    --cdb-color-grey-5: #6b7280;
+    --cdb-color-grey-6: #9ca3af;
+    --cdb-color-grey-7: #d1d5db;
+    --cdb-color-grey-8: #e5e7eb;
+    --cdb-color-grey-9: #f9fafb;
+    --cdb-color-success: #34d399;
+    --cdb-color-success-soft: #0e4f3a;
+    --cdb-color-warning: #fbbf24;
+    --cdb-color-warning-soft: #5c4a0e;
+    --cdb-color-error: #f87171;
+    --cdb-color-error-soft: #5c1a1a;
+    --cdb-color-info: #60a5fa;
+    --cdb-color-info-soft: #1a3a5c;
     --cdb-color-text-0: #f9fafb;
+    --cdb-color-text-1: #e5e7eb;
+    --cdb-color-text-2: #9ca3af;
+    --cdb-color-text-3: #6b7280;
+    --cdb-color-text: #f9fafb;
+    --cdb-color-text-muted: #9ca3af;
+    --cdb-color-bg-0: #16161a;
+    --cdb-color-bg-1: #1f1f23;
+    --cdb-color-bg-2: #2a2a2e;
+    --cdb-color-bg-3: #0e0e10;
+    --cdb-color-bg-overlay: rgba(0, 0, 0, 0.7);
+    --cdb-color-bg: #16161a;
+    --cdb-color-bg-subtle: #1f1f23;
+    --cdb-color-bg-canvas: #0e0e10;
+    --cdb-color-border: #2a2a2e;
+    --cdb-color-border-strong: #3a3a3e;
+    --cdb-color-border-muted: rgba(249, 250, 251, 0.08);
+    --cdb-color-canvas-grid: rgba(255, 255, 255, 0.06);
+    --cdb-color-inspector-edge: rgba(255, 255, 255, 0.04);
+    --cdb-color-focus-error: rgba(248, 113, 113, 0.2);
+    --cdb-color-error-hover-bg: rgba(248, 113, 113, 0.12);
+    --cdb-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --cdb-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+    --cdb-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+    --cdb-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5), 0 4px 6px rgba(0, 0, 0, 0.3);
+    --cdb-shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.6), 0 10px 10px rgba(0, 0, 0, 0.4);
   }
 }
 
@@ -395,10 +457,10 @@ textarea {
   margin-right: var(--cdb-space-1);
 }
 
-.cdb-save-dot--saved { background: var(--cdb-color-success, #22c55e); }
-.cdb-save-dot--dirty { background: var(--cdb-color-warning, #eab308); }
+.cdb-save-dot--saved { background: var(--cdb-color-success); }
+.cdb-save-dot--dirty { background: var(--cdb-color-warning); }
 .cdb-save-dot--saving { background: var(--cdb-color-primary); animation: cdb-pulse 1s infinite; }
-.cdb-save-dot--error { background: var(--cdb-color-error, #ef4444); }
+.cdb-save-dot--error { background: var(--cdb-color-error); }
 
 .cdb-rev-inline {
   margin-left: var(--cdb-space-2);
@@ -491,7 +553,7 @@ textarea {
   width: 36px;
   height: 36px;
   border-radius: var(--cdb-radius-sm);
-  background: #fef2f2;
+  background: var(--cdb-color-error-soft);
   color: var(--cdb-color-error);
   font-size: var(--cdb-text-xs);
   font-weight: 700;
@@ -546,7 +608,7 @@ textarea {
   width: 320px;
   min-width: 320px;
   overflow: hidden;
-  box-shadow: -1px 0 0 rgba(15, 23, 42, 0.02);
+  box-shadow: -1px 0 0 var(--cdb-color-inspector-edge);
 }
 
 .cdb-main.cdb-is-inspector-collapsed .cdb-inspector {
@@ -956,7 +1018,7 @@ textarea {
 
 .cdb-btn--primary {
   background: var(--cdb-color-primary);
-  color: white;
+  color: var(--cdb-color-primary-on);
   border-color: var(--cdb-color-primary);
 }
 
@@ -1139,8 +1201,8 @@ textarea {
   display: flex;
   flex-direction: column;
   background-image:
-    linear-gradient(rgba(0, 0, 0, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 0, 0, 0.04) 1px, transparent 1px);
+    linear-gradient(var(--cdb-color-canvas-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--cdb-color-canvas-grid) 1px, transparent 1px);
   background-size: 24px 24px;
 }
 
@@ -1273,7 +1335,7 @@ textarea {
 
 .cdb-tab.cdb-is-active .cdb-tab-badge {
   background: var(--cdb-color-primary);
-  color: white;
+  color: var(--cdb-color-primary-on);
 }
 
 .cdb-list-item__row {
@@ -1355,7 +1417,7 @@ textarea {
 .cdb-conflict-dialog-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.48);
+  background: var(--cdb-color-bg-overlay);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -1401,7 +1463,7 @@ textarea {
   bottom: var(--cdb-space-6);
   right: var(--cdb-space-6);
   background: var(--cdb-color-error);
-  color: white;
+  color: var(--cdb-color-primary-on);
   padding: var(--cdb-space-3) var(--cdb-space-4);
   border-radius: var(--cdb-radius-md);
   box-shadow: var(--cdb-shadow-md);
@@ -1416,7 +1478,7 @@ textarea {
 .cdb-error-toast button {
   background: none;
   border: none;
-  color: white;
+  color: var(--cdb-color-primary-on);
   cursor: pointer;
   font-size: var(--cdb-text-lg);
   line-height: 1;
@@ -1511,21 +1573,21 @@ textarea {
 }
 
 .cdb-issue--error {
-  background: #fef2f2;
+  background: var(--cdb-color-error-soft);
   border-left-color: var(--cdb-color-error);
   color: var(--cdb-color-error);
 }
 
 .cdb-issue--warning {
-  background: #fffbeb;
+  background: var(--cdb-color-warning-soft);
   border-left-color: var(--cdb-color-warning);
   color: var(--cdb-color-warning);
 }
 
 .cdb-issue--info {
-  background: #eff6ff;
-  border-left-color: var(--cdb-color-primary);
-  color: var(--cdb-color-primary);
+  background: var(--cdb-color-info-soft);
+  border-left-color: var(--cdb-color-info);
+  color: var(--cdb-color-info);
 }
 
 .cdb-issue-level {
@@ -1546,7 +1608,7 @@ textarea {
 .cdb-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.48);
+  background: var(--cdb-color-bg-overlay);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -1639,7 +1701,7 @@ textarea {
 
 .cdb-form-input.cdb-is-invalid {
   border-color: var(--cdb-color-error);
-  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.1);
+  box-shadow: 0 0 0 2px var(--cdb-color-focus-error);
 }
 
 .cdb-form-input:disabled {
@@ -1752,7 +1814,7 @@ textarea {
 }
 
 .cdb-btn--danger:hover {
-  background: rgba(239, 68, 68, 0.08);
+  background: var(--cdb-color-error-hover-bg);
 }
 
 /* ============================================================
