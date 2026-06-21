@@ -19,7 +19,7 @@ use crate::code_view::{
 use crate::editor_core::{
     ConflictAction, ConflictInfo, DebounceTrigger, EditorStore,
 };
-use crate::editor_core::types::{Field, Reference, Table};
+use crate::editor_core::types::{Area, Field, Note, Reference, Table};
 use crate::editor_data_access::{save_with_retry, DiagramClient, SaveError, ImportLocalResponse};
 use crate::editor_render::Canvas;
 use crate::editor_render::{Transform, zoom_in, zoom_out, zoom_reset};
@@ -720,8 +720,43 @@ impl Named for Table {
     }
 }
 
-/// Areas/Enums/Notes/Types 在 B2 范围暂用「仅前端 state」（spec 标 V1）；
-/// 这里定义轻量数据结构，避免 `EditorStore` 过度膨胀（B3 才把它们接入 store）。
+impl Named for Area {
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl Named for Note {
+    fn name(&self) -> &str {
+        &self.content
+    }
+}
+
+/// 新建区域默认值（AreasTab + UT-ALIGN-A01）
+pub fn new_default_area(seq: i64) -> Area {
+    Area {
+        id: format!("area-{}", seq),
+        x: 100.0 + (seq as f64) * 24.0,
+        y: 100.0 + (seq as f64) * 24.0,
+        width: 400.0,
+        height: 300.0,
+        color: "#e6f1f5".into(),
+        name: format!("新区域 {}", seq + 1),
+    }
+}
+
+/// 新建便签默认值（NotesTab + UT-ALIGN-A01）
+pub fn new_default_note(seq: i64) -> Note {
+    Note {
+        id: format!("note-{}", seq),
+        x: 200.0 + (seq as f64) * 24.0,
+        y: 200.0 + (seq as f64) * 24.0,
+        content: format!("新便签 {}", seq + 1),
+        color: "#fef3c7".into(),
+    }
+}
+
+/// Enums/Types 在 V1 仍用「仅前端 state」轻量 Stub（areas/notes 已接入 store）。
 #[derive(Clone, Debug, PartialEq)]
 pub struct AreaStub {
     pub id: String,
@@ -2439,11 +2474,11 @@ pub fn LeftPanel(
     on_change_type: Rc<dyn Fn(String, String)>,
     on_set_ref: Rc<dyn Fn(String)>,
 ) -> impl IntoView {
-    // B2 范围：Areas/Enums/Notes/Types 暂用「仅前端 state」（spec 标 V1）
-    let areas: RwSignal<Vec<AreaStub>> = create_rw_signal(Vec::new());
+    // Enums/Types：V1 仅前端 state；Areas/Notes 已接入 store（align-v1-areas-notes-store）
     let enums: RwSignal<Vec<EnumStub>> = create_rw_signal(Vec::new());
-    let notes: RwSignal<Vec<NoteStub>> = create_rw_signal(Vec::new());
     let types: RwSignal<Vec<TypeStub>> = create_rw_signal(Vec::new());
+    let area_seq: RwSignal<i64> = create_rw_signal(0);
+    let note_seq: RwSignal<i64> = create_rw_signal(0);
 
     let active_tab: RwSignal<SidePanelTab> = create_rw_signal(SidePanelTab::Tables);
     let search_query: RwSignal<String> = create_rw_signal(String::new());
@@ -2549,13 +2584,23 @@ pub fn LeftPanel(
                         />
                     }.into_view(),
                     SidePanelTab::Areas => view! {
-                        <AreasTab areas=areas search_query=search_query.clone() />
+                        <AreasTab
+                            store=store.clone()
+                            search_query=search_query.clone()
+                            area_seq=area_seq
+                            on_save=on_save.clone()
+                        />
                     }.into_view(),
                     SidePanelTab::Enums => view! {
                         <EnumsTab enums=enums search_query=search_query.clone() />
                     }.into_view(),
                     SidePanelTab::Notes => view! {
-                        <NotesTab notes=notes search_query=search_query.clone() />
+                        <NotesTab
+                            store=store.clone()
+                            search_query=search_query.clone()
+                            note_seq=note_seq
+                            on_save=on_save.clone()
+                        />
                     }.into_view(),
                     SidePanelTab::Relationships => view! {
                         <RelationshipsTab store=store.clone() search_query=search_query.clone() />
@@ -2821,16 +2866,16 @@ pub fn TablesTab(
     }
 }
 
-/// Areas Tab — 区域列表（V1 仅前端 state，B3 接入 store）
-/// B2 行为：渲染 areas 列表；搜索过滤；底部 "+" 创建新区域（默认名 "新区域"）
+/// Areas Tab — 区域列表（读写 `store.areas`，与画布 / PUT 同源）
 #[component]
 pub fn AreasTab(
-    areas: RwSignal<Vec<AreaStub>>,
+    store: EditorStore,
     search_query: RwSignal<String>,
+    area_seq: RwSignal<i64>,
+    on_save: Rc<dyn Fn()>,
 ) -> impl IntoView {
-    let next_id = create_rw_signal(0i64);
     let filtered = create_memo(move |_| {
-        let all = areas.get();
+        let all = store.areas.get();
         let q = search_query.get();
         filter_by_query(&all, &q)
     });
@@ -2839,20 +2884,22 @@ pub fn AreasTab(
             <button
                 class="cdb-btn cdb-btn--block"
                 data-testid="area-add"
-                on:click=move |_| {
-                    let id = next_id.get();
-                    next_id.set(id + 1);
-                    let mut v = areas.get();
-                    v.push(AreaStub {
-                        id: format!("area-auto-{}", id),
-                        name: format!("新区域 {}", id + 1),
-                    });
-                    areas.set(v);
+                on:click={
+                    let on_save = on_save.clone();
+                    move |_| {
+                        let seq = area_seq.get();
+                        area_seq.set(seq + 1);
+                        let mut v = store.areas.get();
+                        v.push(new_default_area(seq));
+                        store.areas.set(v);
+                        store.dirty.set(true);
+                        on_save();
+                    }
                 }
             >
                 "+ 加区域"
             </button>
-            <For each=move || filtered.get() key=|a| a.id.clone() children=move |a: AreaStub| {
+            <For each=move || filtered.get() key=|a| a.id.clone() children=move |a: Area| {
                 let id = a.id.clone();
                 let name = a.name.clone();
                 view! {
@@ -2910,15 +2957,16 @@ pub fn EnumsTab(
     }
 }
 
-/// Notes Tab — 便签列表（V1 仅前端 state）
+/// Notes Tab — 便签列表（读写 `store.notes`，与画布 / PUT 同源）
 #[component]
 pub fn NotesTab(
-    notes: RwSignal<Vec<NoteStub>>,
+    store: EditorStore,
     search_query: RwSignal<String>,
+    note_seq: RwSignal<i64>,
+    on_save: Rc<dyn Fn()>,
 ) -> impl IntoView {
-    let next_id = create_rw_signal(0i64);
     let filtered = create_memo(move |_| {
-        let all = notes.get();
+        let all = store.notes.get();
         let q = search_query.get();
         filter_by_query(&all, &q)
     });
@@ -2927,20 +2975,22 @@ pub fn NotesTab(
             <button
                 class="cdb-btn cdb-btn--block"
                 data-testid="note-add"
-                on:click=move |_| {
-                    let id = next_id.get();
-                    next_id.set(id + 1);
-                    let mut v = notes.get();
-                    v.push(NoteStub {
-                        id: format!("note-auto-{}", id),
-                        content: format!("新便签 {}", id + 1),
-                    });
-                    notes.set(v);
+                on:click={
+                    let on_save = on_save.clone();
+                    move |_| {
+                        let seq = note_seq.get();
+                        note_seq.set(seq + 1);
+                        let mut v = store.notes.get();
+                        v.push(new_default_note(seq));
+                        store.notes.set(v);
+                        store.dirty.set(true);
+                        on_save();
+                    }
                 }
             >
                 "+ 加便签"
             </button>
-            <For each=move || filtered.get() key=|n| n.id.clone() children=move |n: NoteStub| {
+            <For each=move || filtered.get() key=|n| n.id.clone() children=move |n: Note| {
                 let id = n.id.clone();
                 let preview: String = n.content.chars().take(30).collect();
                 view! {
@@ -4826,7 +4876,7 @@ mod tests {
     //! 本模块用纯函数 UT 验证 B2 数据层的正确性。
 
     use super::*;
-    use crate::editor_core::types::{Field, Reference, Table};
+    use crate::editor_core::types::{Area, Field, Note, Reference, Table};
 
     fn make_table(id: &str, name: &str) -> Table {
         Table {
@@ -4973,8 +5023,13 @@ mod tests {
     #[test]
     fn test_global_search_cross_tab_ut_sp_10() {
         let tables = vec![make_table("t1", "users")];
-        let areas = vec![AreaStub {
+        let areas = vec![Area {
             id: "a1".into(),
+            x: 0.0,
+            y: 0.0,
+            width: 100.0,
+            height: 100.0,
+            color: "#e6f1f5".into(),
             name: "user_area".into(),
         }];
         let enums = vec![EnumStub {
@@ -4991,22 +5046,51 @@ mod tests {
         assert_eq!(e.len(), 1, "UT-SP-10: enums 匹配 1");
     }
 
-    /// UT-SP-10: 类型过滤对 Table/Enum/NoteStub 都能正确 filter
+    /// UT-SP-10: 类型过滤对 Table/Enum/Note 都能正确 filter
     #[test]
     fn test_filter_by_query_generic_ut_sp_10() {
         let notes = vec![
-            NoteStub {
+            Note {
                 id: "n1".into(),
+                x: 0.0,
+                y: 0.0,
                 content: "user feedback".into(),
+                color: "#fef3c7".into(),
             },
-            NoteStub {
+            Note {
                 id: "n2".into(),
+                x: 0.0,
+                y: 0.0,
                 content: "system status".into(),
+                color: "#fef3c7".into(),
             },
         ];
         let result = filter_by_query(&notes, "user");
         assert_eq!(result.len(), 1, "UT-SP-10: notes 搜索 'user' 应匹配 1");
         assert_eq!(result[0].id, "n1");
+    }
+
+    /// UT-ALIGN-A01: Areas/Notes Tab 新增写入 store，snapshot 与侧栏同源
+    #[test]
+    fn test_areas_notes_add_updates_store_snapshot_ut_align_a01() {
+        let store = EditorStore::new();
+        let mut areas = store.areas.get();
+        areas.push(new_default_area(0));
+        store.areas.set(areas);
+        store.dirty.set(true);
+
+        let snap = store.snapshot("d1".into(), "Test".into());
+        assert_eq!(snap.areas.len(), 1, "UT-ALIGN-A01: snapshot.areas 应有 1 项");
+        assert_eq!(snap.areas[0].name, "新区域 1");
+
+        let mut notes = store.notes.get();
+        notes.push(new_default_note(0));
+        store.notes.set(notes);
+
+        let snap = store.snapshot("d1".into(), "Test".into());
+        assert_eq!(snap.notes.len(), 1, "UT-ALIGN-A01: snapshot.notes 应有 1 项");
+        assert_eq!(snap.notes[0].content, "新便签 1");
+        assert!(store.dirty.get(), "UT-ALIGN-A01: 变更后 dirty 应为 true");
     }
 
     /// UT-SP-10: 关系过滤 — references 没有 name 字段，使用拼接匹配

@@ -43,6 +43,8 @@
 
 ## 3. Areas Tab
 
+> **V1 数据源（align-v1-areas-notes-store）**：列表与增删改读写 `EditorStore.areas`（与画布 `draw_area`、PUT payload 同源）。Enums/Types 仍为仅前端 state。
+
 ### 3.1 列表项
 
 每项：区域名（可编辑）+ 颜色块 + 表数（区域内）
@@ -74,6 +76,8 @@
 > 引用检查：删除前提示"被 N 个字段引用，是否继续？"
 
 ## 5. Notes Tab
+
+> **V1 数据源**：列表与增删改读写 `EditorStore.notes`（与画布 `draw_note`、PUT payload 同源）。
 
 ### 5.1 列表项
 

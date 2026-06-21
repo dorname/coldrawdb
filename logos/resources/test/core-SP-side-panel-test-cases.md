@@ -62,6 +62,17 @@
   - Enums Tab 列表项 == 1（"user_role"）
   - Notes / Relationships / Types / Issues Tab 不受影响（若无匹配项则显示空态）
 
+### UT-ALIGN-A01 — Areas/Notes Tab 与 store 同源
+
+- **位置**：`frontend-rs/src/editor_panels.rs`（`AreasTab` / `NotesTab` + `new_default_area` / `new_default_note`）
+- **步骤**：
+  1. `EditorStore` 初始 `areas`/`notes` 为空
+  2. 向 `store.areas` push 默认 `Area`
+  3. `snapshot()` 断言 `areas.len() == 1` 且 `name` 一致
+  4. 向 `store.notes` push 默认 `Note`
+  5. `snapshot()` 断言 `notes.len() == 1`
+- **预期**：侧栏与保存 payload 使用同一 store 信号
+
 ## 3. ST 用例
 
 ### ST-SP-01 — 端到端：编辑 5 表 → Issues Tab 显示 0 error（B2 间接覆盖）
@@ -82,7 +93,8 @@
 
 - ❌ 全局搜索的 Tab 间跳转头（点击搜索结果跳到对应 Tab）— B3 接入
 - ❌ 类型筛选下拉的 field type 完整集合 — B2 暂用 `INT / VARCHAR(255) / TEXT / BOOLEAN` 4 类硬编码
-- ❌ Areas/Enums/Notes/Types Tab 内的双击重命名 / 右键菜单 — B3 接入
+- ❌ Enums/Types Tab 内的双击重命名 / 右键菜单 — B3 接入
+- ❌ Areas/Notes Tab 双击重命名 / 右键菜单 — 后续批次
 - ❌ DBML Editor（spec §9）— B5 接入
 
 ## 5. 对齐参考源
@@ -98,4 +110,5 @@
 | UT-SP-02 | Tables Tab 搜索过滤 | `frontend-rs/src/editor_panels.rs` |
 | UT-SP-09 | 8 Tab 图标栏切换 | `frontend-rs/src/editor_panels.rs` |
 | UT-SP-10 | 全局搜索跨 Tab 过滤 | `frontend-rs/src/editor_panels.rs` |
+| UT-ALIGN-A01 | Areas/Notes 与 store 同源 | `frontend-rs/src/editor_panels.rs` |
 | ST-SP-01 | 端到端 5 表 0 error | `frontend-rs/tests/wasm/sp.rs` |
