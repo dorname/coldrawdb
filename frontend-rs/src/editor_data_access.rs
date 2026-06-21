@@ -125,7 +125,7 @@ impl DiagramClient {
 
     /// PUT /api/v1/diagrams/{id}
     ///
-    /// Saves the diagram with an expected revision for optimistic locking.
+    /// Saves once with an expected revision for optimistic locking.
     /// On 409 Conflict returns `SaveError::Conflict { current_revision, expected_revision }`.
     pub async fn save(
         &self,
@@ -400,6 +400,65 @@ pub struct ImportLocalResponse {
     pub diagram_id: String,
     pub log_id: String,
     pub status: String,
+}
+
+/// 自动保存重试间隔（ms）：对齐 Phase 2 / Phase 3 S01 — 3s / 6s / 12s，累计封顶 30s。
+pub const SAVE_RETRY_DELAYS_MS: [u32; 3] = [3000, 6000, 12000];
+pub const SAVE_RETRY_MAX_ELAPSED_MS: u32 = 30_000;
+
+/// 409 冲突不重试；网络 / 5xx 可重试。
+pub fn is_retriable_save_error(err: &SaveError) -> bool {
+    match err {
+        SaveError::Conflict { .. } => false,
+        SaveError::Network(_) => true,
+        SaveError::Server(status, _) => *status >= 500,
+    }
+}
+
+/// PUT with exponential backoff (initial attempt + up to 3 retries).
+pub async fn save_with_retry(
+    client: &DiagramClient,
+    id: &str,
+    expected_revision: i64,
+    body: &Diagram,
+) -> Result<SaveResponse, SaveError> {
+    let mut attempt = 0usize;
+    let mut elapsed_ms = 0u32;
+    loop {
+        match client.save(id, expected_revision, body).await {
+            Ok(resp) => return Ok(resp),
+            Err(e) if is_retriable_save_error(&e) => {
+                if attempt >= SAVE_RETRY_DELAYS_MS.len() {
+                    return Err(e);
+                }
+                let delay = SAVE_RETRY_DELAYS_MS[attempt];
+                if elapsed_ms.saturating_add(delay) > SAVE_RETRY_MAX_ELAPSED_MS {
+                    return Err(e);
+                }
+                gloo_timers::future::TimeoutFuture::new(delay).await;
+                elapsed_ms = elapsed_ms.saturating_add(delay);
+                attempt += 1;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+/// 预期尝试次数：首次 + 重试次数（用于 UT 断言）。
+pub fn save_retry_total_attempts() -> usize {
+    1 + SAVE_RETRY_DELAYS_MS.len()
+}
+
+#[cfg(test)]
+mod save_retry_tests {
+    use super::{SAVE_RETRY_DELAYS_MS, SAVE_RETRY_MAX_ELAPSED_MS, save_retry_total_attempts};
+
+    #[test]
+    fn ut_s01_09_retry_delays_match_spec() {
+        assert_eq!(SAVE_RETRY_DELAYS_MS, [3000, 6000, 12000]);
+        assert_eq!(SAVE_RETRY_MAX_ELAPSED_MS, 30_000);
+        assert_eq!(save_retry_total_attempts(), 4);
+    }
 }
 
 #[allow(dead_code)]

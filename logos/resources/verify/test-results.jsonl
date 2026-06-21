@@ -1,54 +1,54 @@
-{"id":"ST-S03-01","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-S03-01","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-S03-04","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-S03-06","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-S03-03","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-S03-02","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-S03-05","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-S03-07","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"ST-C-01","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-C-01","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-C-02","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-C-03","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-C-05","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-C-04","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-S01-01","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"ST-S01-01","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-S01-03","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"ST-S01-02","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-S01-04","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-S04-01","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-S02-01","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-S01-05","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"ST-B-01","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-S02-02","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-S04-02","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"ST-S04-01","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-S04-05","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-S04-04","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-S04-03","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-S04-06","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-S04-07","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-S04-08","status":"pass","timestamp":"2026-06-20T13:16:24Z","duration_ms":0}
-{"id":"UT-S04-09","status":"pass","timestamp":"2026-06-20T13:16:25Z","duration_ms":0}
-{"id":"UT-S04-10","status":"pass","timestamp":"2026-06-20T13:16:25Z","duration_ms":0}
-{"id":"UT-S01-02","status":"skip","timestamp":"2026-06-20T13:16:27Z","error":"spec-defined, no Rust impl in this batch (import path covered by ST-S01-02)"}
-{"id":"UT-S01-06","status":"skip","timestamp":"2026-06-20T13:16:27Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S01-07","status":"skip","timestamp":"2026-06-20T13:16:27Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S01-08","status":"skip","timestamp":"2026-06-20T13:16:27Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S01-09","status":"skip","timestamp":"2026-06-20T13:16:27Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S01-10","status":"skip","timestamp":"2026-06-20T13:16:27Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"ST-S01-03","status":"skip","timestamp":"2026-06-20T13:16:27Z","error":"spec-defined, requires wasm-pack headless harness, deferred"}
-{"id":"UT-S02-03","status":"skip","timestamp":"2026-06-20T13:16:27Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S02-04","status":"skip","timestamp":"2026-06-20T13:16:27Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S02-05","status":"skip","timestamp":"2026-06-20T13:16:27Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S02-06","status":"skip","timestamp":"2026-06-20T13:16:27Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S02-07","status":"skip","timestamp":"2026-06-20T13:16:27Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S02-08","status":"skip","timestamp":"2026-06-20T13:16:27Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S02-09","status":"skip","timestamp":"2026-06-20T13:16:27Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"ST-S02-01","status":"skip","timestamp":"2026-06-20T13:16:27Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"ST-S02-02","status":"skip","timestamp":"2026-06-20T13:16:27Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"ST-S02-03","status":"skip","timestamp":"2026-06-20T13:16:27Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"ST-S02-04","status":"skip","timestamp":"2026-06-20T13:16:27Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"ST-S02-05","status":"skip","timestamp":"2026-06-20T13:16:27Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"ST-S02-06","status":"skip","timestamp":"2026-06-20T13:16:27Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S03-06","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-C-01","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-S03-07","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-S03-04","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-S01-03","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-S02-01","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-S03-03","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"ST-S03-01","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-S03-02","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"ST-C-01","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-C-03","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-C-02","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-S04-01","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"ST-B-01","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"ST-S04-01","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-S01-05","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-C-05","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-S04-04","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"ST-S01-01","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-S04-02","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-S04-05","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-S02-02","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-S01-01","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-C-04","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-S04-03","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-S01-04","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-S03-01","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-S03-05","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"ST-S01-02","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-S04-06","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-S04-07","status":"pass","timestamp":"2026-06-21T02:49:55Z","duration_ms":0}
+{"id":"UT-S04-08","status":"pass","timestamp":"2026-06-21T02:49:56Z","duration_ms":0}
+{"id":"UT-S04-09","status":"pass","timestamp":"2026-06-21T02:49:56Z","duration_ms":0}
+{"id":"UT-S04-10","status":"pass","timestamp":"2026-06-21T02:49:56Z","duration_ms":0}
+{"id":"UT-S01-02","status":"skip","timestamp":"2026-06-21T02:49:58Z","error":"spec-defined, no Rust impl in this batch (import path covered by ST-S01-02)"}
+{"id":"UT-S01-06","status":"skip","timestamp":"2026-06-21T02:49:58Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S01-07","status":"skip","timestamp":"2026-06-21T02:49:58Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S01-08","status":"skip","timestamp":"2026-06-21T02:49:58Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S01-09","status":"skip","timestamp":"2026-06-21T02:49:58Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S01-10","status":"skip","timestamp":"2026-06-21T02:49:58Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"ST-S01-03","status":"skip","timestamp":"2026-06-21T02:49:58Z","error":"spec-defined, requires wasm-pack headless harness, deferred"}
+{"id":"UT-S02-03","status":"skip","timestamp":"2026-06-21T02:49:58Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S02-04","status":"skip","timestamp":"2026-06-21T02:49:58Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S02-05","status":"skip","timestamp":"2026-06-21T02:49:58Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S02-06","status":"skip","timestamp":"2026-06-21T02:49:58Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S02-07","status":"skip","timestamp":"2026-06-21T02:49:58Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S02-08","status":"skip","timestamp":"2026-06-21T02:49:58Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S02-09","status":"skip","timestamp":"2026-06-21T02:49:58Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"ST-S02-01","status":"skip","timestamp":"2026-06-21T02:49:58Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"ST-S02-02","status":"skip","timestamp":"2026-06-21T02:49:58Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"ST-S02-03","status":"skip","timestamp":"2026-06-21T02:49:58Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"ST-S02-04","status":"skip","timestamp":"2026-06-21T02:49:58Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"ST-S02-05","status":"skip","timestamp":"2026-06-21T02:49:58Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"ST-S02-06","status":"skip","timestamp":"2026-06-21T02:49:58Z","error":"spec-defined, no Rust impl in this batch"}

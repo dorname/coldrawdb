@@ -23,13 +23,8 @@ pub fn mount() {
         let store = EditorStore::new();
         let debouncer = DebounceTrigger::default();
 
-        // 解析 window.location.pathname 拿真 diagram_id（取最后一段），
-        // 失败时 fallback "default"（与现状一致）。fix-add-frontend-stub-leftover
-        // 提案 4.2 决策：fallback "default" 而非空串/抛错。
-        let diagram_id = parse_diagram_id_from_pathname();
+        let diagram_id = parse_diagram_id_from_location();
 
-        // e2e HP-02 测试钩子: 把 store 暴露到 window.__cdb_revision（仅 debug 构建）
-        // HP-02 强断言 `window.__cdb_revision >= 1` 验证 save 链路真接通
         #[cfg(debug_assertions)]
         expose_test_hooks(&store);
 
@@ -39,24 +34,50 @@ pub fn mount() {
     });
 }
 
-/// 从 `window.location.pathname`（如 `/editor/d-abc-123`）取最后一段作为 diagram_id。
-/// 失败（无 window / 路径为空 / 多段解析失败）时 fallback "default"。
-fn parse_diagram_id_from_pathname() -> String {
+/// 从 URL query `?share=<id>` 解析 diagram id（对齐 S02 Phase 2 / `build_share_url`）。
+pub fn parse_share_param(search: &str) -> Option<String> {
+    let q = search.strip_prefix('?').unwrap_or(search);
+    if q.is_empty() {
+        return None;
+    }
+    for pair in q.split('&') {
+        if let Some((k, v)) = pair.split_once('=') {
+            if k == "share" && !v.is_empty() {
+                return Some(v.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// 从 pathname 末段解析 diagram id（如 `/editor/d-abc-123`）。
+pub fn parse_diagram_id_from_pathname_str(pathname: &str) -> Option<String> {
+    pathname
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .next_back()
+        .map(|s| s.to_string())
+        .filter(|s| s != "editor")
+}
+
+/// 纯函数：share 参数优先，其次 pathname，最后 fallback `default`。
+pub fn diagram_id_from_location(pathname: &str, search: &str) -> String {
+    parse_share_param(search)
+        .or_else(|| parse_diagram_id_from_pathname_str(pathname))
+        .unwrap_or_else(|| "default".to_string())
+}
+
+fn parse_diagram_id_from_location() -> String {
     web_sys::window()
-        .and_then(|w| w.location().pathname().ok())
-        .and_then(|p| {
-            p.split('/')
-                .filter(|s| !s.is_empty())
-                .next_back()
-                .map(|s| s.to_string())
+        .map(|w| {
+            diagram_id_from_location(
+                &w.location().pathname().unwrap_or_default(),
+                &w.location().search().unwrap_or_default(),
+            )
         })
         .unwrap_or_else(|| "default".to_string())
 }
 
-/// e2e 测试钩子（仅 `#[cfg(debug_assertions)]` 编译）：把 store 的 revision / dirty signal
-/// 暴露到 `<html>` 元素的 `data-cdb-revision` / `data-cdb-dirty` 属性。
-/// HP-02 强断言 `page.evaluate('() => document.documentElement.getAttribute("data-cdb-revision")')`
-/// 读出数字 ≥ 1 验证 save 链路真接通。
 #[cfg(debug_assertions)]
 fn expose_test_hooks(store: &EditorStore) {
     let root = web_sys::window()
@@ -73,5 +94,43 @@ fn expose_test_hooks(store: &EditorStore) {
         create_render_effect(move |_| {
             let _ = root_for_dirty.set_attribute("data-cdb-dirty", &dirty_signal.get().to_string());
         });
+    }
+}
+
+#[cfg(test)]
+mod location_tests {
+    use super::{diagram_id_from_location, parse_share_param};
+
+    #[test]
+    fn ut_s02_01_share_param_parsed() {
+        assert_eq!(
+            parse_share_param("?share=abc-123-def"),
+            Some("abc-123-def".into())
+        );
+        assert_eq!(
+            parse_share_param("/editor?share=d-uuid"),
+            None::<String>
+        );
+    }
+
+    #[test]
+    fn ut_s02_02_share_takes_priority_over_pathname() {
+        assert_eq!(
+            diagram_id_from_location("/editor/legacy-id", "?share=abc-123-def"),
+            "abc-123-def"
+        );
+    }
+
+    #[test]
+    fn ut_s02_03_pathname_fallback() {
+        assert_eq!(
+            diagram_id_from_location("/editor/my-diagram", ""),
+            "my-diagram"
+        );
+    }
+
+    #[test]
+    fn ut_s02_04_default_when_empty() {
+        assert_eq!(diagram_id_from_location("/", ""), "default");
     }
 }

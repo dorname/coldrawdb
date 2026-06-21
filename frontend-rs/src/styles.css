@@ -259,6 +259,10 @@ body {
   min-height: 0;
 }
 
+.cdb-main.cdb-is-hidden {
+  display: none;
+}
+
 .cdb-main.cdb-is-inspector-collapsed {
   grid-template-columns: 48px 1fr 0 auto;
 }

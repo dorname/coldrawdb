@@ -10,11 +10,17 @@
 //!   - btn-create-table / guide-create-table / btn-inspector-toggle
 //!   - editor-canvas / floating-controls / revision-display (StatusBar)
 
+use crate::command_palette::{
+    build_palette_items, setup_command_palette_shortcut, CommandPalette, PaletteItem,
+};
+use crate::code_view::{
+    setup_code_view_escape, CodeLanguage, CodeView, ViewMode, ViewModeToggle,
+};
 use crate::editor_core::{
     ConflictAction, ConflictInfo, DebounceTrigger, EditorStore,
 };
 use crate::editor_core::types::{Field, Reference, Table};
-use crate::editor_data_access::{DiagramClient, SaveError, SaveResponse, ImportLocalResponse};
+use crate::editor_data_access::{save_with_retry, DiagramClient, SaveError, ImportLocalResponse};
 use crate::editor_render::Canvas;
 use crate::editor_render::{Transform, zoom_in, zoom_out, zoom_reset};
 use leptos::*;
@@ -584,10 +590,7 @@ pub fn is_table_selected(selected: &Option<String>, table_id: &str) -> bool {
 /// 公共逻辑，避免雷同。闭包内 `spawn_local` 调 `DiagramClient::save` async 路径：
 /// - 成功 → `store.revision.set(r.revision)` + `store.dirty.set(false)`
 /// - 409 Conflict → `conflict.set(Some(ConflictInfo{...}))`（V1: 触发 ConflictDialog，handler 仍 stub）
-/// - 其它错误 → `error.set(Some(e.to_string()))`
-///
-/// 7 个参数全是 `Clone` 友好的 owned 值（DiagramClient 内部 `Rc`；EditorStore / RwSignal
-/// 内部全 `Copy` 友好），所以跨 `spawn_local` 边界安全。
+/// - 其它错误 → `save_offline` + 「保存失败（离线）」+ 指数退避重试（3s/6s/12s）
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn schedule_save(
     client: DiagramClient,
@@ -598,28 +601,36 @@ pub(crate) fn schedule_save(
     conflict: RwSignal<Option<ConflictInfo>>,
     error: RwSignal<Option<String>>,
     is_saving: RwSignal<bool>,
+    save_offline: RwSignal<bool>,
 ) {
     let id = current_diagram_id.get();
     let rev = store.revision.get();
     let name = current_title.get();
     let snap = store.snapshot(id.clone(), name);
     is_saving.set(true);
+    save_offline.set(false);
     debouncer.schedule(move || {
         let client = client.clone();
         let store = store.clone();
         let conflict = conflict.clone();
         let error = error.clone();
         let is_saving = is_saving.clone();
+        let save_offline = save_offline.clone();
         spawn_local(async move {
-            match client.save(&id, rev, &snap).await {
+            match save_with_retry(&client, &id, rev, &snap).await {
                 Ok(resp) => {
                     store.revision.set(resp.revision);
                     store.dirty.set(false);
+                    save_offline.set(false);
+                    error.set(None);
                 }
                 Err(SaveError::Conflict { current_revision, .. }) => {
                     conflict.set(Some(ConflictInfo::new(current_revision, rev)));
                 }
-                Err(e) => error.set(Some(e.to_string())),
+                Err(_) => {
+                    save_offline.set(true);
+                    error.set(Some("保存失败（离线）".to_string()));
+                }
             }
             is_saving.set(false);
         });
@@ -984,6 +995,9 @@ pub fn AppBar(
     current_title: RwSignal<String>,
     store: EditorStore,
     is_saving: RwSignal<bool>,
+    save_offline: RwSignal<bool>,
+    view_mode: RwSignal<ViewMode>,
+    code_visible: RwSignal<bool>,
     transform: RwSignal<Transform>,
     error: RwSignal<Option<String>>,
     on_title_blur: Rc<dyn Fn(String)>,
@@ -1016,6 +1030,8 @@ pub fn AppBar(
             {move || {
                 if is_saving.get() {
                     view! { <span class="cdb-save-state cdb-is-saving" data-testid="save-state">"◌ 保存中..."</span> }.into_view()
+                } else if save_offline.get() {
+                    view! { <span class="cdb-save-state cdb-is-error" data-testid="save-state">"保存失败（离线）"</span> }.into_view()
                 } else if store.dirty.get() {
                     view! { <span class="cdb-save-state cdb-is-idle" data-testid="save-state">"● 未保存"</span> }.into_view()
                 } else {
@@ -1038,6 +1054,7 @@ pub fn AppBar(
                 "导出 ▾"
             </button>
             <UndoRedoButtons error=error.clone() />
+            <ViewModeToggle view_mode=view_mode code_visible=code_visible />
             <button
                 class="cdb-btn cdb-btn--primary cdb-btn--small"
                 data-testid="btn-share"
@@ -2805,6 +2822,14 @@ pub fn AppRoot(
     let current_diagram_id: RwSignal<String> = create_rw_signal(_diagram_id.clone());
     let current_title: RwSignal<String> = create_rw_signal(String::from("Untitled Diagram"));
     let is_saving: RwSignal<bool> = create_rw_signal(false);
+    let save_offline: RwSignal<bool> = create_rw_signal(false);
+    let view_mode: RwSignal<ViewMode> = create_rw_signal(ViewMode::Canvas);
+    let code_visible: RwSignal<bool> = create_rw_signal(false);
+    let code_language: RwSignal<CodeLanguage> = create_rw_signal(CodeLanguage::Sql);
+    let code_copy_toast: RwSignal<Option<String>> = create_rw_signal(None);
+    let palette_visible: RwSignal<bool> = create_rw_signal(false);
+    let palette_query: RwSignal<String> = create_rw_signal(String::new());
+    let palette_highlight: RwSignal<usize> = create_rw_signal(0);
     let canvas_transform: RwSignal<Transform> = create_rw_signal(Transform::default());
 
     // Phase B：关系工具
@@ -2891,6 +2916,47 @@ pub fn AppRoot(
 
     // HTTP client to backend (port 3000, CORS middleware 在 fix-modal-overlay-blocking 已配)
     let client = DiagramClient::new("http://127.0.0.1:3000");
+
+    // S02：?share= / pathname diagram id 冷启动加载
+    {
+        let client = client.clone();
+        let store = store.clone();
+        let current_title = current_title.clone();
+        let error = error.clone();
+        let id = _diagram_id.clone();
+        if id != "default" {
+            spawn_local(async move {
+                match client.get(&id).await {
+                    Ok(diagram) => {
+                        current_title.set(diagram.name.clone());
+                        store.load(diagram);
+                    }
+                    Err(e) => {
+                        error.set(Some(format!("分享链接无效或图表已删除: {e}")));
+                    }
+                }
+            });
+        }
+    }
+
+    setup_command_palette_shortcut(palette_visible, view_mode);
+    setup_code_view_escape(view_mode, code_visible);
+
+    let palette_items = create_memo(move |_| {
+        build_palette_items(&store.tables.get(), &store.references.get())
+    });
+
+    let code_content = create_memo(move |_| {
+        let tables = store.tables.get();
+        let refs = store.references.get();
+        let title = current_title.get();
+        match code_language.get() {
+            CodeLanguage::Sql => export_diagram_sql(&tables, &refs, "generic"),
+            CodeLanguage::Dbml => export_diagram_dbml(&tables, &refs),
+            CodeLanguage::Json => export_diagram_json(&title, &tables, &refs),
+        }
+    });
+
     let client_for_io = client.clone();
     // 4 个 save handler 各 clone 一份（避免 move 闭包互抢 client）
     let client_for_create = client.clone();
@@ -2963,13 +3029,13 @@ pub fn AppRoot(
                     match client.create("新图").await {
                         Ok(new_id) => {
                             current_diagram_id.set(new_id);
-                            schedule_save(client, store, current_diagram_id, current_title, debouncer, conflict, error, is_saving);
+                            schedule_save(client, store, current_diagram_id, current_title, debouncer, conflict, error, is_saving, save_offline);
                         }
                         Err(e) => error.set(Some(e.to_string())),
                     }
                 });
             } else {
-                schedule_save(client_for_create.clone(), store.clone(), current_diagram_id.clone(), current_title.clone(), debouncer.clone(), conflict.clone(), error_for_create.clone(), is_saving.clone());
+                schedule_save(client_for_create.clone(), store.clone(), current_diagram_id.clone(), current_title.clone(), debouncer.clone(), conflict.clone(), error_for_create.clone(), is_saving.clone(), save_offline.clone());
             }
         }) as Rc<dyn Fn()>
     };
@@ -2978,7 +3044,7 @@ pub fn AppRoot(
         let store = store.clone();
         let debouncer = debouncer.clone();
         Rc::new(move || {
-            schedule_save(client_for_save.clone(), store.clone(), current_diagram_id.clone(), current_title.clone(), debouncer.clone(), conflict.clone(), error.clone(), is_saving.clone());
+            schedule_save(client_for_save.clone(), store.clone(), current_diagram_id.clone(), current_title.clone(), debouncer.clone(), conflict.clone(), error.clone(), is_saving.clone(), save_offline.clone());
         }) as Rc<dyn Fn()>
     };
 
@@ -2988,7 +3054,7 @@ pub fn AppRoot(
         Rc::new(move |title: String| {
             current_title.set(title);
             store.dirty.set(true);
-            schedule_save(client_for_title.clone(), store.clone(), current_diagram_id.clone(), current_title.clone(), debouncer.clone(), conflict.clone(), error.clone(), is_saving.clone());
+            schedule_save(client_for_title.clone(), store.clone(), current_diagram_id.clone(), current_title.clone(), debouncer.clone(), conflict.clone(), error.clone(), is_saving.clone(), save_offline.clone());
         }) as Rc<dyn Fn(String)>
     };
 
@@ -3017,7 +3083,7 @@ pub fn AppRoot(
             }
             store.tables.set(tables);
             store.dirty.set(true);
-            schedule_save(client_for_add_field.clone(), store.clone(), current_diagram_id.clone(), current_title.clone(), debouncer.clone(), conflict.clone(), error.clone(), is_saving.clone());
+            schedule_save(client_for_add_field.clone(), store.clone(), current_diagram_id.clone(), current_title.clone(), debouncer.clone(), conflict.clone(), error.clone(), is_saving.clone(), save_offline.clone());
         })
     };
 
@@ -3034,7 +3100,7 @@ pub fn AppRoot(
             }
             store.tables.set(tables);
             store.dirty.set(true);
-            schedule_save(client_for_change_type.clone(), store.clone(), current_diagram_id.clone(), current_title.clone(), debouncer.clone(), conflict.clone(), error.clone(), is_saving.clone());
+            schedule_save(client_for_change_type.clone(), store.clone(), current_diagram_id.clone(), current_title.clone(), debouncer.clone(), conflict.clone(), error.clone(), is_saving.clone(), save_offline.clone());
         })
     };
 
@@ -3089,6 +3155,7 @@ pub fn AppRoot(
                 conflict.clone(),
                 error.clone(),
                 is_saving.clone(),
+                save_offline.clone(),
             );
         })
     };
@@ -3137,6 +3204,7 @@ pub fn AppRoot(
                 conflict.clone(),
                 error.clone(),
                 is_saving.clone(),
+                save_offline.clone(),
             );
         })
     };
@@ -3165,6 +3233,7 @@ pub fn AppRoot(
                 conflict.clone(),
                 error.clone(),
                 is_saving.clone(),
+                save_offline.clone(),
             );
         })
     };
@@ -3188,6 +3257,7 @@ pub fn AppRoot(
                 conflict.clone(),
                 error.clone(),
                 is_saving.clone(),
+                save_offline.clone(),
             );
         })
     };
@@ -3211,6 +3281,7 @@ pub fn AppRoot(
                 conflict.clone(),
                 error.clone(),
                 is_saving.clone(),
+                save_offline.clone(),
             );
         })
     };
@@ -3249,6 +3320,24 @@ pub fn AppRoot(
         }))
     };
 
+    let on_palette_select = {
+        let selection = selection.clone();
+        let inspector_open = inspector_open.clone();
+        Callback::new(move |item: PaletteItem| {
+            match item.kind {
+                crate::command_palette::PaletteKind::Table => {
+                    selection.set(SelectionKind::Table(item.id));
+                    inspector_open.set(true);
+                }
+                crate::command_palette::PaletteKind::Reference => {
+                    selection.set(SelectionKind::Reference(item.id));
+                    inspector_open.set(true);
+                }
+                _ => {}
+            }
+        })
+    };
+
     view! {
         <div class="cdb-app" data-testid="editor-ready">
             <AppBar
@@ -3256,6 +3345,9 @@ pub fn AppRoot(
                 current_title=current_title
                 store=store.clone()
                 is_saving=is_saving
+                save_offline=save_offline
+                view_mode=view_mode
+                code_visible=code_visible
                 transform=canvas_transform
                 error=error.clone()
                 on_title_blur=on_title_blur
@@ -3264,6 +3356,7 @@ pub fn AppRoot(
             />
             <div
                 class="cdb-main"
+                class:cdb-is-hidden=move || view_mode.get() == ViewMode::Code
                 class:cdb-is-inspector-collapsed=move || {
                     !inspector_open.get() || io_drawer.get() != IoDrawerKind::None
                 }
@@ -3332,6 +3425,19 @@ pub fn AppRoot(
                 store=store.clone()
                 transform=canvas_transform
                 inspector_open=inspector_open
+            />
+            <CodeView
+                visible=code_visible
+                language=code_language
+                content=code_content
+                copy_toast=code_copy_toast
+            />
+            <CommandPalette
+                visible=palette_visible
+                query=palette_query
+                highlight=palette_highlight
+                items=palette_items
+                on_select=on_palette_select
             />
             <ConflictDialog
                 conflict=conflict

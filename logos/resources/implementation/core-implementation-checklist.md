@@ -43,9 +43,11 @@
 - [x] ModalRoot（New / Open / Share / Rename / Settings / Confirm / Conflict）
 - [x] IO Drawer（导入 / 导出，redesign-phase-c）
 - [x] 全局搜索 + 类型筛选
-- [x] Command Palette 模块骨架（E4，`command_palette.rs`）
-- [x] Code View 模块骨架（E4，`code_view.rs` + Monaco 待 wasm-pack 激活）
-- [ ] Command Palette / Code View 完整 wasm 交互（E4 实装缺口）
+- [x] `?share=` URL 解析 + 冷启动 GET 加载（`lib.rs` + `AppRoot`）
+- [x] Command Palette 交互（Ctrl+K / 搜索 / Enter 选中，`command_palette.rs`）
+- [x] Code View 交互（SQL/DBML/JSON + 复制，`code_view.rs` + AppBar 按钮）
+- [x] 保存失败指数退避（3s/6s/12s，`save_with_retry`）
+- [ ] Monaco wasm 完整挂载（见 `E4_ACTIVATION.md`，可选升级）
 - [ ] 房间成员列表（V2）
 
 ### 2.4 editor_render
