@@ -1,15 +1,16 @@
+//! OpenLogos reporter（frontend-rs 集成测试专用）
+//! 输出：`logos/resources/verify/test-results.jsonl`
+
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
-
-use once_cell::sync::OnceCell;
 
 const RELATIVE_PATH: &str = "logos/resources/verify/test-results.jsonl";
 
-static FILE_LOCK: OnceCell<Mutex<()>> = OnceCell::new();
+static FILE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 static TRUNCATE_DONE: AtomicBool = AtomicBool::new(false);
 
 fn lock() -> &'static Mutex<()> {
@@ -17,12 +18,18 @@ fn lock() -> &'static Mutex<()> {
 }
 
 fn project_root() -> PathBuf {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest_dir.parent().map(|p| p.to_path_buf()).unwrap_or(manifest_dir)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")))
 }
 
 fn result_path() -> PathBuf {
     project_root().join(RELATIVE_PATH)
+}
+
+fn append_only_mode() -> bool {
+    std::env::var("OPENLOGOS_APPEND").ok().as_deref() == Some("1")
 }
 
 fn now_iso8601() -> String {
@@ -30,21 +37,16 @@ fn now_iso8601() -> String {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let (year, month, day, hour, minute, second) = seconds_to_ymdhms(secs);
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-        year, month, day, hour, minute, second
-    )
-}
-
-fn seconds_to_ymdhms(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
     let days = secs / 86_400;
     let rem = secs % 86_400;
     let hour = (rem / 3600) as u32;
     let minute = ((rem % 3600) / 60) as u32;
     let second = (rem % 60) as u32;
     let (y, m, d) = civil_from_days(days as i64);
-    (y, m, d, hour, minute, second)
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        y, m, d, hour, minute, second
+    )
 }
 
 fn civil_from_days(z: i64) -> (u32, u32, u32) {
@@ -81,8 +83,12 @@ fn id_is_valid(id: &str) -> bool {
     parts.len() >= 2 && parts.iter().all(|p| !p.is_empty())
 }
 
-fn append_only_mode() -> bool {
-    std::env::var("OPENLOGOS_APPEND").ok().as_deref() == Some("1")
+fn escape_json(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
 }
 
 fn append_record(id: &str, status: &str, duration_ms: Option<u128>, error: Option<&str>) {
@@ -118,27 +124,8 @@ fn append_record(id: &str, status: &str, duration_ms: Option<u128>, error: Optio
     let _ = file.flush();
 }
 
-fn escape_json(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('\t', "\\t")
-}
-
-pub fn truncate() {
-    let path = result_path();
-    ensure_parent(&path);
-    let _guard = lock().lock().unwrap();
-    let _ = fs::write(&path, "");
-}
-
 pub fn report_pass(id: &str, duration_ms: u128) {
     append_record(id, "pass", Some(duration_ms), None);
-}
-
-pub fn report_fail(id: &str, duration_ms: u128, error: &str) {
-    append_record(id, "fail", Some(duration_ms), Some(error));
 }
 
 pub fn report_skip(id: &str, reason: &str) {
