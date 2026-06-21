@@ -99,7 +99,8 @@
 
 | Token | 值 | 用途 |
 |---|---|---|
-| `--cdb-font-family-base` | `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif` | 全局 |
+| `--cdb-font-family-base` | `"Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif` | 全局 UI（R2 落地，对齐 HTML 原型） |
+| `--cdb-font-family-display` | `var(--cdb-font-family-base)` | Logo / 大标题 |
 | `--cdb-font-family-mono` | `ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace` | Monaco / DBML / SQL |
 | `--cdb-font-size-xs` | `11px` | 标签、徽章 |
 | `--cdb-font-size-sm` | `12px` | 辅助文字 |
@@ -114,6 +115,8 @@
 | `--cdb-line-height-tight` | `1.25` | 标题 |
 | `--cdb-line-height-base` | `1.5` | 正文 |
 | `--cdb-line-height-loose` | `1.75` | 长文本 |
+
+> **R2 实现要求**：`index.html` 通过 Google Fonts 加载 Plus Jakarta Sans（400/500/600/700）；`body` 与表单控件必须使用 `var(--cdb-font-family-base)`。
 
 ## 11. 圆角（4 档）
 
@@ -178,7 +181,25 @@
 }
 ```
 
-## 15. 主题切换接口
+## 15. 图标尺寸（R1）
+
+| Token | 值 | 用途 |
+|---|---|---|
+| `--cdb-icon-size-sm` | `16px` | AppBar 按钮、Modal 关闭、Undo/Redo |
+| `--cdb-icon-size-md` | `20px` | ToolRail 工具按钮 |
+| `--cdb-icon-size-lg` | `24px` | 空状态装饰（可选） |
+
+**CSS 容器类**（`frontend-rs/src/styles.css`）：
+
+| 类名 | 尺寸 Token |
+|---|---|
+| `.cdb-icon-wrap--sm` | `--cdb-icon-size-sm` |
+| `.cdb-icon-wrap--md` | `--cdb-icon-size-md` |
+| `.cdb-icon-wrap--lg` | `--cdb-icon-size-lg` |
+
+SVG 内部 `width/height` 由容器 100% 撑满，`stroke="currentColor"` 继承按钮文字色。
+
+## 16. 主题切换接口
 
 | 接口 | 类型 | 说明 |
 |---|---|---|
@@ -186,14 +207,14 @@
 | `prefers-color-scheme: dark` | 媒体查询 | E5 阶段：用户未显式选择时跟随系统 |
 | `localStorage["cdb-mode"]` | 持久化 | E5 阶段：用户选择覆盖系统偏好 |
 
-## 16. 验收约束
+## 17. 验收约束
 
 - `frontend-rs/src/styles.css` 中 `var(--cdb-` 引用数 ≥ 100（E1 后）
 - E1 delta 完成后，`grep -c '^--cdb-' frontend-rs/src/styles.css` ≥ 100
 - 所有 token 必须出现在 `core-07-design-tokens.md` §2–§14 中
 - 移除硬编码颜色（`#xxx` 字面量仅允许出现在 `core-0b-dark-mode.md` dark 覆盖块中）
 
-## 17. 不在 E1 范围
+## 18. 不在 E1 范围
 
 - 暗色模式具体值（→ E5 `core-0b-dark-mode.md`）
 - 动效曲线应用（→ E6 `core-0c-motion.md`）

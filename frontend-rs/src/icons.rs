@@ -4,6 +4,20 @@
 
 use leptos::*;
 
+/// 统一图标尺寸容器（R1：sm=16 / md=20 / lg=24）
+#[component]
+pub fn IconBox(
+    #[prop(default = "sm")] size: &'static str,
+    children: Children,
+) -> impl IntoView {
+    let class = format!("cdb-icon-wrap cdb-icon-wrap--{size}");
+    view! {
+        <span class=class aria-hidden="true">
+            {children()}
+        </span>
+    }
+}
+
 /// 通用 Icon 组件 trait
 #[component]
 pub fn Icon(
@@ -133,6 +147,14 @@ pub fn IconRelationship() -> impl IntoView {
 #[component]
 pub fn IconPan() -> impl IntoView {
     view! { <Icon path="M9 11 L9 5 A1.5 1.5 0 0 1 12 5 L12 11 M12 11 L12 4 A1.5 1.5 0 0 1 15 4 L15 11 M15 11 L15 6 A1.5 1.5 0 0 1 18 6 L18 13 M18 13 L18 9 A1.5 1.5 0 0 1 21 9 L21 16 A6 6 0 0 1 15 22 L11 22 A4 4 0 0 1 7 18 L7 13" /> }
+}
+#[component]
+pub fn IconSelect() -> impl IntoView {
+    view! { <Icon path="M4 4 L4 11 L11 11 M4 4 L20 20 M20 20 L20 13 L13 13" /> }
+}
+#[component]
+pub fn IconSidebar() -> impl IntoView {
+    view! { <Icon path="M3 5 L11 5 L11 21 L3 21 Z M14 5 L23 5 L23 21 L14 21 Z" /> }
 }
 
 // ============================================================

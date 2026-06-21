@@ -1,0 +1,804 @@
+openapi: 3.0.3
+info:
+  title: coldrawdb rooms API
+  description: |
+    V2 协作房间 API（S04：创建 / 邀请 / 接受 / 成员管理）。
+
+    **Coverage**: 11 endpoints under `/api/v1/rooms/*`.
+    **来源时序图**: `core-S04-room-lifecycle.md` §3–§6、§9.
+    **认证**: 除 invite preview 外均须 S03 JWT Bearer；成员级操作额外校验 `room_member`。
+    **对齐**: 与 `core-S04-room-lifecycle-design.md` 交互规格一致。
+    **DDL**: `logos/resources/database/coldrawdb-v2-rooms.sql`.
+  version: 2.0.0
+servers:
+  - url: http://localhost:3000
+    description: Local dev
+  - url: https://staging.coldrawdb.example.com
+    description: Staging
+
+paths:
+  /api/v1/rooms:
+    get:
+      summary: List rooms for current user
+      description: |
+        返回当前用户作为成员的 active room 列表（`/rooms` 页面）。
+        不含已归档 room。
+      operationId: listRooms
+      tags: [rooms]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/OffsetParam'
+      responses:
+        '200':
+          description: Room list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      summary: Create a collaboration room bound to a diagram
+      description: |
+        S04.1 — `core-S04-room-lifecycle.md` §3 Step 3–16b.
+        创建 room 并将 creator 写入 `room_member(role=owner)`。
+        同一 diagram 仅允许一个 active room（EX-11.1）。
+      operationId: createRoom
+      tags: [rooms]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoomRequest'
+      responses:
+        '201':
+          description: Room created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Diagram not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: DIAGRAM_NOT_FOUND
+                message: 图表不存在
+        '409':
+          description: Diagram already bound to an active room
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomDiagramTakenError'
+              example:
+                code: ROOM_DIAGRAM_TAKEN
+                message: 该 diagram 已在其他协作房间中
+                existingRoomId: 550e8400-e29b-41d4-a716-446655440000
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/rooms/invites/{token}:
+    parameters:
+      - $ref: '#/components/parameters/InviteToken'
+    get:
+      summary: Preview invite by token (public)
+      description: |
+        S04.3 preview — `core-S04-room-lifecycle.md` §5 Step 3–8b.
+        无需认证；用于 `/invite/{token}` 页面渲染。
+      operationId: previewInvite
+      tags: [invites]
+      responses:
+        '200':
+          description: Invite preview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitePreview'
+        '404':
+          description: Invite token not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: INVITE_NOT_FOUND
+                message: 邀请链接无效
+        '410':
+          description: Invite expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: INVITE_EXPIRED
+                message: 邀请链接已过期
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/rooms/invites/{token}/accept:
+    parameters:
+      - $ref: '#/components/parameters/InviteToken'
+    post:
+      summary: Accept invite and join room
+      description: |
+        S04.3 accept — `core-S04-room-lifecycle.md` §5 Step 12–18.
+        须 S03 JWT。已是成员时幂等返回 room 信息（200）。
+      operationId: acceptInvite
+      tags: [invites]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Joined room (or already a member)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptInviteResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Invite token not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: INVITE_NOT_FOUND
+                message: 邀请链接无效
+        '410':
+          description: Invite expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: INVITE_EXPIRED
+                message: 邀请链接已过期
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/rooms/{roomId}:
+    parameters:
+      - $ref: '#/components/parameters/RoomId'
+    get:
+      summary: Get room details
+      description: |
+        须为 room 成员（EX-13.1 非成员 → 403）。
+        含 diagram 标题摘要与当前用户 role。
+      operationId: getRoom
+      tags: [rooms]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Room detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Not a room member
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: NOT_A_MEMBER
+                message: 你不是该房间成员
+        '404':
+          description: Room not found or archived
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: ROOM_NOT_FOUND
+                message: 房间不存在
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      summary: Archive (delete) a room
+      description: |
+        Owner only。软删除：写入 `room.archived_at`，解除 diagram 与 active room 绑定。
+        diagram 数据保留（Phase 2 §状态机）。
+      operationId: deleteRoom
+      tags: [rooms]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Room archived
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Only owner may delete room
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: FORBIDDEN
+                message: 仅房间 owner 可删除房间
+        '404':
+          description: Room not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: ROOM_NOT_FOUND
+                message: 房间不存在
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/rooms/{roomId}/invites:
+    parameters:
+      - $ref: '#/components/parameters/RoomId'
+    post:
+      summary: Create invite link for a room
+      description: |
+        S04.2 — `core-S04-room-lifecycle.md` §4 Step 3–11.
+        调用方须为 owner 或 editor。默认 TTL 7 天。
+      operationId: createRoomInvite
+      tags: [invites]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInviteRequest'
+      responses:
+        '201':
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InviteCreatedResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Not allowed to invite
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: FORBIDDEN
+                message: 你没有邀请权限
+        '404':
+          description: Room not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: ROOM_NOT_FOUND
+                message: 房间不存在
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/rooms/{roomId}/members:
+    parameters:
+      - $ref: '#/components/parameters/RoomId'
+    get:
+      summary: List room members
+      description: |
+        须为 room 成员。用于 `[data-testid="room-members-panel"]`。
+      operationId: listRoomMembers
+      tags: [members]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Member list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomMemberListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Not a room member
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: NOT_A_MEMBER
+                message: 你不是该房间成员
+        '404':
+          description: Room not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: ROOM_NOT_FOUND
+                message: 房间不存在
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/rooms/{roomId}/members/me:
+    parameters:
+      - $ref: '#/components/parameters/RoomId'
+    delete:
+      summary: Leave room (self)
+      description: |
+        S04.4 — `core-S04-room-lifecycle.md` §6 Step 12–16.
+        Owner 不能离开（EX-12.1），须先删 room 或转让 owner。
+      operationId: leaveRoom
+      tags: [members]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Left room
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Not a room member
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: NOT_A_MEMBER
+                message: 你不是该房间成员
+        '404':
+          description: Room not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: ROOM_NOT_FOUND
+                message: 房间不存在
+        '409':
+          description: Owner cannot leave without deleting room
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: OWNER_CANNOT_LEAVE
+                message: 房间 owner 不能离开，请先删除房间或转让
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/rooms/{roomId}/members/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/RoomId'
+      - $ref: '#/components/parameters/MemberUserId'
+    patch:
+      summary: Update member role
+      description: |
+        Owner only。可设置 `editor` 或 `viewer`；不可通过此接口变更 owner。
+      operationId: updateRoomMemberRole
+      tags: [members]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMemberRoleRequest'
+      responses:
+        '200':
+          description: Member role updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomMember'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Only owner may change roles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: FORBIDDEN
+                message: 仅房间 owner 可修改成员角色
+        '404':
+          description: Room or member not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: MEMBER_NOT_FOUND
+                message: 成员不存在
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      summary: Remove a member from room
+      description: |
+        S04.4 — `core-S04-room-lifecycle.md` §6 Step 3–9.
+        Owner only。不能移除 owner 自身（须用 leave/delete room）。
+      operationId: removeRoomMember
+      tags: [members]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Member removed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Only owner may remove members
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: FORBIDDEN
+                message: 仅房间 owner 可移除成员
+        '404':
+          description: Room or member not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: MEMBER_NOT_FOUND
+                message: 成员不存在
+        '409':
+          description: Cannot remove room owner
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: CANNOT_REMOVE_OWNER
+                message: 不能移除房间 owner
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: S03 access token (see auth.yaml)
+
+  parameters:
+    RoomId:
+      name: roomId
+      in: path
+      required: true
+      description: UUID of the room
+      schema:
+        type: string
+        format: uuid
+    MemberUserId:
+      name: userId
+      in: path
+      required: true
+      description: UUID of the member user
+      schema:
+        type: string
+        format: uuid
+    InviteToken:
+      name: token
+      in: path
+      required: true
+      description: URL-safe invite token (32 bytes, base64url)
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 64
+    LimitParam:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    OffsetParam:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+  responses:
+    ValidationError:
+      description: Request validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorResponse'
+    Unauthorized:
+      description: Missing or invalid access token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: UNAUTHORIZED
+            message: 请先登录
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: INTERNAL_ERROR
+            message: 服务器内部错误
+
+  schemas:
+    RoomRole:
+      type: string
+      enum: [owner, editor, viewer]
+      description: |
+        owner — 创建者，可删 room / 改 role / 邀请 / 编辑 diagram。
+        editor — 可编辑 diagram、可邀请（若配置允许）。
+        viewer — 只读，PUT diagram → 403 READ_ONLY（EX-7.1）。
+
+    InviteRole:
+      type: string
+      enum: [editor, viewer]
+      description: Role assigned when invite is accepted
+
+    CreateRoomRequest:
+      type: object
+      required: [name, diagramId]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: Room display name
+        diagramId:
+          type: string
+          format: uuid
+          description: Diagram to bind (one active room per diagram)
+
+    Room:
+      type: object
+      required: [id, name, diagramId, ownerId, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        diagramId:
+          type: string
+          format: uuid
+        ownerId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    RoomDetail:
+      allOf:
+        - $ref: '#/components/schemas/Room'
+        - type: object
+          required: [diagramTitle, myRole, memberCount]
+          properties:
+            diagramTitle:
+              type: string
+              description: Denormalized diagram title for UI
+            myRole:
+              $ref: '#/components/schemas/RoomRole'
+            memberCount:
+              type: integer
+              minimum: 1
+
+    RoomSummary:
+      type: object
+      required: [id, name, diagramId, diagramTitle, myRole, memberCount, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        diagramId:
+          type: string
+          format: uuid
+        diagramTitle:
+          type: string
+        myRole:
+          $ref: '#/components/schemas/RoomRole'
+        memberCount:
+          type: integer
+          minimum: 1
+        updatedAt:
+          type: string
+          format: date-time
+
+    RoomListResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoomSummary'
+        total:
+          type: integer
+          minimum: 0
+
+    CreateInviteRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          $ref: '#/components/schemas/InviteRole'
+
+    InviteCreatedResponse:
+      type: object
+      required: [inviteUrl, token, role, expiresAt]
+      properties:
+        inviteUrl:
+          type: string
+          format: uri
+          description: Frontend route e.g. https://host/invite/{token}
+          example: https://coldrawdb.example.com/invite/AbCdEfGhIjKlMnOp
+        token:
+          type: string
+          description: Raw token segment for client-side copy
+        role:
+          $ref: '#/components/schemas/InviteRole'
+        expiresAt:
+          type: string
+          format: date-time
+
+    InvitePreview:
+      type: object
+      required: [roomName, diagramTitle, diagramId, role, expiresAt]
+      properties:
+        roomName:
+          type: string
+        diagramTitle:
+          type: string
+        diagramId:
+          type: string
+          format: uuid
+        role:
+          $ref: '#/components/schemas/InviteRole'
+        invitedBy:
+          type: string
+          description: Inviter display name or email
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+
+    AcceptInviteResponse:
+      type: object
+      required: [roomId, diagramId, role]
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        diagramId:
+          type: string
+          format: uuid
+        role:
+          $ref: '#/components/schemas/RoomRole'
+        alreadyMember:
+          type: boolean
+          default: false
+          description: True when accept is idempotent for existing member
+
+    RoomMember:
+      type: object
+      required: [userId, role, joinedAt]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+          nullable: true
+        role:
+          $ref: '#/components/schemas/RoomRole'
+        joinedAt:
+          type: string
+          format: date-time
+
+    RoomMemberListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoomMember'
+
+    UpdateMemberRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [editor, viewer]
+          description: Cannot set owner via PATCH; use transfer flow (future)
+
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - UNAUTHORIZED
+            - FORBIDDEN
+            - NOT_A_MEMBER
+            - READ_ONLY
+            - ROOM_NOT_FOUND
+            - ROOM_DIAGRAM_TAKEN
+            - DIAGRAM_NOT_FOUND
+            - INVITE_NOT_FOUND
+            - INVITE_EXPIRED
+            - OWNER_CANNOT_LEAVE
+            - CANNOT_REMOVE_OWNER
+            - MEMBER_NOT_FOUND
+            - VALIDATION_ERROR
+            - INTERNAL_ERROR
+        message:
+          type: string
+
+    RoomDiagramTakenError:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          required: [existingRoomId]
+          properties:
+            existingRoomId:
+              type: string
+              format: uuid
+
+    ValidationErrorResponse:
+      type: object
+      required: [code, message, fields]
+      properties:
+        code:
+          type: string
+          enum: [VALIDATION_ERROR]
+        message:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: string

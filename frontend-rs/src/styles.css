@@ -89,9 +89,15 @@
   --cdb-easing-out: cubic-bezier(0, 0, 0.2, 1);
   --cdb-easing-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* Font family */
-  --cdb-font-family-base: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  /* Font family (R2: Plus Jakarta Sans + 系统回退) */
+  --cdb-font-family-base: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --cdb-font-family-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --cdb-font-family-display: var(--cdb-font-family-base);
+
+  /* Icon size (R1: 三档统一) */
+  --cdb-icon-size-sm: 16px;
+  --cdb-icon-size-md: 20px;
+  --cdb-icon-size-lg: 24px;
 
   /* Font size (6 levels) */
   --cdb-font-size-xs: 11px;  /* V1 alias --cdb-text-xs */
@@ -234,12 +240,52 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--cdb-font-family-base);
   color: var(--cdb-color-text);
   background: var(--cdb-color-bg-canvas);
   font-size: var(--cdb-text-base);
+  line-height: var(--cdb-line-height-base);
   height: 100vh;
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+/* R1: SVG 图标尺寸容器 */
+.cdb-icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+.cdb-icon-wrap svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.cdb-icon-wrap--sm {
+  width: var(--cdb-icon-size-sm);
+  height: var(--cdb-icon-size-sm);
+}
+
+.cdb-icon-wrap--md {
+  width: var(--cdb-icon-size-md);
+  height: var(--cdb-icon-size-md);
+}
+
+.cdb-icon-wrap--lg {
+  width: var(--cdb-icon-size-lg);
+  height: var(--cdb-icon-size-lg);
 }
 
 /* ============================================================
@@ -385,9 +431,13 @@ body {
   gap: var(--cdb-space-1);
 }
 
-.cdb-dirty-star {
-  color: var(--cdb-color-warning);
-  font-weight: 700;
+.cdb-dirty-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--cdb-color-warning);
+  flex-shrink: 0;
 }
 
 /* ============================================================
@@ -413,11 +463,13 @@ body {
   border-radius: var(--cdb-radius-sm);
   background: transparent;
   cursor: pointer;
-  font-size: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--cdb-color-text);
+  transition: background var(--cdb-duration-fast) var(--cdb-easing-out),
+              border-color var(--cdb-duration-fast) var(--cdb-easing-out),
+              color var(--cdb-duration-fast) var(--cdb-easing-out);
 }
 
 .cdb-tool-btn:hover { background: var(--cdb-color-bg-subtle); }
@@ -583,9 +635,8 @@ body {
   color: var(--cdb-color-text);
 }
 
-.cdb-io-drawer__title .cdb-icon {
+.cdb-io-drawer__title .cdb-icon-wrap {
   color: var(--cdb-color-primary);
-  font-weight: 700;
 }
 
 .cdb-io-drawer__body {
@@ -655,7 +706,7 @@ body {
   padding: var(--cdb-space-3);
   border: 1px solid var(--cdb-color-border);
   border-radius: var(--cdb-radius-sm);
-  font-family: ui-monospace, monospace;
+  font-family: var(--cdb-font-family-mono);
   font-size: var(--cdb-text-xs);
   resize: vertical;
   background: var(--cdb-color-bg-subtle);
@@ -670,7 +721,7 @@ body {
   padding: var(--cdb-space-3);
   border: 1px solid var(--cdb-color-border);
   border-radius: var(--cdb-radius-sm);
-  font-family: ui-monospace, monospace;
+  font-family: var(--cdb-font-family-mono);
   font-size: var(--cdb-text-xs);
   background: var(--cdb-color-bg-subtle);
   white-space: pre-wrap;
@@ -791,8 +842,11 @@ body {
   height: 28px;
   border-radius: var(--cdb-radius-md);
   background: var(--cdb-color-primary);
-  color: white;
+  color: var(--cdb-color-primary-on);
+  font-family: var(--cdb-font-family-display);
   font-size: var(--cdb-text-sm);
+  font-weight: var(--cdb-font-weight-bold);
+  letter-spacing: -0.02em;
   flex-shrink: 0;
 }
 
@@ -1531,13 +1585,12 @@ body {
 .cdb-modal-close {
   background: transparent;
   border: none;
-  font-size: var(--cdb-text-xl);
   cursor: pointer;
   color: var(--cdb-color-text-muted);
   padding: 0;
   width: 24px;
   height: 24px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
 }

@@ -110,13 +110,15 @@ view! {
 
 ### 4.4 画布对象（5 个，main 自建）
 
-| 图标 | 用途 | main 源 |
-|---|---|---|
-| `IconAddTable` | 新建表（Tool Rail） | `src/icons/IconAddTable.jsx` |
-| `IconAddArea` | 新建区域 | `src/icons/IconAddArea.jsx` |
-| `IconAddNote` | 新建便签 | `src/icons/IconAddNote.jsx` |
-| `IconRelationship` | 关系工具 | semi `IconLinkStroked` |
-| `IconPan` | 平移工具 | semi `IconHandDragStroked` |
+| 图标 | 用途 | 替换原 emoji | 接线位置 |
+|---|---|---|---|
+| `IconSelect` | 选择工具 | `↖` | ToolRail `tool-select` |
+| `IconAdd` | 新建菜单 | `⊕` | ToolRail `tool-new-menu` |
+| `IconRelationship` | 关系工具 | `🔗` | ToolRail `tool-relationship` |
+| `IconPan` | 平移工具 | `✋` | ToolRail `tool-pan` |
+| `IconAddTable` | 新建表（菜单项，可选） | — | tool-new-menu dropdown |
+
+> **R1 验收**：`editor_panels.rs` 中 ToolRail / AppBar / StatusBar / IO Drawer 不得再使用 Emoji/Unicode 作为图标占位；Logo 字母 `C` 保留为品牌字标。
 
 ### 4.5 字段类型徽章（12 个，Phase 1a spec §3）
 
@@ -163,18 +165,43 @@ view! {
 | `IconSettings` | 设置 | semi `IconSettingStroked` |
 | `IconHelp` | 帮助 | semi `IconHelpCircleStroked` |
 
-## 5. 尺寸规格
+## 5. IconBox 尺寸容器（R1）
+
+`frontend-rs/src/icons.rs` 提供统一包装组件，避免在 UI 层硬编码像素：
+
+```rust
+#[component]
+pub fn IconBox(
+    #[prop(default = "sm")] size: &'static str,  // "sm" | "md" | "lg"
+    children: Children,
+) -> impl IntoView
+```
+
+| size prop | CSS 类 | 场景 |
+|---|---|---|
+| `"sm"` | `.cdb-icon-wrap--sm` (16px) | `.cdb-btn--icon`、Drawer 标题、Modal 关闭 |
+| `"md"` | `.cdb-icon-wrap--md` (20px) | `.cdb-tool-btn` |
+| `"lg"` | `.cdb-icon-wrap--lg` (24px) | EmptyGuide 装饰 |
+
+## 6. R1 新增图标（画布工具）
+
+| 图标 | 用途 | 替换原占位 |
+|---|---|---|
+| `IconSelect` | 选择工具 | `↖` |
+| `IconSidebar` | Inspector 侧栏切换 | `☰` |
+
+## 7. 尺寸规格
 
 | 场景 | size | stroke-width | 备注 |
 |---|---|---|---|
 | AppBar 按钮 | 16 | 1.5 | 32px 按钮内 |
-| Tool Rail 按钮 | 22 | 1.5 | 48px 按钮内（main `size="extra-large"`） |
+| Tool Rail 按钮 | 20 | 1.5 | 36px 按钮内（R1：`--cdb-icon-size-md`） |
 | Table 字段类型徽章 | 12 | 1.5 | inline |
 | Inspector 操作 | 14 | 1.5 | 24px 按钮内 |
 | 模态关闭按钮 | 16 | 1.5 | 32px 圆形按钮内 |
 | Command Palette 列表项 | 14 | 1.5 | — |
 
-## 6. 颜色继承
+## 8. 颜色继承
 
 所有图标通过 `currentColor` 继承父元素 `color` CSS 属性：
 
@@ -186,18 +213,18 @@ view! {
 
 **禁止在图标组件内硬编码颜色**——通过父元素 `color` 覆盖。
 
-## 7. 暗色模式（E5 接入）
+## 9. 暗色模式（E5 接入）
 
 `currentColor` 继承机制保证 E5 阶段无需修改图标组件，只需切换 `color` 即可。
 
-## 8. 验收约束
+## 10. 验收约束
 
 - `frontend-rs/src/icons.rs` 中 `pub fn icon_*` 函数数 ≥ 50
 - 50 个图标函数全部以 `Icon` 前缀导出（在 `pub use` 列表中）
 - 所有 SVG `<path>` 不含硬编码 `fill` / `stroke`（除 `currentColor` / `none`）
 - `grep -rn '🗑\|✓\|✎\|⋯\|×\|🔍' frontend-rs/src/` 匹配数 ≤ 0（unicode emoji 全部清除）
 
-## 9. 不在 E2 范围
+## 11. 不在 E2 范围
 
 - 动画图标（loading spinner）— E6
 - 自定义图标上传（用户上传 SVG）— V2+

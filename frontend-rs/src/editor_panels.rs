@@ -23,9 +23,22 @@ use crate::editor_core::types::{Field, Reference, Table};
 use crate::editor_data_access::{save_with_retry, DiagramClient, SaveError, ImportLocalResponse};
 use crate::editor_render::Canvas;
 use crate::editor_render::{Transform, zoom_in, zoom_out, zoom_reset};
+use crate::icons::{
+    IconAdd, IconBox, IconChevronLeft, IconChevronRight, IconClose, IconExport, IconImport,
+    IconMinus, IconMoon, IconPan, IconRelationship, IconSelect, IconSettings, IconSidebar,
+    IconSun, IconRedo, IconUndo,
+};
 use leptos::*;
 use std::cell::RefCell;
 use std::rc::Rc;
+
+fn read_html_data_mode() -> String {
+    web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.document_element())
+        .and_then(|el| el.get_attribute("data-mode"))
+        .unwrap_or_else(|| "light".to_string())
+}
 
 /// Side-panel Tab 标识符（B2 范围：6 业务 Tab + Issues = 7 Tab）
 /// 顺序与 `core-04-side-panel-tabs.md` §1 布局保持一致。
@@ -905,7 +918,9 @@ pub fn ErrorToast(error: RwSignal<Option<String>>) -> impl IntoView {
             Some(msg) => view! {
                 <div class="cdb-error-toast" data-testid="error-toast">
                     {msg}
-                    <button on:click=move |_| error.set(None)>{"×"}</button>
+                    <button on:click=move |_| error.set(None)>
+                        <IconBox size="sm"><IconClose /></IconBox>
+                    </button>
                 </div>
             }.into_view(),
             None => view! { <></> }.into_view(),
@@ -930,7 +945,7 @@ pub fn TopMenuBar(
     view! {
         <header class="cdb-header" data-testid="top-menu-bar">
             <div class="cdb-brand">
-                <span class="cdb-logo-mark" aria-hidden="true">"◆"</span>
+                <span class="cdb-logo-mark" aria-hidden="true">"C"</span>
                 <div class="cdb-breadcrumb">
                     <span>"Diagrams"</span>
                     <span class="cdb-breadcrumb__sep">"/"</span>
@@ -1048,7 +1063,9 @@ pub fn TopMenuBar(
                 >
                     "分享"
                 </button>
-                <button class="cdb-btn cdb-btn--icon" title="设置">"⚙"</button>
+                <button class="cdb-btn cdb-btn--icon" title="设置">
+                    <IconBox size="sm"><IconSettings /></IconBox>
+                </button>
             </div>
         </header>
     }
@@ -1086,7 +1103,7 @@ pub fn UndoRedoButtons(
                 }
             }
         >
-            "↶"
+            <IconBox size="sm"><IconUndo /></IconBox>
         </button>
         <button
             class="cdb-btn cdb-btn--icon"
@@ -1108,7 +1125,7 @@ pub fn UndoRedoButtons(
                 }
             }
         >
-            "↷"
+            <IconBox size="sm"><IconRedo /></IconBox>
         </button>
     }
 }
@@ -1163,7 +1180,7 @@ pub fn FloatingControls(transform: RwSignal<Transform>) -> impl IntoView {
                 title="缩小"
                 on:click=move |_| zoom_out(transform)
             >
-                "−"
+                <IconBox size="sm"><IconMinus /></IconBox>
             </button>
             <span class="cdb-floating-zoom-label">
                 {move || format!("{}%", (transform.get().zoom * 100.0).round() as i32)}
@@ -1174,7 +1191,7 @@ pub fn FloatingControls(transform: RwSignal<Transform>) -> impl IntoView {
                 title="放大"
                 on:click=move |_| zoom_in(transform)
             >
-                "+"
+                <IconBox size="sm"><IconAdd /></IconBox>
             </button>
         </div>
     }
@@ -1202,6 +1219,7 @@ pub fn AppBar(
     let _ = transform;
     let import_handler = on_open_import.clone();
     let export_handler = on_open_export.clone();
+    let dark_mode = create_rw_signal(read_html_data_mode() == "dark");
 
     view! {
         <header class="cdb-app-bar" data-testid="app-bar">
@@ -1221,7 +1239,7 @@ pub fn AppBar(
                     on:blur=move |ev| on_title_blur(event_target_value(&ev))
                 />
                 {move || if store.dirty.get() {
-                    view! { <span class="cdb-dirty-star" title="未保存">"*"</span> }.into_view()
+                    view! { <span class="cdb-dirty-dot" title="未保存"></span> }.into_view()
                 } else {
                     view! { <></> }.into_view()
                 }}
@@ -1304,11 +1322,16 @@ pub fn AppBar(
                             let cur = html.get_attribute("data-mode").unwrap_or_else(|| "light".into());
                             let next = if cur == "dark" { "light" } else { "dark" };
                             let _ = html.set_attribute("data-mode", next);
+                            dark_mode.set(next == "dark");
                         }
                     }
                 }
             >
-                "◐"
+                {move || if dark_mode.get() {
+                    view! { <IconBox size="sm"><IconSun /></IconBox> }.into_view()
+                } else {
+                    view! { <IconBox size="sm"><IconMoon /></IconBox> }.into_view()
+                }}
             </button>
             <button
                 class="cdb-btn cdb-btn--icon"
@@ -1316,7 +1339,7 @@ pub fn AppBar(
                 title="切换 Inspector"
                 on:click=move |_| inspector_open.update(|v| *v = !*v)
             >
-                "☰"
+                <IconBox size="sm"><IconSidebar /></IconBox>
             </button>
         </header>
     }
@@ -1347,7 +1370,7 @@ pub fn ToolRail(
                     rel_tool_state.set(RelToolState::Idle);
                 }
             >
-                "↖"
+                <IconBox size="md"><IconSelect /></IconBox>
             </button>
             <button
                 class="cdb-tool-btn"
@@ -1355,7 +1378,7 @@ pub fn ToolRail(
                 title="新建"
                 on:click=move |_| new_menu_open.update(|v| *v = !*v)
             >
-                "⊕"
+                <IconBox size="md"><IconAdd /></IconBox>
             </button>
             {move || if new_menu_open.get() {
                 let on_create = on_create_table.clone();
@@ -1400,7 +1423,7 @@ pub fn ToolRail(
                     rel_tool_state.set(RelToolState::PickSource);
                 }
             >
-                "🔗"
+                <IconBox size="md"><IconRelationship /></IconBox>
             </button>
             <button
                 class="cdb-tool-btn"
@@ -1412,7 +1435,7 @@ pub fn ToolRail(
                     rel_tool_state.set(RelToolState::Idle);
                 }
             >
-                "✋"
+                <IconBox size="md"><IconPan /></IconBox>
             </button>
             <div class="cdb-tool-rail__divider"></div>
             <div
@@ -1610,10 +1633,12 @@ pub fn ImportDrawer(
         <div class="cdb-io-drawer__inner" data-testid="import-drawer">
             <div class="cdb-io-drawer__header">
                 <span class="cdb-io-drawer__title">
-                    <span class="cdb-icon" aria-hidden="true">"↑"</span>
+                    <IconBox size="sm"><IconImport /></IconBox>
                     <span>"导入"</span>
                 </span>
-                <button class="cdb-btn cdb-btn--icon" data-testid="import-cancel" on:click=move |_| close()>"×"</button>
+                <button class="cdb-btn cdb-btn--icon" data-testid="import-cancel" on:click=move |_| close()>
+                    <IconBox size="sm"><IconClose /></IconBox>
+                </button>
             </div>
             <div class="cdb-io-drawer__body">
                 <div class="cdb-format-tabs" data-testid="io-format-tabs">
@@ -1765,10 +1790,12 @@ pub fn ExportDrawer(
         <div class="cdb-io-drawer__inner" data-testid="export-drawer">
             <div class="cdb-io-drawer__header">
                 <span class="cdb-io-drawer__title">
-                    <span class="cdb-icon" aria-hidden="true">"↓"</span>
+                    <IconBox size="sm"><IconExport /></IconBox>
                     <span>"导出"</span>
                 </span>
-                <button class="cdb-btn cdb-btn--icon" on:click=move |_| close()>"×"</button>
+                <button class="cdb-btn cdb-btn--icon" on:click=move |_| close()>
+                    <IconBox size="sm"><IconClose /></IconBox>
+                </button>
             </div>
             <div class="cdb-io-drawer__body">
                 <div class="cdb-format-tabs" data-testid="io-format-tabs">
@@ -1935,7 +1962,7 @@ pub fn Inspector(
                     data-testid="btn-inspector-close"
                     on:click=close_inspector
                 >
-                    "×"
+                    <IconBox size="sm"><IconClose /></IconBox>
                 </button>
             </div>
             <div class="cdb-inspector__body">
@@ -2250,7 +2277,11 @@ pub fn StatusBar(
                 title="折叠 Inspector"
                 on:click=move |_| inspector_open.update(|v| *v = !*v)
             >
-                {move || if inspector_open.get() { "◀" } else { "▶" }}
+                {move || if inspector_open.get() {
+                    view! { <IconBox size="sm"><IconChevronRight /></IconBox> }.into_view()
+                } else {
+                    view! { <IconBox size="sm"><IconChevronLeft /></IconBox> }.into_view()
+                }}
             </button>
         </footer>
     }
@@ -4107,7 +4138,7 @@ pub mod modals {
                     class="cdb-modal-close"
                     data-testid="modal-cancel-new"
                     on:click=move |_| kind_close.set(None)
-                >"×"</button>
+                > <IconBox size="sm"><IconClose /></IconBox> </button>
             </div>
             <div class="cdb-modal-body">
                 <label class="cdb-form-label">"Title"</label>
@@ -4166,7 +4197,7 @@ pub mod modals {
                     class="cdb-modal-close"
                     data-testid="modal-cancel-open"
                     on:click=move |_| kind_close.set(None)
-                >"×"</button>
+                > <IconBox size="sm"><IconClose /></IconBox> </button>
             </div>
             <div class="cdb-modal-body">
                 <label class="cdb-form-label">"Upload .json file"</label>
@@ -4207,7 +4238,7 @@ pub mod modals {
                     class="cdb-modal-close"
                     data-testid="modal-cancel-share"
                     on:click=move |_| kind_close.set(None)
-                >"×"</button>
+                > <IconBox size="sm"><IconClose /></IconBox> </button>
             </div>
             <div class="cdb-modal-body">
                 <label class="cdb-form-label">"Share link"</label>
@@ -4256,7 +4287,7 @@ pub mod modals {
                     class="cdb-modal-close"
                     data-testid="modal-cancel-rename"
                     on:click=move |_| kind_close.set(None)
-                >"×"</button>
+                > <IconBox size="sm"><IconClose /></IconBox> </button>
             </div>
             <div class="cdb-modal-body">
                 <label class="cdb-form-label">"New title"</label>
@@ -4317,7 +4348,7 @@ pub mod modals {
                     class="cdb-modal-close"
                     data-testid="modal-cancel-import"
                     on:click=move |_| kind_close.set(None)
-                >"×"</button>
+                > <IconBox size="sm"><IconClose /></IconBox> </button>
             </div>
             <div class="cdb-modal-body">
                 <label class="cdb-form-label">"Paste SQL"</label>
@@ -4374,7 +4405,7 @@ pub mod modals {
                     class="cdb-modal-close"
                     data-testid="modal-cancel-import-source"
                     on:click=move |_| kind_close.set(None)
-                >"×"</button>
+                > <IconBox size="sm"><IconClose /></IconBox> </button>
             </div>
             <div class="cdb-modal-body">
                 <label class="cdb-form-label">
@@ -4428,7 +4459,7 @@ pub mod modals {
                     class="cdb-modal-close"
                     data-testid="modal-cancel-language"
                     on:click=move |_| kind_close.set(None)
-                >"×"</button>
+                > <IconBox size="sm"><IconClose /></IconBox> </button>
             </div>
             <div class="cdb-modal-body">
                 <label class="cdb-form-label">
@@ -4485,7 +4516,7 @@ pub mod modals {
                     class="cdb-modal-close"
                     data-testid="modal-cancel-set-width"
                     on:click=move |_| kind_close.set(None)
-                >"×"</button>
+                > <IconBox size="sm"><IconClose /></IconBox> </button>
             </div>
             <div class="cdb-modal-body">
                 <label class="cdb-form-label">"Width (0 = auto)"</label>
@@ -4537,7 +4568,7 @@ pub mod modals {
                     class="cdb-modal-close"
                     data-testid="modal-cancel-custom-types"
                     on:click=move |_| kind_close.set(None)
-                >"×"</button>
+                > <IconBox size="sm"><IconClose /></IconBox> </button>
             </div>
             <div class="cdb-modal-body">
                 <p class="cdb-form-hint">"V1 限制: 仅前端 session state，刷新后丢失 (spec §5.9)"</p>
@@ -4556,7 +4587,7 @@ pub mod modals {
                                         remove_custom_type(&mut v, &n);
                                         types_for_remove.set(v);
                                     }
-                                >"×"</button>
+                                > <IconBox size="sm"><IconClose /></IconBox> </button>
                             </div>
                         }
                     }).collect::<Vec<_>>()}

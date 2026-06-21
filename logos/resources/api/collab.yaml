@@ -1,0 +1,605 @@
+openapi: 3.0.3
+info:
+  title: coldrawdb collab API
+  description: |
+    V2 OT 实时协作协议（S05：WebSocket + REST 辅助）。
+
+    **Coverage**:
+    - 1 WebSocket 升级路径 `/ws/rooms/{roomId}`
+    - 2 REST 辅助端点 `/api/v1/rooms/{roomId}/collab/*`（head / ops）
+    - checkpoint 仍使用 `diagrams.yaml` PUT，须携带本文件定义的 collab 请求头
+
+    **来源时序图**: `core-S05-ot-collab.md` §3–§7、§10.
+    **认证**: S03 JWT（WS query `token` 或 REST Bearer）；须为 `room_member`。
+    **实现**: `collab-server` 独立二进制；与 actix-web 共享 SQLite。
+    **DDL**: `logos/resources/database/coldrawdb-v2-collab.sql`.
+  version: 2.0.0
+servers:
+  - url: http://localhost:3000
+    description: Local dev (REST + WS proxy)
+  - url: https://staging.coldrawdb.example.com
+    description: Staging
+
+paths:
+  /ws/rooms/{roomId}:
+    get:
+      summary: WebSocket upgrade for room OT session
+      description: |
+        S05.1 — `core-S05-ot-collab.md` §3 Step 3–11.
+
+        **Upgrade**: `GET /ws/rooms/{roomId}?token={access_token}` → `101 Switching Protocols`.
+
+        连接成功后服务端 **首帧** 发送 `connected` JSON（见 `CollabFrameConnected`）。
+
+        **权限**:
+        - `owner` / `editor`: 可发送 `op` / `presence` / `sync`
+        - `viewer`: 只读连接，发送 `op` → `error READ_ONLY`
+
+        **关闭码**:
+        - `4401` token 无效或过期
+        - `4403` 非 room 成员 (`NOT_A_MEMBER`)
+        - `4409` room 已归档
+
+        帧协议见 `components/schemas/CollabFrame` 与 `x-collab-protocol`。
+      operationId: collabWebSocket
+      tags: [collab-ws]
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+        - name: token
+          in: query
+          required: true
+          description: S03 access_token（JWT）
+          schema:
+            type: string
+      responses:
+        '101':
+          description: WebSocket upgrade successful
+        '401':
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: UNAUTHORIZED
+                message: 请先登录
+        '403':
+          description: Not a room member
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: NOT_A_MEMBER
+                message: 你不是该房间成员
+        '404':
+          description: Room not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: ROOM_NOT_FOUND
+                message: 房间不存在
+
+  /api/v1/rooms/{roomId}/collab/head:
+    parameters:
+      - $ref: '#/components/parameters/RoomId'
+    get:
+      summary: Get collab head revision for a room
+      description: |
+        S05.1 / S05.4 辅助 — HTTP 等价于 `connected` 帧中的 head 信息。
+        用于 WS 不可用时的只读探测或重连前 prefetch。
+      operationId: getCollabHead
+      tags: [collab-rest]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Collab head state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CollabHead'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Not a room member
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: NOT_A_MEMBER
+                message: 你不是该房间成员
+        '404':
+          description: Room not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: ROOM_NOT_FOUND
+                message: 房间不存在
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/rooms/{roomId}/collab/ops:
+    parameters:
+      - $ref: '#/components/parameters/RoomId'
+    get:
+      summary: List operations after a server revision
+      description: |
+        S05.4 sync — `core-S05-ot-collab.md` §6 Step 10–12 HTTP 等价。
+        返回 `afterRev` 之后的有序 op 列表；缺口过大时 `409` 并建议 full sync。
+      operationId: listCollabOps
+      tags: [collab-rest]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: afterRev
+          in: query
+          required: true
+          description: 客户端已知的最后 server_rev（0 表示从头）
+          schema:
+            type: integer
+            minimum: 0
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Missed operations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CollabOpsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Not a room member
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: NOT_A_MEMBER
+                message: 你不是该房间成员
+        '404':
+          description: Room not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: ROOM_NOT_FOUND
+                message: 房间不存在
+        '409':
+          description: Gap too large — client must request full snapshot sync
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncGapTooLargeError'
+              example:
+                code: SYNC_GAP_TOO_LARGE
+                message: 变更过多，请请求全量同步
+                currentServerRev: 1200
+                maxCatchUp: 500
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+x-collab-protocol:
+  transport: WebSocket
+  urlTemplate: wss://{host}/ws/rooms/{roomId}?token={accessToken}
+  messageFormat: json
+  frameEnvelope:
+    description: 所有 WS 消息为 JSON 对象，必须含 type 字段
+    required: [type]
+  clientToServer:
+    - type: op
+      schema: CollabFrameOpClient
+      scenario: S05.2
+    - type: presence
+      schema: CollabFramePresence
+      scenario: S05.2
+    - type: sync
+      schema: CollabFrameSyncClient
+      scenario: S05.4
+  serverToClient:
+    - type: connected
+      schema: CollabFrameConnected
+      scenario: S05.1
+    - type: ack
+      schema: CollabFrameAck
+      scenario: S05.2
+    - type: remote_op
+      schema: CollabFrameRemoteOp
+      scenario: S05.2
+    - type: presence
+      schema: CollabFramePresence
+      scenario: S05.2
+    - type: sync
+      schema: CollabFrameSyncServer
+      scenario: S05.4
+    - type: error
+      schema: CollabFrameError
+      scenario: EX-5.*
+
+x-collab-checkpoint:
+  description: |
+    S05.5 — room 内 diagram 快照持久化仍走 `PUT /api/v1/diagrams/{id}`（diagrams.yaml）。
+    room 模式下 collab-server 协调 revision，客户端 **不应** 收到 S01 409 冲突模态。
+  requiredHeaders:
+    Authorization: Bearer {access_token}
+    X-Room-Id: '{roomId}'
+    X-Collab-Server-Rev: '{serverRev}'
+  optionalHeaders:
+    X-Collab-Snapshot-Hash: SHA-256 of diagram JSON body
+  successStatus: 200
+  roomModeBehavior: Server applies OT head revision; stale X-Collab-Server-Rev may return 409 COLLAB_REV_STALE (not revision_conflict UI)
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: S03 access token (see auth.yaml)
+
+  parameters:
+    RoomId:
+      name: roomId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    LimitParam:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+        default: 100
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid access token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: UNAUTHORIZED
+            message: 请先登录
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: INTERNAL_ERROR
+            message: 服务器内部错误
+
+  schemas:
+    CollabHead:
+      type: object
+      required: [roomId, serverRev, diagramId]
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        diagramId:
+          type: string
+          format: uuid
+        serverRev:
+          type: integer
+          minimum: 0
+          description: Current head revision for the room
+        snapshotHash:
+          type: string
+          nullable: true
+          description: SHA-256 hex of last checkpoint diagram JSON
+        checkpointRevision:
+          type: integer
+          nullable: true
+          description: diagram.revision at last checkpoint
+        lastCheckpointAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    CollabOpsResponse:
+      type: object
+      required: [roomId, fromRev, toRev, items]
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        fromRev:
+          type: integer
+          minimum: 0
+        toRev:
+          type: integer
+          minimum: 0
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CollabOpEntry'
+
+    CollabOpEntry:
+      type: object
+      required: [serverRev, operationId, opType, payload, userId, createdAt]
+      properties:
+        serverRev:
+          type: integer
+          minimum: 1
+        operationId:
+          type: string
+          format: uuid
+        opType:
+          $ref: '#/components/schemas/CollabOpType'
+        payload:
+          type: object
+          additionalProperties: true
+          description: Parsed JSON op payload
+        userId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+
+    CollabOpType:
+      type: string
+      enum:
+        - table.create
+        - table.update
+        - table.delete
+        - field.create
+        - field.update
+        - field.delete
+        - reference.create
+        - reference.update
+        - reference.delete
+        - area.create
+        - area.update
+        - area.delete
+        - note.create
+        - note.update
+        - note.delete
+      description: OT op 类型，payload 结构随 type 变化
+
+    CollabOp:
+      type: object
+      required: [type]
+      properties:
+        type:
+          $ref: '#/components/schemas/CollabOpType'
+        targetId:
+          type: string
+          description: 目标实体 id（create 时可为 client 生成的 id）
+        parentId:
+          type: string
+          nullable: true
+          description: 父实体 id（如 field → table）
+        changes:
+          type: object
+          additionalProperties: true
+          description: 字段级变更键值对
+
+    CollabMemberPresence:
+      type: object
+      required: [userId, online]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+          nullable: true
+        role:
+          type: string
+          enum: [owner, editor, viewer]
+        online:
+          type: boolean
+
+    CollabCursor:
+      type: object
+      required: [x, y]
+      properties:
+        x:
+          type: number
+        y:
+          type: number
+
+    CollabSelection:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [table, field, reference, area, note, none]
+        id:
+          type: string
+          nullable: true
+
+    CollabFrameConnected:
+      type: object
+      required: [type, serverRev, members, diagramId]
+      properties:
+        type:
+          type: string
+          enum: [connected]
+        serverRev:
+          type: integer
+          minimum: 0
+        diagramId:
+          type: string
+          format: uuid
+        snapshotHash:
+          type: string
+          nullable: true
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/CollabMemberPresence'
+        yourRole:
+          type: string
+          enum: [owner, editor, viewer]
+
+    CollabFrameOpClient:
+      type: object
+      required: [type, op]
+      properties:
+        type:
+          type: string
+          enum: [op]
+        clientRev:
+          type: integer
+          nullable: true
+          description: 客户端本地序号，可选，用于 ack 对账
+        op:
+          $ref: '#/components/schemas/CollabOp'
+
+    CollabFrameAck:
+      type: object
+      required: [type, serverRev]
+      properties:
+        type:
+          type: string
+          enum: [ack]
+        serverRev:
+          type: integer
+          minimum: 1
+        clientRev:
+          type: integer
+          nullable: true
+        appliedOp:
+          $ref: '#/components/schemas/CollabOp'
+          nullable: true
+
+    CollabFrameRemoteOp:
+      type: object
+      required: [type, serverRev, op, authorId]
+      properties:
+        type:
+          type: string
+          enum: [remote_op]
+        serverRev:
+          type: integer
+          minimum: 1
+        authorId:
+          type: string
+          format: uuid
+        op:
+          $ref: '#/components/schemas/CollabOp'
+
+    CollabFramePresence:
+      type: object
+      required: [type, userId]
+      properties:
+        type:
+          type: string
+          enum: [presence]
+        userId:
+          type: string
+          format: uuid
+        cursor:
+          $ref: '#/components/schemas/CollabCursor'
+        selection:
+          $ref: '#/components/schemas/CollabSelection'
+
+    CollabFrameSyncClient:
+      type: object
+      required: [type, lastRev]
+      properties:
+        type:
+          type: string
+          enum: [sync]
+        lastRev:
+          type: integer
+          minimum: 0
+          description: 客户端已应用的最大 server_rev
+
+    CollabFrameSyncServer:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [sync]
+        serverRev:
+          type: integer
+          minimum: 0
+        ops:
+          type: array
+          items:
+            $ref: '#/components/schemas/CollabOpEntry'
+          description: missed ops when gap within threshold
+        snapshot:
+          type: object
+          nullable: true
+          description: Full diagram JSON when gap too large (EX-5.4)
+          additionalProperties: true
+
+    CollabFrameError:
+      type: object
+      required: [type, code, message]
+      properties:
+        type:
+          type: string
+          enum: [error]
+        code:
+          type: string
+          enum:
+            - READ_ONLY
+            - NOT_A_MEMBER
+            - token_expired
+            - INVALID_OP
+            - CONFLICT_RESOLVED
+            - SYNC_GAP_TOO_LARGE
+            - INTERNAL_ERROR
+        message:
+          type: string
+
+    CollabFrame:
+      oneOf:
+        - $ref: '#/components/schemas/CollabFrameConnected'
+        - $ref: '#/components/schemas/CollabFrameOpClient'
+        - $ref: '#/components/schemas/CollabFrameAck'
+        - $ref: '#/components/schemas/CollabFrameRemoteOp'
+        - $ref: '#/components/schemas/CollabFramePresence'
+        - $ref: '#/components/schemas/CollabFrameSyncClient'
+        - $ref: '#/components/schemas/CollabFrameSyncServer'
+        - $ref: '#/components/schemas/CollabFrameError'
+      discriminator:
+        propertyName: type
+
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - UNAUTHORIZED
+            - NOT_A_MEMBER
+            - ROOM_NOT_FOUND
+            - SYNC_GAP_TOO_LARGE
+            - COLLAB_REV_STALE
+            - INTERNAL_ERROR
+        message:
+          type: string
+
+    SyncGapTooLargeError:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          required: [currentServerRev, maxCatchUp]
+          properties:
+            currentServerRev:
+              type: integer
+            maxCatchUp:
+              type: integer
+              description: Maximum ops returned in one catch-up batch
