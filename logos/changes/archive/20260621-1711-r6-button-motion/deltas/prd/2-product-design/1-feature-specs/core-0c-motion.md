@@ -19,7 +19,7 @@
 }
 ```
 
-> `.cdb-btn` transition 须包含 `transform` 与 `box-shadow`（与 E6 §4.5 合并，不重复定义块）。
+> `.cdb-btn` transition 须包含 `transform` 与 `box-shadow`（与 E6 §4.5 合并）。
 
 ## ADDED — 4.9 面板 spring 入场（R6）
 
@@ -37,11 +37,11 @@
 }
 ```
 
-> Spring 使用 CSS `cubic-bezier` 近似（`--cdb-easing-spring`），不引入 framer-motion。
+> `.cdb-save-dot--saving` 使用 `animation: cdb-pulse-opacity 1s infinite`；禁止与 scale 版 `cdb-pulse` 混用。
 
 ## MODIFIED — 3. @keyframes 清单
 
-在 `cdb-pulse`（scale，Issues 徽章）之外 **新增** 保存态专用动画：
+在 `cdb-pulse` 后追加：
 
 ```css
 @keyframes cdb-pulse-opacity {
@@ -50,14 +50,6 @@
 }
 ```
 
-`.cdb-save-dot--saving` 使用 `animation: cdb-pulse-opacity 1s infinite`；**禁止**与 E6 `cdb-pulse` scale 混用同名 keyframes。
-
 ## MODIFIED — 7. 验收约束
 
-在 E6 约束后追加：
-
-- `styles.css` 仅 **一处** `@keyframes cdb-pulse`（scale）
-- 存在 `@keyframes cdb-pulse-opacity` 且 `.cdb-save-dot--saving` 引用
-- `.cdb-btn:focus-visible` 使用 `var(--cdb-shadow-focus)`
-- `.cdb-btn--primary:active` 使用 `var(--cdb-color-primary-active)`
-- Inspector / IO Drawer / 溢出菜单使用 `var(--cdb-easing-spring)`
+在 E6 约束后追加 R6 项（见主文档 §7 末四条 UT-R6 对应约束）。
