@@ -715,10 +715,13 @@ pub struct BridgeConfig {
 }
 
 /// PUT bridge/config 请求体（字段可选）
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct BridgeConfigUpdate {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub db_read_preferred: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub db_write_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub dual_write_local: Option<bool>,
 }
 
@@ -805,6 +808,81 @@ pub async fn save_with_retry(
 /// 预期尝试次数：首次 + 重试次数（用于 UT 断言）。
 pub fn save_retry_total_attempts() -> usize {
     1 + SAVE_RETRY_DELAYS_MS.len()
+}
+
+#[cfg(test)]
+mod bridge_api_tests {
+    use super::*;
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    struct TestApiResp<T> {
+        code: i32,
+        data: T,
+    }
+
+    /// UT-ALIGN-B01: bridge config GET/PUT envelope 解析
+    #[test]
+    fn ut_align_b01_bridge_config_envelope_parse() {
+        let json = r#"{"code":0,"data":{"db_read_preferred":false,"db_write_enabled":true,"dual_write_local":false,"updated_at":"2026-06-21"},"request_id":"r1"}"#;
+        let out: TestApiResp<BridgeConfig> = serde_json::from_str(json).unwrap();
+        assert_eq!(out.code, 0);
+        assert!(!out.data.db_read_preferred);
+        assert!(out.data.db_write_enabled);
+        assert!(!out.data.dual_write_local);
+        assert_eq!(out.data.updated_at, "2026-06-21");
+    }
+
+    #[test]
+    fn ut_align_b01_bridge_config_update_envelope_parse() {
+        let json = r#"{"code":0,"data":{"updated":true},"request_id":"r2"}"#;
+        #[derive(Deserialize)]
+        struct UpdateResult {
+            updated: bool,
+        }
+        let out: TestApiResp<UpdateResult> = serde_json::from_str(json).unwrap();
+        assert!(out.data.updated);
+    }
+
+    #[test]
+    fn ut_align_b01_bridge_config_update_partial_serialize() {
+        let update = BridgeConfigUpdate {
+            dual_write_local: Some(true),
+            ..Default::default()
+        };
+        let v = serde_json::to_value(&update).unwrap();
+        assert_eq!(v["dual_write_local"], true);
+        assert!(v.get("db_read_preferred").is_none());
+    }
+
+    /// UT-ALIGN-B02: 导入日志列表与重试 envelope 解析
+    #[test]
+    fn ut_align_b02_import_logs_envelope_parse() {
+        let json = r#"{"code":0,"data":[{"id":"log-1","status":"failed","retry_count":0,"error_message":"parse error"}],"request_id":"r1"}"#;
+        let out: TestApiResp<Vec<ImportLogEntry>> = serde_json::from_str(json).unwrap();
+        assert_eq!(out.data.len(), 1);
+        assert_eq!(out.data[0].id, "log-1");
+        assert_eq!(out.data[0].status, "failed");
+        assert_eq!(out.data[0].retry_count, 0);
+        assert_eq!(out.data[0].error_message.as_deref(), Some("parse error"));
+    }
+
+    #[test]
+    fn ut_align_b02_retry_import_envelope_parse() {
+        let json = r#"{"code":0,"data":{"id":"log-1","status":"success","retry_count":1,"diagram_id":"d-new"},"request_id":"r2"}"#;
+        #[derive(Deserialize)]
+        struct RetryData {
+            id: String,
+            status: String,
+            retry_count: i64,
+            diagram_id: Option<String>,
+        }
+        let out: TestApiResp<RetryData> = serde_json::from_str(json).unwrap();
+        assert_eq!(out.data.id, "log-1");
+        assert_eq!(out.data.status, "success");
+        assert_eq!(out.data.retry_count, 1);
+        assert_eq!(out.data.diagram_id.as_deref(), Some("d-new"));
+    }
 }
 
 #[cfg(test)]

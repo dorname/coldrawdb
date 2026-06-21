@@ -70,6 +70,9 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-SP-09",
     "UT-SP-10",
     "UT-ALIGN-A01",
+    "UT-ALIGN-B01",
+    "UT-ALIGN-B02",
+    "UT-ALIGN-B03",
     // core-PE R6 motion
     "UT-R6-01",
     "UT-R6-02",

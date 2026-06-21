@@ -759,6 +759,16 @@ pub fn new_default_note(seq: i64) -> Note {
     }
 }
 
+/// align-v1-api-completion: 仅非 default 画布可删除（UT-ALIGN-B03）
+pub(crate) fn is_deletable_diagram_id(id: &str) -> bool {
+    id != "default"
+}
+
+/// align-v1-api-completion: 失败导入日志显示重试按钮（UT-ALIGN-B03）
+pub(crate) fn import_log_shows_retry(status: &str) -> bool {
+    status == "failed"
+}
+
 /// Enums/Types 在 V1 仍用「仅前端 state」轻量 Stub（areas/notes 已接入 store）。
 #[derive(Clone, Debug, PartialEq)]
 pub struct AreaStub {
@@ -1811,6 +1821,12 @@ pub fn ImportDrawer(
         })
     };
 
+    let list_client = client.clone();
+    let submit_client = client.clone();
+    let refresh_for_list = refresh_logs.clone();
+    let refresh_for_submit = refresh_logs.clone();
+    let refresh_for_btn = refresh_logs.clone();
+
     create_effect({
         let refresh_logs = refresh_logs.clone();
         move |_| {
@@ -1911,7 +1927,10 @@ pub fn ImportDrawer(
                             class="cdb-btn cdb-btn--small"
                             data-testid="import-logs-refresh"
                             disabled=move || logs_loading.get()
-                            on:click=move |_| refresh_logs()
+                            on:click={
+                                let refresh_logs = refresh_for_btn.clone();
+                                move |_| refresh_logs()
+                            }
                         >
                             "刷新"
                         </button>
@@ -1926,10 +1945,10 @@ pub fn ImportDrawer(
                             let status = log.status.clone();
                             let diagram_id = log.imported_diagram_id.clone();
                             let err_msg = log.error_message.clone();
-                            let can_retry = status == "failed";
-                            let client = client.clone();
+                            let can_retry = import_log_shows_retry(&status);
+                            let client = list_client.clone();
                             let error = error.clone();
-                            let refresh = refresh_logs.clone();
+                            let refresh = refresh_for_list.clone();
                             view! {
                                 <div class="cdb-import-log-item" data-testid={format!("import-log-{}", log_id)}>
                                     <span class={format!("cdb-tag cdb-tag--{}", if status == "success" { "success" } else if status == "failed" { "error" } else { "warning" })}>
@@ -1952,6 +1971,7 @@ pub fn ImportDrawer(
                                                     let client = client.clone();
                                                     let error = error.clone();
                                                     let refresh = refresh.clone();
+                                                    let log_id = log_id.clone();
                                                     spawn_local(async move {
                                                         match client.retry_import_log(&log_id).await {
                                                             Ok(resp) => {
@@ -1981,7 +2001,10 @@ pub fn ImportDrawer(
                     class="cdb-btn cdb-btn--primary"
                     data-testid="import-submit"
                     disabled=move || submitting.get()
-                    on:click=move |_| {
+                    on:click={
+                        let client = submit_client.clone();
+                        let refresh_logs = refresh_for_submit.clone();
+                        move |_| {
                         let text = content.get();
                         if text.trim().is_empty() {
                             inline_error.set(Some("内容不能为空".into()));
@@ -2014,7 +2037,7 @@ pub fn ImportDrawer(
                                 }
                             }
                         });
-                    }
+                    }}
                 >
                     {move || if submitting.get() { "导入中..." } else { "导入并打开 ▶" }}
                 </button>
@@ -4006,12 +4029,12 @@ pub fn AppRoot(
         let error = error.clone();
         Rc::new(move || {
             let id = current_diagram_id.get();
-            if id == "default" {
+            if !is_deletable_diagram_id(&id) {
                 error.set(Some("无法删除默认画布".to_string()));
                 return;
             }
             let confirmed = web_sys::window()
-                .and_then(|w| w.confirm_with_message("确定删除当前图表？此操作不可撤销。"))
+                .and_then(|w| w.confirm_with_message("确定删除当前图表？此操作不可撤销。").ok())
                 .unwrap_or(false);
             if !confirmed {
                 return;
@@ -4707,13 +4730,15 @@ pub mod modals {
         let loading = create_rw_signal(true);
         let saving = create_rw_signal(false);
         let kind_close = kind;
+        let load_client = client.clone();
+        let save_client = client.clone();
 
         create_effect(move |_| {
             if kind.get() != Some(ModalKind::BridgeSettings) {
                 return;
             }
             loading.set(true);
-            let client = client.clone();
+            let client = load_client.clone();
             let error = error.clone();
             spawn_local(async move {
                 match client.get_bridge_config().await {
@@ -4780,7 +4805,7 @@ pub mod modals {
                     data-testid="bridge-settings-save"
                     disabled=move || saving.get() || loading.get()
                     on:click={
-                        let client = client.clone();
+                        let client = save_client.clone();
                         let error = error.clone();
                         move |_| {
                             saving.set(true);
@@ -5388,6 +5413,21 @@ mod tests {
         assert_eq!(snap.notes.len(), 1, "UT-ALIGN-A01: snapshot.notes 应有 1 项");
         assert_eq!(snap.notes[0].content, "新便签 1");
         assert!(store.dirty.get(), "UT-ALIGN-A01: 变更后 dirty 应为 true");
+    }
+
+    /// UT-ALIGN-B03: 删除与导入日志重试 UI 规则
+    #[test]
+    fn ut_align_b03_delete_and_import_log_retry_rules() {
+        assert!(!is_deletable_diagram_id("default"), "UT-ALIGN-B03: default 不可删");
+        assert!(is_deletable_diagram_id("d-123"), "UT-ALIGN-B03: 普通 id 可删");
+        assert!(import_log_shows_retry("failed"), "UT-ALIGN-B03: failed 显示重试");
+        assert!(!import_log_shows_retry("success"));
+        assert!(!import_log_shows_retry("pending"));
+        assert_eq!(
+            modals::ModalKind::BridgeSettings,
+            modals::ModalKind::BridgeSettings,
+            "UT-ALIGN-B03: BridgeSettings 模态 kind 存在"
+        );
     }
 
     /// UT-SP-10: 关系过滤 — references 没有 name 字段，使用拼接匹配

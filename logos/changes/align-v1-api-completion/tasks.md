@@ -5,6 +5,6 @@
 - [x] `deltas/test/core-PC-import-export-test-cases.md` — UT-ALIGN-B01~B03
 
 ## [code]
-- [ ] `editor_data_access.rs` — bridge client 方法
-- [ ] `editor_panels.rs` — Settings 模态、删除、ImportDrawer 日志
-- [ ] 单元测试
+- [x] `editor_data_access.rs` — bridge client 方法
+- [x] `editor_panels.rs` — Settings 模态、删除、ImportDrawer 日志
+- [x] 单元测试
