@@ -11,7 +11,7 @@
 //!   - `serde` + `serde_json` for request/response bodies
 //!   - `crate::editor_core::types::Diagram` (defined in editor-core, shared across modules)
 
-use crate::editor_core::types::{Database, Diagram};
+use crate::editor_core::types::{Area, Database, Diagram, Field, Index, Note, Reference, Table};
 use chrono::{DateTime, Utc};
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
@@ -285,7 +285,7 @@ impl DiagramClient {
 // Internal types (request/response DTOs)
 // ---------------------------------------------------------------------------
 
-/// Matches backend `DiagramOut` (backend/src/diagrams_v1.rs:61-68).
+/// Matches backend full diagram response (`diagram_persistence::DiagramFull`).
 #[derive(Deserialize)]
 struct DiagramOut {
     id: String,
@@ -294,6 +294,111 @@ struct DiagramOut {
     pan: Option<String>,
     zoom: Option<String>,
     revision: i64,
+    #[serde(default)]
+    tables: Vec<TableOut>,
+    #[serde(default)]
+    references: Vec<ReferenceOut>,
+    #[serde(default)]
+    areas: Vec<AreaOut>,
+    #[serde(default)]
+    notes: Vec<NoteOut>,
+}
+
+#[derive(Deserialize)]
+struct TableOut {
+    id: String,
+    name: String,
+    #[serde(default)]
+    x: f64,
+    #[serde(default)]
+    y: f64,
+    #[serde(default)]
+    color: String,
+    #[serde(default)]
+    comment: String,
+    #[serde(default)]
+    fields: Vec<FieldOut>,
+    #[serde(default)]
+    indices: Vec<IndexOut>,
+}
+
+#[derive(Deserialize)]
+struct FieldOut {
+    id: String,
+    name: String,
+    #[serde(default, alias = "type")]
+    type_: String,
+    #[serde(default)]
+    default: String,
+    #[serde(default)]
+    check: String,
+    #[serde(default)]
+    primary: bool,
+    #[serde(default)]
+    unique: bool,
+    #[serde(default)]
+    not_null: bool,
+    #[serde(default)]
+    increment: bool,
+    #[serde(default)]
+    comment: String,
+}
+
+#[derive(Deserialize)]
+struct IndexOut {
+    id: String,
+    name: String,
+    #[serde(default)]
+    fields: Vec<String>,
+    #[serde(default)]
+    unique: bool,
+}
+
+#[derive(Deserialize)]
+struct ReferenceOut {
+    id: String,
+    #[serde(default)]
+    name: String,
+    start_table_id: String,
+    end_table_id: String,
+    start_field_id: String,
+    end_field_id: String,
+    #[serde(default, alias = "type")]
+    type_: String,
+    #[serde(default)]
+    on_delete: String,
+    #[serde(default)]
+    on_update: String,
+}
+
+#[derive(Deserialize)]
+struct AreaOut {
+    id: String,
+    #[serde(default)]
+    x: f64,
+    #[serde(default)]
+    y: f64,
+    #[serde(default)]
+    width: f64,
+    #[serde(default)]
+    height: f64,
+    #[serde(default)]
+    color: String,
+    #[serde(default)]
+    name: String,
+}
+
+#[derive(Deserialize)]
+struct NoteOut {
+    id: String,
+    #[serde(default)]
+    x: f64,
+    #[serde(default)]
+    y: f64,
+    #[serde(default)]
+    content: String,
+    #[serde(default)]
+    color: String,
 }
 
 impl DiagramOut {
@@ -307,10 +412,95 @@ impl DiagramOut {
                 .as_ref()
                 .and_then(|d| parse_database(d))
                 .unwrap_or(Database::Generic),
-            tables: Vec::new(),
-            references: Vec::new(),
-            notes: Vec::new(),
-            areas: Vec::new(),
+            tables: self.tables.into_iter().map(Into::into).collect(),
+            references: self.references.into_iter().map(Into::into).collect(),
+            notes: self.notes.into_iter().map(Into::into).collect(),
+            areas: self.areas.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<TableOut> for Table {
+    fn from(t: TableOut) -> Self {
+        Table {
+            id: t.id,
+            name: t.name,
+            x: t.x,
+            y: t.y,
+            color: t.color,
+            comment: t.comment,
+            fields: t.fields.into_iter().map(Into::into).collect(),
+            indices: t.indices.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<FieldOut> for Field {
+    fn from(f: FieldOut) -> Self {
+        Field {
+            id: f.id,
+            name: f.name,
+            type_: f.type_,
+            default: f.default,
+            check: f.check,
+            primary: f.primary,
+            unique: f.unique,
+            not_null: f.not_null,
+            increment: f.increment,
+            comment: f.comment,
+        }
+    }
+}
+
+impl From<IndexOut> for Index {
+    fn from(i: IndexOut) -> Self {
+        Index {
+            id: i.id,
+            name: i.name,
+            fields: i.fields,
+            unique: i.unique,
+        }
+    }
+}
+
+impl From<ReferenceOut> for Reference {
+    fn from(r: ReferenceOut) -> Self {
+        Reference {
+            id: r.id,
+            name: r.name,
+            start_table_id: r.start_table_id,
+            end_table_id: r.end_table_id,
+            start_field_id: r.start_field_id,
+            end_field_id: r.end_field_id,
+            type_: r.type_,
+            on_delete: r.on_delete,
+            on_update: r.on_update,
+        }
+    }
+}
+
+impl From<AreaOut> for Area {
+    fn from(a: AreaOut) -> Self {
+        Area {
+            id: a.id,
+            x: a.x,
+            y: a.y,
+            width: a.width,
+            height: a.height,
+            color: a.color,
+            name: a.name,
+        }
+    }
+}
+
+impl From<NoteOut> for Note {
+    fn from(n: NoteOut) -> Self {
+        Note {
+            id: n.id,
+            x: n.x,
+            y: n.y,
+            content: n.content,
+            color: n.color,
         }
     }
 }
@@ -326,24 +516,32 @@ fn parse_database(s: &str) -> Option<Database> {
     }
 }
 
-/// Lightweight diagram sent on PUT (only fields backend cares about).
+/// Full diagram body for PUT (nested entities included).
 #[derive(Serialize)]
-struct DiagramForSave<'a> {
-    id: &'a str,
-    name: &'a str,
-    database: &'a str,
-    pan: &'a str,
-    zoom: &'a str,
+struct DiagramForSave {
+    id: String,
+    name: String,
+    database: String,
+    pan: String,
+    zoom: String,
+    tables: Vec<Table>,
+    references: Vec<Reference>,
+    areas: Vec<Area>,
+    notes: Vec<Note>,
 }
 
-impl<'a> From<&'a Diagram> for DiagramForSave<'a> {
-    fn from(d: &'a Diagram) -> Self {
+impl From<&Diagram> for DiagramForSave {
+    fn from(d: &Diagram) -> Self {
         Self {
-            id: &d.id,
-            name: &d.name,
-            database: database_str(&d.database),
-            pan: "",
-            zoom: "",
+            id: d.id.clone(),
+            name: d.name.clone(),
+            database: database_str(&d.database).to_string(),
+            pan: String::new(),
+            zoom: String::new(),
+            tables: d.tables.clone(),
+            references: d.references.clone(),
+            areas: d.areas.clone(),
+            notes: d.notes.clone(),
         }
     }
 }
@@ -361,9 +559,9 @@ fn database_str(d: &Database) -> &'static str {
 
 /// Backend SaveReq (PUT body).
 #[derive(Serialize)]
-struct SaveReq<'a> {
+struct SaveReq {
     expected_revision: i64,
-    diagram: DiagramForSave<'a>,
+    diagram: DiagramForSave,
 }
 
 /// Backend save response.

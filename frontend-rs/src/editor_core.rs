@@ -338,6 +338,78 @@ impl CommandStack {
         stack.redo.clear();
         Ok(())
     }
+
+    /// 撤销 apply 的副作用（V1：覆盖 AddTable / AddField / AddReference / DeleteField / DeleteReference / ChangeType）。
+    pub fn revert(store: &EditorStore, cmd: &Command) -> Result<(), CoreError> {
+        match cmd {
+            Command::AddTable(table) => {
+                let mut tables = store.tables.get();
+                tables.retain(|t| t.id != table.id);
+                store.tables.set(tables);
+            }
+            Command::AddField { table_id, field } => {
+                let mut tables = store.tables.get();
+                if let Some(table) = tables.iter_mut().find(|t| t.id == *table_id) {
+                    table.fields.retain(|f| f.id != field.id);
+                    store.tables.set(tables);
+                }
+            }
+            Command::DeleteField { table_id, field_id: _ } => {
+                return Err(CoreError::new("DeleteField revert not supported in V1"));
+            }
+            Command::AddReference(reference) => {
+                let mut refs = store.references.get();
+                refs.retain(|r| r.id != reference.id);
+                store.references.set(refs);
+            }
+            Command::DeleteReference { reference_id: _ } => {
+                return Err(CoreError::new("DeleteReference revert not supported in V1"));
+            }
+            Command::ChangeType { field_id: _, new_type: _ } => {
+                return Err(CoreError::new("ChangeType revert not supported in V1"));
+            }
+        }
+        store.dirty.set(true);
+        Ok(())
+    }
+
+    /// 仅执行命令副作用，不写入 undo 栈（redo 路径使用）。
+    pub fn execute(store: &EditorStore, cmd: &Command) -> Result<(), CoreError> {
+        match cmd {
+            Command::AddTable(table) => {
+                let mut tables = store.tables.get();
+                if tables.iter().any(|t| t.id == table.id) {
+                    return Err(CoreError::new(format!("table id '{}' already exists", table.id)));
+                }
+                tables.push(table.clone());
+                store.tables.set(tables);
+            }
+            Command::AddField { table_id, field } => {
+                let mut tables = store.tables.get();
+                let table = tables
+                    .iter_mut()
+                    .find(|t| t.id == *table_id)
+                    .ok_or_else(|| CoreError::new(format!("table '{}' not found", table_id)))?;
+                table.fields.push(field.clone());
+                store.tables.set(tables);
+            }
+            Command::AddReference(reference) => {
+                let mut refs = store.references.get();
+                refs.push(reference.clone());
+                store.references.set(refs);
+            }
+            Command::DeleteField { .. } | Command::DeleteReference { .. } | Command::ChangeType { .. } => {
+                return Err(CoreError::new("command not supported for execute-only path"));
+            }
+        }
+        store.dirty.set(true);
+        Ok(())
+    }
+
+    pub fn record(&mut self, cmd: Command) {
+        self.undo.push(cmd);
+        self.redo.clear();
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

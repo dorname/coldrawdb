@@ -334,6 +334,166 @@ pub fn import_parse_summary(format: ImportFormat, content: &str) -> Result<Strin
     }
 }
 
+/// 从 SQL CREATE TABLE 语句构建最小 import tables（每表一个 id 字段）。
+pub fn parse_sql_import_tables(content: &str) -> Result<Vec<Table>, String> {
+    let stmts = modals::parse_sql_statements(content)?;
+    let mut tables = Vec::new();
+    for (i, stmt) in stmts.iter().enumerate() {
+        let upper = stmt.to_uppercase();
+        if !upper.contains("CREATE TABLE") {
+            continue;
+        }
+        let name = stmt
+            .split_whitespace()
+            .nth(2)
+            .map(|s| s.trim_matches('(').trim_matches('`').trim_matches('"').to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| format!("table_{}", i + 1));
+        let table_id = format!("import-t-{i}");
+        tables.push(Table {
+            id: table_id.clone(),
+            name: name.to_string(),
+            x: 100.0 + (i as f64) * 40.0,
+            y: 100.0 + (i as f64) * 30.0,
+            color: String::new(),
+            comment: String::new(),
+            fields: vec![Field {
+                id: format!("{table_id}-f1"),
+                name: "id".into(),
+                type_: "INT".into(),
+                default: String::new(),
+                check: String::new(),
+                primary: true,
+                unique: false,
+                not_null: true,
+                increment: false,
+                comment: String::new(),
+            }],
+            indices: vec![],
+        });
+    }
+    Ok(tables)
+}
+
+/// 从 DBML Table 块构建 import tables（最小字段解析）。
+pub fn parse_dbml_import_tables(content: &str) -> Result<Vec<Table>, String> {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut tables = Vec::new();
+    let mut table_index = 0usize;
+    let mut line_idx = 0usize;
+    while line_idx < lines.len() {
+        let trimmed = lines[line_idx].trim();
+        let is_table = trimmed.starts_with("Table ") || trimmed.starts_with("table ");
+        if !is_table {
+            line_idx += 1;
+            continue;
+        }
+        let name = trimmed
+            .trim_start_matches("Table ")
+            .trim_start_matches("table ")
+            .trim();
+        let (name, inline_body) = if let Some(idx) = name.find('{') {
+            (
+                name[..idx].trim().to_string(),
+                Some(name[idx + 1..].trim()),
+            )
+        } else {
+            (name.trim_end_matches('{').trim().to_string(), None)
+        };
+        let table_id = format!("import-t-{table_index}");
+        let mut fields = Vec::new();
+        let mut field_index = 0usize;
+        let single_line_table = trimmed.contains('}');
+        if let Some(body) = inline_body {
+            let body = body.trim_end_matches('}').trim();
+            if !body.is_empty() {
+                for segment in body.split(',') {
+                    let field_line = segment.trim();
+                    if field_line.is_empty() {
+                        continue;
+                    }
+                    push_dbml_field(&mut fields, &table_id, field_index, field_line);
+                    field_index += 1;
+                }
+            }
+        }
+        if !single_line_table {
+            line_idx += 1;
+            while line_idx < lines.len() {
+            let field_line = lines[line_idx].trim();
+            if field_line.starts_with('}') {
+                break;
+            }
+            if field_line.is_empty() || field_line.starts_with("//") {
+                line_idx += 1;
+                continue;
+            }
+            let parts: Vec<&str> = field_line.split_whitespace().collect();
+            if parts.len() >= 2 {
+                push_dbml_field(&mut fields, &table_id, field_index, field_line);
+                field_index += 1;
+            }
+            line_idx += 1;
+            }
+        }
+        if fields.is_empty() {
+            fields.push(Field {
+                id: format!("{table_id}-f1"),
+                name: "id".into(),
+                type_: "INT".into(),
+                default: String::new(),
+                check: String::new(),
+                primary: true,
+                unique: false,
+                not_null: true,
+                increment: false,
+                comment: String::new(),
+            });
+        }
+        tables.push(Table {
+            id: table_id,
+            name: if name.is_empty() {
+                format!("table_{table_index}")
+            } else {
+                name
+            },
+            x: 100.0 + (table_index as f64) * 40.0,
+            y: 100.0 + (table_index as f64) * 30.0,
+            color: String::new(),
+            comment: String::new(),
+            fields,
+            indices: vec![],
+        });
+        table_index += 1;
+        line_idx += 1;
+    }
+    Ok(tables)
+}
+
+fn push_dbml_field(fields: &mut Vec<Field>, table_id: &str, field_index: usize, field_line: &str) {
+    let parts: Vec<&str> = field_line.split_whitespace().collect();
+    if parts.len() < 2 {
+        return;
+    }
+    let fname = parts[0].to_string();
+    let ftype = parts[1].to_string();
+    let lower = field_line.to_lowercase();
+    let primary = lower.contains("[pk") || lower.contains("primary key");
+    let not_null = lower.contains("not null") || primary;
+    fields.push(Field {
+        id: format!("{table_id}-f{field_index}"),
+        name: fname,
+        type_: ftype,
+        default: String::new(),
+        check: String::new(),
+        primary,
+        unique: lower.contains("[unique"),
+        not_null,
+        increment: lower.contains("increment"),
+        comment: String::new(),
+    });
+}
+
 /// 构建 bridge import payload
 pub fn build_import_payload(
     format: ImportFormat,
@@ -356,17 +516,21 @@ pub fn build_import_payload(
             Ok(v)
         }
         ImportFormat::Sql => {
-            let _ = modals::parse_sql_statements(content)?;
+            let tables = parse_sql_import_tables(content)?;
             Ok(serde_json::json!({
                 "name": title,
                 "source_format": "sql",
+                "tables": tables,
             }))
         }
         ImportFormat::Dbml => {
+            let tables = parse_dbml_import_tables(content)?;
             Ok(serde_json::json!({
                 "name": title,
                 "source_format": "dbml",
-                "table_count": count_dbml_tables(content),
+                "table_count": tables.len(),
+                "tables": tables,
+                "content": content,
             }))
         }
     }
@@ -694,7 +858,7 @@ pub fn ConflictDialog(
         let on_reload_inner = on_reload_inner.clone();
         match conflict.get() {
             Some(info) => view! {
-                <div class="cdb-conflict-dialog-overlay">
+                <div class="cdb-conflict-dialog-overlay" data-testid="modal-conflict">
                     <div class="cdb-conflict-dialog" data-testid="conflict-dialog">
                         <h2>"保存冲突"</h2>
                         <p>
@@ -704,7 +868,7 @@ pub fn ConflictDialog(
                         <div class="cdb-dialog-buttons">
                             <button
                                 class="cdb-btn cdb-btn--primary"
-                                data-testid="btn-force-overwrite"
+                                data-testid="conflict-force"
                                 on:click=move |_| {
                                     conflict.set(None);
                                     on_force_overwrite_inner();
@@ -714,7 +878,7 @@ pub fn ConflictDialog(
                             </button>
                             <button
                                 class="cdb-btn"
-                                data-testid="btn-reload"
+                                data-testid="conflict-reload"
                                 on:click=move |_| {
                                     conflict.set(None);
                                     on_reload_inner();
@@ -895,17 +1059,31 @@ pub fn TopMenuBar(
 /// - 接收 error signal（点击弹 toast 提示 B5 待实现）
 #[component]
 pub fn UndoRedoButtons(
+    store: EditorStore,
+    stack: RwSignal<Rc<RefCell<crate::editor_core::CommandStack>>>,
+    on_after_change: Rc<dyn Fn()>,
     error: RwSignal<Option<String>>,
 ) -> impl IntoView {
-    let err1 = error.clone();
-    let err2 = error.clone();
+    let on_after_undo = on_after_change.clone();
+    let on_after_redo = on_after_change.clone();
     view! {
         <button
             class="cdb-btn cdb-btn--icon"
             data-testid="btn-undo"
-            title="撤销 (Ctrl+Z) — 待 B5 实现"
+            title="撤销 (Ctrl+Z)"
             on:click=move |_| {
-                err1.set(Some("撤销功能待 B5 实现".to_string()));
+                let cmd = {
+                    let stack_rc = stack.get();
+                    let mut s = stack_rc.borrow_mut();
+                    s.undo()
+                };
+                if let Some(cmd) = cmd {
+                    if crate::editor_core::CommandStack::revert(&store, &cmd).is_ok() {
+                        on_after_undo();
+                    }
+                } else {
+                    error.set(Some("无可撤销操作".to_string()));
+                }
             }
         >
             "↶"
@@ -913,9 +1091,21 @@ pub fn UndoRedoButtons(
         <button
             class="cdb-btn cdb-btn--icon"
             data-testid="btn-redo"
-            title="重做 (Ctrl+Shift+Z) — 待 B5 实现"
+            title="重做 (Ctrl+Shift+Z)"
             on:click=move |_| {
-                err2.set(Some("重做功能待 B5 实现".to_string()));
+                let cmd = {
+                    let stack_rc = stack.get();
+                    let mut s = stack_rc.borrow_mut();
+                    s.redo()
+                };
+                if let Some(cmd) = cmd {
+                    match crate::editor_core::CommandStack::execute(&store, &cmd) {
+                        Ok(()) => on_after_redo(),
+                        Err(e) => error.set(Some(e.message)),
+                    }
+                } else {
+                    error.set(Some("无可重做操作".to_string()));
+                }
             }
         >
             "↷"
@@ -931,9 +1121,11 @@ pub fn Toolbar(
     error: RwSignal<Option<String>>,
     on_title_blur: Rc<dyn Fn(String)>,
 ) -> impl IntoView {
+    let stack = create_rw_signal(Rc::new(RefCell::new(crate::editor_core::CommandStack::new())));
+    let noop = Rc::new(|| {}) as Rc<dyn Fn()>;
     view! {
         <div class="cdb-toolbar">
-            <UndoRedoButtons error=error />
+            <UndoRedoButtons store=store stack=stack on_after_change=noop error=error />
             <input
                 class="cdb-title-edit"
                 data-testid="diagram-title-input"
@@ -994,25 +1186,32 @@ pub fn AppBar(
     modal_kind: RwSignal<Option<modals::ModalKind>>,
     current_title: RwSignal<String>,
     store: EditorStore,
+    stack: RwSignal<Rc<RefCell<crate::editor_core::CommandStack>>>,
     is_saving: RwSignal<bool>,
     save_offline: RwSignal<bool>,
     view_mode: RwSignal<ViewMode>,
     code_visible: RwSignal<bool>,
+    inspector_open: RwSignal<bool>,
     transform: RwSignal<Transform>,
     error: RwSignal<Option<String>>,
     on_title_blur: Rc<dyn Fn(String)>,
+    on_after_change: Rc<dyn Fn()>,
     on_open_import: Rc<dyn Fn()>,
     on_open_export: Rc<dyn Fn()>,
 ) -> impl IntoView {
-    let file_open = create_rw_signal(false);
-    let view_open = create_rw_signal(false);
+    let _ = transform;
     let import_handler = on_open_import.clone();
-    let import_handler_menu = on_open_import.clone();
     let export_handler = on_open_export.clone();
 
     view! {
         <header class="cdb-app-bar" data-testid="app-bar">
             <span class="cdb-logo-mark" aria-hidden="true">"C"</span>
+            <UndoRedoButtons
+                store=store.clone()
+                stack=stack
+                on_after_change=on_after_change.clone()
+                error=error.clone()
+            />
             <div class="cdb-diagram-title-wrap">
                 <input
                     class="cdb-diagram-title"
@@ -1027,34 +1226,66 @@ pub fn AppBar(
                     view! { <></> }.into_view()
                 }}
             </div>
-            {move || {
-                if is_saving.get() {
-                    view! { <span class="cdb-save-state cdb-is-saving" data-testid="save-state">"◌ 保存中..."</span> }.into_view()
-                } else if save_offline.get() {
-                    view! { <span class="cdb-save-state cdb-is-error" data-testid="save-state">"保存失败（离线）"</span> }.into_view()
-                } else if store.dirty.get() {
-                    view! { <span class="cdb-save-state cdb-is-idle" data-testid="save-state">"● 未保存"</span> }.into_view()
-                } else {
-                    view! { <span class="cdb-save-state" data-testid="save-state">"● 已保存"</span> }.into_view()
-                }
-            }}
-            <button
-                class="cdb-btn"
-                data-testid="btn-import"
-                on:click=move |_| import_handler()
-            >
-                "导入"
-            </button>
-            <button
-                class="cdb-btn"
-                data-testid="btn-export"
-                title="导出"
-                on:click=move |_| export_handler()
-            >
-                "导出 ▾"
-            </button>
-            <UndoRedoButtons error=error.clone() />
-            <ViewModeToggle view_mode=view_mode code_visible=code_visible />
+            <span class="cdb-save-state-wrap">
+                {move || {
+                    if is_saving.get() {
+                        view! {
+                            <span class="cdb-save-state cdb-is-saving" data-testid="save-state">
+                                <span class="cdb-save-dot cdb-save-dot--saving"></span>
+                                "保存中..."
+                                <span class="cdb-rev-inline" data-testid="revision-display">
+                                    {format!("rev: {}", store.revision.get())}
+                                </span>
+                            </span>
+                        }.into_view()
+                    } else if save_offline.get() {
+                        view! {
+                            <span class="cdb-save-state cdb-is-error" data-testid="save-state">
+                                <span class="cdb-save-dot cdb-save-dot--error"></span>
+                                "保存失败（离线）"
+                            </span>
+                        }.into_view()
+                    } else if store.dirty.get() {
+                        view! {
+                            <span class="cdb-save-state cdb-is-idle" data-testid="save-state">
+                                <span class="cdb-save-dot cdb-save-dot--dirty"></span>
+                                "未保存"
+                                <span class="cdb-rev-inline" data-testid="revision-display">
+                                    {format!("rev: {}", store.revision.get())}
+                                </span>
+                            </span>
+                        }.into_view()
+                    } else {
+                        view! {
+                            <span class="cdb-save-state" data-testid="save-state">
+                                <span class="cdb-save-dot cdb-save-dot--saved"></span>
+                                "已保存"
+                                <span class="cdb-rev-inline" data-testid="revision-display">
+                                    {format!("rev: {}", store.revision.get())}
+                                </span>
+                            </span>
+                        }.into_view()
+                    }
+                }}
+            </span>
+            <span class="cdb-app-bar__spacer"></span>
+            <div class="cdb-app-bar__actions">
+                <button
+                    class="cdb-btn cdb-btn--pill"
+                    data-testid="btn-import"
+                    on:click=move |_| import_handler()
+                >
+                    "导入"
+                </button>
+                <button
+                    class="cdb-btn cdb-btn--pill"
+                    data-testid="btn-export"
+                    title="导出"
+                    on:click=move |_| export_handler()
+                >
+                    "导出"
+                </button>
+            </div>
             <button
                 class="cdb-btn cdb-btn--primary cdb-btn--small"
                 data-testid="btn-share"
@@ -1062,102 +1293,31 @@ pub fn AppBar(
             >
                 "分享"
             </button>
-            <span class="cdb-app-bar__spacer"></span>
-            <nav class="cdb-menu">
-                <div
-                    class="cdb-menu-item"
-                    data-testid="cdb-menu-file"
-                    on:click=move |_| {
-                        view_open.set(false);
-                        file_open.update(|v| *v = !*v);
+            <ViewModeToggle view_mode=view_mode code_visible=code_visible />
+            <button
+                class="cdb-btn cdb-btn--icon"
+                data-testid="btn-theme-toggle"
+                title="切换主题"
+                on:click=move |_| {
+                    if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
+                        if let Some(html) = doc.document_element() {
+                            let cur = html.get_attribute("data-mode").unwrap_or_else(|| "light".into());
+                            let next = if cur == "dark" { "light" } else { "dark" };
+                            let _ = html.set_attribute("data-mode", next);
+                        }
                     }
-                >"文件 ▾"</div>
-                {move || if file_open.get() {
-                    let import_menu = import_handler_menu.clone();
-                    view! {
-                        <div class="cdb-menu-dropdown" data-testid="cdb-menu-file-dropdown">
-                            <button
-                                class="cdb-menu-dropdown-item"
-                                data-testid="cdb-menu-new"
-                                on:click=move |_| {
-                                    modal_kind.set(Some(modals::ModalKind::New));
-                                    file_open.set(false);
-                                }
-                            >"新建"</button>
-                            <button
-                                class="cdb-menu-dropdown-item"
-                                data-testid="cdb-menu-open"
-                                on:click=move |_| {
-                                    modal_kind.set(Some(modals::ModalKind::Open));
-                                    file_open.set(false);
-                                }
-                            >"打开"</button>
-                            <button
-                                class="cdb-menu-dropdown-item"
-                                data-testid="cdb-menu-import"
-                                on:click=move |_| {
-                                    import_menu();
-                                    file_open.set(false);
-                                }
-                            >"导入"</button>
-                            <button
-                                class="cdb-menu-dropdown-item"
-                                data-testid="cdb-menu-share"
-                                on:click=move |_| {
-                                    modal_kind.set(Some(modals::ModalKind::Share));
-                                    file_open.set(false);
-                                }
-                            >"分享"</button>
-                            <button
-                                class="cdb-menu-dropdown-item"
-                                data-testid="cdb-menu-rename"
-                                on:click=move |_| {
-                                    modal_kind.set(Some(modals::ModalKind::Rename));
-                                    file_open.set(false);
-                                }
-                            >"重命名"</button>
-                        </div>
-                    }.into_view()
-                } else {
-                    view! { <></> }.into_view()
-                }}
-                <div class="cdb-menu-item" data-testid="cdb-menu-edit">"编辑 ▾"</div>
-                <div
-                    class="cdb-menu-item"
-                    class:cdb-is-open=move || view_open.get()
-                    data-testid="cdb-menu-view"
-                    on:click=move |_| {
-                        file_open.set(false);
-                        view_open.update(|v| *v = !*v);
-                    }
-                >"视图 ▾"</div>
-                {move || if view_open.get() {
-                    let t = transform.clone();
-                    view! {
-                        <div class="cdb-menu-dropdown" data-testid="cdb-menu-view-dropdown">
-                            <button
-                                class="cdb-menu-dropdown-item"
-                                data-testid="cdb-menu-zoom-in"
-                                on:click=move |_| { zoom_in(t); view_open.set(false); }
-                            >"放大"</button>
-                            <button
-                                class="cdb-menu-dropdown-item"
-                                data-testid="cdb-menu-zoom-out"
-                                on:click=move |_| { zoom_out(t); view_open.set(false); }
-                            >"缩小"</button>
-                            <button
-                                class="cdb-menu-dropdown-item"
-                                data-testid="cdb-menu-zoom-reset"
-                                on:click=move |_| { zoom_reset(t); view_open.set(false); }
-                            >"重置缩放"</button>
-                        </div>
-                    }.into_view()
-                } else {
-                    view! { <></> }.into_view()
-                }}
-                <div class="cdb-menu-item" data-testid="cdb-menu-help">"帮助 ▾"</div>
-            </nav>
-            <button class="cdb-btn cdb-btn--icon" data-testid="btn-settings" title="设置">"⚙"</button>
+                }
+            >
+                "◐"
+            </button>
+            <button
+                class="cdb-btn cdb-btn--icon"
+                data-testid="btn-inspector-toggle"
+                title="切换 Inspector"
+                on:click=move |_| inspector_open.update(|v| *v = !*v)
+            >
+                "☰"
+            </button>
         </header>
     }
 }
@@ -1394,29 +1554,37 @@ pub fn IoDrawer(
     on_close: Rc<dyn Fn()>,
 ) -> impl IntoView {
     view! {
-        {move || match kind.get() {
-            IoDrawerKind::Import => {
-                let close = on_close.clone();
-                view! {
-                    <ImportDrawer
-                        current_title=current_title
-                        client=client.clone()
-                        error=error.clone()
-                        on_close=close
-                    />
-                }.into_view()
-            }
-            IoDrawerKind::Export => {
-                let close = on_close.clone();
-                view! {
-                    <ExportDrawer
-                        store=store.clone()
-                        current_title=current_title
-                        on_close=close
-                    />
-                }.into_view()
-            }
-            IoDrawerKind::None => view! { <></> }.into_view(),
+        {move || if kind.get() == IoDrawerKind::None {
+            view! { <></> }.into_view()
+        } else {
+            view! {
+                <aside class="cdb-io-drawer" data-testid="io-drawer">
+                    {match kind.get() {
+                        IoDrawerKind::Import => {
+                            let close = on_close.clone();
+                            view! {
+                                <ImportDrawer
+                                    current_title=current_title
+                                    client=client.clone()
+                                    error=error.clone()
+                                    on_close=close
+                                />
+                            }.into_view()
+                        }
+                        IoDrawerKind::Export => {
+                            let close = on_close.clone();
+                            view! {
+                                <ExportDrawer
+                                    store=store.clone()
+                                    current_title=current_title
+                                    on_close=close
+                                />
+                            }.into_view()
+                        }
+                        IoDrawerKind::None => view! { <></> }.into_view(),
+                    }}
+                </aside>
+            }.into_view()
         }}
     }
 }
@@ -1439,13 +1607,16 @@ pub fn ImportDrawer(
     let close_btn = on_close.clone();
 
     view! {
-        <aside class="cdb-io-drawer" data-testid="import-drawer">
+        <div class="cdb-io-drawer__inner" data-testid="import-drawer">
             <div class="cdb-io-drawer__header">
-                <span>"导入"</span>
+                <span class="cdb-io-drawer__title">
+                    <span class="cdb-icon" aria-hidden="true">"↑"</span>
+                    <span>"导入"</span>
+                </span>
                 <button class="cdb-btn cdb-btn--icon" data-testid="import-cancel" on:click=move |_| close()>"×"</button>
             </div>
             <div class="cdb-io-drawer__body">
-                <div class="cdb-format-tabs" data-testid="import-format-tabs">
+                <div class="cdb-format-tabs" data-testid="io-format-tabs">
                     <button
                         class="cdb-btn"
                         class:cdb-is-active=move || format.get() == ImportFormat::Sql
@@ -1481,6 +1652,11 @@ pub fn ImportDrawer(
                 } else {
                     view! { <></> }.into_view()
                 }}
+                <div class="cdb-io-dropzone" data-testid="io-dropzone">
+                    "拖放 "
+                    <strong>".sql / .dbml / .json"</strong>
+                    " 或粘贴下方"
+                </div>
                 <textarea
                     class="cdb-io-textarea"
                     data-testid="import-textarea"
@@ -1554,7 +1730,7 @@ pub fn ImportDrawer(
                     {move || if submitting.get() { "导入中..." } else { "导入并打开 ▶" }}
                 </button>
             </div>
-        </aside>
+        </div>
     }
 }
 
@@ -1586,13 +1762,16 @@ pub fn ExportDrawer(
     let close = on_close.clone();
 
     view! {
-        <aside class="cdb-io-drawer" data-testid="export-drawer">
+        <div class="cdb-io-drawer__inner" data-testid="export-drawer">
             <div class="cdb-io-drawer__header">
-                <span>"导出"</span>
+                <span class="cdb-io-drawer__title">
+                    <span class="cdb-icon" aria-hidden="true">"↓"</span>
+                    <span>"导出"</span>
+                </span>
                 <button class="cdb-btn cdb-btn--icon" on:click=move |_| close()>"×"</button>
             </div>
             <div class="cdb-io-drawer__body">
-                <div class="cdb-format-tabs" data-testid="export-format-tabs">
+                <div class="cdb-format-tabs" data-testid="io-format-tabs">
                     <button
                         class="cdb-btn"
                         class:cdb-is-active=move || format.get() == ExportFormat::Sql
@@ -1669,7 +1848,7 @@ pub fn ExportDrawer(
                     "下载"
                 </button>
             </div>
-        </aside>
+        </div>
     }
 }
 
@@ -2196,7 +2375,7 @@ pub fn LeftPanel(
                     type="text"
                     class="cdb-search-input"
                     placeholder="搜索..."
-                    data-testid="search-input"
+                    data-testid="side-search"
                     prop:value=move || search_query.get()
                     on:input=move |ev| search_query.set(event_target_value(&ev))
                 />
@@ -2293,7 +2472,7 @@ pub fn RightPanel(
                         }
                     };
                     view! {
-                        <div class="cdb-field-list">
+                        <div class="cdb-field-list" data-testid="field-editor">
                             <h3>{table_name}</h3>
                             <button
                                 class="cdb-btn cdb-btn--primary cdb-btn--block"
@@ -2812,7 +2991,8 @@ pub fn AppRoot(
     _diagram_id: String,
 ) -> impl IntoView {
     let selection: RwSignal<SelectionKind> = create_rw_signal(SelectionKind::None);
-    let inspector_open: RwSignal<bool> = create_rw_signal(false);
+    let selected_table_id: RwSignal<Option<String>> = create_rw_signal(None);
+    let inspector_open: RwSignal<bool> = create_rw_signal(true);
     let conflict: RwSignal<Option<ConflictInfo>> = create_rw_signal(None);
     let error: RwSignal<Option<String>> = create_rw_signal(None);
     let next_id = create_rw_signal(0i64);
@@ -2856,6 +3036,29 @@ pub fn AppRoot(
         }
     });
 
+    create_effect(move |_| {
+        match selection.get() {
+            SelectionKind::Table(id) => selected_table_id.set(Some(id)),
+            SelectionKind::Field { table_id, .. } => selected_table_id.set(Some(table_id)),
+            _ => {}
+        }
+    });
+
+    let on_select_table = {
+        let selection = selection.clone();
+        let inspector_open = inspector_open.clone();
+        Rc::new(move |id: Option<String>| {
+            selected_table_id.set(id.clone());
+            match id {
+                Some(tid) => {
+                    selection.set(SelectionKind::Table(tid));
+                    inspector_open.set(true);
+                }
+                None => selection.set(SelectionKind::None),
+            }
+        })
+    };
+
     let close_io_drawer = {
         let io_drawer = io_drawer.clone();
         let inspector_open = inspector_open.clone();
@@ -2895,27 +3098,118 @@ pub fn AppRoot(
         })
     };
 
-    // B4: 模态提交回调 (New/Rename 共享)
-    // - New: 创建空 diagram，更新 current_diagram_id + current_title
-    // - Rename: 更新 current_title
-    // - B5 接入实际 editor_data_access::create / save
-    let on_modal_action = move |name: String| {
-        current_title.set(name);
-    };
-
-    // B1: 预留 CommandStack 信号（stack 内部为空；B5 接入 undo/redo 逻辑）
-    let _stack: RwSignal<Rc<RefCell<crate::editor_core::CommandStack>>> = create_rw_signal(
+    let command_stack: RwSignal<Rc<RefCell<crate::editor_core::CommandStack>>> = create_rw_signal(
         Rc::new(RefCell::new(crate::editor_core::CommandStack::new()))
     );
 
-    let make_id = move || {
-        let id = next_id.get();
-        next_id.set(id + 1);
-        format!("auto-{}", id)
-    };
-
     // HTTP client to backend (port 3000, CORS middleware 在 fix-modal-overlay-blocking 已配)
     let client = DiagramClient::new("http://127.0.0.1:3000");
+
+    let on_after_change: Rc<dyn Fn()> = {
+        let client = client.clone();
+        let store = store.clone();
+        let current_diagram_id = current_diagram_id.clone();
+        let current_title = current_title.clone();
+        let debouncer = debouncer.clone();
+        let conflict = conflict.clone();
+        let error = error.clone();
+        let is_saving = is_saving.clone();
+        let save_offline = save_offline.clone();
+        Rc::new(move || {
+            schedule_save(
+                client.clone(),
+                store.clone(),
+                current_diagram_id.clone(),
+                current_title.clone(),
+                debouncer.clone(),
+                conflict.clone(),
+                error.clone(),
+                is_saving.clone(),
+                save_offline.clone(),
+            );
+        })
+    };
+
+    let on_new_diagram = {
+        let client = client.clone();
+        let current_diagram_id = current_diagram_id.clone();
+        let current_title = current_title.clone();
+        let modal_kind = modal_kind.clone();
+        let error = error.clone();
+        Rc::new(move |name: String| {
+            current_title.set(name.clone());
+            let client = client.clone();
+            spawn_local(async move {
+                match client.create(&name).await {
+                    Ok(id) => {
+                        current_diagram_id.set(id.clone());
+                        modal_kind.set(None);
+                        navigate_to_editor(&id);
+                    }
+                    Err(e) => error.set(Some(e.to_string())),
+                }
+            });
+        })
+    };
+
+    let on_rename_diagram = {
+        let on_after = on_after_change.clone();
+        Rc::new(move |name: String| {
+            current_title.set(name);
+            on_after();
+        })
+    };
+
+    let on_force_overwrite = {
+        let client = client.clone();
+        let store = store.clone();
+        let current_diagram_id = current_diagram_id.clone();
+        let current_title = current_title.clone();
+        let conflict = conflict.clone();
+        let error = error.clone();
+        Rc::new(move || {
+            let Some(info) = conflict.get_untracked() else { return };
+            let id = current_diagram_id.get_untracked();
+            let snap = store.snapshot(id.clone(), current_title.get_untracked());
+            let rev = info.current_revision;
+            let client = client.clone();
+            spawn_local(async move {
+                match client.save(&id, rev, &snap).await {
+                    Ok(r) => {
+                        store.revision.set(r.revision);
+                        store.dirty.set(false);
+                        conflict.set(None);
+                        error.set(None);
+                    }
+                    Err(e) => error.set(Some(e.to_string())),
+                }
+            });
+        })
+    };
+
+    let on_reload_diagram = {
+        let client = client.clone();
+        let store = store.clone();
+        let current_diagram_id = current_diagram_id.clone();
+        let current_title = current_title.clone();
+        let conflict = conflict.clone();
+        let error = error.clone();
+        Rc::new(move || {
+            let id = current_diagram_id.get_untracked();
+            let client = client.clone();
+            spawn_local(async move {
+                match client.get(&id).await {
+                    Ok(diagram) => {
+                        current_title.set(diagram.name.clone());
+                        store.load(diagram);
+                        conflict.set(None);
+                        error.set(None);
+                    }
+                    Err(e) => error.set(Some(e.to_string())),
+                }
+            });
+        })
+    };
 
     // S02：?share= / pathname diagram id 冷启动加载
     {
@@ -3012,9 +3306,13 @@ pub fn AppRoot(
             let mut tables = store.tables.get();
             tables.push(new_table.clone());
             store.tables.set(tables);
-            selection.set(SelectionKind::Table(table_id));
+            selection.set(SelectionKind::Table(table_id.clone()));
             inspector_open.set(true);
             store.dirty.set(true);
+            command_stack
+                .get()
+                .borrow_mut()
+                .record(crate::editor_core::Command::AddTable(new_table.clone()));
 
             if current_diagram_id.get() == "default" {
                 let client = client_for_create.clone();
@@ -3289,7 +3587,9 @@ pub fn AppRoot(
     let on_jump_to_table = Rc::new({
         let selection = selection.clone();
         let inspector_open = inspector_open.clone();
+        let selected_table_id = selected_table_id.clone();
         move |id: String| {
+            selected_table_id.set(Some(id.clone()));
             selection.set(SelectionKind::Table(id));
             inspector_open.set(true);
         }
@@ -3298,7 +3598,9 @@ pub fn AppRoot(
     let on_canvas_select: Option<Box<dyn Fn(String) + 'static>> = {
         let selection = selection.clone();
         let inspector_open = inspector_open.clone();
+        let selected_table_id = selected_table_id.clone();
         Some(Box::new(move |id: String| {
+            selected_table_id.set(Some(id.clone()));
             selection.set(SelectionKind::Table(id));
             inspector_open.set(true);
         }))
@@ -3338,19 +3640,26 @@ pub fn AppRoot(
         })
     };
 
+    let on_create_table_rail = on_create_table.clone();
+    let on_create_table_panel = on_create_table.clone();
+    let on_create_table_guide = on_create_table.clone();
+
     view! {
         <div class="cdb-app" data-testid="editor-ready">
             <AppBar
                 modal_kind=modal_kind
                 current_title=current_title
                 store=store.clone()
+                stack=command_stack
                 is_saving=is_saving
                 save_offline=save_offline
                 view_mode=view_mode
                 code_visible=code_visible
+                inspector_open=inspector_open
                 transform=canvas_transform
                 error=error.clone()
                 on_title_blur=on_title_blur
+                on_after_change=on_after_change.clone()
                 on_open_import=open_import_drawer.clone()
                 on_open_export=open_export_drawer.clone()
             />
@@ -3368,13 +3677,13 @@ pub fn AppRoot(
                     inspector_open=inspector_open
                     active_tool=active_tool
                     rel_tool_state=rel_tool_state
-                    on_create_table=on_create_table.clone()
+                    on_create_table=on_create_table_rail.clone()
                 />
                 <div class="cdb-canvas-container" data-testid="editor-canvas-container">
                     {move || if store.tables.get().is_empty() {
                         view! {
                             <EmptyGuide
-                                on_create_table=on_create_table.clone()
+                                on_create_table=on_create_table_guide.clone()
                                 on_import=open_import_drawer.clone()
                             />
                         }.into_view()
@@ -3399,19 +3708,27 @@ pub fn AppRoot(
                     />
                     <FloatingControls transform=canvas_transform />
                 </div>
-                <Inspector
-                    store=store.clone()
-                    selection=selection
-                    inspector_open=inspector_open
-                    on_add_field=on_add_field
-                    on_change_type=on_change_type
-                    on_set_ref=on_set_ref
-                    on_toggle_pk=on_toggle_pk
-                    on_update_ref_field=on_update_ref_field
-                    on_flip_ref=on_flip_ref
-                    on_delete_ref=on_delete_ref
-                    on_jump_to_table=on_jump_to_table
-                />
+                <aside
+                    class="cdb-inspector"
+                    data-testid="inspector-panel"
+                    style:display=move || if inspector_open.get() { "flex" } else { "none" }
+                >
+                    <LeftPanel
+                        store=store.clone()
+                        selected_table_id=selected_table_id
+                        on_select_table=on_select_table.clone()
+                        on_jump_to_table=Some(on_jump_to_table.clone())
+                        on_create_table=on_create_table_panel.clone()
+                        on_save=on_save.clone()
+                    />
+                    <RightPanel
+                        store=store.clone()
+                        selected_table_id=selected_table_id
+                        on_add_field=on_add_field.clone()
+                        on_change_type=on_change_type.clone()
+                        on_set_ref=on_set_ref.clone()
+                    />
+                </aside>
                 <IoDrawer
                     kind=io_drawer
                     store=store.clone()
@@ -3441,19 +3758,50 @@ pub fn AppRoot(
             />
             <ConflictDialog
                 conflict=conflict
-                on_force_overwrite=Rc::new(move || {})
-                on_reload=Rc::new(move || {})
+                on_force_overwrite=on_force_overwrite
+                on_reload=on_reload_diagram
             />
             <ErrorToast error=error />
             <modals::ModalRoot
                 kind=modal_kind
                 current_diagram_id=current_diagram_id
                 current_title=current_title
-                on_action=on_modal_action
+                on_new=on_new_diagram
+                on_rename=on_rename_diagram
             />
             <modals::KeyboardShortcuts
-                on_undo=|| {}
-                on_redo=|| {}
+                on_undo={
+                    let store = store.clone();
+                    let stack = command_stack.clone();
+                    let on_after = on_after_change.clone();
+                    move || {
+                        let stack_rc = stack.get();
+                        let cmd = {
+                            let mut s = stack_rc.borrow_mut();
+                            s.undo()
+                        };
+                        if let Some(cmd) = cmd {
+                            let _ = crate::editor_core::CommandStack::revert(&store, &cmd);
+                            on_after();
+                        }
+                    }
+                }
+                on_redo={
+                    let store = store.clone();
+                    let stack = command_stack.clone();
+                    let on_after = on_after_change.clone();
+                    move || {
+                        let stack_rc = stack.get();
+                        let cmd = {
+                            let mut s = stack_rc.borrow_mut();
+                            s.redo()
+                        };
+                        if let Some(cmd) = cmd {
+                            let _ = crate::editor_core::CommandStack::execute(&store, &cmd);
+                            on_after();
+                        }
+                    }
+                }
             />
         </div>
     }
@@ -3657,17 +4005,15 @@ pub mod modals {
     /// - UT-MM-05: ESC 键关闭 (B5 wasm-pack test 接入)
     /// - 模态体点击不冒泡到遮罩
     #[component]
-    pub fn ModalRoot<F>(
+    pub fn ModalRoot(
         kind: RwSignal<Option<ModalKind>>,
         current_diagram_id: RwSignal<String>,
         current_title: RwSignal<String>,
-        on_action: F,
-    ) -> impl IntoView
-    where
-        F: Fn(String) + Clone + 'static,
-    {
-        let on_action_new = on_action.clone();
-        let on_action_rename = on_action.clone();
+        on_new: Rc<dyn Fn(String)>,
+        on_rename: Rc<dyn Fn(String)>,
+    ) -> impl IntoView {
+        let on_action_new = on_new.clone();
+        let on_action_rename = on_rename.clone();
 
         view! {
             <div
@@ -3744,13 +4090,10 @@ pub mod modals {
     /// - UT-MM-01: 提交时调用 on_create(name)
     /// - UT-MM-07: title 为空时 OK 禁用
     #[component]
-    pub fn NewModal<F>(
+    pub fn NewModal(
         kind: RwSignal<Option<ModalKind>>,
-        on_create: F,
-    ) -> impl IntoView
-    where
-        F: Fn(String) + Clone + 'static,
-    {
+        on_create: Rc<dyn Fn(String)>,
+    ) -> impl IntoView {
         let title_input = create_rw_signal(String::new());
         let validation = move || validate_title(&title_input.get());
         let is_valid = move || validation().is_ok();
@@ -3870,7 +4213,7 @@ pub mod modals {
                 <label class="cdb-form-label">"Share link"</label>
                 <input
                     class="cdb-form-input"
-                    data-testid="modal-input-share-url"
+                    data-testid="share-url"
                     readonly=true
                     prop:value=share_url
                 />
@@ -3895,19 +4238,16 @@ pub mod modals {
     /// Rename 模态: 重命名当前 diagram
     /// - UT-MM-06: title 校验复用 validate_title
     #[component]
-    pub fn RenameModal<F>(
+    pub fn RenameModal(
         kind: RwSignal<Option<ModalKind>>,
         current_title: RwSignal<String>,
-        on_rename: F,
-    ) -> impl IntoView
-    where
-        F: Fn(String) + Clone + 'static,
-    {
+        on_rename: Rc<dyn Fn(String)>,
+    ) -> impl IntoView {
         let title_input = create_rw_signal(current_title.get_untracked());
         let validation = move || validate_title(&title_input.get());
         let is_valid = move || validation().is_ok();
         let kind_close = kind;
-        let on_rename_submit = on_rename;
+        let on_rename_submit = on_rename.clone();
 
         view! {
             <div class="cdb-modal-header">
@@ -4791,8 +5131,8 @@ mod tests {
             "UT-PA-06: .cdb-app 栅格应为 48px 1fr 28px",
         );
         assert!(
-            css.contains("grid-template-columns: 48px 1fr auto"),
-            "UT-PA-06: .cdb-main 栅格含 ToolRail + Canvas + 侧栏",
+            css.contains("grid-template-columns: 48px 1fr 320px 0"),
+            "UT-PA-06: .cdb-main 栅格应对齐原型 ToolRail + Canvas + Inspector + IO",
         );
         assert!(
             css.contains("cdb-has-io-drawer"),
@@ -4926,6 +5266,18 @@ mod tests {
     fn test_count_dbml_tables_ut_pc_05() {
         let text = "Table users {\n  id int\n}\nTable orders {\n  id int\n}";
         assert_eq!(count_dbml_tables(text), 2, "UT-PC-05: 应计数 2 个 Table");
+    }
+
+    #[test]
+    fn test_parse_dbml_import_tables_builds_nested_tables() {
+        let dbml = "Table users { id int [pk] }\nTable posts { id int, title varchar }";
+        let tables = parse_dbml_import_tables(dbml).expect("parse ok");
+        assert_eq!(tables.len(), 2);
+        assert_eq!(tables[0].name, "users");
+        assert_eq!(tables[0].fields.len(), 1);
+        assert!(tables[0].fields[0].primary);
+        assert_eq!(tables[1].name, "posts");
+        assert_eq!(tables[1].fields.len(), 2);
     }
 
     #[test]

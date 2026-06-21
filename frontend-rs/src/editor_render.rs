@@ -16,14 +16,22 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, MouseEvent, WheelEven
 
 // ─── Canvas constants ────────────────────────────────────────────────────────
 
-const TABLE_WIDTH: f64 = 200.0;
-const TABLE_HEADER_HEIGHT: f64 = 30.0;
-const FIELD_ROW_HEIGHT: f64 = 22.0;
+const TABLE_WIDTH: f64 = 220.0;
+const TABLE_HEADER_HEIGHT: f64 = 32.0;
+const FIELD_ROW_HEIGHT: f64 = 24.0;
 const AREA_COLOR: &str = "rgba(59, 130, 246, 0.08)";
 const AREA_BORDER_COLOR: &str = "rgba(59, 130, 246, 0.4)";
 const NOTE_BG: &str = "#fef3c7";
 const NOTE_BORDER: &str = "#f59e0b";
-const GRID_SIZE: f64 = 24.0;
+const GRID_SIZE: f64 = 20.0;
+const CANVAS_BG: &str = "#f8fafc";
+const TABLE_BG: &str = "#ffffff";
+const TABLE_BORDER: &str = "#dbe3ea";
+const TABLE_HEADER: &str = "#175e7a";
+const TABLE_HEADER_SELECTED: &str = "#0e7490";
+const TEXT_STRONG: &str = "#1e293b";
+const TEXT_MUTED: &str = "#64748b";
+const RELATION_COLOR: &str = "#5b7cfa";
 
 // ─── Transform ───────────────────────────────────────────────────────────────
 
@@ -345,7 +353,7 @@ pub fn draw_canvas(
     selected_id: Option<&str>,
 ) {
     ctx.clear_rect(0.0, 0.0, width, height);
-    let _ = ctx.set_fill_style_str("#ffffff");
+    let _ = ctx.set_fill_style_str(CANVAS_BG);
     ctx.fill_rect(0.0, 0.0, width, height);
 
     draw_grid(ctx, t, width, height);
@@ -379,8 +387,8 @@ pub fn draw_canvas(
 }
 
 fn draw_grid(ctx: &CanvasRenderingContext2d, t: &Transform, width: f64, height: f64) {
-    let _ = ctx.set_fill_style_str("rgb(99, 102, 241)");
-    let _ = ctx.set_global_alpha(0.12);
+    let _ = ctx.set_fill_style_str("#cbd5e1");
+    let _ = ctx.set_global_alpha(0.55);
 
     let start_x = (-(t.pan_x % (GRID_SIZE * t.zoom)) / t.zoom).floor() * GRID_SIZE;
     let start_y = (-(t.pan_y % (GRID_SIZE * t.zoom)) / t.zoom).floor() * GRID_SIZE;
@@ -429,21 +437,33 @@ fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool) {
     let y = table.y;
 
     ctx.save();
-    let _ = ctx.set_shadow_color("rgba(0,0,0,0.12)");
-    let _ = ctx.set_shadow_blur(6.0);
-    let _ = ctx.set_shadow_offset_x(2.0);
-    let _ = ctx.set_shadow_offset_y(2.0);
+    let _ = ctx.set_shadow_color("rgba(15, 23, 42, 0.14)");
+    let _ = ctx.set_shadow_blur(12.0);
+    let _ = ctx.set_shadow_offset_x(0.0);
+    let _ = ctx.set_shadow_offset_y(4.0);
 
-    let _ = ctx.set_fill_style_str(&table.color);
+    let _ = ctx.set_fill_style_str(TABLE_BG);
     ctx.begin_path();
-    round_rect(ctx, x, y, TABLE_WIDTH, total_height, 6.0);
+    round_rect(ctx, x, y, TABLE_WIDTH, total_height, 8.0);
     ctx.fill();
     ctx.restore();
 
-    let header_color = if selected { "#1d4ed8" } else { "#3b82f6" };
+    let _ = ctx.set_stroke_style_str(TABLE_BORDER);
+    ctx.set_line_width(1.0);
+    ctx.begin_path();
+    round_rect(ctx, x, y, TABLE_WIDTH, total_height, 8.0);
+    ctx.stroke();
+
+    let header_color = if selected {
+        TABLE_HEADER_SELECTED
+    } else if table.color.trim().is_empty() {
+        TABLE_HEADER
+    } else {
+        table.color.as_str()
+    };
     let _ = ctx.set_fill_style_str(header_color);
     ctx.begin_path();
-    round_rect_top(ctx, x, y, TABLE_WIDTH, TABLE_HEADER_HEIGHT, 6.0);
+    round_rect_top(ctx, x, y, TABLE_WIDTH, TABLE_HEADER_HEIGHT, 8.0);
     ctx.fill();
 
     let _ = ctx.set_fill_style_str("#ffffff");
@@ -451,9 +471,8 @@ fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool) {
     let _ = ctx.set_text_baseline("middle");
     let _ = ctx.fill_text(&table.name, x + 10.0, y + TABLE_HEADER_HEIGHT / 2.0);
 
-    let divider_color = if selected { "#1e40af" } else { "#2563eb" };
-    let _ = ctx.set_stroke_style_str(divider_color);
-    ctx.set_line_width(1.5);
+    let _ = ctx.set_stroke_style_str(TABLE_BORDER);
+    ctx.set_line_width(1.0);
     ctx.begin_path();
     ctx.move_to(x, y + TABLE_HEADER_HEIGHT);
     ctx.line_to(x + TABLE_WIDTH, y + TABLE_HEADER_HEIGHT);
@@ -464,24 +483,77 @@ fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool) {
         let fy = y + TABLE_HEADER_HEIGHT + i as f64 * FIELD_ROW_HEIGHT;
 
         if field.primary {
-            let _ = ctx.set_fill_style_str("#f59e0b");
-            let _ = ctx.fill_text("PK ", x + 6.0, fy + FIELD_ROW_HEIGHT / 2.0);
+            draw_pill(ctx, x + 8.0, fy + 5.0, 18.0, 12.0, "#f59e0b", "PK", "#ffffff");
         }
 
-        let name_x = if field.primary { x + 28.0 } else { x + 10.0 };
-        let _ = ctx.set_fill_style_str(if field.primary { "#b45309" } else { "#1e293b" });
+        let name_x = if field.primary { x + 34.0 } else { x + 12.0 };
+        let _ = ctx.set_fill_style_str(TEXT_STRONG);
         let _ = ctx.fill_text(&field.name, name_x, fy + FIELD_ROW_HEIGHT / 2.0);
 
-        let _ = ctx.set_fill_style_str("#64748b");
-        let _ = ctx.fill_text(&field.type_, x + 100.0, fy + FIELD_ROW_HEIGHT / 2.0);
+        let type_text = field.type_.as_str();
+        let pill_w = (type_text.len() as f64 * 6.2 + 14.0).clamp(38.0, 92.0);
+        draw_pill(
+            ctx,
+            x + TABLE_WIDTH - pill_w - 10.0,
+            fy + 5.0,
+            pill_w,
+            14.0,
+            field_type_color(type_text),
+            type_text,
+            "#ffffff",
+        );
+
+        if i + 1 < field_count {
+            let _ = ctx.set_stroke_style_str(TABLE_BORDER);
+            ctx.set_line_width(1.0);
+            ctx.begin_path();
+            ctx.move_to(x, fy + FIELD_ROW_HEIGHT);
+            ctx.line_to(x + TABLE_WIDTH, fy + FIELD_ROW_HEIGHT);
+            ctx.stroke();
+        }
     }
 
     if selected {
-        let _ = ctx.set_stroke_style_str("#3b82f6");
+        let _ = ctx.set_stroke_style_str("#0ea5b7");
         ctx.set_line_width(2.0);
         ctx.begin_path();
-        round_rect(ctx, x - 2.0, y - 2.0, TABLE_WIDTH + 4.0, total_height + 4.0, 8.0);
+        round_rect(ctx, x - 3.0, y - 3.0, TABLE_WIDTH + 6.0, total_height + 6.0, 10.0);
         ctx.stroke();
+    }
+}
+
+fn draw_pill(
+    ctx: &CanvasRenderingContext2d,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    bg: &str,
+    text: &str,
+    fg: &str,
+) {
+    let _ = ctx.set_fill_style_str(bg);
+    ctx.begin_path();
+    round_rect(ctx, x, y, width, height, 3.0);
+    ctx.fill();
+    let _ = ctx.set_fill_style_str(fg);
+    let _ = ctx.set_font("10px sans-serif");
+    let _ = ctx.set_text_baseline("middle");
+    let _ = ctx.fill_text(text, x + 6.0, y + height / 2.0);
+}
+
+fn field_type_color(type_name: &str) -> &'static str {
+    let upper = type_name.to_uppercase();
+    if upper.contains("INT") || upper.contains("SERIAL") {
+        "#3b82f6"
+    } else if upper.contains("CHAR") || upper.contains("TEXT") {
+        "#10b981"
+    } else if upper.contains("BOOL") {
+        "#8b5cf6"
+    } else if upper.contains("DATE") || upper.contains("TIME") {
+        "#f59e0b"
+    } else {
+        TEXT_MUTED
     }
 }
 
@@ -508,7 +580,7 @@ fn draw_bezier_fields(
     let cx1 = x1 + (x2 - x1) * 0.5;
     let cx2 = x1 + (x2 - x1) * 0.5;
 
-    let _ = ctx.set_stroke_style_str("#6366f1");
+    let _ = ctx.set_stroke_style_str(RELATION_COLOR);
     ctx.set_line_width(1.5);
     ctx.begin_path();
     ctx.move_to(x1, y1);
@@ -517,7 +589,7 @@ fn draw_bezier_fields(
 
     draw_arrow_head(ctx, cx2, y2, x2, y2);
 
-    let _ = ctx.set_fill_style_str("#6366f1");
+    let _ = ctx.set_fill_style_str(RELATION_COLOR);
     ctx.begin_path();
     ctx.arc(x1, y1, 4.0, 0.0, std::f64::consts::TAU).ok();
     ctx.fill();
@@ -531,7 +603,7 @@ fn draw_bezier(ctx: &CanvasRenderingContext2d, from: &Table, to: &Table) {
     let cx1 = x1 + (x2 - x1) * 0.5;
     let cx2 = x1 + (x2 - x1) * 0.5;
 
-    let _ = ctx.set_stroke_style_str("#6366f1");
+    let _ = ctx.set_stroke_style_str(RELATION_COLOR);
     ctx.set_line_width(1.5);
     ctx.begin_path();
     ctx.move_to(x1, y1);
@@ -540,7 +612,7 @@ fn draw_bezier(ctx: &CanvasRenderingContext2d, from: &Table, to: &Table) {
 
     draw_arrow_head(ctx, cx2, y2, x2, y2);
 
-    let _ = ctx.set_fill_style_str("#6366f1");
+    let _ = ctx.set_fill_style_str(RELATION_COLOR);
     ctx.begin_path();
     ctx.arc(x1, y1, 4.0, 0.0, std::f64::consts::TAU).ok();
     ctx.fill();
@@ -556,7 +628,7 @@ fn draw_arrow_head(ctx: &CanvasRenderingContext2d, fromx: f64, fromy: f64, tox: 
     let ax2 = tox - arrow_len * (angle + arrow_angle).cos();
     let ay2 = toy - arrow_len * (angle + arrow_angle).sin();
 
-    let _ = ctx.set_fill_style_str("#6366f1");
+    let _ = ctx.set_fill_style_str(RELATION_COLOR);
     ctx.begin_path();
     ctx.move_to(tox, toy);
     ctx.line_to(ax1, ay1);

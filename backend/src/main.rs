@@ -22,6 +22,7 @@ mod rooms_v1;
 mod collab;
 mod collab_v1;
 mod verify_reporter;
+mod diagram_persistence;
 use error::DrawDBError;
 use init::{get_config, init};
 use collab::CollabHub;

@@ -3,6 +3,7 @@ use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, T
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::diagram_persistence::{load_diagram, persist_import_payload, save_diagram, DiagramFull, SaveDiagramError};
 use crate::error::DrawDBError;
 use crate::next_id;
 
@@ -30,16 +31,7 @@ struct CreateReq {
 #[derive(Deserialize)]
 struct SaveReq {
     expected_revision: i64,
-    diagram: SaveDiagram,
-}
-
-#[derive(Deserialize)]
-struct SaveDiagram {
-    id: String,
-    name: Option<String>,
-    database: Option<String>,
-    pan: Option<String>,
-    zoom: Option<String>,
+    diagram: DiagramFull,
 }
 
 #[derive(Deserialize)]
@@ -55,16 +47,6 @@ struct ImportResult {
     imported_fields: i64,
     warnings: Vec<String>,
     source: Option<String>,
-}
-
-#[derive(Serialize)]
-struct DiagramOut {
-    id: String,
-    name: Option<String>,
-    database: Option<String>,
-    pan: Option<String>,
-    zoom: Option<String>,
-    revision: i64,
 }
 
 fn esc(s: &str) -> String { s.replace('\'', "''") }
@@ -96,63 +78,51 @@ async fn create_diagram_v1(db: web::Data<DatabaseConnection>, req: web::Json<Cre
 #[get("/diagrams/{id}")]
 async fn get_diagram_v1(db: web::Data<DatabaseConnection>, id: web::Path<String>) -> Result<HttpResponse, DrawDBError> {
     let request_id = next_id();
-    let sql = format!(
-        "SELECT id, name, database, pan, zoom, revision FROM diagram WHERE id='{}' AND (is_deleted=0 OR is_deleted IS NULL) LIMIT 1",
-        esc(&id)
-    );
-    let row = db.query_one(Statement::from_sql_and_values(DatabaseBackend::Sqlite, sql, vec![])).await?;
-    if let Some(row) = row {
-        let out = DiagramOut {
-            id: row.try_get("", "id")?,
-            name: row.try_get("", "name").ok(),
-            database: row.try_get("", "database").ok(),
-            pan: row.try_get("", "pan").ok(),
-            zoom: row.try_get("", "zoom").ok(),
-            revision: row.try_get("", "revision").unwrap_or(0),
-        };
-        return Ok(HttpResponse::Ok().json(ApiResp { code: 0, data: out, request_id }));
+    match load_diagram(db.get_ref(), &id).await? {
+        Some(diagram) => Ok(HttpResponse::Ok().json(ApiResp {
+            code: 0,
+            data: diagram,
+            request_id,
+        })),
+        None => Ok(HttpResponse::NotFound().json(ApiErr {
+            code: 404,
+            message: "not found".into(),
+            request_id,
+            details: None,
+        })),
     }
-    Ok(HttpResponse::NotFound().json(ApiErr { code: 404, message: "not found".into(), request_id, details: None }))
 }
 
 #[put("/diagrams/{id}")]
 async fn save_diagram_v1(db: web::Data<DatabaseConnection>, id: web::Path<String>, req: web::Json<SaveReq>) -> Result<HttpResponse, DrawDBError> {
     let request_id = next_id();
     let id = id.into_inner();
-    if req.diagram.id != id {
-        return Ok(HttpResponse::BadRequest().json(ApiErr {
-            code: 400,
-            message: "path id and body id mismatch".into(),
+    match save_diagram(db.get_ref(), &id, req.expected_revision, &req.diagram).await {
+        Ok(revision) => Ok(HttpResponse::Ok().json(ApiResp {
+            code: 0,
+            data: serde_json::json!({"id": id, "revision": revision}),
+            request_id,
+        })),
+        Err(SaveDiagramError::NotFound) => Ok(HttpResponse::NotFound().json(ApiErr {
+            code: 404,
+            message: "not found".into(),
             request_id,
             details: None,
-        }));
-    }
-    let tx = db.begin().await?;
-    let q = format!("SELECT revision FROM diagram WHERE id='{}' LIMIT 1", esc(&id));
-    let row = tx.query_one(Statement::from_sql_and_values(DatabaseBackend::Sqlite, q, vec![])).await?;
-    let Some(row) = row else {
-        return Ok(HttpResponse::NotFound().json(ApiErr { code: 404, message: "not found".into(), request_id, details: None }));
-    };
-    let cur: i64 = row.try_get("", "revision").unwrap_or(0);
-    if cur != req.expected_revision {
-        return Ok(HttpResponse::Conflict().json(ApiErr {
+        })),
+        Err(SaveDiagramError::BadRequest(msg)) => Ok(HttpResponse::BadRequest().json(ApiErr {
+            code: 400,
+            message: msg,
+            request_id,
+            details: None,
+        })),
+        Err(SaveDiagramError::Conflict { current_revision }) => Ok(HttpResponse::Conflict().json(ApiErr {
             code: 409,
             message: "revision conflict".into(),
             request_id,
-            details: Some(serde_json::json!({"current_revision": cur})),
-        }));
+            details: Some(serde_json::json!({"current_revision": current_revision})),
+        })),
+        Err(SaveDiagramError::Db(e)) => Err(DrawDBError::DatabaseError(e)),
     }
-    let up = format!(
-        "UPDATE diagram SET name={}, database={}, pan={}, zoom={}, revision=revision+1, updated_at=datetime('now') WHERE id='{}'",
-        req.diagram.name.as_ref().map(|v| format!("'{}'", esc(v))).unwrap_or("NULL".to_string()),
-        req.diagram.database.as_ref().map(|v| format!("'{}'", esc(v))).unwrap_or("NULL".to_string()),
-        req.diagram.pan.as_ref().map(|v| format!("'{}'", esc(v))).unwrap_or("NULL".to_string()),
-        req.diagram.zoom.as_ref().map(|v| format!("'{}'", esc(v))).unwrap_or("NULL".to_string()),
-        esc(&id)
-    );
-    tx.execute(Statement::from_sql_and_values(DatabaseBackend::Sqlite, up, vec![])).await?;
-    tx.commit().await?;
-    Ok(HttpResponse::Ok().json(ApiResp { code: 0, data: serde_json::json!({"id": id}), request_id }))
 }
 
 #[delete("/diagrams/{id}")]
@@ -214,6 +184,9 @@ async fn import_diagram_v1(db: web::Data<DatabaseConnection>, req: web::Json<Imp
     );
     tx.execute(Statement::from_sql_and_values(DatabaseBackend::Sqlite, sql, vec![])).await?;
     tx.commit().await?;
+
+    let _ = persist_import_payload(db.get_ref(), &id, &req.payload).await;
+
     Ok(HttpResponse::Ok().json(ApiResp {
         code: 0,
         data: ImportResult {

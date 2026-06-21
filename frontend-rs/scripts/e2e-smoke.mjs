@@ -166,7 +166,7 @@ async function hp03_fieldAndShareModal(page) {
     await page.locator('[data-testid="modal-share"]').waitFor({ state: "visible" });
 
     // 校验 share URL
-    const shareUrl = await page.inputValue('[data-testid="modal-input-share-url"]');
+    const shareUrl = await page.inputValue('[data-testid="share-url"]');
     if (!shareUrl.includes("share=")) {
       throw new Error(`share URL invalid: "${shareUrl}"`);
     }

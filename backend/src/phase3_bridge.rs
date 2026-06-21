@@ -3,6 +3,7 @@ use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, T
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::diagram_persistence::persist_import_payload;
 use crate::error::DrawDBError;
 use crate::next_id;
 
@@ -194,6 +195,8 @@ async fn retry_import_log(
         .await?;
     tx.commit().await?;
 
+    let _ = persist_import_payload(db.get_ref(), &diagram_id, &payload).await;
+
     Ok(HttpResponse::Ok().json(ApiResp {
         code: 0,
         data: serde_json::json!({"id": id, "status": "success", "retry_count": retry_count + 1, "diagram_id": diagram_id}),
@@ -308,9 +311,13 @@ async fn import_local_draft(
         vec![],
     ))
     .await?;
+    tx.commit().await?;
+
+    let _ = persist_import_payload(db.get_ref(), &diagram_id, &req.payload).await;
 
     let payload_text = esc(&req.payload.to_string());
     let source = req.source.clone().unwrap_or_else(|| "localStorage".to_string());
+    let tx = db.begin().await?;
     let insert_log = format!(
         "INSERT INTO local_draft_import_log(id, source, payload, imported_diagram_id, status, retry_count, error_message, updated_at) VALUES('{}','{}','{}','{}','success',0,NULL,datetime('now'))",
         esc(&log_id),

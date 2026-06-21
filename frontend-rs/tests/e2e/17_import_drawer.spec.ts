@@ -39,10 +39,10 @@ test.describe("Phase C Import Drawer E2E", () => {
 
     // Step 3: 粘贴 SQL（2 条 CREATE 语句，触发 UT-PC-01 parse 路径）
     const sqlText = "CREATE TABLE users (id INT);\nCREATE TABLE posts (id INT);";
-    await page.fill('[data-testid="import-sql-input"]', sqlText);
+    await page.fill('[data-testid="import-textarea"]', sqlText);
 
     // Step 4: 解析摘要应显示「2 条语句」（import_parse_summary 触发 parse_sql_statements）
-    await expect(page.locator('[data-testid="import-summary"]')).toHaveText(/2\s*条语句/, {
+    await expect(page.locator('[data-testid="import-parse-summary"]')).toHaveText(/2\s*条语句/, {
       timeout: 2_000,
     });
 
@@ -65,8 +65,8 @@ test.describe("Phase C Import Drawer E2E", () => {
     await page.click('[data-testid="btn-import"]');
     await expect(page.locator('[data-testid="import-drawer"]')).toBeVisible();
 
-    await page.fill('[data-testid="import-sql-input"]', "");
-    await expect(page.locator('[data-testid="import-summary"]')).toHaveText(/0\s*条语句/);
+    await page.fill('[data-testid="import-textarea"]', "");
+    await expect(page.locator('[data-testid="import-parse-summary"]')).toHaveText(/0\s*条语句/);
 
     // 提交按钮应禁用（空输入）
     const submit = page.locator('[data-testid="import-submit"]');
@@ -97,14 +97,14 @@ test.describe("Phase C Import Drawer E2E", () => {
     await expect(page.locator('[data-testid="import-drawer"]')).toBeVisible();
 
     // 切换到 DBML 格式（如有格式切换）
-    const formatSelect = page.locator('[data-testid="import-format-select"]');
-    if (await formatSelect.isVisible()) {
-      await formatSelect.selectOption("dbml");
+    const dbmlTab = page.locator('[data-testid="io-format-tabs"] button', { hasText: "DBML" });
+    if (await dbmlTab.isVisible()) {
+      await dbmlTab.click();
     }
 
     const dbml = "Table users { id int }\nTable posts { id int }";
-    await page.fill('[data-testid="import-text-input"]', dbml);
+    await page.fill('[data-testid="import-textarea"]', dbml);
 
-    await expect(page.locator('[data-testid="import-summary"]')).toHaveText(/2\s*个 Table 块/);
+    await expect(page.locator('[data-testid="import-parse-summary"]')).toHaveText(/2\s*个 Table 块/);
   });
 });
