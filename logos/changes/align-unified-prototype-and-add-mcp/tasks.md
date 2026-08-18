@@ -29,16 +29,32 @@
 
 ## [code] C1 原型回归固化
 
-- [x] 实现代码变更
+- [x] C1.1 [ST-PU-01～ST-PU-18] 将全交互浏览器审计固化为仓库内 Playwright 回归脚本
+- [x] C1.2 [ST-PU-19] 复用既有渲染稳定性测试，统一入口和报告输出
+- [x] C1.3 [ST-PU-01～ST-PU-19] 接入 verify 预跑并写入 OpenLogos reporter
+
 ## [code] C2 MCP 服务骨架与只读工具
 
-- [x] 实现代码变更
+- [x] C2.1 [UT-MCP-01～06、UT-MCP-09、UT-MCP-14、ST-MCP-01～02] 列出并覆盖本批 UT/ST ID
+- [x] C2.2 新增独立 Rust MCP adapter/service、stdio transport、配置加载和固定路径 HTTP client
+- [x] C2.3 实现 MCP initialize、tools/list、优雅 EOF/退出与结构化日志脱敏
+- [x] C2.4 实现 `list_diagrams`、`get_diagram`、`export_schema`
+- [x] C2.5 同批补齐单元测试、真实 stdio 握手和 OpenLogos reporter
+
 ## [code] C3 MCP 写工具与一致性
 
-- [x] 实现代码变更
+- [x] C3.1 [UT-MCP-07～08、UT-MCP-10、UT-MCP-12～13、UT-MCP-15、ST-MCP-03～05] 列出并覆盖本批 UT/ST ID
+- [x] C3.2 实现 `create_diagram`、`update_diagram`、`delete_diagram`、`import_schema`
+- [x] C3.3 实现 readOnly/destructive/idempotent annotations，写操作保持客户端人工批准语义
+- [x] C3.4 实现认证透传、revision 乐观锁、401/403/404/409/422/5xx 和网络错误映射
+- [x] C3.5 同批补齐单元测试、mock HTTP 编排和 OpenLogos reporter
+
 ## [code] C4 四客户端接入与分发
 
-- [x] 实现代码变更
+- [x] C4.1 [UT-MCP-11、ST-MCP-06～09] 提供并校验 Claude、Codex、Cursor、OpenCode stdio 配置
+- [x] C4.2 提供 `COLDRAWDB_BASE_URL`、可选 Token、启动和安全边界说明
+- [x] C4.3 四套 fixture 均以同一真实 MCP 子进程完成 initialize/tools/list
+- [x] C4.4 增加 release 构建脚本，不安装客户端配置、不引入公开 HTTP 监听端口
 
 ## [verify] 验证
 
