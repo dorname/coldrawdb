@@ -113,59 +113,73 @@ async fn delete_diagram(
 
 
 #[cfg(test)]
-mod tests{
+mod tests {
     use super::*;
-    use std::collections::HashMap;
-    use itertools::{self, Itertools};
-    use crate::entity::{prelude::*, table, task,vo::TableVo,vo::TaskVo};
-    use sea_orm::{Database, PaginatorTrait, QueryTrait, Related};
+    use crate::entity::vo::{TableVo, TaskVo};
+    use itertools::Itertools;
+    use sea_orm::{Database, PaginatorTrait};
 
     #[actix_web::test]
-    async fn test_query_related(){
-        let db = Database::connect("sqlite://test.sqlite").await.unwrap();
-        let db = web::Data::new(db);
-        let tx = db.get_ref();
+    async fn ut_pu_20_query_related_with_isolated_database() {
+        let db_path = std::env::temp_dir().join(format!(
+            "coldrawdb_query_related_{}.sqlite",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::File::create(&db_path).unwrap();
+        let db = Database::connect(format!("sqlite://{}?", db_path.display()))
+            .await
+            .unwrap();
+        crate::init::init_table("init.sql", &db).await.unwrap();
 
         // 查询与Diagram关联的Task、查询与Diagram关联的Table
-       let tasks_map = Diagram::find()
-       .find_also_related(Task)
-       .all(tx)
-       .await.unwrap()
-       .iter()
-       .filter_map(|(diagram, task)| {
-           task.as_ref().map(|task| TaskVo::from_option(task, diagram.id.clone()))
-       })
-       .collect::<Vec<TaskVo>>()
-       .into_iter()
-       .into_group_map_by(|t| t.diagram_id.clone());
-
+        let tasks_map = Diagram::find()
+            .find_also_related(Task)
+            .all(&db)
+            .await
+            .unwrap()
+            .iter()
+            .filter_map(|(diagram, task)| {
+                task.as_ref()
+                    .map(|task| TaskVo::from_option(task, diagram.id.clone()))
+            })
+            .collect::<Vec<TaskVo>>()
+            .into_iter()
+            .into_group_map_by(|task| task.diagram_id.clone());
 
         let tables_map = Diagram::find()
-        .find_also_related(Table)
-        .all(tx)
-        .await.unwrap()
-        .iter()
-        .filter_map(|(diagram, table)| {
-            table.as_ref().map(|table| TableVo::from(table, diagram.id.clone(),None))
-        })
-        .collect::<Vec<TableVo>>()
-        .into_iter()
-        .into_group_map_by(|t|{
-            t.diagram_id.clone()
-        });
-
+            .find_also_related(Table)
+            .all(&db)
+            .await
+            .unwrap()
+            .iter()
+            .filter_map(|(diagram, table)| {
+                table
+                    .as_ref()
+                    .map(|table| TableVo::from(table, diagram.id.clone(), None))
+            })
+            .collect::<Vec<TableVo>>()
+            .into_iter()
+            .into_group_map_by(|table| table.diagram_id.clone());
 
         let diagrams = Diagram::find()
-        .paginate(tx , 5)
-        .fetch().await.unwrap()
-        .into_iter()
-        .map(|d|{
-            let mut dia = DiagramVo::from(&d);
-            dia.tables = tables_map.get(&dia.id).cloned();
-            dia.tasks = tasks_map.get(&dia.id).cloned();
-            dia
-        }).collect::<Vec<DiagramVo>>();
+            .paginate(&db, 5)
+            .fetch()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|diagram| {
+                let mut diagram_vo = DiagramVo::from(&diagram);
+                diagram_vo.tables = tables_map.get(&diagram_vo.id).cloned();
+                diagram_vo.tasks = tasks_map.get(&diagram_vo.id).cloned();
+                diagram_vo
+            })
+            .collect::<Vec<DiagramVo>>();
 
-        println!("{:?}",diagrams);
+        assert!(tasks_map.is_empty());
+        assert!(tables_map.is_empty());
+        assert!(diagrams.is_empty());
+        db.close().await.unwrap();
+        std::fs::remove_file(&db_path).unwrap();
+        crate::verify_reporter::report_pass("UT-PU-20", 0);
     }
 }

@@ -1,6 +1,6 @@
 # 实现任务：improve-unified-collab-prototype
 
-> 本变更只产出设计 delta 与单文件静态原型，不修改生产 Rust 源码。
+> 本变更产出设计 delta、单文件静态原型与验收链路修复；不修改生产 API、数据库 schema 或运行时业务逻辑。
 
 ## [delta] 规格变更（先完成设计）
 
@@ -9,6 +9,8 @@
 - [x] D3 更新 `core-S04-room-lifecycle-design.md` 的原型入口与跨视图房间演示说明
 - [x] D4 更新 `core-S05-ot-collab-design.md` 的原型入口与协作模拟器说明
 - [x] D5 在 `deltas/test/core-PU-unified-prototype-test-cases.md` 建立 PU-AC-01～PU-AC-08 原型验收矩阵，覆盖 ST-PU-01～ST-PU-18，明确交互步骤、预期结果和诊断锚点
+- [x] D6 将 ST-PU-01～18 标记为人工验收，并保留 ST-PU-19 自动回归
+- [x] D7 增加 verify reporter 兼容索引与 UT-PU-20 / ST-PU-20 验收链路用例
 
 ## [prototype] 单文件原型实现
 
@@ -26,6 +28,9 @@
 - [x] C1 [ST-PU-19] 为主渲染器增加同帧合并，并阻止同一视图重复播放入场动画
 - [x] C2 [ST-PU-19] 将自动保存状态改为局部 DOM 更新，清理关系创建与批量导入的重复全量渲染
 - [x] C3 [ST-PU-19] 增加带 OpenLogos reporter 的浏览器回归脚本，并验证主视图重建次数与 Canvas DOM 身份
+- [x] C4 [UT-PU-20] 将遗留关联查询测试改为唯一临时 SQLite 数据库并初始化 schema
+- [x] C5 [ST-PU-20] 将 verify 预跑改为失败恢复账本、成功完整替换的原子流程
+- [x] C6 [ST-PU-19, ST-PU-20] 将原型浏览器回归与结果账本完整性校验接入全量预跑
 
 ## [verify] 验证
 
@@ -37,10 +42,11 @@
 - [x] V6 浏览器视觉检查：Light/Dark、桌面/窄屏、玻璃态对比度、浮层遮挡和 reduced-motion
 - [x] V7 运行原型内置诊断并记录 PU-AC-01～PU-AC-08 结果
 - [x] V8 从磁盘读回所有 Markdown/HTML delta 修改片段，向用户展示实际原文
+- [x] V9 验证预跑失败恢复账本、后端 43/43、前端 Rust 135 项、原型回归及自动化账本 115/115
 
 ## 人类确认点
 
 - [x] H1 用户确认本提案后，才开始产出 delta 与原型
 - [x] H2 delta 完成后，等待用户明确授权 `openlogos merge improve-unified-collab-prototype`
-- [x] H3 merge 后按流程提交规格文档；本变更不修改生产 Rust，仅提交单文件原型修复与回归脚本，无部署或 smoke
+- [x] H3 merge 后按流程提交规格与实现；仅修改单文件原型、测试代码和验收脚本，不改变运行时业务逻辑，无部署或 smoke
 - [ ] H4 等待用户明确授权 `openlogos verify improve-unified-collab-prototype`；通过后再等待用户授权 archive，archive 后询问是否 git push
