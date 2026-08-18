@@ -1,0 +1,15 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "coldrawdb": {
+      "type": "local",
+      "command": [
+        "/ABS/PATH/coldrawdb-mcp"
+      ],
+      "enabled": true,
+      "environment": {
+        "COLDRAWDB_BASE_URL": "http://localhost:3000"
+      }
+    }
+  }
+}

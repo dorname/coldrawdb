@@ -29,16 +29,16 @@
 
 ## [code] C1 原型回归固化
 
-- [ ] 实现代码变更
+- [x] 实现代码变更
 ## [code] C2 MCP 服务骨架与只读工具
 
-- [ ] 实现代码变更
+- [x] 实现代码变更
 ## [code] C3 MCP 写工具与一致性
 
-- [ ] 实现代码变更
+- [x] 实现代码变更
 ## [code] C4 四客户端接入与分发
 
-- [ ] 实现代码变更
+- [x] 实现代码变更
 
 ## [verify] 验证
 
@@ -70,8 +70,8 @@
 ## 人类确认点
 
 - [x] H1 用户确认本提案后，才开始产出 delta
-- [ ] H2 delta 完成后，等待用户明确授权 `openlogos merge align-unified-prototype-and-add-mcp`
-- [ ] H3 merge 完成后自动提交规格文档，并按合并规格分批实现和提交代码
+- [x] H2 delta 完成后，等待用户明确授权 `openlogos merge align-unified-prototype-and-add-mcp`
+- [x] H3 merge 完成后自动提交规格文档，并按合并规格分批实现和提交代码
 - [ ] H4 实现完成后，等待用户明确授权 `openlogos verify align-unified-prototype-and-add-mcp`
 - [ ] H5 verify 通过后，等待用户明确授权执行 MCP 本地/预发部署
 - [ ] H6 部署完成后，等待用户明确授权 `openlogos smoke`

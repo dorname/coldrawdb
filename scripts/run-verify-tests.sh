@@ -44,6 +44,9 @@ echo "[verify-pre-run] backend cargo test ..."
 echo "[verify-pre-run] frontend-rs cargo test ..."
 (cd "$ROOT/frontend-rs" && "$CARGO_BIN" test)
 
+echo "[verify-pre-run] MCP cargo test ..."
+(cd "$ROOT/mcp-server" && "$CARGO_BIN" test)
+
 echo "[verify-pre-run] 单文件原型 Playwright 回归 ..."
 (cd "$ROOT/frontend-rs" && "$NPM_BIN" run test:unified-prototype)
 

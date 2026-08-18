@@ -27,6 +27,7 @@ dist-ssr
 .specstory/*
 backend/.specstory/*
 backend/target/*
+mcp-server/target/
 backend/.cursor*
 backend/*.lock
 backend/*.sqlite

@@ -4,7 +4,7 @@
 
 **V1 行** = 已在 Phase 1-4 完成的事实代码  
 **V2 行** = S03～S05 后端已实现，生产前端仍待接入  
-**V3 行** = S06 MCP 规格已合并，代码按本提案分批实现
+**V3 行** = S06 MCP 规格与代码已完成，等待 `openlogos verify` 验收
 
 > 本清单仅作总览与状态标记。详细规格见各 Phase 2 设计文档与 Phase 3 时序图。
 
@@ -185,8 +185,8 @@
 
 ### 4.4 S06 MCP（不计入 HTTP 端点数）
 
-- [ ] 1 个独立 `coldrawdb-mcp` stdio 服务
-- [ ] 7 个 tools：list/get/create/update/delete/import/export
+- [x] 1 个独立 `coldrawdb-mcp` stdio 服务
+- [x] 7 个 tools：list/get/create/update/delete/import/export
 
 ## 5. 数据库（11 张表）
 
@@ -254,13 +254,13 @@
 - [x] S02: 7 步骤 JSON
 - [x] S04: 房间生命周期 JSON
 - [x] S05: HTTP + WebSocket OT 协作 JSON
-- [ ] S06: MCP stdio JSON（规格已合并，待实现）
+- [x] S06: MCP stdio JSON + Rust 协议/HTTP mock 编排测试
 
 ### 7.4 统一原型与 MCP
 
-- [ ] ST-PU-01～ST-PU-19 Playwright 自动回归 + OpenLogos reporter
-- [ ] UT-MCP-01～UT-MCP-15
-- [ ] ST-MCP-01～ST-MCP-09 + OpenLogos reporter
+- [x] ST-PU-01～ST-PU-19 Playwright 自动回归 + OpenLogos reporter
+- [x] UT-MCP-01～UT-MCP-15
+- [x] ST-MCP-01～ST-MCP-09 + OpenLogos reporter
 
 ## 8. 部署
 
@@ -301,12 +301,12 @@
 ### 9.3 S06 MCP 文档与实现
 
 - [x] S06 需求、设计、时序、工具契约、测试与编排规格
-- [ ] 独立 Rust `coldrawdb-mcp` stdio 服务
-- [ ] initialize / tools/list / instructions
-- [ ] 读工具：list/get/export
-- [ ] 写工具：create/update/delete/import
-- [ ] revision、错误映射、日志脱敏
-- [ ] Claude/Codex/Cursor/OpenCode 配置
+- [x] 独立 Rust `coldrawdb-mcp` stdio 服务
+- [x] initialize / tools/list / instructions
+- [x] 读工具：list/get/export
+- [x] 写工具：create/update/delete/import
+- [x] revision、错误映射、日志脱敏
+- [x] Claude/Codex/Cursor/OpenCode 配置
 
 ## 10. 关键指标
 

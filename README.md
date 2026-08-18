@@ -167,6 +167,7 @@ S06 计划通过本地 stdio MCP 服务支持 Claude、Codex、Cursor 和 OpenCo
 - [S06 功能设计](logos/resources/prd/2-product-design/1-feature-specs/core-S06-mcp-service-design.md)
 - [MCP 工具契约](logos/resources/api/mcp-tools.yaml)
 - [S06 测试用例](logos/resources/test/core-S06-test-cases.md)
+- [MCP 构建与四客户端配置](mcp-server/README.md)
 
 ### 最近归档变更（2026-06）
 

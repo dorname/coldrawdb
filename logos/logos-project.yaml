@@ -48,7 +48,7 @@ scenarios:
     version: V2
   - id: S06
     name: AI 客户端通过 MCP 管理数据库图表
-    status: planned
+    status: in-progress
     priority: P1
     version: V3
 
