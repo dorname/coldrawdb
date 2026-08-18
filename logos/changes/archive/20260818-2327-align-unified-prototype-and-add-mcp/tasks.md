@@ -58,25 +58,25 @@
 
 ## [verify] 验证
 
-- [ ] V1 运行统一原型 ST-PU-01～ST-PU-19，全部通过并生成 reporter
-- [ ] V2 运行 MCP 单元测试和完整编排测试，校验 reporter 与定义用例一一对应
-- [ ] V3 验证七个工具 schema、annotations、成功结果和错误映射
-- [ ] V4 验证服务不直连 SQLite、不输出 Token、不提供任意 SQL 工具
-- [ ] V5 校验 Claude、Codex、Cursor、OpenCode 配置可解析；执行 MCP 初始化、tools/list 和只读 smoke
-- [ ] V6 运行现有后端、前端及全量 verify 预跑，确认无回归
-- [ ] V7 从磁盘读回所有 Markdown/文本规格变更片段，向用户展示实际原文
+- [x] V1 运行统一原型 ST-PU-01～ST-PU-19，全部通过并生成 reporter
+- [x] V2 运行 MCP 单元测试和完整编排测试，校验 reporter 与定义用例一一对应
+- [x] V3 验证七个工具 schema、annotations、成功结果和错误映射
+- [x] V4 验证服务不直连 SQLite、不输出 Token、不提供任意 SQL 工具
+- [x] V5 校验 Claude、Codex、Cursor、OpenCode 配置可解析；执行 MCP 初始化、tools/list 和只读 smoke
+- [x] V6 运行现有后端、前端及全量 verify 预跑，确认无回归
+- [x] V7 从磁盘读回所有 Markdown/文本规格变更片段，向用户展示实际原文
 
 ## [deploy] 部署（须用户明确授权）
 
-- [ ] DP1 构建并安装 MCP stdio 可执行文件到已批准的本地/测试/预发目标
-- [ ] DP2 应用不含明文凭据的四客户端配置；Token 仅通过环境变量或客户端安全配置注入
-- [ ] DP3 记录版本、目标、配置摘要、回滚命令和部署结果，不开放公网监听端口
+- [x] DP1 跳过：用户明确决定本次无需部署并直接归档
+- [x] DP2 跳过：未修改任何本地/测试/预发客户端配置
+- [x] DP3 跳过：没有部署目标或公网监听端口需要记录
 
 ## [smoke] 冒烟（须用户明确授权）
 
-- [ ] SM1 启动 coldrawdb API 与 MCP stdio 服务，完成 initialize 和 tools/list
-- [ ] SM2 执行 `list_diagrams` 与 `get_diagram` 只读调用，确认结果和日志脱敏
-- [ ] SM3 生成 OpenLogos smoke reporter 和 `smoke-report.md`，失败时按部署回滚预案处理
+- [x] SM1 跳过：无部署目标，用户授权直接归档
+- [x] SM2 跳过：无部署环境需要冒烟
+- [x] SM3 跳过：不生成部署 smoke 报告
 
 ## [follow-up] 独立后续变更
 
@@ -88,8 +88,8 @@
 - [x] H1 用户确认本提案后，才开始产出 delta
 - [x] H2 delta 完成后，等待用户明确授权 `openlogos merge align-unified-prototype-and-add-mcp`
 - [x] H3 merge 完成后自动提交规格文档，并按合并规格分批实现和提交代码
-- [ ] H4 实现完成后，等待用户明确授权 `openlogos verify align-unified-prototype-and-add-mcp`
-- [ ] H5 verify 通过后，等待用户明确授权执行 MCP 本地/预发部署
-- [ ] H6 部署完成后，等待用户明确授权 `openlogos smoke`
-- [ ] H7 smoke 通过后，等待用户明确授权 `openlogos archive align-unified-prototype-and-add-mcp`
+- [x] H4 用户已授权且 `openlogos verify align-unified-prototype-and-add-mcp` 通过
+- [x] H5 用户明确决定无需部署
+- [x] H6 用户明确决定无需 smoke
+- [x] H7 用户明确授权直接归档，归档已完成
 - [ ] H8 归档提交完成后，询问用户是否执行 `git push`
