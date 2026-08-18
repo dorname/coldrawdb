@@ -18,7 +18,7 @@ tech_stack:
   cors: "actix-cors（strict 模式）"
 
 scenario_counter:
-  next_id: 6
+  next_id: 7
 
 scenarios:
   - id: S01
@@ -33,19 +33,24 @@ scenarios:
     version: V1
   - id: S03
     name: 用户注册 / 登录 / Token 续期
-    status: planned
+    status: in-progress
     priority: P2
     version: V2
   - id: S04
     name: 创建/加入协作房间
-    status: planned
+    status: in-progress
     priority: P2
     version: V2
   - id: S05
     name: OT 实时协作
-    status: planned
+    status: in-progress
     priority: P2
     version: V2
+  - id: S06
+    name: AI 客户端通过 MCP 管理数据库图表
+    status: planned
+    priority: P1
+    version: V3
 
 external_dependencies: []
 
@@ -76,6 +81,8 @@ resource_index:
     desc: 用户痛点分析（P01~P04 因果链）。涉及痛点溯源、场景关联锚点时必读。
   - path: logos/resources/prd/1-product-requirements/core-04-scenario-detail.md
     desc: 核心场景详述（S01/S02 GIVEN/WHEN/THEN）。涉及 V1 场景验收条件时必读。
+  - path: logos/resources/prd/1-product-requirements/core-S06-mcp-service-requirements.md
+    desc: S06 MCP 产品需求、用户故事、FR/NFR、安全边界与验收。
 
   # Phase 2 — 产品设计（17 份功能规格 + 1 份原型）
   - path: logos/resources/prd/2-product-design/1-feature-specs/core-00-information-architecture.md
@@ -117,19 +124,21 @@ resource_index:
   - path: logos/resources/prd/2-product-design/1-feature-specs/core-S03-user-auth-design.md
     desc: S03 用户注册/登录/Token 续期交互设计（JWT + refresh + user-menu）。涉及 V2 鉴权、S04/S05 前置时必读。
   - path: logos/resources/prd/2-product-design/2-page-design/core-03-auth-prototype.html
-    desc: S03 鉴权 HTML 可交互原型（登录/注册/会话续期/AppBar 预览）。涉及鉴权页面交互与 data-testid 锚点时必读。
+    desc: S03 历史鉴权原型，仅供差异参考；现行唯一评审入口为 core-01-editor-prototype.html，不作为验收入口。
   - path: logos/resources/prd/2-product-design/1-feature-specs/core-S04-room-lifecycle-design.md
     desc: S04 创建/加入协作房间交互设计（角色/邀请/成员管理）。涉及 V2 房间生命周期、S05 前置时必读。
   - path: logos/resources/prd/2-product-design/2-page-design/core-04-collab-prototype.html
-    desc: S04 协作房间 HTML 可交互原型（房间列表/编辑器内协作/邀请接受）。涉及 room UI 与 data-testid 锚点时必读。
+    desc: S04 历史房间原型，存在未绑定演示控件；现行唯一评审入口为 core-01-editor-prototype.html，不作为验收入口。
   - path: logos/resources/prd/2-product-design/1-feature-specs/core-S05-ot-collab-design.md
     desc: S05 OT 实时协作交互设计（WS/presence/远端 op/重连）。涉及 V2 collab-server、与 S01 409 差异时必读。
   - path: logos/resources/prd/2-product-design/2-page-design/core-05-ot-collab-prototype.html
-    desc: S05 OT 协作 HTML 可交互原型（远端表/光标/断线重连/Activity）。涉及实时协作 UI 演示时必读。
+    desc: S05 历史 OT 原型，存在未绑定 ToolRail 控件；现行唯一评审入口为 core-01-editor-prototype.html，不作为验收入口。
   - path: logos/resources/prd/2-product-design/2-page-design/core-00-prototype-shared.css
     desc: HTML 原型共享样式（token / 图标 / focus / 暗色模式 / reduced-motion）。5 个原型页面共用，修改视觉基线时必读。
   - path: logos/resources/prd/2-product-design/2-page-design/core-01-editor-prototype.html
-    desc: 编辑器 HTML 可交互原型（对齐 drawdb main + V2 AppBar/ToolRail/Inspector/IO Drawer）。涉及页面布局、data-testid 锚点时必读。
+    desc: S01～S05 唯一现行 HTML 可交互主原型；断网单文件运行，包含鉴权、房间、编辑器与 OT 模拟器。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-S06-mcp-service-design.md
+    desc: S06 MCP stdio 生命周期、七个工具、错误体验与四客户端配置。
 
   # Phase 3-0 — 技术架构
   - path: logos/resources/prd/3-technical-plan/1-architecture/core-01-architecture-overview.md
@@ -164,6 +173,12 @@ resource_index:
     desc: S04 协作房间场景时序图（创建/邀请/接受/成员管理 + 角色权限 + API 推导）。涉及 V2 rooms API/DB 设计时必读。
   - path: logos/resources/prd/3-technical-plan/2-scenario-implementation/core-S05-ot-collab.md
     desc: S05 OT 实时协作场景时序图（WS 连接/op 广播/OT 合并/重连 sync/checkpoint + WS 协议推导）。涉及 collab-server、S05 API 设计时必读。
+  - path: logos/resources/prd/3-technical-plan/2-scenario-implementation/core-S06-ai-client-mcp.md
+    desc: S06 initialize、读写、revision 冲突与删除审批时序图。
+
+  # Phase 3-2 — MCP 工具契约
+  - path: logos/resources/api/mcp-tools.yaml
+    desc: S06 MCP 七工具 JSON Schema、annotations、错误映射与安全不变量。
 
   # Phase 3-4b — API 编排测试（API 项目）
   - path: logos/resources/scenario/core-S01-diagram-save.json
@@ -174,6 +189,12 @@ resource_index:
     desc: S04 协作房间 E2E API 编排测试（注册→room→邀请→accept→409→清理，17 步）。涉及 S04 端到端验证时必读。
   - path: logos/resources/scenario/core-S05-ot-collab.json
     desc: S05 OT 协作 E2E 编排测试（HTTP+WebSocket 混合，25 步：connect/op/remote_op/sync/READ_ONLY）。涉及 collab-server 验收时必读。
+  - path: logos/resources/scenario/core-S06-mcp-service.json
+    desc: S06 MCP stdio 端到端编排定义。
+
+  # Phase 3-4a — S06 测试
+  - path: logos/resources/test/core-S06-test-cases.md
+    desc: S06 MCP UT/ST、四客户端兼容与 OpenLogos reporter 契约。
 
 conventions:
   - "遵循 OpenLogos 三层推进模型（Why → What → How）"

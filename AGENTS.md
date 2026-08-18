@@ -114,12 +114,15 @@ cd <项目根目录> && openlogos <command>
 
 - **模块**：`core`（核心功能）
 - **生命周期**：`launched`（`logos/logos-project.yaml`）
-- **当前阶段**：Phase 4（Rust Web/WASM 重构）+ redesign phases A–E（V2 布局 + 设计系统迁移）规格完成，代码分批实现中
+- **当前阶段**：活跃变更 `align-unified-prototype-and-add-mcp`；规格已合并，代码分批实现中
+- **场景**：S01～S06；S01/S02 全栈已实现，S03～S05 后端已实现但生产前端待接入，S06 MCP stdio 实现中
+- **原型**：唯一现行主原型为 `core-01-editor-prototype.html`；S03/S04/S05 独立原型仅作历史参考
 - **当前模块清单**（16 个）：
   - 前端：`editor_data_access` / `editor_core` / `editor_panels` / `editor_render`
   - 后端：`diagrams` / `tables` / `fields` / `references` / `areas` / `notes` / `indices` / `todos`（7 领域子模块）+ `common` / `entity` / `error` / `repository`（4 支撑子模块）
-- **API 端点**：10 个（diagrams × 5 + bridge × 5）
-- **数据表**：11 张（task / diagram / diagram_link / table / field / table_link / indice / indice_link / reference / area / note）
+- **生产后端路由**：diagram v1 5 + bridge 5 + auth 5 + rooms 11 + collab REST 2 + WS 1；遗留 `/diagrams/*` 单列
+- **MCP**：1 个规划中的 stdio 服务、7 个 tools，支持 Claude / Codex / Cursor / OpenCode；不计入 HTTP 端点
+- **数据表**：V1 11 张 + V2 auth/rooms/collab 增量表，具体以 migrations/DDL 为准
 - **最近归档变更（按时间倒序）**：
   - `redesign-phase-e-design-system-migration` — E1–E6 设计系统迁移（tokens / icons / components / Monaco / dark mode / motion）
   - `redesign-phase-d-command-code` — Command Palette + Code View（已 archive，E4 Monaco 升级版生效）

@@ -1,0 +1,54 @@
+delta:
+  target: logos/logos-project.yaml
+  proposal: align-unified-prototype-and-add-mcp
+  operations:
+    - op: replace
+      path: scenario_counter.next_id
+      value: 7
+    - op: replace
+      path: scenarios.S03.status
+      value: in-progress
+      note: 后端已实现，生产前端未接入
+    - op: replace
+      path: scenarios.S04.status
+      value: in-progress
+      note: 后端已实现，生产前端未接入
+    - op: replace
+      path: scenarios.S05.status
+      value: in-progress
+      note: 后端已实现，生产前端未接入
+    - op: add
+      path: scenarios.-
+      value:
+        id: S06
+        name: AI 客户端通过 MCP 管理数据库图表
+        status: planned
+        priority: P1
+        version: V3
+    - op: modify_resource
+      path: logos/resources/prd/2-product-design/2-page-design/core-03-auth-prototype.html
+      desc: S03 历史鉴权原型，仅供差异参考；现行唯一评审入口为 core-01-editor-prototype.html，不作为验收入口。
+    - op: modify_resource
+      path: logos/resources/prd/2-product-design/2-page-design/core-04-collab-prototype.html
+      desc: S04 历史房间原型，存在未绑定演示控件；现行唯一评审入口为 core-01-editor-prototype.html，不作为验收入口。
+    - op: modify_resource
+      path: logos/resources/prd/2-product-design/2-page-design/core-05-ot-collab-prototype.html
+      desc: S05 历史 OT 原型，存在未绑定 ToolRail 控件；现行唯一评审入口为 core-01-editor-prototype.html，不作为验收入口。
+    - op: modify_resource
+      path: logos/resources/prd/2-product-design/2-page-design/core-01-editor-prototype.html
+      desc: S01～S05 唯一现行 HTML 可交互主原型；断网单文件运行，包含鉴权、房间、编辑器与 OT 模拟器。
+    - op: add_resources
+      values:
+        - path: logos/resources/prd/1-product-requirements/core-S06-mcp-service-requirements.md
+          desc: S06 MCP 产品需求、用户故事、FR/NFR、安全边界与验收。
+        - path: logos/resources/prd/2-product-design/1-feature-specs/core-S06-mcp-service-design.md
+          desc: S06 MCP stdio 生命周期、七个工具、错误体验与四客户端配置。
+        - path: logos/resources/prd/3-technical-plan/2-scenario-implementation/core-S06-ai-client-mcp.md
+          desc: S06 initialize、读写、revision 冲突与删除审批时序图。
+        - path: logos/resources/api/mcp-tools.yaml
+          desc: S06 MCP 七工具 JSON Schema、annotations、错误映射与安全不变量。
+        - path: logos/resources/test/core-S06-test-cases.md
+          desc: S06 MCP UT/ST、四客户端兼容与 OpenLogos reporter 契约。
+        - path: logos/resources/scenario/core-S06-mcp-service.json
+          desc: S06 MCP stdio 端到端编排定义。
+

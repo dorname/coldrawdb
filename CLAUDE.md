@@ -130,6 +130,14 @@ Step 5 分批执行提示词（可直接复用）：
 cd <项目根目录> && openlogos <command>
 ```
 
+## 项目当前状态
+
+- 活跃变更：`align-unified-prototype-and-add-mcp`；场景范围 S01～S06。
+- 唯一现行 HTML 主原型：`core-01-editor-prototype.html`；S03/S04/S05 独立原型仅作历史参考。
+- S01/S02 前后端已实现；S03～S05 后端 auth/rooms/collab REST、DB、WS 与测试已实现，生产前端尚未接入。
+- 生产后端路由：diagram v1 5 + bridge 5 + auth 5 + rooms 11 + collab REST 2 + WS 1；遗留 `/diagrams/*` 单列。
+- S06：MCP stdio 服务实现中，目标客户端 Claude、Codex、Cursor、OpenCode，MVP 7 个 tools，不包含 Streamable HTTP。
+
 ## Conventions
 - 遵循 OpenLogos 三层推进模型（Why → What → How）
 - 每次变更必须先创建 logos/changes/ 变更提案

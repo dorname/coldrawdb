@@ -155,7 +155,18 @@ If you wish to work with sharing, set up [server](https://github.com/drawdb-io/d
 
 ## Project Status & Recent Archives
 
-> **当前状态**：coldrawdb 处于 `core` 模块 `launched` 生命周期。Rust Web/WASM 重构（Phase 4）已完成；V2 UI 布局（redesign-phase-a/b/c）与设计系统迁移（redesign-phase-d/e）已完成规格，代码实现分批推进中。
+> **当前状态**：coldrawdb 处于 `core` 模块 `launched` 生命周期；活跃变更 `align-unified-prototype-and-add-mcp` 已完成规格合并，代码分批实现中。
+
+现行 HTML 评审入口只有 `core-01-editor-prototype.html`。S01/S02 生产前后端已实现；S03/S04/S05 的 auth、rooms、collab REST/DB/WS 与测试已实现，生产前端登录、房间和 WS/OT/presence 尚未接入。
+
+### MCP（规划/实现中）
+
+S06 计划通过本地 stdio MCP 服务支持 Claude、Codex、Cursor 和 OpenCode，MVP 提供 7 个图表 CRUD/导入/导出工具，不包含 Streamable HTTP。
+
+- [S06 产品需求](logos/resources/prd/1-product-requirements/core-S06-mcp-service-requirements.md)
+- [S06 功能设计](logos/resources/prd/2-product-design/1-feature-specs/core-S06-mcp-service-design.md)
+- [MCP 工具契约](logos/resources/api/mcp-tools.yaml)
+- [S06 测试用例](logos/resources/test/core-S06-test-cases.md)
 
 ### 最近归档变更（2026-06）
 

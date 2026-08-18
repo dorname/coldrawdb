@@ -1,7 +1,9 @@
 # S03：用户注册 / 登录 / Token 续期 — 交互设计
 
 > 模块：core | 场景：S03 | 版本：V2 | 优先级：P2
-> 原型：`core-03-auth-prototype.html`
+> 现行原型：`core-01-editor-prototype.html`
+> 历史参考：`core-03-auth-prototype.html`（不作为验收入口）
+> 生产状态：后端已实现，生产前端待接入
 > Phase 1 输入：`core-00-scenario-overview.md` §S03 / `core-01-requirements.md` US 关联 P03
 > 参考：drawdb main **无用户鉴权**（V1 完全匿名）；本场景为 coldrawdb V2 net-new，为 S04/S05 前置
 
@@ -13,6 +15,7 @@
 | 主原型 | `core-01-editor-prototype.html`（S01～S05 唯一评审入口） |
 | 原型形式 | 单文件可交互 HTML（登录 / 注册 / 会话续期 → 房间 → 编辑器） |
 | 历史参考 | `core-03-auth-prototype.html`（保留，不再作为验收入口） |
+| 生产实现 | 后端 auth API/DB 已实现；`frontend-rs` 登录/注册/续期界面尚未接入 |
 | 视觉基准 | 统一 token + Light/Dark 玻璃态设计系统 |
 | 与 main 关系 | drawdb 无对应页面；交互模式参考常见 B2B SaaS（单栏表单 + 品牌侧栏） |
 
@@ -195,17 +198,18 @@
 
 ## 6. 原型操作指南
 
-在浏览器打开 `logos/resources/prd/2-product-design/2-page-design/core-03-auth-prototype.html`：
+在浏览器打开 `logos/resources/prd/2-product-design/2-page-design/core-01-editor-prototype.html`：
 
 | 操作 | 预期 |
 |---|---|
 | 默认视图 | 登录表单 |
 | 点击「创建账户」 | 切换注册视图 |
-| 登录演示账号 `demo@coldrawdb.local` / `demo1234` | 进入「已登录」预览（含 user-menu + session 指示） |
+| 输入任意合法邮箱与至少 8 位密码 | 进入房间列表（含 user-menu + session 指示） |
 | 点击「模拟 Token 过期」 | session 指示 amber → 续期成功 → 时间更新 |
 | 点击「退出登录」 | 回到登录视图 |
 | 切换 dark 主题 | `data-mode` 切换，表单对比度保持 |
 
+`core-03-auth-prototype.html` 只用于追溯早期方案，不要求修复其控件或测试锚点。
 ## 7. 反模式（须避免）
 
 - ❌ 将 refresh_token 存入 localStorage（XSS 风险）
@@ -238,3 +242,7 @@
 - 所有输入有显式 label；错误文本使用 `aria-describedby`，提交错误摘要使用 `role="alert"`。
 - Enter 提交当前表单；密码显隐按钮有动态 `aria-label`。
 - 视图切换后焦点进入主标题；loading 时按钮使用 `aria-busy="true"`。
+
+## 9. 生产实现状态
+
+统一主原型中的鉴权通过浏览器内状态机模拟，不发送真实 auth 请求。它证明交互设计完整，不等价于生产前端已实现；生产验收必须以 `frontend-rs` 代码、S03 API 编排和真实网络测试为准。

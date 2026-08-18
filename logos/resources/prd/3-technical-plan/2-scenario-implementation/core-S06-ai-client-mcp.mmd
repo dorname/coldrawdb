@@ -1,0 +1,42 @@
+sequenceDiagram
+  autonumber
+  actor U as 开发者
+  participant C as Claude/Codex/Cursor/OpenCode
+  participant M as coldrawdb-mcp
+  participant H as HTTP Adapter
+  participant A as coldrawdb API
+  participant D as SQLite
+
+  U->>C: 启用 coldrawdb MCP
+  C->>M: initialize(protocolVersion, capabilities)
+  M-->>C: serverInfo + tools capability + instructions
+  C->>M: notifications/initialized
+  C->>M: tools/list
+  M-->>C: 七个工具 + schemas + annotations
+  U->>C: 读取并更新 diagram
+  C->>M: tools/call get_diagram(id)
+  M->>H: GET /api/v1/diagrams/id
+  H->>A: HTTP + 可选 Bearer
+  A->>D: load_diagram(id)
+  D-->>A: diagram rev=5
+  A-->>H: 200 ApiResp
+  H-->>M: 规范化 diagram
+  M-->>C: structuredContent
+  C->>M: tools/call update_diagram(expected_revision=5)
+  M->>H: PUT /api/v1/diagrams/id
+  H->>A: expected_revision=5 + diagram
+  A->>D: compare revision and save
+  alt revision 一致
+    D-->>A: revision=6
+    A-->>H: 200 ApiResp
+    H-->>M: success
+    M-->>C: id + revision=6
+    C-->>U: 更新成功
+  else revision 冲突
+    D-->>A: current_revision=7
+    A-->>H: 409 ApiErr
+    H-->>M: REVISION_CONFLICT
+    M-->>C: isError + current_revision=7
+    C-->>U: 请求读取最新版本并人工合并
+  end
+

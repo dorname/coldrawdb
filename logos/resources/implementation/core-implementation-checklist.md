@@ -1,9 +1,10 @@
 ## 1. 范围
 
-本文件追踪 coldrawdb V1（已实现）+ V2（待实现）代码行勾选状态。
+本文件追踪 S01～S06 的真实实现状态；“静态原型可演示”与“生产前端已接入”分别记录。
 
-**V1 行** = 已在 Phase 1-4 完成的事实代码
-**V2 行** = 待 V2 阶段（`add-v2-collab-spec`）实现
+**V1 行** = 已在 Phase 1-4 完成的事实代码  
+**V2 行** = S03～S05 后端已实现，生产前端仍待接入  
+**V3 行** = S06 MCP 规格已合并，代码按本提案分批实现
 
 > 本清单仅作总览与状态标记。详细规格见各 Phase 2 设计文档与 Phase 3 时序图。
 
@@ -18,6 +19,8 @@
 - [x] 错误处理 + 指数退避重试
 - [x] SaveState 状态机
 - [ ] WebSocket 客户端（V2 实时协作）
+- [ ] S03 auth API 客户端与 refresh/logout 接入
+- [ ] S04 room/invite/member API 客户端接入
 
 ### 2.2 editor_core
 
@@ -49,6 +52,8 @@
 - [x] 保存失败指数退避（3s/6s/12s，`save_with_retry`）
 - [ ] Monaco wasm 完整挂载（见 `E4_ACTIVATION.md`，可选升级）
 - [ ] 房间成员列表（V2）
+- [ ] S03 登录/注册/会话界面生产接入
+- [ ] S04 房间/邀请/成员/角色界面生产接入
 
 ### 2.4 editor_render
 
@@ -61,6 +66,7 @@
 - [x] 选中 / 高亮 / 闪烁
 - [x] 撤销栈深度指示
 - [ ] 协作者光标渲染（V2）
+- [ ] S05 WS/OT/presence/重连生产接入
 
 ### 2.5 设计系统（redesign-phase-e）
 
@@ -145,6 +151,13 @@
 - [x] 通用 repository trait
 - [x] SQL 实现
 
+### 3.3 S03～S05 后端增量
+
+- [x] S03 `backend/src/auth/` + `auth_v1.rs` + auth migration + 测试
+- [x] S04 `backend/src/rooms/` + `rooms_v1.rs` + rooms migration + `core-S04-room-lifecycle.json`
+- [x] S05 `backend/src/collab/` + `collab_v1.rs` + `/ws/rooms/{room_id}` + collab migration + `core-S05-ot-collab.json`
+- [ ] S03 编排文件 `core-S03-user-auth.json`（后端集成测试已存在，此项不代表后端未实现）
+
 ## 4. API 端点
 
 ### 4.1 diagrams（5 端点）
@@ -163,6 +176,18 @@
 - [x] GET /api/v1/bridge/config
 - [x] PUT /api/v1/bridge/config
 
+### 4.3 S03～S05 生产后端路由
+
+- [x] auth：5 个 REST 端点
+- [x] rooms：11 个 REST 端点
+- [x] collab：2 个 REST 端点 + 1 个 WebSocket 入口
+- [x] 遗留 `/diagrams/*` 路由单列，不混入 v1 端点统计
+
+### 4.4 S06 MCP（不计入 HTTP 端点数）
+
+- [ ] 1 个独立 `coldrawdb-mcp` stdio 服务
+- [ ] 7 个 tools：list/get/create/update/delete/import/export
+
 ## 5. 数据库（11 张表）
 
 - [x] task
@@ -177,6 +202,12 @@
 - [x] area
 - [x] note
 - [x] init.sql 脚本
+
+### 5.1 V2 增量表
+
+- [x] auth migration / `coldrawdb-v2-auth.sql`
+- [x] rooms migration / `coldrawdb-v2-rooms.sql`
+- [x] collab migration / `coldrawdb-v2-collab.sql`
 
 ## 6. 桥接（7 引擎 SQL）
 
@@ -221,6 +252,15 @@
 
 - [x] S01: 7 步骤 JSON
 - [x] S02: 7 步骤 JSON
+- [x] S04: 房间生命周期 JSON
+- [x] S05: HTTP + WebSocket OT 协作 JSON
+- [ ] S06: MCP stdio JSON（规格已合并，待实现）
+
+### 7.4 统一原型与 MCP
+
+- [ ] ST-PU-01～ST-PU-19 Playwright 自动回归 + OpenLogos reporter
+- [ ] UT-MCP-01～UT-MCP-15
+- [ ] ST-MCP-01～ST-MCP-09 + OpenLogos reporter
 
 ## 8. 部署
 
@@ -239,7 +279,7 @@
 ### 9.1 V1 文档（已完成）
 
 - [x] 需求层 5 文件（含场景总览 + S01/S02 详述）
-- [x] 设计层 17 功能规格 + 5 HTML 原型 + 1 共享 CSS
+- [x] 设计层功能规格 + 1 个现行主原型 + 3 个历史参考原型 + 共享 CSS
 - [x] 技术方案层 8 文件（架构 + 场景 S01–S05 + 部署）
 - [x] API 2 文件（diagrams.yaml + bridge.yaml）
 - [x] DB 1 文件（coldrawdb-v1.sql）
@@ -247,15 +287,26 @@
 - [x] 场景 2 文件（S01 + S02 JSON）
 - [x] 实现清单 1 文件（本文件）
 
-### 9.2 V2 文档（规格已完成，实现待 Step 5）
+### 9.2 V2 文档（后端已实现，生产前端待接入）
 
-- [x] 设计层 3 场景设计（S03/S04/S05）+ 3 HTML 原型
+- [x] 设计层 3 场景设计（S03/S04/S05）；统一主原型为 `core-01-editor-prototype.html`
 - [x] 技术方案层 3 场景时序（S03/S04/S05）
 - [x] API 3 文件（auth.yaml + rooms.yaml + collab.yaml）
 - [x] DB 3 文件（v2-auth / v2-rooms / v2-collab SQL）
 - [x] 场景 2 编排 JSON（S04 + S05；S03 编排待补）
 - [ ] S03 编排测试 `core-S03-user-auth.json`
-- [ ] V2 代码实现（auth / rooms / collab-server）
+- [x] V2 后端实现（auth / rooms / collab REST、DB、WS 与测试）
+- [ ] V2 生产前端实现（auth / rooms / WS/OT/presence）
+
+### 9.3 S06 MCP 文档与实现
+
+- [x] S06 需求、设计、时序、工具契约、测试与编排规格
+- [ ] 独立 Rust `coldrawdb-mcp` stdio 服务
+- [ ] initialize / tools/list / instructions
+- [ ] 读工具：list/get/export
+- [ ] 写工具：create/update/delete/import
+- [ ] revision、错误映射、日志脱敏
+- [ ] Claude/Codex/Cursor/OpenCode 配置
 
 ## 10. 关键指标
 
@@ -264,7 +315,8 @@
 | 前端模块 | 4 | 4 + WS client |
 | 后端模块 | 11 + 5 routing | 11 + 5 routing + collab-server |
 | 数据表 | 11 | 17（+ users / auth_tokens / rooms / room_members / operations / operation_log） |
-| API 端点 | 10 | 10 + 4 鉴权 + 3 房间 + WS 1 端口 |
+| API 端点 | diagram v1 5 + bridge 5 | auth 5 + rooms 11 + collab REST 2 + WS 1；遗留 `/diagrams/*` 单列 |
+| MCP | 无 | 1 个 stdio 服务、7 个 tools（不计入 HTTP 端点） |
 | 引擎支持 | 7 SQL + DBML + JSON | + Room 协议 |
 | 实时协作 | ❌ | ✅ OT |
 | 用户系统 | ❌ | ✅ 注册 / 登录 / Token |
@@ -287,4 +339,3 @@
 - `docs/phase4/PHASE4_DONE.md`
 - `docs/drawdb-capability-checklist.md`
 - `backend/Cargo.toml` + `frontend-rs/Cargo.toml`
-
