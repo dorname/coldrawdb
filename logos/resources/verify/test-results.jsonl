@@ -110,3 +110,4 @@
 {"id":"ST-PC-01","status":"skip","timestamp":"2026-06-21T15:42:06Z","error":"requires wasm-pack or Playwright e2e harness"}
 {"id":"ST-SP-01","status":"skip","timestamp":"2026-06-21T15:42:06Z","error":"requires wasm-pack or Playwright e2e harness"}
 {"id":"ST-UI-05","status":"skip","timestamp":"2026-06-21T15:42:06Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-PU-19","status":"pass","duration_ms":6796,"timestamp":"2026-08-18T11:39:21.336Z"}

@@ -4,7 +4,7 @@
 
 ## 1. 范围与说明
 
-本矩阵验证静态产品原型，不调用生产 API，因此不产生 API 编排 JSON，也不写 OpenLogos 运行时测试 reporter。生产 S01/S02/S04/S05 编排测试保持不变。浏览器验收使用本地 `file://` 或静态服务器打开 delta HTML，并执行可见交互与只读诊断。
+本矩阵验证静态产品原型，不调用生产 API，因此不产生 API 编排 JSON。ST-PU-01～18 沿用浏览器人工验收；ST-PU-19 由 Playwright 回归脚本执行，并向 OpenLogos 结果文件追加 reporter 记录。生产 S01/S02/S04/S05 编排测试保持不变。浏览器验收使用本地 `file://` 或静态服务器打开 delta HTML，并执行可见交互与只读诊断。
 
 ## 2. 用例
 
@@ -28,6 +28,7 @@
 | ST-PU-16 | 编辑器 | 模拟 Token 过期 | 会话指示进入续期并恢复，当前编辑状态不丢失 |
 | ST-PU-17 | 桌面与 720px 视口 | 依次打开 Inspector、成员、IO 与模态 | 关键操作可达；内容无不可恢复遮挡 |
 | ST-PU-18 | 系统 reduced-motion | 触发光标、Toast、抽屉 | 无非必要动画；信息仍完整可感知 |
+| ST-PU-19 | 协作编辑器 | 分别新增表、完成关系、批量导入并观察至自动保存结束 | 每次编辑最多重建 1 次 `#app` 主视图；保存状态阶段不替换 Canvas DOM；同视图不重复播放入场动画；revision 正常递增 |
 
 ## 3. PU-AC 追溯
 
@@ -35,12 +36,12 @@
 |---|---|
 | PU-AC-01 单文件 | ST-PU-01 |
 | PU-AC-02 连续主链 | ST-PU-02、04、05、06、10、12、08 |
-| PU-AC-03 编辑完整性 | ST-PU-05～08 |
+| PU-AC-03 编辑完整性 | ST-PU-05～08、ST-PU-19 |
 | PU-AC-04 协作完整性 | ST-PU-10～16 |
 | PU-AC-05 浮层完整性 | ST-PU-08、09、17 |
 | PU-AC-06 视觉质量 | ST-PU-01、09、17、18 |
 | PU-AC-07 可访问性 | ST-PU-03、09、17、18 |
-| PU-AC-08 可诊断性 | `window.__cdbPrototype.diagnose()` 全部检查项通过 |
+| PU-AC-08 可诊断性 | `window.__cdbPrototype.diagnose()` 全部检查项通过；ST-PU-19 验证渲染次数不变量 |
 
 ## 4. 自动诊断契约
 
@@ -61,5 +62,6 @@
 | 房间与浮层链 | PASS | 注册校验、创建房间、Viewer 邀请、成员改权/移除、DBML、命令导出全部通过 |
 | 内置诊断 | PASS | 单文件依赖、DOM ID、角色、revision、队列、数据模型、浮层状态共 7 项通过 |
 | 窄屏布局 | PASS | 720px 视口下 Canvas/ToolRail/Drawer 宽度均为 708px；页面 `scrollWidth=720px`，无横向溢出 |
+| 重复刷新回归 | PASS | 新增表、创建关系、批量导入均仅 1 次主视图重建和 1 个渲染批次；保存阶段 Canvas DOM 保持；revision 12→15；ST-PU-19 reporter 为 PASS |
 
 浏览器验证期间发现并修复两项问题：AppBar Popover 被 Inspector 截获点击；移动端关闭 Inspector 后桌面三列规则覆盖单列布局。修复后已重跑对应完整链路。

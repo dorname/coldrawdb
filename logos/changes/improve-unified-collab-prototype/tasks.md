@@ -23,6 +23,10 @@
 
 ## [code] 代码实现
 
+- [x] C1 [ST-PU-19] 为主渲染器增加同帧合并，并阻止同一视图重复播放入场动画
+- [x] C2 [ST-PU-19] 将自动保存状态改为局部 DOM 更新，清理关系创建与批量导入的重复全量渲染
+- [x] C3 [ST-PU-19] 增加带 OpenLogos reporter 的浏览器回归脚本，并验证主视图重建次数与 Canvas DOM 身份
+
 ## [verify] 验证
 
 - [x] V1 静态检查：确认 HTML 无外部 `<link>`、`<script src>`、远程资源引用或共享 CSS 依赖（邀请/分享文本 URL 除外）
@@ -38,5 +42,5 @@
 
 - [x] H1 用户确认本提案后，才开始产出 delta 与原型
 - [x] H2 delta 完成后，等待用户明确授权 `openlogos merge improve-unified-collab-prototype`
-- [x] H3 merge 后按流程提交规格文档；本变更无生产代码实现、部署或 smoke
-- [ ] H4 verify 通过后，等待用户明确授权 archive；archive 后再询问是否 git push
+- [x] H3 merge 后按流程提交规格文档；本变更不修改生产 Rust，仅提交单文件原型修复与回归脚本，无部署或 smoke
+- [ ] H4 等待用户明确授权 `openlogos verify improve-unified-collab-prototype`；通过后再等待用户授权 archive，archive 后询问是否 git push

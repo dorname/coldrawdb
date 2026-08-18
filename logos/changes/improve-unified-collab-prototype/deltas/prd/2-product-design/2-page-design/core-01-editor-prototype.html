@@ -35,7 +35,7 @@
       linear-gradient(145deg,var(--bg),var(--bg-deep))}
     .aurora::before,.aurora::after{content:"";position:absolute;width:420px;height:420px;border-radius:50%;filter:blur(80px);opacity:.18}
     .aurora::before{left:-160px;bottom:-130px;background:var(--brand)}.aurora::after{right:-130px;bottom:5%;background:var(--accent)}
-    #app{position:relative;width:100%;height:100%}.view{width:100%;height:100%;animation:view-in .32s var(--ease)}
+    #app{position:relative;width:100%;height:100%}.view{width:100%;height:100%;animation:view-in .32s var(--ease)}.view.view--stable{animation:none}
     @keyframes view-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
     .glass{background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow-soft);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur)}
     .icon{width:18px;height:18px;display:block;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
@@ -150,6 +150,8 @@
     const app = $("#app");
     let saveTimer = 0;
     let drag = null;
+    let renderPending = false;
+    let renderedView = null;
 
     const baseDiagram = {
       title:"电商核心模型", revision:12, saveState:"saved",
@@ -211,10 +213,18 @@
     }
 
     function render() {
-      document.documentElement.dataset.mode = state.theme;
-      app.innerHTML = state.view === "auth" ? renderAuth() : state.view === "rooms" ? renderRooms() : state.view === "invite" ? renderInvitePage() : renderEditor();
-      renderToasts();
-      if (state.layer === "command") requestAnimationFrame(() => $("#command-input")?.focus());
+      if (renderPending) return;
+      renderPending = true;
+      queueMicrotask(() => {
+        renderPending = false;
+        const nextView = state.view;
+        document.documentElement.dataset.mode = state.theme;
+        app.innerHTML = nextView === "auth" ? renderAuth() : nextView === "rooms" ? renderRooms() : nextView === "invite" ? renderInvitePage() : renderEditor();
+        if (renderedView === nextView) app.firstElementChild?.classList.add("view--stable");
+        renderedView = nextView;
+        renderToasts();
+        if (state.layer === "command") requestAnimationFrame(() => $("#command-input")?.focus());
+      });
     }
 
     function renderAuth() {
@@ -382,8 +392,26 @@
       if (state.connection === "reconnecting" || state.connection === "syncing") state.pendingOps.push({id:uid("op"),description}); else if (state.connection === "connected") state.serverRev++;
       markDirty(); render(); return true;
     }
+    function renderSaveState() {
+      const chip = $("[data-testid=save-state]");
+      if (!chip) return;
+      const text = {saved:"已保存",dirty:"有未保存更改",saving:"保存中…",error:"保存失败"}[state.diagram.saveState];
+      chip.dataset.state = state.diagram.saveState;
+      chip.innerHTML = `<span class="dot"></span>${text}<span class="revision-text" data-testid="revision-display"> · rev ${state.diagram.revision}</span>`;
+    }
     function markDirty() {
-      state.diagram.saveState="dirty"; clearTimeout(saveTimer); saveTimer=setTimeout(()=>{state.diagram.saveState="saving";render();saveTimer=setTimeout(()=>{state.diagram.saveState="saved";state.diagram.revision++;render();},430)},700);
+      state.diagram.saveState="dirty";
+      renderSaveState();
+      clearTimeout(saveTimer);
+      saveTimer=setTimeout(()=>{
+        state.diagram.saveState="saving";
+        renderSaveState();
+        saveTimer=setTimeout(()=>{
+          state.diagram.saveState="saved";
+          state.diagram.revision++;
+          renderSaveState();
+        },430);
+      },700);
     }
     function undo() { if (!state.undo.length || !canEdit()) return; state.redo.push(clone(state.diagram));state.diagram=state.undo.pop();state.diagram.saveState="dirty";activity("你撤销了上一步操作","undo");markDirty();render(); }
     function redo() { if (!state.redo.length || !canEdit()) return; state.undo.push(clone(state.diagram));state.diagram=state.redo.pop();state.diagram.saveState="dirty";activity("你重做了操作","redo");markDirty();render(); }
@@ -466,9 +494,9 @@
       else if(action==="dismiss-toast"){state.toasts=state.toasts.filter(t=>t.id!==id);renderToasts();}
     }
 
-    function handleFieldClick(tableId,fieldId){state.selected={type:"table",id:tableId};if(!state.relationMode){state.inspector=true;render();return;}if(!canEdit()){toast("Viewer 无法创建关系","你仍可查看现有关系。","error");return;}if(!state.relationSource){state.relationSource={table:tableId,field:fieldId};render();return;}if(state.relationSource.field===fieldId){toast("请选择不同字段","关系的两个端点不能相同。","error");return;}const source=clone(state.relationSource);commit("创建了一条字段关系",()=>state.diagram.relations.push({id:uid("rel"),fromTable:source.table,fromField:source.field,toTable:tableId,toField:fieldId}),"relation");state.relationMode=false;state.relationSource=null;render();}
+    function handleFieldClick(tableId,fieldId){state.selected={type:"table",id:tableId};if(!state.relationMode){state.inspector=true;render();return;}if(!canEdit()){toast("Viewer 无法创建关系","你仍可查看现有关系。","error");return;}if(!state.relationSource){state.relationSource={table:tableId,field:fieldId};render();return;}if(state.relationSource.field===fieldId){toast("请选择不同字段","关系的两个端点不能相同。","error");return;}const source=clone(state.relationSource);state.relationMode=false;state.relationSource=null;commit("创建了一条字段关系",()=>state.diagram.relations.push({id:uid("rel"),fromTable:source.table,fromField:source.field,toTable:tableId,toField:fieldId}),"relation");}
     function runCommand(command){state.layer=null;if(command==="add-table")addTable();else if(command==="relation-mode"){state.relationMode=true;render();}else if(command==="drawer-import"){state.drawer="import";render();}else if(command==="drawer-export"){state.drawer="export";render();}else if(command==="toggle-code"){state.codeView=true;render();}else if(command==="modal-invite"){state.layer="invite";render();}else if(command==="theme"){state.theme=state.theme==="dark"?"light":"dark";render();}else if(command==="diagnose"){state.diagnostics=diagnose();state.layer="diagnostics";render();}}
-    function importModel(){const source=$("#import-source")?.value||"";const names=[...source.matchAll(/CREATE\s+TABLE\s+["`']?([\w\u4e00-\u9fa5]+)/gi)].map(m=>m[1]);if(!names.length){toast("未检测到数据表","请输入包含 CREATE TABLE 的 SQL。","error");return;}names.forEach(name=>{if(!state.diagram.tables.some(t=>t.name===name))addTable(name)});state.drawer=null;toast("导入完成",`已从 ${state.importFormat.toUpperCase()} 创建 ${names.length} 张表。`);render();}
+    function importModel(){const source=$("#import-source")?.value||"";const names=[...source.matchAll(/CREATE\s+TABLE\s+["`']?([\w\u4e00-\u9fa5]+)/gi)].map(m=>m[1]);if(!names.length){toast("未检测到数据表","请输入包含 CREATE TABLE 的 SQL。","error");return;}const fresh=[...new Set(names)].filter(name=>!state.diagram.tables.some(t=>t.name===name));if(!fresh.length){toast("无需重复导入","检测到的数据表已全部存在。","error");return;}state.drawer=null;commit(`从 ${state.importFormat.toUpperCase()} 导入了 ${fresh.length} 张表`,()=>{fresh.forEach((name,index)=>{const id=name.replace(/[^a-zA-Z0-9_\u4e00-\u9fa5]/g,"_").toLowerCase()+"-"+(Date.now()+index).toString().slice(-4);state.diagram.tables.push({id,name,x:180+state.diagram.tables.length*55,y:145+state.diagram.tables.length*35,color:"rgba(79,209,197,.18)",fields:[{id:`${id}-id`,name:"id",type:"UUID",pk:true,nn:true,uq:true}]});state.selected={type:"table",id};});},"upload");toast("导入完成",`已从 ${state.importFormat.toUpperCase()} 创建 ${fresh.length} 张表。`);}
     function downloadExport(){const content=exportContent(state.exportFormat),blob=new Blob([content],{type:"text/plain;charset=utf-8"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=`${state.diagram.title}.${state.exportFormat}`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast("已生成下载",a.download);}
 
     app.addEventListener("click", event => {
@@ -495,7 +523,7 @@
     app.addEventListener("pointerdown",event=>{const head=event.target.closest("[data-drag-table]");if(!head||!canEdit())return;const table=state.diagram.tables.find(t=>t.id===head.dataset.dragTable);if(!table)return;drag={table,startX:event.clientX,startY:event.clientY,x:table.x,y:table.y,before:clone(state.diagram)};head.setPointerCapture?.(event.pointerId);});
     app.addEventListener("pointermove",event=>{if(!drag)return;drag.table.x=Math.round((drag.x+(event.clientX-drag.startX)/state.zoom)/12)*12;drag.table.y=Math.round((drag.y+(event.clientY-drag.startY)/state.zoom)/12)*12;const node=$(`[data-testid="table-${drag.table.id}"]`);if(node){node.style.left=`${drag.table.x}px`;node.style.top=`${drag.table.y}px`;}});
     app.addEventListener("pointerup",()=>{if(!drag)return;if(drag.table.x!==drag.x||drag.table.y!==drag.y){state.undo.push(drag.before);state.redo=[];activity(`你移动了表 ${drag.table.name}`,"table");if(state.connection==="reconnecting")state.pendingOps.push({id:uid("op"),description:"移动表"});else state.serverRev++;markDirty();}drag=null;render();});
-    document.addEventListener("keydown",event=>{const mod=event.ctrlKey||event.metaKey;if(event.key==="Escape"&&(state.layer||state.drawer)){state.layer=null;state.drawer=null;render();}else if(mod&&event.key.toLowerCase()==="k"){event.preventDefault();state.layer="command";state.commandQuery="";render();}else if(mod&&event.key.toLowerCase()==="z"){event.preventDefault();event.shiftKey?redo():undo();}else if(mod&&event.key.toLowerCase()==="y"){event.preventDefault();redo();}else if(mod&&event.key.toLowerCase()==="s"){event.preventDefault();state.diagram.saveState="saving";render();setTimeout(()=>{state.diagram.saveState="saved";state.diagram.revision++;toast("已立即保存",`revision ${state.diagram.revision}`);render()},350);}});
+    document.addEventListener("keydown",event=>{const mod=event.ctrlKey||event.metaKey;if(event.key==="Escape"&&(state.layer||state.drawer)){state.layer=null;state.drawer=null;render();}else if(mod&&event.key.toLowerCase()==="k"){event.preventDefault();state.layer="command";state.commandQuery="";render();}else if(mod&&event.key.toLowerCase()==="z"){event.preventDefault();event.shiftKey?redo():undo();}else if(mod&&event.key.toLowerCase()==="y"){event.preventDefault();redo();}else if(mod&&event.key.toLowerCase()==="s"){event.preventDefault();clearTimeout(saveTimer);state.diagram.saveState="saving";renderSaveState();saveTimer=setTimeout(()=>{state.diagram.saveState="saved";state.diagram.revision++;toast("已立即保存",`revision ${state.diagram.revision}`);renderSaveState()},350);}});
 
     window.__cdbPrototype = Object.freeze({diagnose,snapshot,demo(action){const map={"remote-cursor":remoteCursor,"remote-table":remoteTable,"disconnect":disconnect,"reconnect":reconnect,"reconnect-fail":()=>{state.connection="failed";render()},viewer:()=>{state.role="viewer";render()}};if(!map[action])throw new Error("不支持的演示动作");map[action]();return snapshot();}});
     render();
