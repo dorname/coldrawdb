@@ -49,4 +49,4 @@
 - [x] H1 用户确认本提案后，才开始产出 delta 与原型
 - [x] H2 delta 完成后，等待用户明确授权 `openlogos merge improve-unified-collab-prototype`
 - [x] H3 merge 后按流程提交规格与实现；仅修改单文件原型、测试代码和验收脚本，不改变运行时业务逻辑，无部署或 smoke
-- [ ] H4 等待用户明确授权 `openlogos verify improve-unified-collab-prototype`；通过后再等待用户授权 archive，archive 后询问是否 git push
+- [x] H4 用户已授权且 `openlogos verify improve-unified-collab-prototype` 通过；用户已授权 archive，归档后询问是否 git push
