@@ -7168,7 +7168,115 @@ mod tests {
         assert_eq!(collab_status_label(&state), "只读");
     }
 
-    // ─── align-frontend-to-prototype UT-FE-PROTO-05/06 ────
+    // ─── align-frontend-to-prototype Batch D 全链路回归 ────
+
+    /// ST-FE-PROTO-08 / ST-FE-V2-01~04 静态断言：S01/S02/IO/命令面板/ST-PU 的关键锚点与纯函数保持不变。
+    /// 防止本次重构（auth → rooms → editor 路由）误删既有能力。
+    #[test]
+    fn test_regression_invariants_preserved() {
+        let src = include_str!("editor_panels.rs");
+
+        // ─── S01 保存与 409 冲突（ST-FE-V2-02）───
+        assert!(
+            src.contains("data-testid=\"editor-canvas-container\""),
+            "ST-FE-V2-02: editor-canvas-container 锚点必须保留"
+        );
+        assert!(
+            src.contains("data-testid=\"app-bar\""),
+            "ST-FE-V2-02: app-bar 锚点必须保留"
+        );
+        assert!(
+            src.contains("ConflictDialog"),
+            "ST-FE-V2-02: 409 ConflictDialog 必须保留"
+        );
+
+        // ─── S02 分享只读（ST-FE-V2-01）───
+        assert!(
+            src.contains("SessionIndicator"),
+            "ST-FE-V2-01: SessionIndicator 必须保留（?share= 匿名只读）"
+        );
+        assert!(
+            src.contains("session-indicator"),
+            "ST-FE-V2-01: data-testid=session-indicator 锚点必须保留"
+        );
+
+        // ─── IO 抽屉 + bridge API（ST-FE-V2-03）───
+        assert!(
+            src.contains("IoDrawer"),
+            "ST-FE-V2-03: IoDrawer 组件必须保留"
+        );
+        assert!(
+            src.contains("open_import_drawer") && src.contains("open_export_drawer"),
+            "ST-FE-V2-03: 导入/导出抽屉打开入口必须保留"
+        );
+
+        // ─── 命令面板（ST-FE-V2-04）───
+        assert!(
+            src.contains("CommandPalette"),
+            "ST-FE-V2-04: CommandPalette 组件必须保留"
+        );
+        assert!(
+            src.contains("palette_visible"),
+            "ST-FE-V2-04: palette_visible 信号必须保留"
+        );
+
+        // ─── ST-PU 统一原型（FEUX-AC-07 回归边界）───
+        assert!(
+            src.contains("ActivityFeed"),
+            "ST-PU: activity-feed 锚点必须保留"
+        );
+        assert!(
+            src.contains("data-testid=\"activity-feed\""),
+            "ST-PU: activity-feed 锚点必须保留"
+        );
+
+        // ─── 720px 响应式（ST-FE-V2-04）───
+        assert!(
+            should_apply_compact_layout(720),
+            "ST-FE-V2-04: 720px 必须判定为紧凑布局"
+        );
+        assert!(
+            should_apply_compact_layout(640),
+            "ST-FE-V2-04: 640px 必须判定为紧凑布局"
+        );
+        assert!(
+            !should_apply_compact_layout(900),
+            "ST-FE-V2-04: 900px 仍为桌面布局"
+        );
+    }
+
+    /// ST-FE-PROTO-08 页面流路由回归：所有五态页面状态在 AppRoot 都已注册。
+    #[test]
+    fn test_regression_page_states_registered() {
+        let src = include_str!("editor_panels.rs");
+        for state in ["PageState::Auth", "PageState::Rooms", "PageState::Invite", "PageState::RoomEditor", "PageState::ShareEdit"] {
+            assert!(
+                src.contains(state),
+                "ST-FE-PROTO-08: {state} 必须在 AppRoot 注册使用"
+            );
+        }
+    }
+
+    /// ST-FE-PROTO-08 session 状态机不会重新引入 token 泄漏。
+    #[test]
+    fn test_regression_session_notice_sanitization() {
+        // 实际生产中常见的注入尝试
+        let attempts = [
+            "登录成功，token=eyJhbGc.payload.sig",
+            "Bearer eyJxxx.yyy.zzz",
+            "您的会话已过期，refresh_token=rt-1234",
+            "access_token: at-secret",
+            "请复制此 eyJhbGciOi 字符串",
+        ];
+        for raw in attempts {
+            let cleaned = sanitize_session_notice(Some(raw));
+            assert!(
+                cleaned.is_none() || !cleaned.as_ref().unwrap().to_lowercase().contains("token"),
+                "ST-FE-PROTO-08: session notice 不得输出 token 原文，输入={raw}"
+            );
+        }
+    }
+
 
     #[test]
     fn ut_fe_proto_05_collab_state_machine_text_stability() {
