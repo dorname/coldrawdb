@@ -10,27 +10,23 @@
 //!   - btn-create-table / guide-create-table / btn-inspector-toggle
 //!   - editor-canvas / floating-controls / revision-display (status chip)
 
+use crate::code_view::{setup_code_view_escape, CodeLanguage, CodeView, ViewMode, ViewModeToggle};
 use crate::command_palette::{
     build_palette_items, setup_command_palette_shortcut, CommandPalette, PaletteItem,
 };
-use crate::code_view::{
-    setup_code_view_escape, CodeLanguage, CodeView, ViewMode, ViewModeToggle,
-};
-use crate::editor_core::{
-    ConflictAction, ConflictInfo, DebounceTrigger, EditorStore,
-};
 use crate::editor_core::types::{Area, Field, Note, Reference, Table};
+use crate::editor_core::{ConflictAction, ConflictInfo, DebounceTrigger, EditorStore};
 use crate::editor_data_access::{
-    save_with_retry, BridgeConfig, BridgeConfigUpdate, DiagramClient, ImportLocalResponse,
-    ImportLogEntry, SaveError,
+    save_with_retry, AuthClient, AuthSession, BridgeConfig, BridgeConfigUpdate, DiagramClient,
+    ImportLocalResponse, ImportLogEntry, SaveError,
 };
 use crate::editor_render::Canvas;
-use crate::editor_render::{Transform, zoom_in, zoom_out, zoom_reset};
+use crate::editor_render::{zoom_in, zoom_out, zoom_reset, Transform};
 use crate::icons::{
     IconAdd, IconAddArea, IconAddNote, IconAddTable, IconBox, IconChevronLeft, IconChevronRight,
     IconClose, IconEnum, IconExport, IconImport, IconKey, IconMinus, IconMoon, IconMore, IconPan,
-    IconRelationship, IconSelect, IconSettings, IconSidebar, IconSun, IconType, IconWarning,
-    IconRedo, IconUndo,
+    IconRedo, IconRelationship, IconSelect, IconSettings, IconSidebar, IconSun, IconType, IconUndo,
+    IconWarning,
 };
 use leptos::*;
 use std::cell::RefCell;
@@ -354,13 +350,9 @@ pub fn import_parse_summary(format: ImportFormat, content: &str) -> Result<Strin
             let n = modals::parse_sql_statements(content)?.len();
             Ok(format!("{n} 条语句"))
         }
-        ImportFormat::Dbml => Ok(format!(
-            "{} 个 Table 块",
-            count_dbml_tables(content)
-        )),
+        ImportFormat::Dbml => Ok(format!("{} 个 Table 块", count_dbml_tables(content))),
         ImportFormat::Json => {
-            let v: serde_json::Value =
-                serde_json::from_str(content).map_err(|e| e.to_string())?;
+            let v: serde_json::Value = serde_json::from_str(content).map_err(|e| e.to_string())?;
             let n = v
                 .get("tables")
                 .and_then(|t| t.as_array())
@@ -383,7 +375,12 @@ pub fn parse_sql_import_tables(content: &str) -> Result<Vec<Table>, String> {
         let name = stmt
             .split_whitespace()
             .nth(2)
-            .map(|s| s.trim_matches('(').trim_matches('`').trim_matches('"').to_string())
+            .map(|s| {
+                s.trim_matches('(')
+                    .trim_matches('`')
+                    .trim_matches('"')
+                    .to_string()
+            })
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| format!("table_{}", i + 1));
         let table_id = format!("import-t-{i}");
@@ -430,10 +427,7 @@ pub fn parse_dbml_import_tables(content: &str) -> Result<Vec<Table>, String> {
             .trim_start_matches("table ")
             .trim();
         let (name, inline_body) = if let Some(idx) = name.find('{') {
-            (
-                name[..idx].trim().to_string(),
-                Some(name[idx + 1..].trim()),
-            )
+            (name[..idx].trim().to_string(), Some(name[idx + 1..].trim()))
         } else {
             (name.trim_end_matches('{').trim().to_string(), None)
         };
@@ -457,20 +451,20 @@ pub fn parse_dbml_import_tables(content: &str) -> Result<Vec<Table>, String> {
         if !single_line_table {
             line_idx += 1;
             while line_idx < lines.len() {
-            let field_line = lines[line_idx].trim();
-            if field_line.starts_with('}') {
-                break;
-            }
-            if field_line.is_empty() || field_line.starts_with("//") {
+                let field_line = lines[line_idx].trim();
+                if field_line.starts_with('}') {
+                    break;
+                }
+                if field_line.is_empty() || field_line.starts_with("//") {
+                    line_idx += 1;
+                    continue;
+                }
+                let parts: Vec<&str> = field_line.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    push_dbml_field(&mut fields, &table_id, field_index, field_line);
+                    field_index += 1;
+                }
                 line_idx += 1;
-                continue;
-            }
-            let parts: Vec<&str> = field_line.split_whitespace().collect();
-            if parts.len() >= 2 {
-                push_dbml_field(&mut fields, &table_id, field_index, field_line);
-                field_index += 1;
-            }
-            line_idx += 1;
             }
         }
         if fields.is_empty() {
@@ -544,10 +538,7 @@ pub fn build_import_payload(
                 serde_json::from_str(content).map_err(|e| e.to_string())?;
             if let Some(obj) = v.as_object_mut() {
                 if !obj.contains_key("name") {
-                    obj.insert(
-                        "name".into(),
-                        serde_json::Value::String(title.to_string()),
-                    );
+                    obj.insert("name".into(), serde_json::Value::String(title.to_string()));
                 }
             }
             Ok(v)
@@ -613,10 +604,7 @@ pub fn export_diagram_dbml(tables: &[Table], references: &[Reference]) -> String
             } else {
                 format!(" [{}]", attrs.join(", "))
             };
-            out.push_str(&format!(
-                "  {} {}{}\n",
-                field.name, field.type_, attr_str
-            ));
+            out.push_str(&format!("  {} {}{}\n", field.name, field.type_, attr_str));
         }
         out.push_str("}\n\n");
     }
@@ -639,11 +627,7 @@ pub fn export_diagram_dbml(tables: &[Table], references: &[Reference]) -> String
 }
 
 /// 客户端 JSON 导出
-pub fn export_diagram_json(
-    name: &str,
-    tables: &[Table],
-    references: &[Reference],
-) -> String {
+pub fn export_diagram_json(name: &str, tables: &[Table], references: &[Reference]) -> String {
     serde_json::to_string_pretty(&serde_json::json!({
         "name": name,
         "tables": tables,
@@ -654,9 +638,7 @@ pub fn export_diagram_json(
 
 fn navigate_to_editor(diagram_id: &str) {
     if let Some(window) = web_sys::window() {
-        let _ = window
-            .location()
-            .set_href(&format!("/editor/{diagram_id}"));
+        let _ = window.location().set_href(&format!("/editor/{diagram_id}"));
     }
 }
 
@@ -870,7 +852,9 @@ pub(crate) fn schedule_save(
                     save_offline.set(false);
                     error.set(None);
                 }
-                Err(SaveError::Conflict { current_revision, .. }) => {
+                Err(SaveError::Conflict {
+                    current_revision, ..
+                }) => {
                     conflict.set(Some(ConflictInfo::new(current_revision, rev)));
                 }
                 Err(_) => {
@@ -982,18 +966,17 @@ pub fn ConflictDialog(
 /// 错误提示
 #[component]
 pub fn ErrorToast(error: RwSignal<Option<String>>) -> impl IntoView {
-    let render = move || {
-        match error.get() {
-            Some(msg) => view! {
-                <div class="cdb-error-toast" data-testid="error-toast">
-                    {msg}
-                    <button on:click=move |_| error.set(None)>
-                        <IconBox size="sm"><IconClose /></IconBox>
-                    </button>
-                </div>
-            }.into_view(),
-            None => view! { <></> }.into_view(),
+    let render = move || match error.get() {
+        Some(msg) => view! {
+            <div class="cdb-error-toast" data-testid="error-toast">
+                {msg}
+                <button on:click=move |_| error.set(None)>
+                    <IconBox size="sm"><IconClose /></IconBox>
+                </button>
+            </div>
         }
+        .into_view(),
+        None => view! { <></> }.into_view(),
     };
 
     render
@@ -1207,7 +1190,9 @@ pub fn Toolbar(
     error: RwSignal<Option<String>>,
     on_title_blur: Rc<dyn Fn(String)>,
 ) -> impl IntoView {
-    let stack = create_rw_signal(Rc::new(RefCell::new(crate::editor_core::CommandStack::new())));
+    let stack = create_rw_signal(Rc::new(RefCell::new(
+        crate::editor_core::CommandStack::new(),
+    )));
     let noop = Rc::new(|| {}) as Rc<dyn Fn()>;
     view! {
         <div class="cdb-toolbar">
@@ -1471,6 +1456,10 @@ pub fn AppBar(
     on_open_export: Rc<dyn Fn()>,
     on_open_settings: Rc<dyn Fn()>,
     on_delete_diagram: Rc<dyn Fn()>,
+    auth_session: RwSignal<Option<AuthSession>>,
+    session_notice: RwSignal<Option<String>>,
+    on_refresh_session: Rc<dyn Fn()>,
+    on_logout: Rc<dyn Fn()>,
 ) -> impl IntoView {
     let _ = (transform, inspector_open);
     let dark_mode = create_rw_signal(read_html_data_mode() == "dark");
@@ -1507,6 +1496,12 @@ pub fn AppBar(
                 >
                     "分享"
                 </button>
+                <SessionIndicator
+                    auth_session=auth_session
+                    session_notice=session_notice
+                    on_refresh_session=on_refresh_session
+                    on_logout=on_logout
+                />
                 <ViewModeToggle view_mode=view_mode code_visible=code_visible />
                 <AppBarOverflowMenu
                     dark_mode=dark_mode
@@ -1517,6 +1512,238 @@ pub fn AppBar(
                 />
             </div>
         </header>
+    }
+}
+
+#[component]
+pub fn SessionIndicator(
+    auth_session: RwSignal<Option<AuthSession>>,
+    session_notice: RwSignal<Option<String>>,
+    on_refresh_session: Rc<dyn Fn()>,
+    on_logout: Rc<dyn Fn()>,
+) -> impl IntoView {
+    let menu_open = create_rw_signal(false);
+    view! {
+        <div class="cdb-session" data-testid="session-indicator">
+            {move || match auth_session.get() {
+                Some(session) => {
+                    let label = session.display_name();
+                    let initial = label.chars().next().unwrap_or('U').to_string();
+                    view! {
+                        <button
+                            class="cdb-user-menu"
+                            data-testid="user-menu"
+                            title="用户菜单"
+                            on:click=move |_| menu_open.update(|v| *v = !*v)
+                        >
+                            <span class="cdb-user-avatar">{initial}</span>
+                            <span class="cdb-user-name">{label}</span>
+                        </button>
+                    }.into_view()
+                }
+                None => view! {
+                    <span class="cdb-session__guest" data-testid="user-menu">"匿名分享"</span>
+                }.into_view(),
+            }}
+            <span class="cdb-session__state">
+                {move || session_notice.get().unwrap_or_else(|| {
+                    if auth_session.get().is_some() {
+                        "会话有效".to_string()
+                    } else {
+                        "只读访问".to_string()
+                    }
+                })}
+            </span>
+            {move || if menu_open.get() && auth_session.get().is_some() {
+                let refresh = on_refresh_session.clone();
+                let logout = on_logout.clone();
+                view! {
+                    <div class="cdb-session-menu" data-testid="user-menu-dropdown">
+                        <button
+                            class="cdb-menu-dropdown-item"
+                            data-testid="btn-simulate-token-expired"
+                            on:click=move |_| {
+                                menu_open.set(false);
+                                refresh();
+                            }
+                        >
+                            "模拟 Token 过期"
+                        </button>
+                        <button
+                            class="cdb-menu-dropdown-item"
+                            data-testid="btn-logout"
+                            on:click=move |_| {
+                                menu_open.set(false);
+                                logout();
+                            }
+                        >
+                            "退出登录"
+                        </button>
+                    </div>
+                }.into_view()
+            } else {
+                view! { <></> }.into_view()
+            }}
+        </div>
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AuthMode {
+    Login,
+    Register,
+}
+
+#[component]
+pub fn AuthGate(
+    auth_client: AuthClient,
+    auth_session: RwSignal<Option<AuthSession>>,
+    session_notice: RwSignal<Option<String>>,
+) -> impl IntoView {
+    let mode = create_rw_signal(AuthMode::Login);
+    let email = create_rw_signal(String::new());
+    let display_name = create_rw_signal(String::new());
+    let password = create_rw_signal(String::new());
+    let confirm_password = create_rw_signal(String::new());
+    let loading = create_rw_signal(false);
+    let error = create_rw_signal(None::<String>);
+
+    let submit = {
+        let auth_client = auth_client.clone();
+        move || {
+            let email_value = email.get().trim().to_string();
+            let display_value = display_name.get().trim().to_string();
+            let password_value = password.get();
+            let confirm_value = confirm_password.get();
+            if email_value.is_empty() || password_value.len() < 8 {
+                error.set(Some("请输入有效邮箱和至少 8 位密码".to_string()));
+                return;
+            }
+            if mode.get() == AuthMode::Register && password_value != confirm_value {
+                error.set(Some("两次输入的密码不一致".to_string()));
+                return;
+            }
+            loading.set(true);
+            error.set(None);
+            let client = auth_client.clone();
+            spawn_local(async move {
+                let result = async {
+                    if mode.get_untracked() == AuthMode::Register {
+                        client
+                            .register(&email_value, &password_value, &display_value)
+                            .await?;
+                    }
+                    client.login(&email_value, &password_value).await
+                }
+                .await;
+                match result {
+                    Ok(session) => {
+                        auth_session.set(Some(session));
+                        session_notice.set(Some("会话有效".to_string()));
+                    }
+                    Err(e) => error.set(Some(e.to_string())),
+                }
+                loading.set(false);
+            });
+        }
+    };
+
+    view! {
+        <main class="cdb-auth-page" data-testid="auth-gate">
+            <section class="cdb-auth-panel">
+                <div class="cdb-auth-tabs" role="tablist">
+                    <button
+                        class="cdb-btn"
+                        class:cdb-is-active=move || mode.get() == AuthMode::Login
+                        data-testid="auth-tab-login"
+                        on:click=move |_| mode.set(AuthMode::Login)
+                    >
+                        "登录"
+                    </button>
+                    <button
+                        class="cdb-btn"
+                        class:cdb-is-active=move || mode.get() == AuthMode::Register
+                        data-testid="auth-tab-register"
+                        on:click=move |_| mode.set(AuthMode::Register)
+                    >
+                        "注册"
+                    </button>
+                </div>
+                <form
+                    class="cdb-auth-form"
+                    data-testid=move || if mode.get() == AuthMode::Login { "login-form" } else { "register-form" }
+                    on:submit=move |ev| {
+                        ev.prevent_default();
+                        submit();
+                    }
+                >
+                    <label>
+                        <span>"邮箱"</span>
+                        <input
+                            data-testid="auth-email"
+                            type="email"
+                            prop:value=move || email.get()
+                            on:input=move |ev| email.set(event_target_value(&ev))
+                        />
+                    </label>
+                    {move || if mode.get() == AuthMode::Register {
+                        view! {
+                            <label>
+                                <span>"显示名称"</span>
+                                <input
+                                    data-testid="auth-display-name"
+                                    prop:value=move || display_name.get()
+                                    on:input=move |ev| display_name.set(event_target_value(&ev))
+                                />
+                            </label>
+                        }.into_view()
+                    } else {
+                        view! { <></> }.into_view()
+                    }}
+                    <label>
+                        <span>"密码"</span>
+                        <input
+                            data-testid="auth-password"
+                            type="password"
+                            prop:value=move || password.get()
+                            on:input=move |ev| password.set(event_target_value(&ev))
+                        />
+                    </label>
+                    {move || if mode.get() == AuthMode::Register {
+                        view! {
+                            <label>
+                                <span>"确认密码"</span>
+                                <input
+                                    data-testid="auth-confirm-password"
+                                    type="password"
+                                    prop:value=move || confirm_password.get()
+                                    on:input=move |ev| confirm_password.set(event_target_value(&ev))
+                                />
+                            </label>
+                        }.into_view()
+                    } else {
+                        view! { <></> }.into_view()
+                    }}
+                    {move || error.get().map(|msg| view! {
+                        <p class="cdb-auth-error" data-testid="auth-error">{msg}</p>
+                    })}
+                    <button
+                        class="cdb-btn cdb-btn--primary cdb-btn--block"
+                        data-testid=move || if mode.get() == AuthMode::Login { "login-submit" } else { "register-submit" }
+                        disabled=move || loading.get()
+                        type="submit"
+                    >
+                        {move || if loading.get() {
+                            "处理中..."
+                        } else if mode.get() == AuthMode::Login {
+                            "登录"
+                        } else {
+                            "创建账户"
+                        }}
+                    </button>
+                </form>
+            </section>
+        </main>
     }
 }
 
@@ -2066,7 +2293,9 @@ pub fn ExportDrawer(
         match format.get() {
             ExportFormat::Sql => export_diagram_sql(&tables, &refs, &engine.get()),
             ExportFormat::Dbml => export_diagram_dbml(&tables, &refs),
-            ExportFormat::Json => export_diagram_json(&current_title.get_untracked(), &tables, &refs),
+            ExportFormat::Json => {
+                export_diagram_json(&current_title.get_untracked(), &tables, &refs)
+            }
         }
     });
 
@@ -2168,10 +2397,7 @@ pub fn ExportDrawer(
 
 /// Phase A：空白画布引导卡片
 #[component]
-pub fn EmptyGuide(
-    on_create_table: Rc<dyn Fn()>,
-    on_import: Rc<dyn Fn()>,
-) -> impl IntoView {
+pub fn EmptyGuide(on_create_table: Rc<dyn Fn()>, on_import: Rc<dyn Fn()>) -> impl IntoView {
     view! {
         <div class="cdb-empty-guide" data-testid="canvas-empty-guide">
             <h2>"开始设计你的数据库"</h2>
@@ -3075,10 +3301,7 @@ pub fn AreasTab(
 
 /// Enums Tab — 枚举列表（V1 仅前端 state）
 #[component]
-pub fn EnumsTab(
-    enums: RwSignal<Vec<EnumStub>>,
-    search_query: RwSignal<String>,
-) -> impl IntoView {
+pub fn EnumsTab(enums: RwSignal<Vec<EnumStub>>, search_query: RwSignal<String>) -> impl IntoView {
     let next_id = create_rw_signal(0i64);
     let filtered = create_memo(move |_| {
         let all = enums.get();
@@ -3166,10 +3389,7 @@ pub fn NotesTab(
 
 /// Relationships Tab — 关系列表（从 store.references 派生；不创建，只读）
 #[component]
-pub fn RelationshipsTab(
-    store: EditorStore,
-    search_query: RwSignal<String>,
-) -> impl IntoView {
+pub fn RelationshipsTab(store: EditorStore, search_query: RwSignal<String>) -> impl IntoView {
     let filtered = create_memo(move |_| {
         let all = store.references.get();
         let q = search_query.get();
@@ -3198,10 +3418,7 @@ pub fn RelationshipsTab(
 
 /// Types Tab — 自定义类型列表（V1 仅前端 state）
 #[component]
-pub fn TypesTab(
-    types: RwSignal<Vec<TypeStub>>,
-    search_query: RwSignal<String>,
-) -> impl IntoView {
+pub fn TypesTab(types: RwSignal<Vec<TypeStub>>, search_query: RwSignal<String>) -> impl IntoView {
     let next_id = create_rw_signal(0i64);
     let filtered = create_memo(move |_| {
         let all = types.get();
@@ -3363,6 +3580,7 @@ pub fn AppRoot(
     store: EditorStore,
     debouncer: DebounceTrigger,
     _diagram_id: String,
+    share_mode: bool,
 ) -> impl IntoView {
     let selection: RwSignal<SelectionKind> = create_rw_signal(SelectionKind::None);
     let selected_table_id: RwSignal<Option<String>> = create_rw_signal(None);
@@ -3385,6 +3603,12 @@ pub fn AppRoot(
     let palette_query: RwSignal<String> = create_rw_signal(String::new());
     let palette_highlight: RwSignal<usize> = create_rw_signal(0);
     let canvas_transform: RwSignal<Transform> = create_rw_signal(Transform::default());
+    let auth_session: RwSignal<Option<AuthSession>> = create_rw_signal(None);
+    let session_notice: RwSignal<Option<String>> = create_rw_signal(if share_mode {
+        Some("匿名只读分享".to_string())
+    } else {
+        None
+    });
 
     // Phase B：关系工具
     let active_tool: RwSignal<ActiveTool> = create_rw_signal(ActiveTool::Select);
@@ -3410,12 +3634,10 @@ pub fn AppRoot(
         }
     });
 
-    create_effect(move |_| {
-        match selection.get() {
-            SelectionKind::Table(id) => selected_table_id.set(Some(id)),
-            SelectionKind::Field { table_id, .. } => selected_table_id.set(Some(table_id)),
-            _ => {}
-        }
+    create_effect(move |_| match selection.get() {
+        SelectionKind::Table(id) => selected_table_id.set(Some(id)),
+        SelectionKind::Field { table_id, .. } => selected_table_id.set(Some(table_id)),
+        _ => {}
     });
 
     let on_select_table = {
@@ -3451,8 +3673,7 @@ pub fn AppRoot(
         let inspector_open = inspector_open.clone();
         let inspector_before_io = inspector_before_io.clone();
         Rc::new(move || {
-            let (collapsed, cache) =
-                snapshot_before_io_drawer(inspector_open.get_untracked());
+            let (collapsed, cache) = snapshot_before_io_drawer(inspector_open.get_untracked());
             inspector_before_io.set(cache);
             inspector_open.set(collapsed);
             io_drawer.set(IoDrawerKind::Import);
@@ -3464,8 +3685,7 @@ pub fn AppRoot(
         let inspector_open = inspector_open.clone();
         let inspector_before_io = inspector_before_io.clone();
         Rc::new(move || {
-            let (collapsed, cache) =
-                snapshot_before_io_drawer(inspector_open.get_untracked());
+            let (collapsed, cache) = snapshot_before_io_drawer(inspector_open.get_untracked());
             inspector_before_io.set(cache);
             inspector_open.set(collapsed);
             io_drawer.set(IoDrawerKind::Export);
@@ -3473,11 +3693,57 @@ pub fn AppRoot(
     };
 
     let command_stack: RwSignal<Rc<RefCell<crate::editor_core::CommandStack>>> = create_rw_signal(
-        Rc::new(RefCell::new(crate::editor_core::CommandStack::new()))
+        Rc::new(RefCell::new(crate::editor_core::CommandStack::new())),
     );
 
     // HTTP client to backend (port 3000, CORS middleware 在 fix-modal-overlay-blocking 已配)
     let client = DiagramClient::new("http://127.0.0.1:3000");
+    let auth_client = AuthClient::new("http://127.0.0.1:3000");
+
+    let on_refresh_session = {
+        let auth_client = auth_client.clone();
+        let auth_session = auth_session.clone();
+        let session_notice = session_notice.clone();
+        Rc::new(move || {
+            let Some(current) = auth_session.get_untracked() else {
+                return;
+            };
+            session_notice.set(Some("续期中...".to_string()));
+            let auth_client = auth_client.clone();
+            spawn_local(async move {
+                match auth_client.refresh_session(&current).await {
+                    Ok(next) => {
+                        auth_session.set(Some(next));
+                        session_notice.set(Some("会话已续期".to_string()));
+                    }
+                    Err(_) => {
+                        auth_session.set(None);
+                        session_notice.set(Some("登录已过期，请重新登录".to_string()));
+                    }
+                }
+            });
+        }) as Rc<dyn Fn()>
+    };
+
+    let on_logout = {
+        let auth_client = auth_client.clone();
+        let auth_session = auth_session.clone();
+        let session_notice = session_notice.clone();
+        Rc::new(move || {
+            let token = auth_session
+                .get_untracked()
+                .map(|s| s.access_token)
+                .unwrap_or_default();
+            auth_session.set(None);
+            session_notice.set(Some("已退出登录".to_string()));
+            if !token.is_empty() {
+                let auth_client = auth_client.clone();
+                spawn_local(async move {
+                    let _ = auth_client.logout(&token).await;
+                });
+            }
+        }) as Rc<dyn Fn()>
+    };
 
     let on_after_change: Rc<dyn Fn()> = {
         let client = client.clone();
@@ -3542,7 +3808,9 @@ pub fn AppRoot(
         let conflict = conflict.clone();
         let error = error.clone();
         Rc::new(move || {
-            let Some(info) = conflict.get_untracked() else { return };
+            let Some(info) = conflict.get_untracked() else {
+                return;
+            };
             let id = current_diagram_id.get_untracked();
             let snap = store.snapshot(id.clone(), current_title.get_untracked());
             let rev = info.current_revision;
@@ -3610,9 +3878,8 @@ pub fn AppRoot(
     setup_command_palette_shortcut(palette_visible, view_mode);
     setup_code_view_escape(view_mode, code_visible);
 
-    let palette_items = create_memo(move |_| {
-        build_palette_items(&store.tables.get(), &store.references.get())
-    });
+    let palette_items =
+        create_memo(move |_| build_palette_items(&store.tables.get(), &store.references.get()));
 
     let code_content = create_memo(move |_| {
         let tables = store.tables.get();
@@ -3669,7 +3936,11 @@ pub fn AppRoot(
             };
             let new_table = Table {
                 id: table_id.clone(),
-                name: if is_first { "Table_1".into() } else { "新表".into() },
+                name: if is_first {
+                    "Table_1".into()
+                } else {
+                    "新表".into()
+                },
                 x: 240.0,
                 y: 160.0,
                 color: "#175e7a".into(),
@@ -3701,13 +3972,33 @@ pub fn AppRoot(
                     match client.create("新图").await {
                         Ok(new_id) => {
                             current_diagram_id.set(new_id);
-                            schedule_save(client, store, current_diagram_id, current_title, debouncer, conflict, error, is_saving, save_offline);
+                            schedule_save(
+                                client,
+                                store,
+                                current_diagram_id,
+                                current_title,
+                                debouncer,
+                                conflict,
+                                error,
+                                is_saving,
+                                save_offline,
+                            );
                         }
                         Err(e) => error.set(Some(e.to_string())),
                     }
                 });
             } else {
-                schedule_save(client_for_create.clone(), store.clone(), current_diagram_id.clone(), current_title.clone(), debouncer.clone(), conflict.clone(), error_for_create.clone(), is_saving.clone(), save_offline.clone());
+                schedule_save(
+                    client_for_create.clone(),
+                    store.clone(),
+                    current_diagram_id.clone(),
+                    current_title.clone(),
+                    debouncer.clone(),
+                    conflict.clone(),
+                    error_for_create.clone(),
+                    is_saving.clone(),
+                    save_offline.clone(),
+                );
             }
         }) as Rc<dyn Fn()>
     };
@@ -3716,7 +4007,17 @@ pub fn AppRoot(
         let store = store.clone();
         let debouncer = debouncer.clone();
         Rc::new(move || {
-            schedule_save(client_for_save.clone(), store.clone(), current_diagram_id.clone(), current_title.clone(), debouncer.clone(), conflict.clone(), error.clone(), is_saving.clone(), save_offline.clone());
+            schedule_save(
+                client_for_save.clone(),
+                store.clone(),
+                current_diagram_id.clone(),
+                current_title.clone(),
+                debouncer.clone(),
+                conflict.clone(),
+                error.clone(),
+                is_saving.clone(),
+                save_offline.clone(),
+            );
         }) as Rc<dyn Fn()>
     };
 
@@ -3726,7 +4027,17 @@ pub fn AppRoot(
         Rc::new(move |title: String| {
             current_title.set(title);
             store.dirty.set(true);
-            schedule_save(client_for_title.clone(), store.clone(), current_diagram_id.clone(), current_title.clone(), debouncer.clone(), conflict.clone(), error.clone(), is_saving.clone(), save_offline.clone());
+            schedule_save(
+                client_for_title.clone(),
+                store.clone(),
+                current_diagram_id.clone(),
+                current_title.clone(),
+                debouncer.clone(),
+                conflict.clone(),
+                error.clone(),
+                is_saving.clone(),
+                save_offline.clone(),
+            );
         }) as Rc<dyn Fn(String)>
     };
 
@@ -3755,7 +4066,17 @@ pub fn AppRoot(
             }
             store.tables.set(tables);
             store.dirty.set(true);
-            schedule_save(client_for_add_field.clone(), store.clone(), current_diagram_id.clone(), current_title.clone(), debouncer.clone(), conflict.clone(), error.clone(), is_saving.clone(), save_offline.clone());
+            schedule_save(
+                client_for_add_field.clone(),
+                store.clone(),
+                current_diagram_id.clone(),
+                current_title.clone(),
+                debouncer.clone(),
+                conflict.clone(),
+                error.clone(),
+                is_saving.clone(),
+                save_offline.clone(),
+            );
         })
     };
 
@@ -3772,7 +4093,17 @@ pub fn AppRoot(
             }
             store.tables.set(tables);
             store.dirty.set(true);
-            schedule_save(client_for_change_type.clone(), store.clone(), current_diagram_id.clone(), current_title.clone(), debouncer.clone(), conflict.clone(), error.clone(), is_saving.clone(), save_offline.clone());
+            schedule_save(
+                client_for_change_type.clone(),
+                store.clone(),
+                current_diagram_id.clone(),
+                current_title.clone(),
+                debouncer.clone(),
+                conflict.clone(),
+                error.clone(),
+                is_saving.clone(),
+                save_offline.clone(),
+            );
         })
     };
 
@@ -3834,8 +4165,8 @@ pub fn AppRoot(
 
     let on_field_pick: Option<Box<dyn Fn(String, String) + 'static>> = {
         let rel_tool_state = rel_tool_state.clone();
-        Some(Box::new(move |table_id: String, field_id: String| {
-            match rel_tool_state.get_untracked() {
+        Some(Box::new(
+            move |table_id: String, field_id: String| match rel_tool_state.get_untracked() {
                 RelToolState::PickSource => {
                     rel_tool_state.set(RelToolState::PickTarget {
                         start_table_id: table_id,
@@ -3855,8 +4186,8 @@ pub fn AppRoot(
                     });
                 }
                 _ => {}
-            }
-        }))
+            },
+        ))
     };
 
     let on_toggle_pk = {
@@ -3999,18 +4330,16 @@ pub fn AppRoot(
     let on_palette_select = {
         let selection = selection.clone();
         let inspector_open = inspector_open.clone();
-        Callback::new(move |item: PaletteItem| {
-            match item.kind {
-                crate::command_palette::PaletteKind::Table => {
-                    selection.set(SelectionKind::Table(item.id));
-                    inspector_open.set(true);
-                }
-                crate::command_palette::PaletteKind::Reference => {
-                    selection.set(SelectionKind::Reference(item.id));
-                    inspector_open.set(true);
-                }
-                _ => {}
+        Callback::new(move |item: PaletteItem| match item.kind {
+            crate::command_palette::PaletteKind::Table => {
+                selection.set(SelectionKind::Table(item.id));
+                inspector_open.set(true);
             }
+            crate::command_palette::PaletteKind::Reference => {
+                selection.set(SelectionKind::Reference(item.id));
+                inspector_open.set(true);
+            }
+            _ => {}
         })
     };
 
@@ -4034,7 +4363,10 @@ pub fn AppRoot(
                 return;
             }
             let confirmed = web_sys::window()
-                .and_then(|w| w.confirm_with_message("确定删除当前图表？此操作不可撤销。").ok())
+                .and_then(|w| {
+                    w.confirm_with_message("确定删除当前图表？此操作不可撤销。")
+                        .ok()
+                })
                 .unwrap_or(false);
             if !confirmed {
                 return;
@@ -4055,7 +4387,20 @@ pub fn AppRoot(
     };
 
     view! {
-        <div class="cdb-app" data-testid="editor-ready">
+        <div
+            style:display=move || if !share_mode && auth_session.get().is_none() { "block" } else { "none" }
+        >
+            <AuthGate
+                auth_client=auth_client.clone()
+                auth_session=auth_session
+                session_notice=session_notice
+            />
+        </div>
+        <div
+            class="cdb-app"
+            data-testid="editor-ready"
+            style:display=move || if !share_mode && auth_session.get().is_none() { "none" } else { "grid" }
+        >
             <AppBar
                 modal_kind=modal_kind
                 current_title=current_title
@@ -4074,6 +4419,10 @@ pub fn AppRoot(
                 on_open_export=open_export_drawer.clone()
                 on_open_settings=on_open_settings.clone()
                 on_delete_diagram=on_delete_diagram.clone()
+                auth_session=auth_session
+                session_notice=session_notice
+                on_refresh_session=on_refresh_session.clone()
+                on_logout=on_logout.clone()
             />
             <div
                 class="cdb-main"
@@ -4572,9 +4921,7 @@ pub mod modals {
     /// - UT-MM-09: 解析逻辑在 parse_diagram_json 纯函数 (B4 UT)
     /// - B5 接入 file → text() → parse_diagram_json 全链路
     #[component]
-    pub fn OpenModal(
-        kind: RwSignal<Option<ModalKind>>,
-    ) -> impl IntoView {
+    pub fn OpenModal(kind: RwSignal<Option<ModalKind>>) -> impl IntoView {
         let kind_close = kind;
 
         view! {
@@ -4834,9 +5181,7 @@ pub mod modals {
     /// - UT-MM-10: parse_sql_statements 纯函数测试
     /// - B5 stub: 仅 UI shell，逻辑留 B5 e2e 接入
     #[component]
-    pub fn ImportModal(
-        kind: RwSignal<Option<ModalKind>>,
-    ) -> impl IntoView {
+    pub fn ImportModal(kind: RwSignal<Option<ModalKind>>) -> impl IntoView {
         let sql_input = create_rw_signal(String::new());
         let kind_close = kind;
         let parse_result = move || parse_sql_statements(&sql_input.get());
@@ -4892,9 +5237,7 @@ pub mod modals {
     /// ImportSource 模态: 选择 local / remote
     /// - UT-MM-14: resolve_import_source 纯函数测试
     #[component]
-    pub fn ImportSourceModal(
-        kind: RwSignal<Option<ModalKind>>,
-    ) -> impl IntoView {
+    pub fn ImportSourceModal(kind: RwSignal<Option<ModalKind>>) -> impl IntoView {
         let selected = create_rw_signal(String::from("local"));
         let kind_close = kind;
 
@@ -4946,9 +5289,7 @@ pub mod modals {
     /// Language 模态: 切换 zh / en
     /// - UT-MM-12: validate_language 纯函数测试
     #[component]
-    pub fn LanguageModal(
-        kind: RwSignal<Option<ModalKind>>,
-    ) -> impl IntoView {
+    pub fn LanguageModal(kind: RwSignal<Option<ModalKind>>) -> impl IntoView {
         let selected = create_rw_signal(String::from("en"));
         let kind_close = kind;
 
@@ -5001,9 +5342,7 @@ pub mod modals {
     /// SetTableWidth 模态: 批量设置表宽
     /// - UT-MM-11: parse_table_width 纯函数测试
     #[component]
-    pub fn SetTableWidthModal(
-        kind: RwSignal<Option<ModalKind>>,
-    ) -> impl IntoView {
+    pub fn SetTableWidthModal(kind: RwSignal<Option<ModalKind>>) -> impl IntoView {
         let width_input = create_rw_signal(String::from("200"));
         let validation = move || parse_table_width(&width_input.get());
         let is_valid = move || validation().is_ok();
@@ -5053,9 +5392,7 @@ pub mod modals {
     /// ConfigureCustomTypes 模态: 增删改自定义类型
     /// - UT-MM-13: add/remove_custom_type 纯函数测试
     #[component]
-    pub fn ConfigureCustomTypesModal(
-        kind: RwSignal<Option<ModalKind>>,
-    ) -> impl IntoView {
+    pub fn ConfigureCustomTypesModal(kind: RwSignal<Option<ModalKind>>) -> impl IntoView {
         let types: RwSignal<Vec<CustomTypeEntry>> = create_rw_signal(Vec::new());
         let new_name = create_rw_signal(String::new());
         let new_base = create_rw_signal(String::from("VARCHAR(255)"));
@@ -5146,10 +5483,7 @@ pub mod modals {
     /// is_redo_shortcut 时通过传入的回调通知调用方。调用方负责实际调用
     /// CommandStack::undo() / CommandStack::redo()。
     #[component]
-    pub fn KeyboardShortcuts<F1, F2>(
-        on_undo: F1,
-        on_redo: F2,
-    ) -> impl IntoView
+    pub fn KeyboardShortcuts<F1, F2>(on_undo: F1, on_redo: F2) -> impl IntoView
     where
         F1: Fn() + Clone + 'static,
         F2: Fn() + Clone + 'static,
@@ -5270,7 +5604,11 @@ mod tests {
         let tables = vec![t1, t2];
         // 类型筛选：保留含 INT 字段的表
         let mut v = filter_by_query(&tables, "");
-        v.retain(|t| t.fields.iter().any(|f| f.type_.to_uppercase().contains("INT")));
+        v.retain(|t| {
+            t.fields
+                .iter()
+                .any(|f| f.type_.to_uppercase().contains("INT"))
+        });
         assert_eq!(v.len(), 1, "UT-SP-02: 类型筛选 INT 应只保留 users");
         assert_eq!(v[0].name, "users");
     }
@@ -5402,7 +5740,11 @@ mod tests {
         store.dirty.set(true);
 
         let snap = store.snapshot("d1".into(), "Test".into());
-        assert_eq!(snap.areas.len(), 1, "UT-ALIGN-A01: snapshot.areas 应有 1 项");
+        assert_eq!(
+            snap.areas.len(),
+            1,
+            "UT-ALIGN-A01: snapshot.areas 应有 1 项"
+        );
         assert_eq!(snap.areas[0].name, "新区域 1");
 
         let mut notes = store.notes.get();
@@ -5410,7 +5752,11 @@ mod tests {
         store.notes.set(notes);
 
         let snap = store.snapshot("d1".into(), "Test".into());
-        assert_eq!(snap.notes.len(), 1, "UT-ALIGN-A01: snapshot.notes 应有 1 项");
+        assert_eq!(
+            snap.notes.len(),
+            1,
+            "UT-ALIGN-A01: snapshot.notes 应有 1 项"
+        );
         assert_eq!(snap.notes[0].content, "新便签 1");
         assert!(store.dirty.get(), "UT-ALIGN-A01: 变更后 dirty 应为 true");
     }
@@ -5418,9 +5764,18 @@ mod tests {
     /// UT-ALIGN-B03: 删除与导入日志重试 UI 规则
     #[test]
     fn ut_align_b03_delete_and_import_log_retry_rules() {
-        assert!(!is_deletable_diagram_id("default"), "UT-ALIGN-B03: default 不可删");
-        assert!(is_deletable_diagram_id("d-123"), "UT-ALIGN-B03: 普通 id 可删");
-        assert!(import_log_shows_retry("failed"), "UT-ALIGN-B03: failed 显示重试");
+        assert!(
+            !is_deletable_diagram_id("default"),
+            "UT-ALIGN-B03: default 不可删"
+        );
+        assert!(
+            is_deletable_diagram_id("d-123"),
+            "UT-ALIGN-B03: 普通 id 可删"
+        );
+        assert!(
+            import_log_shows_retry("failed"),
+            "UT-ALIGN-B03: failed 显示重试"
+        );
         assert!(!import_log_shows_retry("success"));
         assert!(!import_log_shows_retry("pending"));
         assert_eq!(
@@ -5458,7 +5813,11 @@ mod tests {
             },
         ];
         let result = filter_references_by_query(&refs, "user");
-        assert_eq!(result.len(), 1, "UT-SP-10: refs 搜索 'user' 应匹配 r1（start=users）");
+        assert_eq!(
+            result.len(),
+            1,
+            "UT-SP-10: refs 搜索 'user' 应匹配 r1（start=users）"
+        );
         assert_eq!(result[0].id, "r1");
     }
 
@@ -5466,7 +5825,10 @@ mod tests {
 
     #[test]
     fn test_validate_title_happy_ut_mm_01() {
-        assert!(modals::validate_title("My Diagram").is_ok(), "UT-MM-01: 正常 title 应通过");
+        assert!(
+            modals::validate_title("My Diagram").is_ok(),
+            "UT-MM-01: 正常 title 应通过"
+        );
     }
 
     #[test]
@@ -5494,18 +5856,29 @@ mod tests {
         // UT-MM-07: title 为空 → 提交按钮应禁用
         // 实际禁用逻辑在 NewModal 组件中基于 is_valid()，这里验证纯函数返回 Err
         let r = modals::validate_title("");
-        assert!(r.is_err(), "UT-MM-07: 空 title 时 NewModal 提交应禁用（基于 validate_title 返回 Err）");
+        assert!(
+            r.is_err(),
+            "UT-MM-07: 空 title 时 NewModal 提交应禁用（基于 validate_title 返回 Err）"
+        );
     }
 
     #[test]
     fn test_build_create_url_ut_mm_01() {
-        assert_eq!(modals::build_create_url("d-new"), "/editor/d-new", "UT-MM-01: build_create_url 应返回 /editor/<id>");
+        assert_eq!(
+            modals::build_create_url("d-new"),
+            "/editor/d-new",
+            "UT-MM-01: build_create_url 应返回 /editor/<id>"
+        );
         assert_eq!(modals::build_create_url("abc-123"), "/editor/abc-123");
     }
 
     #[test]
     fn test_build_share_url_ut_mm_08() {
-        assert_eq!(modals::build_share_url("abc-123"), "/editor?share=abc-123", "UT-MM-08: build_share_url 应返回 /editor?share=<id>");
+        assert_eq!(
+            modals::build_share_url("abc-123"),
+            "/editor?share=abc-123",
+            "UT-MM-08: build_share_url 应返回 /editor?share=<id>"
+        );
         assert_eq!(modals::build_share_url("d-uuid"), "/editor?share=d-uuid");
     }
 
@@ -5534,7 +5907,10 @@ mod tests {
         let bad = r#"{ not valid json }"#;
         let r = modals::parse_diagram_json(bad);
         assert!(r.is_err(), "UT-MM-09: 非法 JSON 应返回 Err");
-        assert!(r.unwrap_err().starts_with("JSON parse error"), "UT-MM-09: 错误信息应包含 'JSON parse error'");
+        assert!(
+            r.unwrap_err().starts_with("JSON parse error"),
+            "UT-MM-09: 错误信息应包含 'JSON parse error'"
+        );
     }
 
     // ─── B5 additional modal pure function tests ──────────────────────────
@@ -5567,28 +5943,57 @@ mod tests {
 
     #[test]
     fn test_parse_table_width_happy_ut_mm_11() {
-        assert_eq!(modals::parse_table_width("200").unwrap(), 200, "UT-MM-11: '200' → 200");
-        assert_eq!(modals::parse_table_width("0").unwrap(), 0, "UT-MM-11: '0' → 0 (auto)");
+        assert_eq!(
+            modals::parse_table_width("200").unwrap(),
+            200,
+            "UT-MM-11: '200' → 200"
+        );
+        assert_eq!(
+            modals::parse_table_width("0").unwrap(),
+            0,
+            "UT-MM-11: '0' → 0 (auto)"
+        );
     }
 
     #[test]
     fn test_parse_table_width_invalid_ut_mm_11() {
-        assert!(modals::parse_table_width("abc").is_err(), "UT-MM-11: 'abc' → Err");
+        assert!(
+            modals::parse_table_width("abc").is_err(),
+            "UT-MM-11: 'abc' → Err"
+        );
         assert!(modals::parse_table_width("").is_err(), "UT-MM-11: '' → Err");
     }
 
     #[test]
     fn test_validate_language_ut_mm_12() {
-        assert!(modals::validate_language("en").is_ok(), "UT-MM-12: 'en' 应通过");
-        assert!(modals::validate_language("zh").is_ok(), "UT-MM-12: 'zh' 应通过");
-        assert!(modals::validate_language("fr").is_err(), "UT-MM-12: 'fr' 应 Err");
+        assert!(
+            modals::validate_language("en").is_ok(),
+            "UT-MM-12: 'en' 应通过"
+        );
+        assert!(
+            modals::validate_language("zh").is_ok(),
+            "UT-MM-12: 'zh' 应通过"
+        );
+        assert!(
+            modals::validate_language("fr").is_err(),
+            "UT-MM-12: 'fr' 应 Err"
+        );
     }
 
     #[test]
     fn test_resolve_import_source_ut_mm_14() {
-        assert_eq!(modals::resolve_import_source("local").unwrap(), modals::SourceKind::Local);
-        assert_eq!(modals::resolve_import_source("remote").unwrap(), modals::SourceKind::Remote);
-        assert!(modals::resolve_import_source("http").is_err(), "UT-MM-14: 'http' 应 Err");
+        assert_eq!(
+            modals::resolve_import_source("local").unwrap(),
+            modals::SourceKind::Local
+        );
+        assert_eq!(
+            modals::resolve_import_source("remote").unwrap(),
+            modals::SourceKind::Remote
+        );
+        assert!(
+            modals::resolve_import_source("http").is_err(),
+            "UT-MM-14: 'http' 应 Err"
+        );
     }
 
     #[test]
@@ -5623,17 +6028,38 @@ mod tests {
 
     #[test]
     fn test_is_undo_shortcut_ut_kb_01() {
-        assert!(modals::is_undo_shortcut("z", true, false), "UT-KB-01: Ctrl+Z → true");
-        assert!(modals::is_undo_shortcut("Z", true, false), "UT-KB-01: 大小写无关");
-        assert!(!modals::is_undo_shortcut("z", false, false), "UT-KB-01: 不带 Ctrl → false");
-        assert!(!modals::is_undo_shortcut("z", true, true), "UT-KB-01: 带 Shift 属 redo → false");
-        assert!(!modals::is_undo_shortcut("a", true, false), "UT-KB-01: 其他键 → false");
+        assert!(
+            modals::is_undo_shortcut("z", true, false),
+            "UT-KB-01: Ctrl+Z → true"
+        );
+        assert!(
+            modals::is_undo_shortcut("Z", true, false),
+            "UT-KB-01: 大小写无关"
+        );
+        assert!(
+            !modals::is_undo_shortcut("z", false, false),
+            "UT-KB-01: 不带 Ctrl → false"
+        );
+        assert!(
+            !modals::is_undo_shortcut("z", true, true),
+            "UT-KB-01: 带 Shift 属 redo → false"
+        );
+        assert!(
+            !modals::is_undo_shortcut("a", true, false),
+            "UT-KB-01: 其他键 → false"
+        );
     }
 
     #[test]
     fn test_is_redo_shortcut_ut_kb_01() {
-        assert!(modals::is_redo_shortcut("z", true, true), "UT-KB-01: Ctrl+Shift+Z → true");
-        assert!(!modals::is_redo_shortcut("z", true, false), "UT-KB-01: 不带 Shift 属 undo → false");
+        assert!(
+            modals::is_redo_shortcut("z", true, true),
+            "UT-KB-01: Ctrl+Shift+Z → true"
+        );
+        assert!(
+            !modals::is_redo_shortcut("z", true, false),
+            "UT-KB-01: 不带 Shift 属 undo → false"
+        );
     }
 
     // ─── UT-FIX-01: ModalRoot 条件渲染（fix-modal-overlay-blocking B1） ─────
@@ -5747,10 +6173,7 @@ mod tests {
             !css.contains("max-height: 45%"),
             "UT-IN-R5: 不得保留 Inspector 45% 字段区分割",
         );
-        assert!(
-            css.contains("cdb-has-io-drawer"),
-            "Phase C: IO 抽屉栅格类",
-        );
+        assert!(css.contains("cdb-has-io-drawer"), "Phase C: IO 抽屉栅格类",);
         assert!(
             panels.contains("data-testid=\"floating-controls\""),
             "浮动缩放条应保留",
@@ -5763,7 +6186,9 @@ mod tests {
 
     #[test]
     fn test_selection_auto_opens_inspector_ut_in_01() {
-        assert!(selection_auto_opens_inspector(&SelectionKind::Table("t1".into())));
+        assert!(selection_auto_opens_inspector(&SelectionKind::Table(
+            "t1".into()
+        )));
         assert!(selection_auto_opens_inspector(&SelectionKind::Field {
             table_id: "t1".into(),
             field_id: "f1".into(),
@@ -5843,7 +6268,10 @@ mod tests {
             indices: Vec::new(),
         }];
         let out = export_diagram_sql(&tables, &[], "generic");
-        assert!(out.contains("CREATE TABLE users"), "UT-PC-02: 应含 CREATE TABLE");
+        assert!(
+            out.contains("CREATE TABLE users"),
+            "UT-PC-02: 应含 CREATE TABLE"
+        );
     }
 
     #[test]

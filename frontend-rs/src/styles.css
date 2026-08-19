@@ -325,6 +325,115 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+.cdb-auth-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--cdb-space-8);
+  background: var(--cdb-color-bg-canvas);
+  color: var(--cdb-color-text);
+}
+
+.cdb-auth-panel {
+  width: min(420px, 100%);
+  background: var(--cdb-color-bg);
+  border: 1px solid var(--cdb-color-border);
+  border-radius: var(--cdb-radius-lg);
+  box-shadow: var(--cdb-shadow-lg);
+  padding: var(--cdb-space-6);
+}
+
+.cdb-auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--cdb-space-2);
+  margin-bottom: var(--cdb-space-5);
+}
+
+.cdb-auth-form {
+  display: grid;
+  gap: var(--cdb-space-4);
+}
+
+.cdb-auth-form label {
+  display: grid;
+  gap: var(--cdb-space-2);
+  font-size: var(--cdb-font-size-sm);
+  color: var(--cdb-color-text-1);
+}
+
+.cdb-auth-form input {
+  min-height: 38px;
+  border: 1px solid var(--cdb-color-border);
+  border-radius: var(--cdb-radius-md);
+  background: var(--cdb-color-bg-0);
+  color: var(--cdb-color-text);
+  padding: 0 var(--cdb-space-3);
+}
+
+.cdb-auth-error {
+  margin: 0;
+  color: var(--cdb-color-error);
+  font-size: var(--cdb-font-size-sm);
+}
+
+.cdb-session {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cdb-space-2);
+}
+
+.cdb-user-menu,
+.cdb-session__guest {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cdb-space-2);
+  min-height: 32px;
+  border: 1px solid var(--cdb-color-border);
+  border-radius: var(--cdb-radius-md);
+  background: var(--cdb-color-bg);
+  color: var(--cdb-color-text);
+  padding: 0 var(--cdb-space-2);
+  font-size: var(--cdb-font-size-sm);
+}
+
+.cdb-user-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--cdb-color-primary);
+  color: var(--cdb-color-primary-on);
+  font-weight: var(--cdb-font-weight-semibold);
+}
+
+.cdb-user-name {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cdb-session__state {
+  color: var(--cdb-color-text-muted);
+  font-size: var(--cdb-font-size-xs);
+}
+
+.cdb-session-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--cdb-space-2));
+  z-index: var(--cdb-z-popover);
+  min-width: 180px;
+  background: var(--cdb-color-bg);
+  border: 1px solid var(--cdb-color-border);
+  border-radius: var(--cdb-radius-md);
+  box-shadow: var(--cdb-shadow-lg);
+  padding: var(--cdb-space-2);
+}
+
 button,
 input,
 select,

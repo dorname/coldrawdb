@@ -77,6 +77,12 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-R6-01",
     "UT-R6-02",
     "UT-R6-03",
+    // align-prototype-docs-implementation: S03 前端 auth 接入
+    "UT-FE-S03-01",
+    "UT-FE-S03-02",
+    "UT-FE-S03-03",
+    "UT-FE-S03-04",
+    "UT-FE-S03-05",
 ];
 
 const ST_SKIP_IDS: &[&str] = &[
@@ -88,4 +94,11 @@ const ST_SKIP_IDS: &[&str] = &[
     "ST-PC-01",
     "ST-SP-01",
     "ST-UI-05",
+    // align-prototype-docs-implementation: 真实浏览器 + backend 联调由 Playwright harness 承接
+    "ST-FE-S03-01",
+    "ST-FE-S03-02",
+    "ST-FE-S03-03",
+    "ST-FE-S03-04",
+    "ST-FE-S03-05",
+    "ST-FE-V2-01",
 ];

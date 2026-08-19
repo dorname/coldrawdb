@@ -1,17 +1,17 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-pub mod editor_core;
-pub mod editor_render;
-pub mod editor_panels;
-pub mod editor_data_access;
-pub mod icons;
-pub mod components;
 pub mod code_view;
 pub mod command_palette;
+pub mod components;
+pub mod editor_core;
+pub mod editor_data_access;
+pub mod editor_panels;
+pub mod editor_render;
+pub mod icons;
 
-use editor_panels::AppRoot;
 use editor_core::{DebounceTrigger, EditorStore};
+use editor_panels::AppRoot;
 use leptos::*;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -23,13 +23,13 @@ pub fn mount() {
         let store = EditorStore::new();
         let debouncer = DebounceTrigger::default();
 
-        let diagram_id = parse_diagram_id_from_location();
+        let (diagram_id, share_mode) = parse_route_from_location();
 
         #[cfg(debug_assertions)]
         expose_test_hooks(&store);
 
         view! {
-            <AppRoot store=store debouncer=debouncer _diagram_id=diagram_id />
+            <AppRoot store=store debouncer=debouncer _diagram_id=diagram_id share_mode=share_mode />
         }
     });
 }
@@ -67,15 +67,25 @@ pub fn diagram_id_from_location(pathname: &str, search: &str) -> String {
         .unwrap_or_else(|| "default".to_string())
 }
 
-fn parse_diagram_id_from_location() -> String {
+pub fn route_from_location(pathname: &str, search: &str) -> (String, bool) {
+    if let Some(id) = parse_share_param(search) {
+        return (id, true);
+    }
+    (
+        parse_diagram_id_from_pathname_str(pathname).unwrap_or_else(|| "default".to_string()),
+        false,
+    )
+}
+
+fn parse_route_from_location() -> (String, bool) {
     web_sys::window()
         .map(|w| {
-            diagram_id_from_location(
+            route_from_location(
                 &w.location().pathname().unwrap_or_default(),
                 &w.location().search().unwrap_or_default(),
             )
         })
-        .unwrap_or_else(|| "default".to_string())
+        .unwrap_or_else(|| ("default".to_string(), false))
 }
 
 #[cfg(debug_assertions)]
@@ -99,7 +109,7 @@ fn expose_test_hooks(store: &EditorStore) {
 
 #[cfg(test)]
 mod location_tests {
-    use super::{diagram_id_from_location, parse_share_param};
+    use super::{diagram_id_from_location, parse_share_param, route_from_location};
 
     #[test]
     fn ut_s02_01_share_param_parsed() {
@@ -107,10 +117,7 @@ mod location_tests {
             parse_share_param("?share=abc-123-def"),
             Some("abc-123-def".into())
         );
-        assert_eq!(
-            parse_share_param("/editor?share=d-uuid"),
-            None::<String>
-        );
+        assert_eq!(parse_share_param("/editor?share=d-uuid"), None::<String>);
     }
 
     #[test]
@@ -132,5 +139,17 @@ mod location_tests {
     #[test]
     fn ut_s02_04_default_when_empty() {
         assert_eq!(diagram_id_from_location("/", ""), "default");
+    }
+
+    #[test]
+    fn ut_fe_s03_01_share_route_bypasses_auth_gate() {
+        assert_eq!(
+            route_from_location("/editor/private-id", "?share=public-id"),
+            ("public-id".to_string(), true)
+        );
+        assert_eq!(
+            route_from_location("/editor/private-id", ""),
+            ("private-id".to_string(), false)
+        );
     }
 }

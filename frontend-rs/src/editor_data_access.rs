@@ -16,6 +16,7 @@ use chrono::{DateTime, Utc};
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use web_sys::RequestCredentials;
 
 // ---------------------------------------------------------------------------
 // Error types
@@ -30,6 +31,246 @@ pub enum ApiError {
     Server(u16, String),
     #[error("parse: {0}")]
     Parse(String),
+}
+
+/// S03 auth API errors.
+#[derive(Debug, Error)]
+pub enum AuthError {
+    #[error("network: {0}")]
+    Network(String),
+    #[error("server {0}: {1}")]
+    Server(u16, String),
+    #[error("parse: {0}")]
+    Parse(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UserProfile {
+    pub id: String,
+    pub email: String,
+    #[serde(rename = "displayName", default)]
+    pub display_name: Option<String>,
+    #[serde(rename = "emailVerifiedAt", default)]
+    pub email_verified_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TokenResponse {
+    #[serde(rename = "accessToken")]
+    pub access_token: String,
+    #[serde(rename = "expiresIn")]
+    pub expires_in: i64,
+    #[serde(rename = "tokenType")]
+    pub token_type: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthSession {
+    pub access_token: String,
+    pub expires_in: i64,
+    pub token_type: String,
+    pub user: Option<UserProfile>,
+}
+
+impl AuthSession {
+    pub fn from_token(token: TokenResponse) -> Self {
+        Self {
+            access_token: token.access_token,
+            expires_in: token.expires_in,
+            token_type: token.token_type,
+            user: None,
+        }
+    }
+
+    pub fn bearer_header(&self) -> String {
+        format!("Bearer {}", self.access_token)
+    }
+
+    pub fn display_name(&self) -> String {
+        self.user
+            .as_ref()
+            .and_then(|u| u.display_name.clone())
+            .or_else(|| self.user.as_ref().map(|u| u.email.clone()))
+            .unwrap_or_else(|| "已登录用户".to_string())
+    }
+}
+
+#[derive(Serialize)]
+struct RegisterReq {
+    email: String,
+    password: String,
+    #[serde(rename = "displayName")]
+    display_name: String,
+}
+
+#[derive(Serialize)]
+struct LoginReq {
+    email: String,
+    password: String,
+    #[serde(rename = "rememberDevice")]
+    remember_device: bool,
+}
+
+#[derive(Deserialize)]
+struct ErrorBody {
+    code: Option<String>,
+    message: Option<String>,
+}
+
+pub fn is_token_expired_error(status: u16, body: &str) -> bool {
+    if status != 401 {
+        return false;
+    }
+    serde_json::from_str::<ErrorBody>(body)
+        .ok()
+        .and_then(|b| b.code)
+        .map(|code| code == "token_expired" || code == "REFRESH_INVALID")
+        .unwrap_or(false)
+}
+
+pub fn auth_error_message(status: u16, body: &str) -> String {
+    serde_json::from_str::<ErrorBody>(body)
+        .ok()
+        .and_then(|b| b.message.or(b.code))
+        .unwrap_or_else(|| format!("认证请求失败（HTTP {status}）"))
+}
+
+#[derive(Clone)]
+pub struct AuthClient {
+    base_url: String,
+}
+
+impl AuthClient {
+    pub fn new(base_url: impl Into<String>) -> Self {
+        Self {
+            base_url: base_url.into(),
+        }
+    }
+
+    pub async fn register(
+        &self,
+        email: &str,
+        password: &str,
+        display_name: &str,
+    ) -> Result<(), AuthError> {
+        let url = format!("{}/api/v1/auth/register", self.base_url);
+        let resp = Request::post(&url)
+            .json(&RegisterReq {
+                email: email.to_string(),
+                password: password.to_string(),
+                display_name: display_name.to_string(),
+            })
+            .map_err(|e| AuthError::Network(e.to_string()))?
+            .send()
+            .await
+            .map_err(|e| AuthError::Network(e.to_string()))?;
+
+        match resp.status() {
+            201 => Ok(()),
+            s => Err(AuthError::Server(
+                s,
+                auth_error_message(s, &resp.text().await.unwrap_or_default()),
+            )),
+        }
+    }
+
+    pub async fn login(&self, email: &str, password: &str) -> Result<AuthSession, AuthError> {
+        let url = format!("{}/api/v1/auth/login", self.base_url);
+        let resp = Request::post(&url)
+            .credentials(RequestCredentials::Include)
+            .json(&LoginReq {
+                email: email.to_string(),
+                password: password.to_string(),
+                remember_device: true,
+            })
+            .map_err(|e| AuthError::Network(e.to_string()))?
+            .send()
+            .await
+            .map_err(|e| AuthError::Network(e.to_string()))?;
+
+        match resp.status() {
+            200 => {
+                let token: TokenResponse = resp
+                    .json()
+                    .await
+                    .map_err(|e| AuthError::Parse(e.to_string()))?;
+                let mut session = AuthSession::from_token(token);
+                if let Ok(user) = self.me(&session.access_token).await {
+                    session.user = Some(user);
+                }
+                Ok(session)
+            }
+            s => Err(AuthError::Server(
+                s,
+                auth_error_message(s, &resp.text().await.unwrap_or_default()),
+            )),
+        }
+    }
+
+    pub async fn refresh(&self) -> Result<TokenResponse, AuthError> {
+        let url = format!("{}/api/v1/auth/refresh", self.base_url);
+        let resp = Request::post(&url)
+            .credentials(RequestCredentials::Include)
+            .send()
+            .await
+            .map_err(|e| AuthError::Network(e.to_string()))?;
+
+        match resp.status() {
+            200 => resp
+                .json()
+                .await
+                .map_err(|e| AuthError::Parse(e.to_string())),
+            s => Err(AuthError::Server(
+                s,
+                auth_error_message(s, &resp.text().await.unwrap_or_default()),
+            )),
+        }
+    }
+
+    pub async fn logout(&self, access_token: &str) -> Result<(), AuthError> {
+        let url = format!("{}/api/v1/auth/logout", self.base_url);
+        let resp = Request::post(&url)
+            .credentials(RequestCredentials::Include)
+            .header("Authorization", &format!("Bearer {access_token}"))
+            .send()
+            .await
+            .map_err(|e| AuthError::Network(e.to_string()))?;
+
+        match resp.status() {
+            204 => Ok(()),
+            s => Err(AuthError::Server(
+                s,
+                auth_error_message(s, &resp.text().await.unwrap_or_default()),
+            )),
+        }
+    }
+
+    pub async fn me(&self, access_token: &str) -> Result<UserProfile, AuthError> {
+        let url = format!("{}/api/v1/auth/me", self.base_url);
+        let resp = Request::get(&url)
+            .header("Authorization", &format!("Bearer {access_token}"))
+            .send()
+            .await
+            .map_err(|e| AuthError::Network(e.to_string()))?;
+
+        match resp.status() {
+            200 => resp
+                .json()
+                .await
+                .map_err(|e| AuthError::Parse(e.to_string())),
+            s => Err(AuthError::Server(
+                s,
+                auth_error_message(s, &resp.text().await.unwrap_or_default()),
+            )),
+        }
+    }
+
+    pub async fn refresh_session(&self, current: &AuthSession) -> Result<AuthSession, AuthError> {
+        let token = self.refresh().await?;
+        let mut next = AuthSession::from_token(token);
+        next.user = current.user.clone();
+        Ok(next)
+    }
 }
 
 /// Backend standard success envelope: `{ code: 0, data: T, request_id: String }`.
@@ -116,10 +357,7 @@ impl DiagramClient {
                     .map_err(|e| ApiError::Parse(e.to_string()))?;
                 Ok(out.data.into_diagram())
             }
-            s => Err(ApiError::Server(
-                s,
-                resp.text().await.unwrap_or_default(),
-            )),
+            s => Err(ApiError::Server(s, resp.text().await.unwrap_or_default())),
         }
     }
 
@@ -168,23 +406,15 @@ impl DiagramClient {
                 struct ConflictBody {
                     details: Option<ConflictDetails>,
                 }
-                let body: ConflictBody = resp
-                    .json()
-                    .await
-                    .unwrap_or(ConflictBody { details: None });
-                let current = body
-                    .details
-                    .map(|d| d.current_revision)
-                    .unwrap_or(0);
+                let body: ConflictBody =
+                    resp.json().await.unwrap_or(ConflictBody { details: None });
+                let current = body.details.map(|d| d.current_revision).unwrap_or(0);
                 Err(SaveError::Conflict {
                     current_revision: current,
                     expected_revision,
                 })
             }
-            s => Err(SaveError::Server(
-                s,
-                resp.text().await.unwrap_or_default(),
-            )),
+            s => Err(SaveError::Server(s, resp.text().await.unwrap_or_default())),
         }
     }
 
@@ -214,10 +444,7 @@ impl DiagramClient {
                     .map_err(|e| ApiError::Parse(e.to_string()))?;
                 Ok(out.data.id)
             }
-            s => Err(ApiError::Server(
-                s,
-                resp.text().await.unwrap_or_default(),
-            )),
+            s => Err(ApiError::Server(s, resp.text().await.unwrap_or_default())),
         }
     }
 
@@ -233,10 +460,7 @@ impl DiagramClient {
 
         match resp.status() {
             200 => Ok(()),
-            s => Err(ApiError::Server(
-                s,
-                resp.text().await.unwrap_or_default(),
-            )),
+            s => Err(ApiError::Server(s, resp.text().await.unwrap_or_default())),
         }
     }
 
@@ -273,10 +497,7 @@ impl DiagramClient {
                     status: out.data.status,
                 })
             }
-            s => Err(ApiError::Server(
-                s,
-                resp.text().await.unwrap_or_default(),
-            )),
+            s => Err(ApiError::Server(s, resp.text().await.unwrap_or_default())),
         }
     }
 
@@ -296,18 +517,12 @@ impl DiagramClient {
                     .map_err(|e| ApiError::Parse(e.to_string()))?;
                 Ok(out.data)
             }
-            s => Err(ApiError::Server(
-                s,
-                resp.text().await.unwrap_or_default(),
-            )),
+            s => Err(ApiError::Server(s, resp.text().await.unwrap_or_default())),
         }
     }
 
     /// PUT /api/v1/bridge/config
-    pub async fn update_bridge_config(
-        &self,
-        update: &BridgeConfigUpdate,
-    ) -> Result<(), ApiError> {
+    pub async fn update_bridge_config(&self, update: &BridgeConfigUpdate) -> Result<(), ApiError> {
         let url = format!("{}/api/v1/bridge/config", self.base_url);
         let resp = Request::put(&url)
             .json(update)
@@ -318,10 +533,7 @@ impl DiagramClient {
 
         match resp.status() {
             200 => Ok(()),
-            s => Err(ApiError::Server(
-                s,
-                resp.text().await.unwrap_or_default(),
-            )),
+            s => Err(ApiError::Server(s, resp.text().await.unwrap_or_default())),
         }
     }
 
@@ -347,10 +559,7 @@ impl DiagramClient {
                     .map_err(|e| ApiError::Parse(e.to_string()))?;
                 Ok(out.data)
             }
-            s => Err(ApiError::Server(
-                s,
-                resp.text().await.unwrap_or_default(),
-            )),
+            s => Err(ApiError::Server(s, resp.text().await.unwrap_or_default())),
         }
     }
 
@@ -378,10 +587,7 @@ impl DiagramClient {
                     retry_count: out.data.retry_count,
                 })
             }
-            s => Err(ApiError::Server(
-                s,
-                resp.text().await.unwrap_or_default(),
-            )),
+            s => Err(ApiError::Server(s, resp.text().await.unwrap_or_default())),
         }
     }
 }
@@ -887,13 +1093,72 @@ mod bridge_api_tests {
 
 #[cfg(test)]
 mod save_retry_tests {
-    use super::{SAVE_RETRY_DELAYS_MS, SAVE_RETRY_MAX_ELAPSED_MS, save_retry_total_attempts};
+    use super::{save_retry_total_attempts, SAVE_RETRY_DELAYS_MS, SAVE_RETRY_MAX_ELAPSED_MS};
 
     #[test]
     fn ut_s01_09_retry_delays_match_spec() {
         assert_eq!(SAVE_RETRY_DELAYS_MS, [3000, 6000, 12000]);
         assert_eq!(SAVE_RETRY_MAX_ELAPSED_MS, 30_000);
         assert_eq!(save_retry_total_attempts(), 4);
+    }
+}
+
+#[cfg(test)]
+mod auth_tests {
+    use super::{
+        auth_error_message, is_token_expired_error, AuthSession, TokenResponse, UserProfile,
+    };
+
+    #[test]
+    fn ut_fe_s03_02_auth_token_response_parse() {
+        let json = r#"{"accessToken":"jwt-1","expiresIn":900,"tokenType":"Bearer"}"#;
+        let token: TokenResponse = serde_json::from_str(json).unwrap();
+        let session = AuthSession::from_token(token);
+        assert_eq!(session.bearer_header(), "Bearer jwt-1");
+        assert_eq!(session.expires_in, 900);
+    }
+
+    #[test]
+    fn ut_fe_s03_03_user_profile_display_name() {
+        let session = AuthSession {
+            access_token: "jwt-1".into(),
+            expires_in: 900,
+            token_type: "Bearer".into(),
+            user: Some(UserProfile {
+                id: "u1".into(),
+                email: "dev@example.com".into(),
+                display_name: Some("Dev".into()),
+                email_verified_at: None,
+            }),
+        };
+        assert_eq!(session.display_name(), "Dev");
+    }
+
+    #[test]
+    fn ut_fe_s03_04_token_expired_detection() {
+        assert!(is_token_expired_error(
+            401,
+            r#"{"code":"token_expired","message":"Access token expired"}"#
+        ));
+        assert!(!is_token_expired_error(
+            403,
+            r#"{"code":"token_expired","message":"Access token expired"}"#
+        ));
+    }
+
+    #[test]
+    fn ut_fe_s03_05_auth_error_message_is_sanitized() {
+        assert_eq!(
+            auth_error_message(
+                401,
+                r#"{"code":"INVALID_CREDENTIALS","message":"邮箱或密码错误"}"#
+            ),
+            "邮箱或密码错误"
+        );
+        assert_eq!(
+            auth_error_message(500, "not-json"),
+            "认证请求失败（HTTP 500）"
+        );
     }
 }
 

@@ -10,6 +10,18 @@
 
 ## 2. S03 前端鉴权用例
 
+### 2.1 单元 / 组件辅助用例
+
+| ID | 前置 | 操作 | 预期 |
+|---|---|---|---|
+| UT-FE-S03-01 | URL 解析 | 同时存在 pathname diagram 与 `?share=` | share id 优先且标记 share_mode=true |
+| UT-FE-S03-02 | auth token JSON | 解析 `{accessToken, expiresIn, tokenType}` | 生成 Bearer header，不落 localStorage |
+| UT-FE-S03-03 | user profile JSON | displayName 存在 | user-menu 展示 displayName；缺失时回退 email |
+| UT-FE-S03-04 | 401 body | `code=token_expired` | refresh 状态机可识别 token 过期 |
+| UT-FE-S03-05 | 错误 body | 后端返回错误 JSON 或非 JSON | UI 使用脱敏错误文案，不输出 token/cookie |
+
+### 2.2 浏览器链路用例
+
 | ID | 前置 | 操作 | 预期 |
 |---|---|---|---|
 | ST-FE-S03-01 | 未登录 | 打开生产前端默认入口 | 显示登录/注册入口；不请求私有 room 数据 |
