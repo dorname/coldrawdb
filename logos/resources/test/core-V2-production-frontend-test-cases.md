@@ -32,6 +32,19 @@
 
 ## 3. S04 前端房间用例
 
+### 3.1 单元 / 组件辅助用例
+
+| ID | 前置 | 操作 | 预期 |
+|---|---|---|---|
+| UT-FE-S04-01 | `/invite/{token}` URL | 解析路由上下文 | invite token 不被当作 diagram id |
+| UT-FE-S04-02 | rooms list JSON | 解析 `{items,total}` | room id、role、memberCount 正确 |
+| UT-FE-S04-03 | create room JSON | 响应缺少 detail 字段 | 使用默认值并允许后续 GET detail 补全 |
+| UT-FE-S04-04 | room detail role | owner/viewer 各一例 | owner 可邀请；viewer 标记只读且不可邀请 |
+| UT-FE-S04-05 | invite preview/accept JSON | 解析邀请创建、预览和接受响应 | token、role、roomId、diagramId 正确 |
+| UT-FE-S04-06 | member JSON | 解析成员条目 | userId、displayName、role 正确 |
+
+### 3.2 浏览器链路用例
+
 | ID | 前置 | 操作 | 预期 |
 |---|---|---|---|
 | ST-FE-S04-01 | 已登录且有 diagram | 打开 `/rooms` | 调用 `GET /api/v1/rooms`；展示当前用户房间列表和创建入口 |

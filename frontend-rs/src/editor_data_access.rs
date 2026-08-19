@@ -140,6 +140,342 @@ pub struct AuthClient {
     base_url: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RoomSummary {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "diagramId")]
+    pub diagram_id: String,
+    #[serde(rename = "diagramTitle")]
+    pub diagram_title: String,
+    #[serde(rename = "myRole")]
+    pub my_role: String,
+    #[serde(rename = "memberCount")]
+    pub member_count: i64,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RoomDetail {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "diagramId")]
+    pub diagram_id: String,
+    #[serde(rename = "ownerId")]
+    pub owner_id: String,
+    #[serde(rename = "diagramTitle")]
+    #[serde(default)]
+    pub diagram_title: String,
+    #[serde(rename = "myRole")]
+    #[serde(default)]
+    pub my_role: String,
+    #[serde(rename = "memberCount")]
+    #[serde(default)]
+    pub member_count: i64,
+}
+
+impl RoomDetail {
+    pub fn is_viewer(&self) -> bool {
+        self.my_role == "viewer"
+    }
+
+    pub fn can_invite(&self) -> bool {
+        self.my_role == "owner" || self.my_role == "editor"
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RoomMember {
+    #[serde(rename = "userId")]
+    pub user_id: String,
+    pub email: String,
+    #[serde(rename = "displayName", default)]
+    pub display_name: Option<String>,
+    pub role: String,
+    #[serde(rename = "joinedAt")]
+    pub joined_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InviteCreated {
+    #[serde(rename = "inviteUrl")]
+    pub invite_url: String,
+    pub token: String,
+    pub role: String,
+    #[serde(rename = "expiresAt")]
+    pub expires_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InvitePreview {
+    #[serde(rename = "roomName")]
+    pub room_name: String,
+    #[serde(rename = "diagramTitle")]
+    pub diagram_title: String,
+    #[serde(rename = "diagramId")]
+    pub diagram_id: String,
+    pub role: String,
+    #[serde(rename = "invitedBy", default)]
+    pub invited_by: Option<String>,
+    #[serde(rename = "expiresAt")]
+    pub expires_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AcceptInviteResponse {
+    #[serde(rename = "roomId")]
+    pub room_id: String,
+    #[serde(rename = "diagramId")]
+    pub diagram_id: String,
+    pub role: String,
+    #[serde(rename = "alreadyMember", default)]
+    pub already_member: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RoomListResponse {
+    pub items: Vec<RoomSummary>,
+    pub total: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RoomMembersResponse {
+    pub items: Vec<RoomMember>,
+}
+
+#[derive(Serialize)]
+struct CreateRoomReq {
+    name: String,
+    #[serde(rename = "diagramId")]
+    diagram_id: String,
+}
+
+#[derive(Serialize)]
+struct CreateInviteReq {
+    role: String,
+}
+
+#[derive(Serialize)]
+struct UpdateMemberRoleReq {
+    role: String,
+}
+
+#[derive(Clone)]
+pub struct RoomClient {
+    base_url: String,
+}
+
+impl RoomClient {
+    pub fn new(base_url: impl Into<String>) -> Self {
+        Self {
+            base_url: base_url.into(),
+        }
+    }
+
+    fn auth(token: &str) -> String {
+        format!("Bearer {token}")
+    }
+
+    pub async fn list_rooms(&self, access_token: &str) -> Result<RoomListResponse, ApiError> {
+        let url = format!("{}/api/v1/rooms", self.base_url);
+        let resp = Request::get(&url)
+            .header("Authorization", &Self::auth(access_token))
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+        match resp.status() {
+            200 => resp
+                .json()
+                .await
+                .map_err(|e| ApiError::Parse(e.to_string())),
+            s => Err(ApiError::Server(s, resp.text().await.unwrap_or_default())),
+        }
+    }
+
+    pub async fn create_room(
+        &self,
+        access_token: &str,
+        name: &str,
+        diagram_id: &str,
+    ) -> Result<RoomDetail, ApiError> {
+        let url = format!("{}/api/v1/rooms", self.base_url);
+        let resp = Request::post(&url)
+            .header("Authorization", &Self::auth(access_token))
+            .json(&CreateRoomReq {
+                name: name.to_string(),
+                diagram_id: diagram_id.to_string(),
+            })
+            .map_err(|e| ApiError::Network(e.to_string()))?
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+        match resp.status() {
+            201 => {
+                let created: RoomDetail = resp
+                    .json()
+                    .await
+                    .map_err(|e| ApiError::Parse(e.to_string()))?;
+                Ok(created)
+            }
+            s => Err(ApiError::Server(s, resp.text().await.unwrap_or_default())),
+        }
+    }
+
+    pub async fn get_room(
+        &self,
+        access_token: &str,
+        room_id: &str,
+    ) -> Result<RoomDetail, ApiError> {
+        let url = format!("{}/api/v1/rooms/{}", self.base_url, room_id);
+        let resp = Request::get(&url)
+            .header("Authorization", &Self::auth(access_token))
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+        match resp.status() {
+            200 => resp
+                .json()
+                .await
+                .map_err(|e| ApiError::Parse(e.to_string())),
+            s => Err(ApiError::Server(s, resp.text().await.unwrap_or_default())),
+        }
+    }
+
+    pub async fn create_invite(
+        &self,
+        access_token: &str,
+        room_id: &str,
+        role: &str,
+    ) -> Result<InviteCreated, ApiError> {
+        let url = format!("{}/api/v1/rooms/{}/invites", self.base_url, room_id);
+        let resp = Request::post(&url)
+            .header("Authorization", &Self::auth(access_token))
+            .json(&CreateInviteReq {
+                role: role.to_string(),
+            })
+            .map_err(|e| ApiError::Network(e.to_string()))?
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+        match resp.status() {
+            201 => resp
+                .json()
+                .await
+                .map_err(|e| ApiError::Parse(e.to_string())),
+            s => Err(ApiError::Server(s, resp.text().await.unwrap_or_default())),
+        }
+    }
+
+    pub async fn preview_invite(&self, token: &str) -> Result<InvitePreview, ApiError> {
+        let url = format!("{}/api/v1/rooms/invites/{}", self.base_url, token);
+        let resp = Request::get(&url)
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+        match resp.status() {
+            200 => resp
+                .json()
+                .await
+                .map_err(|e| ApiError::Parse(e.to_string())),
+            s => Err(ApiError::Server(s, resp.text().await.unwrap_or_default())),
+        }
+    }
+
+    pub async fn accept_invite(
+        &self,
+        access_token: &str,
+        token: &str,
+    ) -> Result<AcceptInviteResponse, ApiError> {
+        let url = format!("{}/api/v1/rooms/invites/{}/accept", self.base_url, token);
+        let resp = Request::post(&url)
+            .header("Authorization", &Self::auth(access_token))
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+        match resp.status() {
+            200 => resp
+                .json()
+                .await
+                .map_err(|e| ApiError::Parse(e.to_string())),
+            s => Err(ApiError::Server(s, resp.text().await.unwrap_or_default())),
+        }
+    }
+
+    pub async fn list_members(
+        &self,
+        access_token: &str,
+        room_id: &str,
+    ) -> Result<Vec<RoomMember>, ApiError> {
+        let url = format!("{}/api/v1/rooms/{}/members", self.base_url, room_id);
+        let resp = Request::get(&url)
+            .header("Authorization", &Self::auth(access_token))
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+        match resp.status() {
+            200 => {
+                let out: RoomMembersResponse = resp
+                    .json()
+                    .await
+                    .map_err(|e| ApiError::Parse(e.to_string()))?;
+                Ok(out.items)
+            }
+            s => Err(ApiError::Server(s, resp.text().await.unwrap_or_default())),
+        }
+    }
+
+    pub async fn update_member_role(
+        &self,
+        access_token: &str,
+        room_id: &str,
+        user_id: &str,
+        role: &str,
+    ) -> Result<RoomMember, ApiError> {
+        let url = format!(
+            "{}/api/v1/rooms/{}/members/{}",
+            self.base_url, room_id, user_id
+        );
+        let resp = Request::patch(&url)
+            .header("Authorization", &Self::auth(access_token))
+            .json(&UpdateMemberRoleReq {
+                role: role.to_string(),
+            })
+            .map_err(|e| ApiError::Network(e.to_string()))?
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+        match resp.status() {
+            200 => resp
+                .json()
+                .await
+                .map_err(|e| ApiError::Parse(e.to_string())),
+            s => Err(ApiError::Server(s, resp.text().await.unwrap_or_default())),
+        }
+    }
+
+    pub async fn remove_member(
+        &self,
+        access_token: &str,
+        room_id: &str,
+        user_id: &str,
+    ) -> Result<(), ApiError> {
+        let url = format!(
+            "{}/api/v1/rooms/{}/members/{}",
+            self.base_url, room_id, user_id
+        );
+        let resp = Request::delete(&url)
+            .header("Authorization", &Self::auth(access_token))
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+        match resp.status() {
+            204 => Ok(()),
+            s => Err(ApiError::Server(s, resp.text().await.unwrap_or_default())),
+        }
+    }
+}
+
 impl AuthClient {
     pub fn new(base_url: impl Into<String>) -> Self {
         Self {
@@ -1159,6 +1495,81 @@ mod auth_tests {
             auth_error_message(500, "not-json"),
             "认证请求失败（HTTP 500）"
         );
+    }
+}
+
+#[cfg(test)]
+mod room_tests {
+    use super::{
+        AcceptInviteResponse, InviteCreated, InvitePreview, RoomDetail, RoomListResponse,
+        RoomMember,
+    };
+
+    #[test]
+    fn ut_fe_s04_01_room_list_response_parse() {
+        let json = r#"{"items":[{"id":"r1","name":"评审周会","diagramId":"d1","diagramTitle":"核心模型","myRole":"owner","memberCount":2,"updatedAt":"2026-08-19T00:00:00Z"}],"total":1}"#;
+        let out: RoomListResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(out.total, 1);
+        assert_eq!(out.items[0].id, "r1");
+        assert_eq!(out.items[0].my_role, "owner");
+    }
+
+    #[test]
+    fn ut_fe_s04_02_create_room_response_parse_with_defaults() {
+        let json = r#"{"id":"r1","name":"评审周会","diagramId":"d1","ownerId":"u1","createdAt":"2026-08-19T00:00:00Z","updatedAt":"2026-08-19T00:00:00Z"}"#;
+        let out: RoomDetail = serde_json::from_str(json).unwrap();
+        assert_eq!(out.id, "r1");
+        assert_eq!(out.diagram_id, "d1");
+        assert_eq!(out.my_role, "");
+        assert_eq!(out.member_count, 0);
+    }
+
+    #[test]
+    fn ut_fe_s04_03_room_permissions() {
+        let owner = RoomDetail {
+            id: "r1".into(),
+            name: "评审周会".into(),
+            diagram_id: "d1".into(),
+            owner_id: "u1".into(),
+            diagram_title: "核心模型".into(),
+            my_role: "owner".into(),
+            member_count: 2,
+        };
+        let mut viewer = owner.clone();
+        viewer.my_role = "viewer".into();
+        assert!(owner.can_invite());
+        assert!(!owner.is_viewer());
+        assert!(viewer.is_viewer());
+        assert!(!viewer.can_invite());
+    }
+
+    #[test]
+    fn ut_fe_s04_04_invite_and_accept_parse() {
+        let created: InviteCreated = serde_json::from_str(
+            r#"{"inviteUrl":"http://localhost/invite/t1","token":"t1","role":"viewer","expiresAt":"2026-08-26T00:00:00Z"}"#,
+        )
+        .unwrap();
+        assert_eq!(created.role, "viewer");
+        let preview: InvitePreview = serde_json::from_str(
+            r#"{"roomName":"评审周会","diagramTitle":"核心模型","diagramId":"d1","role":"viewer","expiresAt":"2026-08-26T00:00:00Z"}"#,
+        )
+        .unwrap();
+        assert_eq!(preview.room_name, "评审周会");
+        let accepted: AcceptInviteResponse = serde_json::from_str(
+            r#"{"roomId":"r1","diagramId":"d1","role":"viewer","alreadyMember":false}"#,
+        )
+        .unwrap();
+        assert_eq!(accepted.room_id, "r1");
+    }
+
+    #[test]
+    fn ut_fe_s04_05_member_response_parse() {
+        let member: RoomMember = serde_json::from_str(
+            r#"{"userId":"u2","email":"guest@example.com","displayName":"Guest","role":"editor","joinedAt":"2026-08-19T00:00:00Z"}"#,
+        )
+        .unwrap();
+        assert_eq!(member.role, "editor");
+        assert_eq!(member.display_name.as_deref(), Some("Guest"));
     }
 }
 

@@ -434,6 +434,92 @@ body {
   padding: var(--cdb-space-2);
 }
 
+.cdb-room-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid var(--cdb-color-primary-soft-hover);
+  border-radius: var(--cdb-radius-md);
+  background: var(--cdb-color-primary-soft);
+  color: var(--cdb-color-primary);
+  padding: 0 var(--cdb-space-2);
+  font-size: var(--cdb-font-size-sm);
+  font-weight: var(--cdb-font-weight-medium);
+}
+
+.cdb-room-panel {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: var(--cdb-z-drawer);
+  width: min(360px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--cdb-space-4);
+  background: var(--cdb-color-bg);
+  border-left: 1px solid var(--cdb-color-border);
+  box-shadow: var(--cdb-shadow-lg);
+  padding: var(--cdb-space-4);
+  overflow: auto;
+}
+
+.cdb-room-panel__header,
+.cdb-room-member,
+.cdb-room-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cdb-space-3);
+}
+
+.cdb-room-panel__section {
+  display: grid;
+  gap: var(--cdb-space-3);
+}
+
+.cdb-room-panel__section-title {
+  color: var(--cdb-color-text-muted);
+  font-size: var(--cdb-font-size-xs);
+  font-weight: var(--cdb-font-weight-semibold);
+  text-transform: uppercase;
+}
+
+.cdb-room-list-item {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--cdb-color-border);
+  border-radius: var(--cdb-radius-md);
+  background: var(--cdb-color-bg-0);
+  color: var(--cdb-color-text);
+  padding: var(--cdb-space-2) var(--cdb-space-3);
+  text-align: left;
+}
+
+.cdb-room-list-item small,
+.cdb-room-role {
+  color: var(--cdb-color-text-muted);
+  font-size: var(--cdb-font-size-xs);
+}
+
+.cdb-invite-panel {
+  position: absolute;
+  top: calc(var(--cdb-appbar-height, 52px) + var(--cdb-space-3));
+  left: 50%;
+  z-index: var(--cdb-z-popover);
+  transform: translateX(-50%);
+  min-width: min(420px, calc(100% - 32px));
+  border: 1px solid var(--cdb-color-border);
+  border-radius: var(--cdb-radius-lg);
+  background: var(--cdb-color-bg);
+  box-shadow: var(--cdb-shadow-lg);
+  padding: var(--cdb-space-4);
+}
+
 button,
 input,
 select,

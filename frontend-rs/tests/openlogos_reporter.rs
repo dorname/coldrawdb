@@ -83,6 +83,13 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-FE-S03-03",
     "UT-FE-S03-04",
     "UT-FE-S03-05",
+    // align-prototype-docs-implementation: S04 前端 room 接入
+    "UT-FE-S04-01",
+    "UT-FE-S04-02",
+    "UT-FE-S04-03",
+    "UT-FE-S04-04",
+    "UT-FE-S04-05",
+    "UT-FE-S04-06",
 ];
 
 const ST_SKIP_IDS: &[&str] = &[
@@ -100,5 +107,11 @@ const ST_SKIP_IDS: &[&str] = &[
     "ST-FE-S03-03",
     "ST-FE-S03-04",
     "ST-FE-S03-05",
+    "ST-FE-S04-01",
+    "ST-FE-S04-02",
+    "ST-FE-S04-03",
+    "ST-FE-S04-04",
+    "ST-FE-S04-05",
+    "ST-FE-S04-06",
     "ST-FE-V2-01",
 ];

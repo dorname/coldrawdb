@@ -23,13 +23,13 @@ pub fn mount() {
         let store = EditorStore::new();
         let debouncer = DebounceTrigger::default();
 
-        let (diagram_id, share_mode) = parse_route_from_location();
+        let (diagram_id, share_mode, invite_token) = parse_route_from_location();
 
         #[cfg(debug_assertions)]
         expose_test_hooks(&store);
 
         view! {
-            <AppRoot store=store debouncer=debouncer _diagram_id=diagram_id share_mode=share_mode />
+            <AppRoot store=store debouncer=debouncer _diagram_id=diagram_id share_mode=share_mode invite_token=invite_token />
         }
     });
 }
@@ -77,15 +77,32 @@ pub fn route_from_location(pathname: &str, search: &str) -> (String, bool) {
     )
 }
 
-fn parse_route_from_location() -> (String, bool) {
+pub fn route_context_from_location(pathname: &str, search: &str) -> (String, bool, Option<String>) {
+    if let Some(token) = parse_invite_token(pathname) {
+        return ("default".to_string(), false, Some(token));
+    }
+    let (id, share_mode) = route_from_location(pathname, search);
+    (id, share_mode, None)
+}
+
+pub fn parse_invite_token(pathname: &str) -> Option<String> {
+    let parts: Vec<&str> = pathname.split('/').filter(|s| !s.is_empty()).collect();
+    if parts.len() == 2 && parts[0] == "invite" && !parts[1].is_empty() {
+        Some(parts[1].to_string())
+    } else {
+        None
+    }
+}
+
+fn parse_route_from_location() -> (String, bool, Option<String>) {
     web_sys::window()
         .map(|w| {
-            route_from_location(
+            route_context_from_location(
                 &w.location().pathname().unwrap_or_default(),
                 &w.location().search().unwrap_or_default(),
             )
         })
-        .unwrap_or_else(|| ("default".to_string(), false))
+        .unwrap_or_else(|| ("default".to_string(), false, None))
 }
 
 #[cfg(debug_assertions)]
@@ -109,7 +126,10 @@ fn expose_test_hooks(store: &EditorStore) {
 
 #[cfg(test)]
 mod location_tests {
-    use super::{diagram_id_from_location, parse_share_param, route_from_location};
+    use super::{
+        diagram_id_from_location, parse_invite_token, parse_share_param,
+        route_context_from_location, route_from_location,
+    };
 
     #[test]
     fn ut_s02_01_share_param_parsed() {
@@ -150,6 +170,18 @@ mod location_tests {
         assert_eq!(
             route_from_location("/editor/private-id", ""),
             ("private-id".to_string(), false)
+        );
+    }
+
+    #[test]
+    fn ut_fe_s04_01_invite_route_not_treated_as_diagram_id() {
+        assert_eq!(
+            parse_invite_token("/invite/tok-123"),
+            Some("tok-123".into())
+        );
+        assert_eq!(
+            route_context_from_location("/invite/tok-123", ""),
+            ("default".to_string(), false, Some("tok-123".to_string()))
         );
     }
 }

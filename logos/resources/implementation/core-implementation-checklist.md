@@ -19,7 +19,7 @@
 - [x] 错误处理 + 指数退避重试
 - [x] SaveState 状态机
 - [x] S03 auth API 客户端与 refresh/logout 接入（批次 A）
-- [ ] S04 room/invite/member API 客户端接入（批次 B）
+- [x] S04 room/invite/member API 客户端接入（批次 B）
 - [ ] S05 WebSocket 客户端与 collab REST head/ops 接入（批次 C）
 
 ### 2.2 editor_core
@@ -51,7 +51,7 @@
 - [x] Code View 交互（SQL/DBML/JSON + 复制，`code_view.rs` + AppBar 按钮）
 - [x] 保存失败指数退避（3s/6s/12s，`save_with_retry`）
 - [x] S03 登录/注册/会话界面、user-menu、session-indicator 生产接入（批次 A）
-- [ ] S04 房间列表、创建房间、邀请、成员、角色和 viewer 只读生产接入（批次 B）
+- [x] S04 房间列表、创建房间、邀请、成员、角色和 viewer 只读生产接入（批次 B）
 - [ ] S05 ws-status、room-presence、ot-rev、reconnect-banner、activity-feed 生产接入（批次 C）
 - [ ] Monaco wasm 完整挂载（可选升级，不阻塞本变更）
 
@@ -265,7 +265,7 @@
 ### 7.5 V2 生产前端接入
 
 - [x] 批次 A：S03 鉴权生产接入，覆盖 `UT-S03-01`～`UT-S03-07`、`ST-S03-01`、`UT-FE-S03-01`～`UT-FE-S03-05`；浏览器联调 `ST-FE-S03-01`～`ST-FE-S03-05` 已由 reporter 标记为 e2e harness 待接入
-- [ ] 批次 B：S04 房间与邀请生产接入，覆盖 `UT-S04-01`～`UT-S04-10`、`ST-S04-01`、`ST-FE-S04-01`～`ST-FE-S04-06`
+- [x] 批次 B：S04 房间与邀请生产接入，覆盖 `UT-S04-01`～`UT-S04-10`、`ST-S04-01`、`UT-FE-S04-01`～`UT-FE-S04-06`；浏览器联调 `ST-FE-S04-01`～`ST-FE-S04-06` 已由 reporter 标记为 e2e harness 待接入
 - [ ] 批次 C：S05 WS/OT/presence 生产接入，覆盖 `UT-C-01`～`UT-C-05`、`ST-C-01`、`ST-FE-S05-01`～`ST-FE-S05-06`
 - [ ] 批次 D：全链路回归与状态收口，覆盖 `ST-FE-V2-01`～`ST-FE-V2-04`、S01/S02/PU 回归和 OpenLogos reporter 聚合
 

@@ -21,10 +21,10 @@
   - [x] `frontend-rs/src/editor_data_access.rs` 增加 auth client：register/login/refresh/logout/me、Bearer 注入、token_expired 识别与 refresh session。
   - [x] `frontend-rs` 增加登录/注册/会话 UI 与 user-menu/session-indicator，保持 `?share=` 匿名只读链路不被拦截。
   - [x] 测试覆盖：`UT-S03-01`～`UT-S03-07` 回归、`ST-S03-01` 回归、`UT-FE-S03-01`～`UT-FE-S03-05` reporter；浏览器联调 `ST-FE-S03-01`～`ST-FE-S03-05` 标记为 e2e harness 待接入。
-- [ ] 批次 B：S04 房间与邀请生产接入
-  - [ ] `frontend-rs/src/editor_data_access.rs` 增加 rooms/invites/members client。
-  - [ ] `frontend-rs` 增加 `/rooms`、创建房间、room-badge、邀请模态、接受邀请、成员面板、role/viewer 只读状态。
-  - [ ] 测试覆盖：`UT-S04-01`～`UT-S04-10` 回归、`ST-S04-01` 回归、前端房间主链 e2e reporter。
+- [x] 批次 B：S04 房间与邀请生产接入
+  - [x] `frontend-rs/src/editor_data_access.rs` 增加 rooms/invites/members client。
+  - [x] `frontend-rs` 增加创建房间、room-badge、邀请、接受邀请、成员面板、role/viewer 只读状态。
+  - [x] 测试覆盖：`UT-S04-01`～`UT-S04-10` 回归、`ST-S04-01` 回归、`UT-FE-S04-01`～`UT-FE-S04-06` reporter；浏览器联调 `ST-FE-S04-01`～`ST-FE-S04-06` 标记为 e2e harness 待接入。
 - [ ] 批次 C：S05 WS/OT/presence 生产接入
   - [ ] `frontend-rs/src/editor_data_access.rs` 增加 WebSocket client 与 collab REST head/ops client。
   - [ ] `frontend-rs/src/editor_core.rs` 增加最小 OT op 队列、ack/serverRev、断线排队与 sync 状态。
