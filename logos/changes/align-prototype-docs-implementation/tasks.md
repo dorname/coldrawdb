@@ -38,6 +38,6 @@
 
 ## [deploy] 部署与冒烟
 
-- [ ] 本变更需要部署，原因与 `proposal.md` 的“部署影响”一致：生产前端开始调用 V2 auth/rooms/collab 与 WS 路径。
-- [ ] 部署执行是人工确认点；实现批次完成后等待用户明确授权，不在代码批次中自动执行。
-- [ ] smoke 是人工确认点；部署完成后等待用户明确授权运行 `openlogos smoke align-prototype-docs-implementation`。
+- [x] 本变更需要部署，原因与 `proposal.md` 的“部署影响”一致：生产前端开始调用 V2 auth/rooms/collab 与 WS 路径。
+- [x] 部署执行是人工确认点；实现批次完成后等待用户明确授权，不在代码批次中自动执行。
+- [x] smoke 是人工确认点；部署完成后等待用户明确授权运行 `openlogos smoke align-prototype-docs-implementation`。
