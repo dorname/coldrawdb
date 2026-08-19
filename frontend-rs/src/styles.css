@@ -588,6 +588,146 @@ body {
   padding: var(--cdb-space-4);
 }
 
+/* ─── align-frontend-to-prototype: rooms-list-page ─── */
+.cdb-rooms-list-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--cdb-color-bg);
+  color: var(--cdb-color-text);
+}
+
+.cdb-rooms-topbar {
+  height: var(--cdb-appbar-height, 52px);
+  display: flex;
+  align-items: center;
+  gap: var(--cdb-space-3);
+  padding: 0 var(--cdb-space-4);
+  border-bottom: 1px solid var(--cdb-color-border);
+  background: var(--cdb-color-bg-elev);
+}
+
+.cdb-rooms-topbar__brand {
+  font-weight: 600;
+  font-size: var(--cdb-font-size-md);
+}
+
+.cdb-rooms-topbar__spacer {
+  flex: 1;
+}
+
+.cdb-rooms-content {
+  flex: 1;
+  padding: var(--cdb-space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--cdb-space-4);
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.cdb-rooms-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cdb-space-3);
+}
+
+.cdb-rooms-toolbar h1 {
+  font-size: var(--cdb-font-size-xl);
+  margin: 0;
+}
+
+.cdb-rooms-empty,
+.cdb-rooms-loading {
+  padding: var(--cdb-space-6);
+  border: 1px dashed var(--cdb-color-border);
+  border-radius: var(--cdb-radius-lg);
+  text-align: center;
+  color: var(--cdb-color-text-muted);
+}
+
+.cdb-room-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--cdb-space-3);
+}
+
+/* ─── align-frontend-to-prototype: invite-page（独立页，不再嵌进 cdb-app） ─── */
+.cdb-invite-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--cdb-color-bg);
+  color: var(--cdb-color-text);
+}
+
+.cdb-invite-header {
+  padding: var(--cdb-space-6) var(--cdb-space-4) 0;
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.cdb-invite-header h1 {
+  margin: 0;
+  font-size: var(--cdb-font-size-xl);
+}
+
+.cdb-invite-body {
+  flex: 1;
+  padding: var(--cdb-space-6) var(--cdb-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--cdb-space-4);
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.cdb-invite-preview {
+  padding: var(--cdb-space-4);
+  border: 1px solid var(--cdb-color-border);
+  border-radius: var(--cdb-radius-lg);
+  background: var(--cdb-color-bg-elev);
+}
+
+.cdb-invite-error {
+  margin: 0;
+  padding: var(--cdb-space-3);
+  border-radius: var(--cdb-radius-md);
+  background: var(--cdb-color-danger-bg, rgba(220, 38, 38, 0.08));
+  color: var(--cdb-color-danger, #b91c1c);
+}
+
+.cdb-invite-actions {
+  display: flex;
+  gap: var(--cdb-space-3);
+  flex-wrap: wrap;
+}
+
+/* ─── align-frontend-to-prototype: 720px 响应式 ─── */
+@media (max-width: 720px) {
+  .cdb-rooms-content {
+    padding: var(--cdb-space-3);
+  }
+  .cdb-rooms-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .cdb-room-list {
+    grid-template-columns: 1fr;
+  }
+  .cdb-invite-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
 button,
 input,
 select,

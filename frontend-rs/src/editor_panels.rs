@@ -23,6 +23,7 @@ use crate::editor_data_access::{
     CollabMemberPresence, DiagramClient, ImportLocalResponse, ImportLogEntry, InvitePreview,
     RoomClient, RoomDetail, RoomMember, RoomSummary, SaveError,
 };
+use crate::{sanitize_session_notice, PageState};
 use crate::editor_render::Canvas;
 use crate::editor_render::{remote_presence_slots, RemotePresence};
 use crate::editor_render::{zoom_in, zoom_out, zoom_reset, Transform};
@@ -2002,6 +2003,7 @@ pub fn AuthGate(
     auth_client: AuthClient,
     auth_session: RwSignal<Option<AuthSession>>,
     session_notice: RwSignal<Option<String>>,
+    on_login_success: Option<Rc<dyn Fn()>>,
 ) -> impl IntoView {
     let mode = create_rw_signal(AuthMode::Login);
     let email = create_rw_signal(String::new());
@@ -2013,6 +2015,7 @@ pub fn AuthGate(
 
     let submit = {
         let auth_client = auth_client.clone();
+        let on_login_success = on_login_success.clone();
         move || {
             let email_value = email.get().trim().to_string();
             let display_value = display_name.get().trim().to_string();
@@ -2029,6 +2032,7 @@ pub fn AuthGate(
             loading.set(true);
             error.set(None);
             let client = auth_client.clone();
+            let on_login_success = on_login_success.clone();
             spawn_local(async move {
                 let result = async {
                     if mode.get_untracked() == AuthMode::Register {
@@ -2043,6 +2047,9 @@ pub fn AuthGate(
                     Ok(session) => {
                         auth_session.set(Some(session));
                         session_notice.set(Some("会话有效".to_string()));
+                        if let Some(cb) = on_login_success {
+                            cb();
+                        }
                     }
                     Err(e) => error.set(Some(e.to_string())),
                 }
@@ -2145,6 +2152,161 @@ pub fn AuthGate(
                         }}
                     </button>
                 </form>
+            </section>
+        </main>
+    }
+}
+
+/// `rooms-list-page` 骨架（align-frontend-to-prototype Batch A）。
+///
+/// 顶栏 + 房间列表 + 新建房间入口 + 用户菜单 + session-indicator。
+/// Batch A 只补路由锚点 + 可见性 + 退出登录/进入房间两条按钮；Batch B 补真实 `GET /api/v1/rooms` 与 `POST /api/v1/rooms`。
+#[component]
+pub fn RoomsListPage(
+    auth_session: RwSignal<Option<AuthSession>>,
+    session_notice: RwSignal<Option<String>>,
+    on_logout: Rc<dyn Fn()>,
+    on_select_room: Rc<dyn Fn(String)>,
+    on_create_room: Rc<dyn Fn()>,
+) -> impl IntoView {
+    let loading = create_rw_signal(true);
+    let rooms_empty = create_rw_signal(true);
+    create_effect(move |_| {
+        // Batch A 暴露 rooms-list-page 锚点；Batch B 把 create_effect 替换为真实 fetch。
+        let _ = (auth_session.get(), session_notice.get());
+        loading.set(false);
+    });
+    view! {
+        <main class="cdb-rooms-list-page" data-testid="rooms-list-page">
+            <header class="cdb-rooms-topbar">
+                <div class="cdb-rooms-topbar__brand" data-testid="rooms-brand">"coldrawdb"</div>
+                <div class="cdb-rooms-topbar__spacer"></div>
+                <SessionIndicator
+                    auth_session=auth_session
+                    session_notice=session_notice
+                    on_refresh_session=Rc::new(|| {})
+                    on_logout=on_logout
+                />
+            </header>
+            <section class="cdb-rooms-content">
+                <div class="cdb-rooms-toolbar">
+                    <h1 data-testid="rooms-title">"我的协作房间"</h1>
+                    <button
+                        class="cdb-btn cdb-btn--primary"
+                        data-testid="btn-create-room"
+                        on:click=move |_| on_create_room()
+                    >
+                        "新建房间"
+                    </button>
+                </div>
+                {move || if loading.get() {
+                    view! { <p class="cdb-rooms-loading" data-testid="rooms-loading">"加载中..."</p> }.into_view()
+                } else if rooms_empty.get() {
+                    view! {
+                        <div class="cdb-rooms-empty" data-testid="rooms-empty">
+                            <p>"还没有房间，点击右上角「新建房间」开始。"</p>
+                        </div>
+                    }.into_view()
+                } else {
+                    view! { <ul class="cdb-room-list" data-testid="room-list"></ul> }.into_view()
+                }}
+            </section>
+        </main>
+    }
+}
+
+/// /invite/{token} 独立接受页（align-frontend-to-prototype FEUX-AC-04）。
+///
+/// 整页只显示 invite preview、登录要求与接受按钮；不再隐藏进 cdb-app。
+/// 接受成功后由 on_after_accept 推进 AppRoot 的 `RoomEditor` 状态。
+#[component]
+pub fn InviteAcceptPage(
+    token: String,
+    auth_session: RwSignal<Option<AuthSession>>,
+    current_diagram_id: RwSignal<String>,
+    current_room: RwSignal<Option<RoomDetail>>,
+    error: RwSignal<Option<String>>,
+    on_after_accept: Rc<dyn Fn()>,
+    on_goto_login: Rc<dyn Fn()>,
+) -> impl IntoView {
+    let preview = create_rw_signal(None::<InvitePreview>);
+    let accepting = create_rw_signal(false);
+    let login_required = create_rw_signal(false);
+    let invite_error = create_rw_signal(Option::<String>::None);
+
+    create_effect({
+        let token = token.clone();
+        move |_| {
+            // Batch A：先进入"等待 preview"状态；Batch B 补 preview_invite 真实调用。
+            let _ = token.as_str();
+        }
+    });
+
+    let accept = {
+        let token = token.clone();
+        let auth_session = auth_session.clone();
+        let current_diagram_id = current_diagram_id.clone();
+        let current_room = current_room.clone();
+        let error = error.clone();
+        let invite_error = invite_error.clone();
+        let on_after_accept = on_after_accept.clone();
+        move || {
+            if auth_session.get().is_none() {
+                login_required.set(true);
+                return;
+            }
+            accepting.set(true);
+            invite_error.set(None);
+            // Batch A：仅占位；Batch B 把 `on_after_accept` 接到真实 /accept API。
+            let _ = (token.clone(), current_diagram_id.clone(), current_room.clone());
+            on_after_accept();
+            accepting.set(false);
+            // 真实 token 错误不会冒到这里；error 仍由父级异步传递。
+            let _ = error.clone();
+        }
+    };
+
+    view! {
+        <main class="cdb-invite-page" data-testid="invite-accept-page">
+            <header class="cdb-invite-header">
+                <h1 data-testid="invite-title">"你被邀请加入一个协作房间"</h1>
+            </header>
+            <section class="cdb-invite-body">
+                {move || preview.get().map(|p| view! {
+                    <div class="cdb-invite-preview" data-testid="invite-preview">
+                        <strong>{p.room_name}</strong>
+                        <p>{format!("图表：{} · 角色：{}", p.diagram_title, p.role)}</p>
+                    </div>
+                })}
+                {move || if login_required.get() {
+                    view! {
+                        <p class="cdb-invite-error" data-testid="invite-login-required">
+                            "请先登录后再接受邀请。"
+                        </p>
+                    }.into_view()
+                } else {
+                    view! { <></> }.into_view()
+                }}
+                {move || invite_error.get().map(|msg| view! {
+                    <p class="cdb-invite-error" data-testid="invite-error">{msg}</p>
+                })}
+                <div class="cdb-invite-actions">
+                    <button
+                        class="cdb-btn cdb-btn--primary"
+                        data-testid="btn-accept-invite"
+                        disabled=move || accepting.get()
+                        on:click=move |_| accept()
+                    >
+                        {move || if accepting.get() { "处理中..." } else { "加入房间" }}
+                    </button>
+                    <button
+                        class="cdb-btn"
+                        data-testid="btn-invite-goto-login"
+                        on:click=move |_| on_goto_login()
+                    >
+                        "切换登录"
+                    </button>
+                </div>
             </section>
         </main>
     }
@@ -4030,6 +4192,27 @@ pub fn AppRoot(
     } else {
         None
     });
+    // align-frontend-to-prototype：五态页面状态机。初始按 URL 解析（invite/share/auth）。
+    let initial_page = if share_mode {
+        PageState::ShareEdit
+    } else if invite_token.is_some() {
+        PageState::Invite
+    } else {
+        PageState::Auth
+    };
+    let current_page: RwSignal<PageState> = create_rw_signal(initial_page);
+    // 防止 session_notice 被注入 token 原文：写入前过滤。
+    create_effect(move |_| {
+        let raw = session_notice.get_untracked();
+        let cleaned = sanitize_session_notice(raw.as_deref());
+        match (raw.as_ref(), cleaned) {
+            (Some(existing), Some(new_clean)) if existing != &new_clean => {
+                session_notice.set(Some(new_clean));
+            }
+            (Some(_), None) => session_notice.set(None),
+            _ => {}
+        }
+    });
     let current_room: RwSignal<Option<RoomDetail>> = create_rw_signal(None);
     let room_panel_visible: RwSignal<bool> = create_rw_signal(false);
     let room_members: RwSignal<Vec<RoomMember>> = create_rw_signal(Vec::new());
@@ -4234,6 +4417,7 @@ pub fn AppRoot(
         let auth_client = auth_client.clone();
         let auth_session = auth_session.clone();
         let session_notice = session_notice.clone();
+        let current_page = current_page.clone();
         Rc::new(move || {
             let token = auth_session
                 .get_untracked()
@@ -4241,6 +4425,13 @@ pub fn AppRoot(
                 .unwrap_or_default();
             auth_session.set(None);
             session_notice.set(Some("已退出登录".to_string()));
+            // 退出登录后回到 auth 入口（除非是 share/edit 只读或 invite）
+            if !matches!(
+                current_page.get_untracked(),
+                PageState::ShareEdit | PageState::Invite
+            ) {
+                current_page.set(PageState::Auth);
+            }
             if !token.is_empty() {
                 let auth_client = auth_client.clone();
                 spawn_local(async move {
@@ -4248,6 +4439,56 @@ pub fn AppRoot(
                 });
             }
         }) as Rc<dyn Fn()>
+    };
+
+    // align-frontend-to-prototype：登录成功 → 进入 rooms-list-page（不进 editor）
+    let on_login_success: Rc<dyn Fn()> = {
+        let current_page = current_page.clone();
+        Rc::new(move || {
+            current_page.set(PageState::Rooms);
+        })
+    };
+
+    // align-frontend-to-prototype：rooms list → 选中/创建房间 → 进入 editor
+    let on_enter_room: Rc<dyn Fn(String)> = {
+        let current_page = current_page.clone();
+        let current_diagram_id = current_diagram_id.clone();
+        let current_room = current_room.clone();
+        Rc::new(move |room_id: String| {
+            current_page.set(PageState::RoomEditor);
+            // 起始绑定后续由 set_current_room 负责；Batch B 补真实 GET /api/v1/rooms/{id}
+            let _ = (current_diagram_id.clone(), current_room.clone(), room_id);
+        })
+    };
+
+    let on_create_room_enter: Rc<dyn Fn()> = {
+        let current_page = current_page.clone();
+        Rc::new(move || {
+            current_page.set(PageState::RoomEditor);
+        })
+    };
+
+    // invite → 接受成功后进入 editor；未登录跳 auth
+    let on_invite_after_accept: Rc<dyn Fn()> = {
+        let current_page = current_page.clone();
+        Rc::new(move || {
+            current_page.set(PageState::RoomEditor);
+        })
+    };
+
+    let on_invite_goto_login: Rc<dyn Fn()> = {
+        let current_page = current_page.clone();
+        Rc::new(move || {
+            current_page.set(PageState::Auth);
+        })
+    };
+
+    // "查看房间列表"（从编辑器可返回）
+    let on_back_to_rooms: Rc<dyn Fn()> = {
+        let current_page = current_page.clone();
+        Rc::new(move || {
+            current_page.set(PageState::Rooms);
+        })
     };
 
     let on_after_change: Rc<dyn Fn()> = {
@@ -4913,19 +5154,59 @@ pub fn AppRoot(
     };
 
     view! {
+        // ─── Auth 页（align-frontend-to-prototype） ───
         <div
-            style:display=move || if !share_mode && auth_session.get().is_none() { "block" } else { "none" }
+            style:display=move || if current_page.get() == PageState::Auth { "block" } else { "none" }
         >
             <AuthGate
                 auth_client=auth_client.clone()
                 auth_session=auth_session
                 session_notice=session_notice
+                on_login_success=Some(on_login_success.clone())
             />
+        </div>
+        // ─── Rooms 列表页（align-frontend-to-prototype，进入编辑器前必经） ───
+        <div
+            style:display=move || if current_page.get() == PageState::Rooms { "block" } else { "none" }
+        >
+            <RoomsListPage
+                auth_session=auth_session
+                session_notice=session_notice
+                on_logout=on_logout.clone()
+                on_select_room=Rc::new({
+                    let on_enter_room = on_enter_room.clone();
+                    move |id: String| on_enter_room(id)
+                })
+                on_create_room=on_create_room_enter.clone()
+            />
+        </div>
+        // ─── Invite 独立页（align-frontend-to-prototype FEUX-AC-04） ───
+        <div
+            style:display=move || if current_page.get() == PageState::Invite { "block" } else { "none" }
+        >
+            {invite_token.clone().map(|token| view! {
+                <InviteAcceptPage
+                    token=token
+                    auth_session=auth_session
+                    current_diagram_id=current_diagram_id
+                    current_room=current_room
+                    error=error.clone()
+                    on_after_accept=on_invite_after_accept.clone()
+                    on_goto_login=on_invite_goto_login.clone()
+                />
+            })}
         </div>
         <div
             class="cdb-app"
             data-testid="editor-ready"
-            style:display=move || if !share_mode && auth_session.get().is_none() { "none" } else { "grid" }
+            style:display=move || {
+                let p = current_page.get();
+                if p == PageState::RoomEditor || p == PageState::ShareEdit {
+                    "grid"
+                } else {
+                    "none"
+                }
+            }
         >
             <AppBar
                 modal_kind=modal_kind
@@ -4952,18 +5233,8 @@ pub fn AppRoot(
                 current_room=current_room
                 collab_state=collab_state
                 remote_members=remote_members
-                on_open_rooms=on_open_rooms.clone()
+                on_open_rooms=on_back_to_rooms.clone()
             />
-            {invite_token.clone().map(|token| view! {
-                <InviteAcceptPanel
-                    token=token
-                    room_client=room_client.clone()
-                    auth_session=auth_session
-                    current_diagram_id=current_diagram_id
-                    current_room=current_room
-                    error=error.clone()
-                />
-            })}
             <div
                 class="cdb-main"
                 class:cdb-is-hidden=move || view_mode.get() == ViewMode::Code

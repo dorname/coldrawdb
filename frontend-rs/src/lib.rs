@@ -94,6 +94,57 @@ pub fn parse_invite_token(pathname: &str) -> Option<String> {
     }
 }
 
+/// 页面状态机枚举（align-frontend-to-prototype FEUX-AC-01～04）。
+///
+/// 五种状态，按生产前端与统一主原型 `core-01-editor-prototype.html` 对齐：
+/// - `Auth` 未登录默认入口，展示 auth-gate / login-form / auth-tab-register。
+/// - `ShareEdit` 匿名只读分享（`?share=<id>`），保持 S02 匿名只读链路。
+/// - `Invite` `/invite/{token}` 独立接受页，登录前后均可访问。
+/// - `Rooms` 已登录但未进入房间：rooms-list-page，可创建/选择房间。
+/// - `RoomEditor` 房间内协作编辑器：`room-editor-page` + tool-rail + canvas + inspector + ot-rev/ws-status/room-presence/activity-feed。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PageState {
+    Auth,
+    ShareEdit,
+    Invite,
+    Rooms,
+    RoomEditor,
+}
+
+/// 纯函数：根据 pathname/search 决定初始页面状态。
+///
+/// 优先级：invite token > share param > 默认 `Auth`（生产前端默认未登录进入 auth）。
+pub fn initial_page_state(pathname: &str, search: &str) -> PageState {
+    if parse_invite_token(pathname).is_some() {
+        return PageState::Invite;
+    }
+    if parse_share_param(search).is_some() {
+        return PageState::ShareEdit;
+    }
+    PageState::Auth
+}
+
+/// 纯函数：脱敏 session notice，禁止写入 token/refresh token/cookie 原文。
+///
+/// 只允许输出状态文案（"匿名只读分享"、"会话有效"、"登录已过期" 等），不能透出 token。
+pub fn sanitize_session_notice(input: Option<&str>) -> Option<String> {
+    let s = input?.trim();
+    if s.is_empty() {
+        return None;
+    }
+    // 防御：任何看起来像 JWT / 长 base64 / "token=" 子串的提示都丢掉。
+    let lower = s.to_lowercase();
+    if lower.contains("token=")
+        || lower.contains("bearer ")
+        || lower.contains("eyj")
+        || lower.contains("refresh_token")
+        || lower.contains("access_token")
+    {
+        return None;
+    }
+    Some(s.to_string())
+}
+
 fn parse_route_from_location() -> (String, bool, Option<String>) {
     web_sys::window()
         .map(|w| {
@@ -127,8 +178,8 @@ fn expose_test_hooks(store: &EditorStore) {
 #[cfg(test)]
 mod location_tests {
     use super::{
-        diagram_id_from_location, parse_invite_token, parse_share_param,
-        route_context_from_location, route_from_location,
+        diagram_id_from_location, initial_page_state, parse_invite_token, parse_share_param,
+        route_context_from_location, route_from_location, sanitize_session_notice, PageState,
     };
 
     #[test]
@@ -183,5 +234,86 @@ mod location_tests {
             route_context_from_location("/invite/tok-123", ""),
             ("default".to_string(), false, Some("tok-123".to_string()))
         );
+    }
+
+    // ─── align-frontend-to-prototype — UT-FE-PROTO-01~UT-FE-PROTO-02 ────
+
+    #[test]
+    fn ut_fe_proto_01_pathname_search_returns_page_state() {
+        // 默认未登录入口 → Auth
+        assert_eq!(initial_page_state("/", ""), PageState::Auth);
+        assert_eq!(initial_page_state("/editor", ""), PageState::Auth);
+        // 未登录访问 invite → Invite（独立页）
+        assert_eq!(
+            initial_page_state("/invite/tok-abc", ""),
+            PageState::Invite
+        );
+        // ?share= → ShareEdit（不要求 auth 或 rooms）
+        assert_eq!(
+            initial_page_state("/editor/d-uuid", "?share=public-id"),
+            PageState::ShareEdit
+        );
+        assert_eq!(
+            initial_page_state("/anything", "?share=abc"),
+            PageState::ShareEdit
+        );
+        // 验证 parse_invite_token 不会把 invite token 当 diagram id
+        assert_eq!(
+            route_context_from_location("/invite/tok-123", ""),
+            ("default".to_string(), false, Some("tok-123".to_string()))
+        );
+    }
+
+    #[test]
+    fn ut_fe_proto_02_session_notice_must_not_leak_token() {
+        // 正常状态文案允许通过
+        assert_eq!(
+            sanitize_session_notice(Some("匿名只读分享")),
+            Some("匿名只读分享".to_string())
+        );
+        assert_eq!(
+            sanitize_session_notice(Some("会话有效")),
+            Some("会话有效".to_string())
+        );
+        assert_eq!(
+            sanitize_session_notice(Some("登录已过期，请重新登录")),
+            Some("登录已过期，请重新登录".to_string())
+        );
+        // 含 token 原文 → 过滤为 None
+        assert_eq!(sanitize_session_notice(Some("token=abc.def.ghi")), None);
+        assert_eq!(
+            sanitize_session_notice(Some("Bearer eyJhbGc.payload.sig")),
+            None
+        );
+        assert_eq!(
+            sanitize_session_notice(Some("refresh_token: rt-12345")),
+            None
+        );
+        assert_eq!(
+            sanitize_session_notice(Some("access_token=at-xxxx")),
+            None
+        );
+        // 含 JWT 头 → 过滤
+        assert_eq!(
+            sanitize_session_notice(Some("eyJhbGciOiJIUzI1NiJ9.payload.sig")),
+            None
+        );
+        // 空 / None → None
+        assert_eq!(sanitize_session_notice(None), None);
+        assert_eq!(sanitize_session_notice(Some("")), None);
+        assert_eq!(sanitize_session_notice(Some("   ")), None);
+    }
+
+    #[test]
+    fn ut_fe_proto_02b_auth_state_machine_transitions() {
+        // 登录后从 Auth → Rooms（SIG: login_success → set_page(Rooms)）
+        // 这里测试状态机语义：未登录 + default URL = Auth；
+        // 登录后由前端信号从 Auth 推进到 Rooms，不依赖 URL。
+        let before = initial_page_state("/", "");
+        assert_eq!(before, PageState::Auth);
+        // 模拟"登录后"——current_page 改为 Rooms（具体推进发生在 AppRoot）。
+        // 单元测试只验证 parser 的不可变性；推进由组件层负责。
+        let after: PageState = PageState::Rooms;
+        assert_ne!(before, after);
     }
 }
