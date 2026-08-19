@@ -3,8 +3,8 @@
 本文件追踪 S01～S06 的真实实现状态；“静态原型可演示”与“生产前端已接入”分别记录。
 
 **V1 行** = 已在 Phase 1-4 完成的事实代码  
-**V2 行** = S03～S05 后端已实现，生产前端 A/B/C 批次已接入，仍需 D 批全链路回归收口
-**V3 行** = S06 MCP 规格与代码已完成，等待 `openlogos verify` 验收
+**V2 行** = S03～S05 后端已实现，生产前端 A/B/C 批次已接入，D 批全链路回归已通过 `openlogos verify` 收口
+**V3 行** = S06 MCP 规格与代码已完成，并已通过 `openlogos verify` 验收
 
 > 本清单仅作总览与状态标记。详细规格见各 Phase 2 设计文档与 Phase 3 时序图。
 
@@ -155,7 +155,7 @@
 - [x] S03 `backend/src/auth/` + `auth_v1.rs` + auth migration + 测试
 - [x] S04 `backend/src/rooms/` + `rooms_v1.rs` + rooms migration + `core-S04-room-lifecycle.json`
 - [x] S05 `backend/src/collab/` + `collab_v1.rs` + `/ws/rooms/{room_id}` + collab migration + `core-S05-ot-collab.json`
-- [ ] S03 编排文件 `core-S03-user-auth.json`（后端集成测试已存在，此项不代表后端未实现）
+- [x] S03 编排文件 `core-S03-user-auth.json`
 
 ## 4. API 端点
 
@@ -267,7 +267,7 @@
 - [x] 批次 A：S03 鉴权生产接入，覆盖 `UT-S03-01`～`UT-S03-07`、`ST-S03-01`、`UT-FE-S03-01`～`UT-FE-S03-05`；浏览器联调 `ST-FE-S03-01`～`ST-FE-S03-05` 已由 reporter 标记为 e2e harness 待接入
 - [x] 批次 B：S04 房间与邀请生产接入，覆盖 `UT-S04-01`～`UT-S04-10`、`ST-S04-01`、`UT-FE-S04-01`～`UT-FE-S04-06`；浏览器联调 `ST-FE-S04-01`～`ST-FE-S04-06` 已由 reporter 标记为 e2e harness 待接入
 - [x] 批次 C：S05 WS/OT/presence 生产接入，覆盖 `UT-C-01`～`UT-C-05`、`ST-C-01`、`UT-FE-S05-01`～`UT-FE-S05-06`；浏览器联调 `ST-FE-S05-01`～`ST-FE-S05-06` 已由 reporter 标记为 e2e harness 待接入
-- [ ] 批次 D：全链路回归与状态收口，覆盖 `ST-FE-V2-01`～`ST-FE-V2-04`、S01/S02/PU 回归和 OpenLogos reporter 聚合
+- [x] 批次 D：全链路回归与状态收口，覆盖 `ST-FE-V2-01`～`ST-FE-V2-04`、S01/S02/PU 回归和 OpenLogos reporter 聚合，`openlogos verify` 结果 PASS
 
 ## 8. 部署
 

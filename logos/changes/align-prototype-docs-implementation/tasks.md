@@ -31,10 +31,10 @@
   - [x] `frontend-rs/src/editor_render.rs` 增加远端 cursor/presence 渲染 DTO 与稳定位置分配。
   - [x] `frontend-rs/src/editor_panels.rs` 增加 ws-status、room-presence、ot-rev、reconnect-banner、activity-feed 与 viewer 禁写。
   - [x] 测试覆盖：`UT-C-01`～`UT-C-05` 回归、`ST-C-01` 回归、`UT-FE-S05-01`～`UT-FE-S05-06` reporter；浏览器联调 `ST-FE-S05-01`～`ST-FE-S05-06` 标记为 e2e harness 待接入。
-- [ ] 批次 D：全链路回归与状态收口
-  - [ ] 回归 S01/S02 保存、分享、409、导入导出、命令面板、设计系统测试。
-  - [ ] 更新 `logos/resources/implementation/core-implementation-checklist.md` 的完成状态。
-  - [ ] 运行本地可执行测试集合并生成 OpenLogos reporter；等待用户授权后再运行 `openlogos verify`。
+- [x] 批次 D：全链路回归与状态收口
+  - [x] 回归 S01/S02 保存、分享、409、导入导出、命令面板、设计系统测试。
+  - [x] 更新 `logos/resources/implementation/core-implementation-checklist.md` 的完成状态。
+  - [x] 运行本地可执行测试集合并生成 OpenLogos reporter；用户已授权后运行 `openlogos verify`，结果 PASS。
 
 ## [deploy] 部署与冒烟
 
