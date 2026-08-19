@@ -1557,6 +1557,37 @@ pub fn should_apply_compact_layout(viewport_width: u32) -> bool {
     viewport_width <= 720
 }
 
+/// align-frontend-to-prototype：密码强度等级（0~4）。
+///
+/// 启发式：长度 8+、长度 12+、含字母 + 数字、含字母 + 数字 + 特殊字符。
+pub fn password_strength_level(p: &str) -> u8 {
+    let len = p.chars().count();
+    let has_lower = p.chars().any(|c| c.is_ascii_lowercase());
+    let has_upper = p.chars().any(|c| c.is_ascii_uppercase());
+    let has_digit = p.chars().any(|c| c.is_ascii_digit());
+    let has_special = p.chars().any(|c| !c.is_alphanumeric());
+    let variety = (has_lower || has_upper) as u8 + has_digit as u8 + has_special as u8;
+    match (len, variety) {
+        (0..=7, _) => 0,
+        (8..=11, _) => 1,
+        (12.., 1) => 2,
+        (12.., 2) => 3,
+        (12.., 3) => 4,
+        _ => 1.min(variety),
+    }
+}
+
+/// align-frontend-to-prototype：密码强度文案。
+pub fn password_strength_label(level: u8) -> &'static str {
+    match level {
+        0 => "无",
+        1 => "弱",
+        2 => "一般",
+        3 => "良好",
+        _ => "强",
+    }
+}
+
 /// align-frontend-to-prototype：IO 抽屉打开时，inspector 必须收起。
 pub fn inspector_collapsed_when_io_open(io_open: bool) -> bool {
     io_open
@@ -2026,8 +2057,15 @@ pub fn AuthGate(
     let display_name = create_rw_signal(String::new());
     let password = create_rw_signal(String::new());
     let confirm_password = create_rw_signal(String::new());
+    let password_visible = create_rw_signal(false);
+    let remember_device = create_rw_signal(true);
     let loading = create_rw_signal(false);
     let error = create_rw_signal(None::<String>);
+    let simulate_error = create_rw_signal(false);
+    let email_error = create_rw_signal(Option::<String>::None);
+    let password_error = create_rw_signal(Option::<String>::None);
+    let confirm_error = create_rw_signal(Option::<String>::None);
+    let name_error = create_rw_signal(Option::<String>::None);
 
     let submit = {
         let auth_client = auth_client.clone();
@@ -2037,19 +2075,43 @@ pub fn AuthGate(
             let display_value = display_name.get().trim().to_string();
             let password_value = password.get();
             let confirm_value = confirm_password.get();
-            if email_value.is_empty() || password_value.len() < 8 {
-                error.set(Some("请输入有效邮箱和至少 8 位密码".to_string()));
-                return;
+            // 字段级校验
+            email_error.set(None);
+            password_error.set(None);
+            confirm_error.set(None);
+            name_error.set(None);
+            let mut has_field_error = false;
+            if email_value.is_empty() || !email_value.contains('@') {
+                email_error.set(Some("请输入有效邮箱".to_string()));
+                has_field_error = true;
+            }
+            if password_value.len() < 8 {
+                password_error.set(Some("密码至少 8 位".to_string()));
+                has_field_error = true;
             }
             if mode.get() == AuthMode::Register && password_value != confirm_value {
-                error.set(Some("两次输入的密码不一致".to_string()));
+                confirm_error.set(Some("两次输入的密码不一致".to_string()));
+                has_field_error = true;
+            }
+            if mode.get() == AuthMode::Register && display_value.is_empty() {
+                name_error.set(Some("请输入显示名称".to_string()));
+                has_field_error = true;
+            }
+            if has_field_error {
                 return;
             }
             loading.set(true);
             error.set(None);
             let client = auth_client.clone();
             let on_login_success = on_login_success.clone();
+            let simulate = simulate_error.get_untracked();
             spawn_local(async move {
+                // 模拟凭据错误（测试用：不发请求，立即返回错误）
+                if simulate {
+                    error.set(Some("凭据错误，请检查邮箱与密码".to_string()));
+                    loading.set(false);
+                    return;
+                }
                 let result = async {
                     if mode.get_untracked() == AuthMode::Register {
                         client
@@ -2076,99 +2138,229 @@ pub fn AuthGate(
 
     view! {
         <main class="cdb-auth-page" data-testid="auth-gate">
-            <section class="cdb-auth-panel">
-                <div class="cdb-auth-tabs" role="tablist">
-                    <button
-                        class="cdb-btn"
-                        class:cdb-is-active=move || mode.get() == AuthMode::Login
-                        data-testid="auth-tab-login"
-                        on:click=move |_| mode.set(AuthMode::Login)
-                    >
-                        "登录"
-                    </button>
-                    <button
-                        class="cdb-btn"
-                        class:cdb-is-active=move || mode.get() == AuthMode::Register
-                        data-testid="auth-tab-register"
-                        on:click=move |_| mode.set(AuthMode::Register)
-                    >
-                        "注册"
-                    </button>
+            // ─── 左区：品牌 + hero copy + 3 feature（align-frontend-to-prototype）───
+            <article class="cdb-auth-story" data-testid="auth-story">
+                <div class="cdb-auth-brand" data-testid="auth-brand">
+                    <span class="cdb-brand-mark" aria-hidden="true">{"◆"}</span>
+                    <span class="cdb-auth-brand-name">"coldrawdb"</span>
+                    <span class="cdb-tag cdb-tag--brand" data-testid="auth-brand-tag">"协作版原型"</span>
                 </div>
-                <form
-                    class="cdb-auth-form"
-                    data-testid=move || if mode.get() == AuthMode::Login { "login-form" } else { "register-form" }
-                    on:submit=move |ev| {
-                        ev.prevent_default();
-                        submit();
-                    }
-                >
-                    <label>
-                        <span>"邮箱"</span>
-                        <input
-                            data-testid="auth-email"
-                            type="email"
-                            prop:value=move || email.get()
-                            on:input=move |ev| email.set(event_target_value(&ev))
-                        />
-                    </label>
-                    {move || if mode.get() == AuthMode::Register {
-                        view! {
-                            <label>
-                                <span>"显示名称"</span>
-                                <input
-                                    data-testid="auth-display-name"
-                                    prop:value=move || display_name.get()
-                                    on:input=move |ev| display_name.set(event_target_value(&ev))
-                                />
-                            </label>
-                        }.into_view()
-                    } else {
-                        view! { <></> }.into_view()
-                    }}
-                    <label>
-                        <span>"密码"</span>
-                        <input
-                            data-testid="auth-password"
-                            type="password"
-                            prop:value=move || password.get()
-                            on:input=move |ev| password.set(event_target_value(&ev))
-                        />
-                    </label>
-                    {move || if mode.get() == AuthMode::Register {
-                        view! {
-                            <label>
-                                <span>"确认密码"</span>
-                                <input
-                                    data-testid="auth-confirm-password"
-                                    type="password"
-                                    prop:value=move || confirm_password.get()
-                                    on:input=move |ev| confirm_password.set(event_target_value(&ev))
-                                />
-                            </label>
-                        }.into_view()
-                    } else {
-                        view! { <></> }.into_view()
-                    }}
-                    {move || error.get().map(|msg| view! {
-                        <p class="cdb-auth-error" data-testid="auth-error">{msg}</p>
-                    })}
-                    <button
-                        class="cdb-btn cdb-btn--primary cdb-btn--block"
-                        data-testid=move || if mode.get() == AuthMode::Login { "login-submit" } else { "register-submit" }
-                        disabled=move || loading.get()
-                        type="submit"
-                    >
-                        {move || if loading.get() {
-                            "处理中..."
-                        } else if mode.get() == AuthMode::Login {
-                            "登录"
+                <div class="cdb-auth-hero" data-testid="auth-hero">
+                    <span class="cdb-eyebrow">"结构清晰，协作自然"</span>
+                    <h1 class="cdb-auth-hero-title">"把复杂数据\n画成共同语言。"</h1>
+                    <p class="cdb-auth-hero-desc">
+                        "在一张实时同步的画布里完成数据库建模、关系评审和工程交接，让每个决定都有上下文。"
+                    </p>
+                </div>
+                <div class="cdb-auth-feature-row" data-testid="auth-feature-row">
+                    <div class="cdb-auth-feature">
+                        <span class="cdb-auth-feature-icon" aria-hidden="true">{"▦"}</span>
+                        <strong>"可视化建模"</strong>
+                        <span>"表、字段、关系与约束完整闭环"</span>
+                    </div>
+                    <div class="cdb-auth-feature">
+                        <span class="cdb-auth-feature-icon" aria-hidden="true">{"◉"}</span>
+                        <strong>"多人同步"</strong>
+                        <span>"光标、选区、Activity 与角色权限"</span>
+                    </div>
+                    <div class="cdb-auth-feature">
+                        <span class="cdb-auth-feature-icon" aria-hidden="true">{"⚡"}</span>
+                        <strong>"实时协作"</strong>
+                        <span>"OT 同步、断线排队、重连续传"</span>
+                    </div>
+                </div>
+            </article>
+            // ─── 右区：表单卡片（玻璃质感）───
+            <article class="cdb-auth-panel cdb-glass" data-testid="auth-panel">
+                <div class="cdb-auth-card">
+                    <span class="cdb-eyebrow">"欢迎使用 coldrawdb"</span>
+                    <h2 id="auth-title" class="cdb-auth-title" data-testid="auth-title" tabindex="-1">
+                        {move || if mode.get() == AuthMode::Register { "创建协作账户" } else { "继续你的数据设计" }}
+                    </h2>
+                    <p class="cdb-muted">
+                        {move || if mode.get() == AuthMode::Register {
+                            "创建账户后即可邀请团队一起评审模型。"
                         } else {
-                            "创建账户"
+                            "登录后进入项目空间；你的凭据只用于鉴权，不会写本地存储。"
                         }}
-                    </button>
-                </form>
-            </section>
+                    </p>
+                    <div class="cdb-auth-tabs" role="tablist">
+                        <button
+                            class="cdb-auth-tab"
+                            class:cdb-is-active=move || mode.get() == AuthMode::Login
+                            role="tab"
+                            aria-selected=move || mode.get() == AuthMode::Login
+                            data-testid="auth-tab-login"
+                            on:click=move |_| mode.set(AuthMode::Login)
+                        >
+                            "登录"
+                        </button>
+                        <button
+                            class="cdb-auth-tab"
+                            class:cdb-is-active=move || mode.get() == AuthMode::Register
+                            role="tab"
+                            aria-selected=move || mode.get() == AuthMode::Register
+                            data-testid="auth-tab-register"
+                            on:click=move |_| mode.set(AuthMode::Register)
+                        >
+                            "注册"
+                        </button>
+                    </div>
+                    <form
+                        class="cdb-auth-form"
+                        data-testid=move || if mode.get() == AuthMode::Login { "login-form" } else { "register-form" }
+                        on:submit=move |ev| {
+                            ev.prevent_default();
+                            submit();
+                        }
+                    >
+                        {move || if mode.get() == AuthMode::Register {
+                            view! {
+                                <div class="cdb-field">
+                                    <label for="auth-display-name">"显示名称"</label>
+                                    <input
+                                        class="cdb-input"
+                                        id="auth-display-name"
+                                        data-testid="auth-display-name"
+                                        prop:value=move || display_name.get()
+                                        maxlength="32"
+                                        autocomplete="name"
+                                        aria-describedby="auth-display-name-error"
+                                    />
+                                    <p class="cdb-field-error" id="auth-display-name-error" data-error="name" data-testid="auth-name-error">
+                                        {move || name_error.get().unwrap_or_default()}
+                                    </p>
+                                </div>
+                            }.into_view()
+                        } else {
+                            view! { <></> }.into_view()
+                        }}
+                        <div class="cdb-field">
+                            <label for="auth-email">"邮箱"</label>
+                            <input
+                                class="cdb-input"
+                                id="auth-email"
+                                data-testid="auth-email"
+                                type="email"
+                                prop:value=move || email.get()
+                                autocomplete="email"
+                                aria-describedby="auth-email-error"
+                            />
+                            <p class="cdb-field-error" id="auth-email-error" data-error="email" data-testid="auth-email-error">
+                                {move || email_error.get().unwrap_or_default()}
+                            </p>
+                        </div>
+                        <div class="cdb-field">
+                            <label for="auth-password">"密码"</label>
+                            <div class="cdb-password-wrap">
+                                <input
+                                    class="cdb-input"
+                                    id="auth-password"
+                                    data-testid="auth-password"
+                                    type=move || if password_visible.get() { "text" } else { "password" }
+                                    prop:value=move || password.get()
+                                    autocomplete=move || if mode.get() == AuthMode::Register { "new-password" } else { "current-password" }
+                                    aria-describedby="auth-password-error"
+                                />
+                                <button
+                                    class="cdb-password-toggle"
+                                    type="button"
+                                    data-testid="auth-eye-toggle"
+                                    aria-label=move || if password_visible.get() { "隐藏密码" } else { "显示密码" }
+                                    on:click=move |_| password_visible.update(|v| *v = !*v)
+                                >
+                                    {move || if password_visible.get() { "🙈" } else { "👁" }}
+                                </button>
+                            </div>
+                            <p class="cdb-field-error" id="auth-password-error" data-error="password" data-testid="auth-password-error">
+                                {move || password_error.get().unwrap_or_default()}
+                            </p>
+                            {move || if mode.get() == AuthMode::Register {
+                                let p = password.get();
+                                let level = password_strength_level(&p);
+                                view! {
+                                    <div class="cdb-strength" data-testid="auth-strength" data-level=level aria-label=format!("密码强度：{}", password_strength_label(level))>
+                                        <span class:cdb-on={level >= 1}></span>
+                                        <span class:cdb-on={level >= 2}></span>
+                                        <span class:cdb-on={level >= 3}></span>
+                                        <span class:cdb-on={level >= 4}></span>
+                                    </div>
+                                }.into_view()
+                            } else {
+                                view! { <></> }.into_view()
+                            }}
+                        </div>
+                        {move || if mode.get() == AuthMode::Register {
+                            view! {
+                                <div class="cdb-field">
+                                    <label for="auth-confirm">"确认密码"</label>
+                                    <input
+                                        class="cdb-input"
+                                        id="auth-confirm"
+                                        data-testid="auth-confirm-password"
+                                        type="password"
+                                        prop:value=move || confirm_password.get()
+                                        autocomplete="new-password"
+                                        aria-describedby="auth-confirm-error"
+                                    />
+                                    <p class="cdb-field-error" id="auth-confirm-error" data-error="confirm" data-testid="auth-confirm-error">
+                                        {move || confirm_error.get().unwrap_or_default()}
+                                    </p>
+                                </div>
+                            }.into_view()
+                        } else {
+                            view! {
+                                <div class="cdb-form-meta">
+                                    <label class="cdb-checkbox">
+                                        <input
+                                            type="checkbox"
+                                            data-testid="auth-remember"
+                                            prop:checked=move || remember_device.get()
+                                            on:change=move |ev| remember_device.set(event_target_checked(&ev))
+                                        />
+                                        <span>"记住此设备"</span>
+                                    </label>
+                                    <button
+                                        type="button"
+                                        class="cdb-btn cdb-btn--ghost cdb-btn--sm"
+                                        data-testid="auth-simulate-error"
+                                        on:click=move |_| simulate_error.update(|v| *v = !*v)
+                                    >
+                                        {move || if simulate_error.get() { "关闭模拟错误" } else { "模拟凭据错误" }}
+                                    </button>
+                                </div>
+                            }.into_view()
+                        }}
+                        <div class="cdb-auth-alert" role="alert" data-testid="auth-alert">
+                            {move || error.get().unwrap_or_default()}
+                        </div>
+                        <button
+                            class="cdb-btn cdb-btn--primary cdb-auth-submit"
+                            type="submit"
+                            data-testid=move || if mode.get() == AuthMode::Login { "login-submit" } else { "register-submit" }
+                            disabled=move || loading.get()
+                            aria-busy=move || loading.get()
+                        >
+                            {move || if loading.get() {
+                                view! {
+                                    <span class="cdb-spinner" aria-hidden="true"></span>
+                                    {if mode.get() == AuthMode::Register { "创建账户..." } else { "正在验证..." }}
+                                }.into_view()
+                            } else if mode.get() == AuthMode::Login {
+                                view! { <span>"登录并进入空间"</span> }.into_view()
+                            } else {
+                                view! { <span>"创建账户"</span> }.into_view()
+                            }}
+                        </button>
+                    </form>
+                    <div class="cdb-demo-note" data-testid="auth-demo-note">
+                        <span class="cdb-demo-note-icon" aria-hidden="true">"ⓘ"</span>
+                        <span>
+                            "演示提示：登录与注册都会调用真实鉴权 API；点击「模拟凭据错误」可查看异常反馈。"
+                        </span>
+                    </div>
+                </div>
+            </article>
         </main>
     }
 }
@@ -7255,6 +7447,74 @@ mod tests {
                 "ST-FE-PROTO-08: {state} 必须在 AppRoot 注册使用"
             );
         }
+    }
+
+    /// align-frontend-to-prototype：Auth 页对齐主原型的关键锚点齐全。
+    #[test]
+    fn test_auth_prototype_alignment_anchors() {
+        let src = include_str!("editor_panels.rs");
+        // 左区：品牌 + hero + 3 feature
+        for anchor in [
+            "data-testid=\"auth-brand\"",
+            "data-testid=\"auth-brand-tag\"",
+            "data-testid=\"auth-hero\"",
+            "data-testid=\"auth-feature-row\"",
+            "data-testid=\"auth-story\"",
+            "data-testid=\"auth-panel\"",
+        ] {
+            assert!(
+                src.contains(anchor),
+                "Auth 对齐原型：{anchor} 必须保留"
+            );
+        }
+        // 表单字段 + 错误提示
+        for anchor in [
+            "data-testid=\"auth-title\"",
+            "data-testid=\"auth-email\"",
+            "data-testid=\"auth-email-error\"",
+            "data-testid=\"auth-password\"",
+            "data-testid=\"auth-password-error\"",
+            "data-testid=\"auth-display-name\"",
+            "data-testid=\"auth-name-error\"",
+            "data-testid=\"auth-confirm-password\"",
+            "data-testid=\"auth-confirm-error\"",
+            "data-testid=\"auth-alert\"",
+        ] {
+            assert!(
+                src.contains(anchor),
+                "Auth 对齐原型：{anchor} 必须保留"
+            );
+        }
+        // 交互能力
+        for anchor in [
+            "data-testid=\"auth-eye-toggle\"",
+            "data-testid=\"auth-strength\"",
+            "data-testid=\"auth-remember\"",
+            "data-testid=\"auth-simulate-error\"",
+            "data-testid=\"auth-demo-note\"",
+        ] {
+            assert!(
+                src.contains(anchor),
+                "Auth 对齐原型：{anchor} 必须保留"
+            );
+        }
+    }
+
+    /// align-frontend-to-prototype：密码强度纯函数测试。
+    #[test]
+    fn test_password_strength_level() {
+        assert_eq!(password_strength_level(""), 0);
+        assert_eq!(password_strength_level("short"), 0);
+        assert_eq!(password_strength_level("Pass1234"), 1);
+        assert_eq!(password_strength_level("password"), 1);
+        assert_eq!(password_strength_level("Pass12345678"), 3);
+        assert_eq!(password_strength_level("Password1234"), 3);
+        assert_eq!(password_strength_level("P@ssw0rd!Long"), 4);
+        assert_eq!(password_strength_label(0), "无");
+        assert_eq!(password_strength_label(1), "弱");
+        assert_eq!(password_strength_label(2), "一般");
+        assert_eq!(password_strength_label(3), "良好");
+        assert_eq!(password_strength_label(4), "强");
     }
 
     /// ST-FE-PROTO-08 session 状态机不会重新引入 token 泄漏。

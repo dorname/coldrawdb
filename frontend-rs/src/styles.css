@@ -328,53 +328,363 @@ body {
 .cdb-auth-page {
   min-height: 100vh;
   display: grid;
-  place-items: center;
-  padding: var(--cdb-space-8);
+  grid-template-columns: 1.1fr 1fr;
+  padding: 0;
   background: var(--cdb-color-bg-canvas);
   color: var(--cdb-color-text);
+  overflow: hidden;
 }
 
-.cdb-auth-panel {
-  width: min(420px, 100%);
+/* ─── 左区：品牌 + hero + 3 feature（align-frontend-to-prototype）─── */
+.cdb-auth-story {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--cdb-space-8);
+  padding: var(--cdb-space-8);
+  background: linear-gradient(135deg, var(--cdb-color-bg-elev, #f8fafc), var(--cdb-color-bg-canvas));
+  min-height: 100vh;
+}
+
+.cdb-auth-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cdb-space-2);
+  font-weight: 600;
+  font-size: var(--cdb-font-size-md);
+}
+
+.cdb-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--cdb-radius-md);
+  background: var(--cdb-color-brand, #5b6cff);
+  color: #fff;
+  font-size: 18px;
+}
+
+.cdb-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: var(--cdb-font-size-xs);
+  background: var(--cdb-color-bg-elev);
+  color: var(--cdb-color-text-muted);
+  border: 1px solid var(--cdb-color-border);
+}
+
+.cdb-tag--brand {
+  background: var(--cdb-color-brand, #5b6cff);
+  color: #fff;
+  border-color: transparent;
+}
+
+.cdb-eyebrow {
+  display: inline-block;
+  font-size: var(--cdb-font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cdb-color-brand, #5b6cff);
+  margin-bottom: var(--cdb-space-2);
+}
+
+.cdb-auth-hero {
+  max-width: 580px;
+}
+
+.cdb-auth-hero-title {
+  font-size: clamp(36px, 4.5vw, 64px);
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  margin: 0 0 var(--cdb-space-4);
+  font-weight: 700;
+  white-space: pre-line;
+}
+
+.cdb-auth-hero-desc {
+  font-size: var(--cdb-font-size-md);
+  line-height: 1.65;
+  color: var(--cdb-color-text-muted);
+  margin: 0;
+  max-width: 560px;
+}
+
+.cdb-auth-feature-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--cdb-space-3);
+  margin-top: var(--cdb-space-6);
+}
+
+.cdb-auth-feature {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cdb-space-1);
+  padding: var(--cdb-space-3);
+  border-radius: var(--cdb-radius-md);
   background: var(--cdb-color-bg);
   border: 1px solid var(--cdb-color-border);
-  border-radius: var(--cdb-radius-lg);
-  box-shadow: var(--cdb-shadow-lg);
-  padding: var(--cdb-space-6);
+  font-size: var(--cdb-font-size-sm);
+}
+
+.cdb-auth-feature strong {
+  font-size: var(--cdb-font-size-sm);
+  color: var(--cdb-color-text);
+  margin-top: var(--cdb-space-1);
+}
+
+.cdb-auth-feature span {
+  color: var(--cdb-color-text-muted);
+  font-size: var(--cdb-font-size-xs);
+  line-height: 1.5;
+}
+
+.cdb-auth-feature-icon {
+  font-size: 18px;
+  color: var(--cdb-color-brand, #5b6cff);
+}
+
+/* ─── 右区：表单卡片（玻璃质感）─── */
+.cdb-auth-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--cdb-space-8);
+  background: var(--cdb-color-bg);
+  border-left: 1px solid var(--cdb-color-border);
+}
+
+.cdb-glass {
+  background: var(--cdb-color-bg-elev, rgba(255, 255, 255, 0.7));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.cdb-auth-card {
+  width: min(440px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--cdb-space-3);
+}
+
+.cdb-auth-title {
+  font-size: var(--cdb-font-size-xl);
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.cdb-muted {
+  color: var(--cdb-color-text-muted);
+  font-size: var(--cdb-font-size-sm);
+  margin: 0 0 var(--cdb-space-3);
 }
 
 .cdb-auth-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: var(--cdb-space-2);
-  margin-bottom: var(--cdb-space-5);
+  background: var(--cdb-color-bg-canvas);
+  border-radius: var(--cdb-radius-md);
+  padding: 4px;
+  margin: var(--cdb-space-2) 0;
+}
+
+.cdb-auth-tab {
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  border-radius: calc(var(--cdb-radius-md) - 4px);
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--cdb-color-text-muted);
+  transition: var(--cdb-transition, all 0.15s ease);
+}
+
+.cdb-auth-tab.cdb-is-active {
+  background: var(--cdb-color-bg);
+  color: var(--cdb-color-text);
+  box-shadow: var(--cdb-shadow-sm);
 }
 
 .cdb-auth-form {
-  display: grid;
-  gap: var(--cdb-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--cdb-space-3);
 }
 
-.cdb-auth-form label {
-  display: grid;
-  gap: var(--cdb-space-2);
+.cdb-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cdb-space-1);
+}
+
+.cdb-field label {
   font-size: var(--cdb-font-size-sm);
   color: var(--cdb-color-text-1);
+  font-weight: 500;
 }
 
-.cdb-auth-form input {
-  min-height: 38px;
+.cdb-input {
+  min-height: 40px;
   border: 1px solid var(--cdb-color-border);
   border-radius: var(--cdb-radius-md);
-  background: var(--cdb-color-bg-0);
+  background: var(--cdb-color-bg);
   color: var(--cdb-color-text);
   padding: 0 var(--cdb-space-3);
+  font-size: var(--cdb-font-size-md);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.cdb-input:focus {
+  outline: none;
+  border-color: var(--cdb-color-brand, #5b6cff);
+  box-shadow: 0 0 0 3px rgba(91, 108, 255, 0.15);
+}
+
+.cdb-password-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.cdb-password-wrap .cdb-input {
+  padding-right: 40px;
+  flex: 1;
+}
+
+.cdb-password-toggle {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 16px;
+  color: var(--cdb-color-text-muted);
+}
+
+.cdb-field-error {
+  margin: 0;
+  color: var(--cdb-color-error);
+  font-size: var(--cdb-font-size-xs);
+  min-height: 14px;
+}
+
+.cdb-strength {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  margin-top: var(--cdb-space-1);
+}
+
+.cdb-strength span {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--cdb-color-bg-canvas);
+  transition: var(--cdb-transition, all 0.15s ease);
+}
+
+.cdb-strength span.cdb-on[data-level="1"],
+.cdb-strength span.cdb-on:nth-child(1) { background: #ef4444; }
+.cdb-strength[data-level="2"] span.cdb-on { background: #f59e0b; }
+.cdb-strength[data-level="3"] span.cdb-on { background: #10b981; }
+.cdb-strength[data-level="4"] span.cdb-on { background: #059669; }
+
+.cdb-form-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cdb-space-2);
+  font-size: var(--cdb-font-size-sm);
+}
+
+.cdb-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cdb-space-2);
+  cursor: pointer;
+  color: var(--cdb-color-text-muted);
+}
+
+.cdb-auth-alert {
+  min-height: 18px;
+  font-size: var(--cdb-font-size-sm);
+  color: var(--cdb-color-error);
+}
+
+.cdb-auth-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--cdb-space-2);
+  min-height: 44px;
+  font-weight: 600;
+}
+
+.cdb-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  display: inline-block;
+  animation: cdb-spin 0.8s linear infinite;
+}
+
+@keyframes cdb-spin {
+  to { transform: rotate(360deg); }
+}
+
+.cdb-demo-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cdb-space-2);
+  padding: var(--cdb-space-3);
+  border-radius: var(--cdb-radius-md);
+  background: var(--cdb-color-bg-canvas);
+  font-size: var(--cdb-font-size-xs);
+  color: var(--cdb-color-text-muted);
+  line-height: 1.5;
+}
+
+.cdb-demo-note-icon {
+  color: var(--cdb-color-brand, #5b6cff);
+  flex-shrink: 0;
 }
 
 .cdb-auth-error {
   margin: 0;
   color: var(--cdb-color-error);
   font-size: var(--cdb-font-size-sm);
+}
+
+/* ─── 720px 响应式：单列堆叠（FEUX-AC-06）─── */
+@media (max-width: 720px) {
+  .cdb-auth-page {
+    grid-template-columns: 1fr;
+  }
+  .cdb-auth-story {
+    padding: var(--cdb-space-4);
+    min-height: auto;
+    gap: var(--cdb-space-4);
+  }
+  .cdb-auth-feature-row {
+    grid-template-columns: 1fr;
+  }
+  .cdb-auth-panel {
+    padding: var(--cdb-space-4);
+    border-left: none;
+    border-top: 1px solid var(--cdb-color-border);
+  }
 }
 
 .cdb-session {
