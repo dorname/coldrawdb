@@ -1,0 +1,185 @@
+{
+  "id": "core-S03-user-auth",
+  "module": "core",
+  "scenario": "S03",
+  "title": "用户注册 / 登录 / Token 续期编排测试",
+  "proposal": "align-prototype-docs-implementation",
+  "type": "api-orchestration",
+  "version": "1.0.0",
+  "reporter": {
+    "format": "openlogos-jsonl",
+    "path": "logos/resources/verify/test-results.jsonl",
+    "case_id_prefix": "ST-S03"
+  },
+  "preconditions": [
+    "后端服务运行于 ${BASE_URL}",
+    "SQLite 使用测试数据库或可清理隔离库",
+    "测试 email 使用唯一后缀，避免与历史数据冲突"
+  ],
+  "variables": {
+    "BASE_URL": "http://localhost:3000",
+    "email": "s03-${RUN_ID}@example.com",
+    "password": "Pass1234",
+    "displayName": "S03 Tester",
+    "accessToken": null,
+    "refreshCookie": null,
+    "userId": null
+  },
+  "steps": [
+    {
+      "id": "ST-S03-01-01",
+      "name": "注册新用户",
+      "method": "POST",
+      "url": "${BASE_URL}/api/v1/auth/register",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "email": "${email}",
+        "password": "${password}",
+        "displayName": "${displayName}"
+      },
+      "expect": {
+        "status": 201,
+        "json": {
+          "email": "${email}"
+        },
+        "capture": {
+          "userId": "$.userId"
+        }
+      }
+    },
+    {
+      "id": "ST-S03-01-02",
+      "name": "重复注册返回 409",
+      "method": "POST",
+      "url": "${BASE_URL}/api/v1/auth/register",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "email": "${email}",
+        "password": "${password}",
+        "displayName": "${displayName}"
+      },
+      "expect": {
+        "status": 409,
+        "json": {
+          "code": "EMAIL_EXISTS"
+        }
+      }
+    },
+    {
+      "id": "ST-S03-01-03",
+      "name": "错误密码登录返回统一 401",
+      "method": "POST",
+      "url": "${BASE_URL}/api/v1/auth/login",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "email": "${email}",
+        "password": "Wrong1234"
+      },
+      "expect": {
+        "status": 401,
+        "json": {
+          "code": "INVALID_CREDENTIALS"
+        }
+      }
+    },
+    {
+      "id": "ST-S03-01-04",
+      "name": "登录成功并设置 refresh cookie",
+      "method": "POST",
+      "url": "${BASE_URL}/api/v1/auth/login",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "email": "${email}",
+        "password": "${password}"
+      },
+      "expect": {
+        "status": 200,
+        "headers": {
+          "set-cookie": "refresh_token="
+        },
+        "capture": {
+          "accessToken": "$.accessToken",
+          "refreshCookie": "header:set-cookie"
+        }
+      }
+    },
+    {
+      "id": "ST-S03-01-05",
+      "name": "Bearer token 获取当前用户",
+      "method": "GET",
+      "url": "${BASE_URL}/api/v1/auth/me",
+      "headers": {
+        "Authorization": "Bearer ${accessToken}"
+      },
+      "expect": {
+        "status": 200,
+        "json": {
+          "id": "${userId}",
+          "email": "${email}",
+          "displayName": "${displayName}"
+        }
+      }
+    },
+    {
+      "id": "ST-S03-01-06",
+      "name": "refresh cookie 换取新 access token",
+      "method": "POST",
+      "url": "${BASE_URL}/api/v1/auth/refresh",
+      "headers": {
+        "Cookie": "${refreshCookie}"
+      },
+      "expect": {
+        "status": 200,
+        "capture": {
+          "accessToken": "$.accessToken"
+        }
+      }
+    },
+    {
+      "id": "ST-S03-01-07",
+      "name": "退出登录撤销 refresh token",
+      "method": "POST",
+      "url": "${BASE_URL}/api/v1/auth/logout",
+      "headers": {
+        "Authorization": "Bearer ${accessToken}",
+        "Cookie": "${refreshCookie}"
+      },
+      "expect": {
+        "status": 204
+      }
+    },
+    {
+      "id": "ST-S03-01-08",
+      "name": "logout 后 refresh 失效",
+      "method": "POST",
+      "url": "${BASE_URL}/api/v1/auth/refresh",
+      "headers": {
+        "Cookie": "${refreshCookie}"
+      },
+      "expect": {
+        "status": 401,
+        "json": {
+          "code": "REFRESH_INVALID"
+        }
+      }
+    }
+  ],
+  "coverage": [
+    "UT-S03-01",
+    "UT-S03-02",
+    "UT-S03-03",
+    "UT-S03-04",
+    "UT-S03-05",
+    "UT-S03-06",
+    "UT-S03-07",
+    "ST-S03-01"
+  ]
+}

@@ -18,9 +18,9 @@
 - [x] debounce 1s 自动保存循环
 - [x] 错误处理 + 指数退避重试
 - [x] SaveState 状态机
-- [ ] WebSocket 客户端（V2 实时协作）
-- [ ] S03 auth API 客户端与 refresh/logout 接入
-- [ ] S04 room/invite/member API 客户端接入
+- [ ] S03 auth API 客户端与 refresh/logout 接入（批次 A）
+- [ ] S04 room/invite/member API 客户端接入（批次 B）
+- [ ] S05 WebSocket 客户端与 collab REST head/ops 接入（批次 C）
 
 ### 2.2 editor_core
 
@@ -29,7 +29,7 @@
 - [x] dirty 标记
 - [x] revision 跟踪
 - [x] set_diagram / push_undo / undo / redo
-- [ ] OT 操作队列（V2）
+- [ ] S05 最小 OT 操作队列、ack/serverRev、断线排队与 sync 状态（批次 C）
 
 ### 2.3 editor_panels
 
@@ -50,10 +50,10 @@
 - [x] Command Palette 交互（Ctrl+K / 搜索 / Enter 选中，`command_palette.rs`）
 - [x] Code View 交互（SQL/DBML/JSON + 复制，`code_view.rs` + AppBar 按钮）
 - [x] 保存失败指数退避（3s/6s/12s，`save_with_retry`）
-- [ ] Monaco wasm 完整挂载（见 `E4_ACTIVATION.md`，可选升级）
-- [ ] 房间成员列表（V2）
-- [ ] S03 登录/注册/会话界面生产接入
-- [ ] S04 房间/邀请/成员/角色界面生产接入
+- [ ] S03 登录/注册/会话界面、user-menu、session-indicator 生产接入（批次 A）
+- [ ] S04 房间列表、创建房间、邀请、成员、角色和 viewer 只读生产接入（批次 B）
+- [ ] S05 ws-status、room-presence、ot-rev、reconnect-banner、activity-feed 生产接入（批次 C）
+- [ ] Monaco wasm 完整挂载（可选升级，不阻塞本变更）
 
 ### 2.4 editor_render
 
@@ -65,8 +65,7 @@
 - [x] Note 富文本
 - [x] 选中 / 高亮 / 闪烁
 - [x] 撤销栈深度指示
-- [ ] 协作者光标渲染（V2）
-- [ ] S05 WS/OT/presence/重连生产接入
+- [ ] S05 协作者光标、远端选中框与 presence 标签渲染（批次 C）
 
 ### 2.5 设计系统（redesign-phase-e）
 
@@ -252,6 +251,7 @@
 
 - [x] S01: 7 步骤 JSON
 - [x] S02: 7 步骤 JSON
+- [x] S03: register → login → me → refresh → logout → refresh 失效 JSON
 - [x] S04: 房间生命周期 JSON
 - [x] S05: HTTP + WebSocket OT 协作 JSON
 - [x] S06: MCP stdio JSON + Rust 协议/HTTP mock 编排测试
@@ -261,6 +261,13 @@
 - [x] ST-PU-01～ST-PU-19 Playwright 自动回归 + OpenLogos reporter
 - [x] UT-MCP-01～UT-MCP-15
 - [x] ST-MCP-01～ST-MCP-09 + OpenLogos reporter
+
+### 7.5 V2 生产前端接入
+
+- [ ] 批次 A：S03 鉴权生产接入，覆盖 `UT-S03-01`～`UT-S03-07`、`ST-S03-01`、`ST-FE-S03-01`～`ST-FE-S03-05`
+- [ ] 批次 B：S04 房间与邀请生产接入，覆盖 `UT-S04-01`～`UT-S04-10`、`ST-S04-01`、`ST-FE-S04-01`～`ST-FE-S04-06`
+- [ ] 批次 C：S05 WS/OT/presence 生产接入，覆盖 `UT-C-01`～`UT-C-05`、`ST-C-01`、`ST-FE-S05-01`～`ST-FE-S05-06`
+- [ ] 批次 D：全链路回归与状态收口，覆盖 `ST-FE-V2-01`～`ST-FE-V2-04`、S01/S02/PU 回归和 OpenLogos reporter 聚合
 
 ## 8. 部署
 
@@ -293,10 +300,10 @@
 - [x] 技术方案层 3 场景时序（S03/S04/S05）
 - [x] API 3 文件（auth.yaml + rooms.yaml + collab.yaml）
 - [x] DB 3 文件（v2-auth / v2-rooms / v2-collab SQL）
-- [x] 场景 2 编排 JSON（S04 + S05；S03 编排待补）
-- [ ] S03 编排测试 `core-S03-user-auth.json`
+- [x] S03 编排测试 `core-S03-user-auth.json`
+- [x] 场景 3 编排 JSON（S03 + S04 + S05）
 - [x] V2 后端实现（auth / rooms / collab REST、DB、WS 与测试）
-- [ ] V2 生产前端实现（auth / rooms / WS/OT/presence）
+- [ ] V2 生产前端实现（auth / rooms / WS/OT/presence，按 A/B/C 批次交付）
 
 ### 9.3 S06 MCP 文档与实现
 
