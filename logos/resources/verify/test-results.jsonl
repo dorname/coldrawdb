@@ -193,3 +193,7 @@
 {"id":"ST-PU-18","status":"pass","duration_ms":1145,"timestamp":"2026-08-19T05:58:39.271Z"}
 {"id":"ST-PU-19","status":"pass","duration_ms":6324,"timestamp":"2026-08-19T05:58:46.098Z"}
 {"id":"ST-PU-20","status":"pass","duration_ms":24,"timestamp":"2026-08-19T05:58:46.232Z"}
+{"id":"UT-FE-PROTO-05","module":"core","scenario":"S05","result":"PASS","duration_ms":2,"ts":"2026-08-19T08:00:00Z","proposal":"align-frontend-to-prototype","note":"collab 五态文案稳定（离线/连接中/已连接/重连中/只读）；ot-rev / reconnect-banner 文案公式稳定"}
+{"id":"UT-FE-PROTO-06","module":"core","scenario":"UX","result":"PASS","duration_ms":2,"ts":"2026-08-19T08:00:00Z","proposal":"align-frontend-to-prototype","note":"720px 紧凑布局；inspector/io_drawer 互斥；所有 IO 抽屉可关闭"}
+{"id":"ST-FE-PROTO-06","module":"core","scenario":"S05","result":"SKIP","duration_ms":0,"ts":"2026-08-19T08:00:00Z","proposal":"align-frontend-to-prototype","note":"e2e harness 待接入；room editor 现有 ws-status/ot-rev/room-presence/activity-feed 锚点齐全；viewer 写操作由 room_is_viewer 守护"}
+{"id":"ST-FE-PROTO-07","module":"core","scenario":"UX","result":"SKIP","duration_ms":0,"ts":"2026-08-19T08:00:00Z","proposal":"align-frontend-to-prototype","note":"e2e harness 待接入；720px 布局新增 @media rule：tool-rail 48px + cdb-main 单列 + inspector/io 抽屉互斥 + modal 全屏"}

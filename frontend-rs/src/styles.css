@@ -1986,6 +1986,59 @@ textarea {
 }
 
 /* ============================================================
+ * align-frontend-to-prototype: 720px 紧凑布局（FEUX-AC-06）
+ * —— 移动端关键按钮可达，无横向溢出；浮层可关闭
+ * ============================================================ */
+@media (max-width: 720px) {
+  /* 展示：editor 用紧凑布局，不显示 1023px "不支持小屏" 警告 */
+  body::before {
+    content: none;
+    display: none;
+  }
+  .cdb-app {
+    grid-template-columns: 48px 1fr;
+    grid-template-rows: 48px 1fr auto;
+  }
+  .cdb-tool-rail {
+    grid-row: 1 / 4;
+  }
+  .cdb-app-bar {
+    grid-column: 2 / 4;
+  }
+  .cdb-main {
+    grid-column: 2 / 4;
+    display: flex;
+    flex-direction: column;
+  }
+  .cdb-canvas-container {
+    flex: 1;
+    min-height: 200px;
+  }
+  .cdb-inspector {
+    width: 100%;
+    max-width: 100%;
+    border-left: none;
+    border-top: 1px solid var(--cdb-color-border);
+  }
+  .cdb-io-drawer {
+    width: 100%;
+    max-width: 100%;
+  }
+  /* 720px 下 IO 抽屉和 inspector 不同时占用可见区域 */
+  .cdb-main.cdb-has-io-drawer .cdb-inspector {
+    display: none;
+  }
+  .cdb-main.cdb-is-inspector-collapsed .cdb-inspector {
+    display: none;
+  }
+  .cdb-modal {
+    width: 100%;
+    max-width: 100%;
+    margin: var(--cdb-space-2);
+  }
+}
+
+/* ============================================================
  * Responsive: V1 边界 (spec §5.4) — 最小宽度 1024px
  * ============================================================ */
 @media (max-width: 1023px) {

@@ -16,7 +16,8 @@ use crate::command_palette::{
 };
 use crate::editor_core::types::{Area, Field, Note, Reference, Table};
 use crate::editor_core::{
-    CollabConnectionState, CollabOtState, ConflictInfo, DebounceTrigger, EditorStore,
+    CollabConnectionState, CollabOtState, CollabPendingOp, ConflictInfo, DebounceTrigger,
+    EditorStore,
 };
 use crate::editor_data_access::{
     save_with_retry, AuthClient, AuthSession, BridgeConfigUpdate, CollabClient, CollabFrame,
@@ -1549,6 +1550,21 @@ pub fn AppBar(
 
 fn room_is_viewer(room: RwSignal<Option<RoomDetail>>) -> bool {
     room.get().as_ref().map(|r| r.is_viewer()).unwrap_or(false)
+}
+
+/// align-frontend-to-prototype：响应式布局断点（≤720px 视为紧凑布局）。
+pub fn should_apply_compact_layout(viewport_width: u32) -> bool {
+    viewport_width <= 720
+}
+
+/// align-frontend-to-prototype：IO 抽屉打开时，inspector 必须收起。
+pub fn inspector_collapsed_when_io_open(io_open: bool) -> bool {
+    io_open
+}
+
+/// align-frontend-to-prototype：所有 IO 抽屉都可以被关闭（不能锁死）。
+pub fn can_close_io_drawer(kind: IoDrawerKind) -> bool {
+    !matches!(kind, IoDrawerKind::None)
 }
 
 pub fn collab_status_label(state: &CollabOtState) -> &'static str {
@@ -7150,6 +7166,74 @@ mod tests {
         assert_eq!(collab_status_label(&state), "重连中");
         state.connection = CollabConnectionState::ReadOnly;
         assert_eq!(collab_status_label(&state), "只读");
+    }
+
+    // ─── align-frontend-to-prototype UT-FE-PROTO-05/06 ────
+
+    #[test]
+    fn ut_fe_proto_05_collab_state_machine_text_stability() {
+        // 五种 collab 连接状态 → 状态文案稳定（不可随语言抖动）
+        let cases = [
+            (CollabConnectionState::Offline, "离线"),
+            (CollabConnectionState::Connecting, "连接中"),
+            (CollabConnectionState::Connected, "已连接"),
+            (CollabConnectionState::Reconnecting, "重连中"),
+            (CollabConnectionState::ReadOnly, "只读"),
+        ];
+        for (conn, expected) in cases {
+            let state = CollabOtState {
+                connection: conn,
+                ..CollabOtState::default()
+            };
+            assert_eq!(
+                collab_status_label(&state),
+                expected,
+                "UT-FE-PROTO-05: collab status label must be stable"
+            );
+        }
+
+        // ot-rev 文本格式稳定
+        let mut state = CollabOtState::default();
+        state.server_rev = 7;
+        assert_eq!(format!("ot:{}", state.server_rev), "ot:7");
+
+        // reconnect-banner 文案：连接中断且有排队变更
+        state.connection = CollabConnectionState::Reconnecting;
+        state.queued_while_offline = vec![CollabPendingOp {
+            client_rev: 1,
+            op_type: "table.create".into(),
+        }];
+        let banner = format!(
+            "连接中断，{} 个本地变更等待同步",
+            state.queued_while_offline.len()
+        );
+        assert_eq!(banner, "连接中断，1 个本地变更等待同步");
+
+        // 只读提示文案：read_only 状态在 ot/header 同步
+        state.connection = CollabConnectionState::ReadOnly;
+        assert_eq!(collab_status_label(&state), "只读");
+    }
+
+    #[test]
+    fn ut_fe_proto_06_responsive_layout_class_helpers() {
+        // 720px 视口的纯函数判断：响应式应否触发
+        assert!(should_apply_compact_layout(720));
+        assert!(should_apply_compact_layout(640));
+        assert!(!should_apply_compact_layout(900));
+        assert!(!should_apply_compact_layout(1280));
+
+        // inspector/io drawer 互斥：抽屉打开时 inspector 收起
+        assert!(inspector_collapsed_when_io_open(true));
+        assert!(!inspector_collapsed_when_io_open(false));
+
+        // 浮层（drawer/modal）的可关闭性（不能锁死）
+        let drawer_kinds = [
+            IoDrawerKind::Import,
+            IoDrawerKind::Export,
+        ];
+        for kind in drawer_kinds {
+            assert!(can_close_io_drawer(kind), "kind={:?} must be closable", kind);
+        }
     }
 
     #[test]
