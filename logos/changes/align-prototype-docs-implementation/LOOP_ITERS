@@ -1,0 +1,2 @@
+{"iter":1,"node":"verify","result":"fail","module":"core","timestamp":"2026-08-19T05:53:30.552Z","slice":"批次 D：全链路回归与状态收口"}
+{"iter":2,"node":"verify","result":"pass","module":"core","timestamp":"2026-08-19T05:58:49.465Z","slice":"批次 D：全链路回归与状态收口"}
