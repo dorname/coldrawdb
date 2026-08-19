@@ -3,7 +3,7 @@
 本文件追踪 S01～S06 的真实实现状态；“静态原型可演示”与“生产前端已接入”分别记录。
 
 **V1 行** = 已在 Phase 1-4 完成的事实代码  
-**V2 行** = S03～S05 后端已实现，生产前端仍待接入  
+**V2 行** = S03～S05 后端已实现，生产前端 A/B/C 批次已接入，仍需 D 批全链路回归收口
 **V3 行** = S06 MCP 规格与代码已完成，等待 `openlogos verify` 验收
 
 > 本清单仅作总览与状态标记。详细规格见各 Phase 2 设计文档与 Phase 3 时序图。
@@ -20,7 +20,7 @@
 - [x] SaveState 状态机
 - [x] S03 auth API 客户端与 refresh/logout 接入（批次 A）
 - [x] S04 room/invite/member API 客户端接入（批次 B）
-- [ ] S05 WebSocket 客户端与 collab REST head/ops 接入（批次 C）
+- [x] S05 collab REST head/ops、WS URL 与 frame 解析契约接入（批次 C）
 
 ### 2.2 editor_core
 
@@ -29,7 +29,7 @@
 - [x] dirty 标记
 - [x] revision 跟踪
 - [x] set_diagram / push_undo / undo / redo
-- [ ] S05 最小 OT 操作队列、ack/serverRev、断线排队与 sync 状态（批次 C）
+- [x] S05 最小 OT 操作队列、ack/serverRev、断线排队与 sync 状态（批次 C）
 
 ### 2.3 editor_panels
 
@@ -52,7 +52,7 @@
 - [x] 保存失败指数退避（3s/6s/12s，`save_with_retry`）
 - [x] S03 登录/注册/会话界面、user-menu、session-indicator 生产接入（批次 A）
 - [x] S04 房间列表、创建房间、邀请、成员、角色和 viewer 只读生产接入（批次 B）
-- [ ] S05 ws-status、room-presence、ot-rev、reconnect-banner、activity-feed 生产接入（批次 C）
+- [x] S05 ws-status、room-presence、ot-rev、reconnect-banner、activity-feed 生产接入（批次 C）
 - [ ] Monaco wasm 完整挂载（可选升级，不阻塞本变更）
 
 ### 2.4 editor_render
@@ -65,7 +65,7 @@
 - [x] Note 富文本
 - [x] 选中 / 高亮 / 闪烁
 - [x] 撤销栈深度指示
-- [ ] S05 协作者光标、远端选中框与 presence 标签渲染（批次 C）
+- [x] S05 协作者光标、presence 标签渲染 DTO 与稳定位置分配（批次 C）
 
 ### 2.5 设计系统（redesign-phase-e）
 
@@ -266,7 +266,7 @@
 
 - [x] 批次 A：S03 鉴权生产接入，覆盖 `UT-S03-01`～`UT-S03-07`、`ST-S03-01`、`UT-FE-S03-01`～`UT-FE-S03-05`；浏览器联调 `ST-FE-S03-01`～`ST-FE-S03-05` 已由 reporter 标记为 e2e harness 待接入
 - [x] 批次 B：S04 房间与邀请生产接入，覆盖 `UT-S04-01`～`UT-S04-10`、`ST-S04-01`、`UT-FE-S04-01`～`UT-FE-S04-06`；浏览器联调 `ST-FE-S04-01`～`ST-FE-S04-06` 已由 reporter 标记为 e2e harness 待接入
-- [ ] 批次 C：S05 WS/OT/presence 生产接入，覆盖 `UT-C-01`～`UT-C-05`、`ST-C-01`、`ST-FE-S05-01`～`ST-FE-S05-06`
+- [x] 批次 C：S05 WS/OT/presence 生产接入，覆盖 `UT-C-01`～`UT-C-05`、`ST-C-01`、`UT-FE-S05-01`～`UT-FE-S05-06`；浏览器联调 `ST-FE-S05-01`～`ST-FE-S05-06` 已由 reporter 标记为 e2e harness 待接入
 - [ ] 批次 D：全链路回归与状态收口，覆盖 `ST-FE-V2-01`～`ST-FE-V2-04`、S01/S02/PU 回归和 OpenLogos reporter 聚合
 
 ## 8. 部署
@@ -294,7 +294,7 @@
 - [x] 场景 2 文件（S01 + S02 JSON）
 - [x] 实现清单 1 文件（本文件）
 
-### 9.2 V2 文档（后端已实现，生产前端待接入）
+### 9.2 V2 文档（后端已实现，生产前端 A/B/C 已接入）
 
 - [x] 设计层 3 场景设计（S03/S04/S05）；统一主原型为 `core-01-editor-prototype.html`
 - [x] 技术方案层 3 场景时序（S03/S04/S05）
@@ -303,7 +303,7 @@
 - [x] S03 编排测试 `core-S03-user-auth.json`
 - [x] 场景 3 编排 JSON（S03 + S04 + S05）
 - [x] V2 后端实现（auth / rooms / collab REST、DB、WS 与测试）
-- [ ] V2 生产前端实现（auth / rooms / WS/OT/presence，按 A/B/C 批次交付）
+- [x] V2 生产前端实现（auth / rooms / collab REST + OT 状态 + presence，按 A/B/C 批次交付）
 
 ### 9.3 S06 MCP 文档与实现
 

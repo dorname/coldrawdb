@@ -212,6 +212,94 @@ impl CoreError {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CollabPendingOp {
+    pub client_rev: i64,
+    pub op_type: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CollabConnectionState {
+    Offline,
+    Connecting,
+    Connected,
+    Reconnecting,
+    ReadOnly,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CollabOtState {
+    pub connection: CollabConnectionState,
+    pub server_rev: i64,
+    pub next_client_rev: i64,
+    pub pending_ops: Vec<CollabPendingOp>,
+    pub queued_while_offline: Vec<CollabPendingOp>,
+}
+
+impl Default for CollabOtState {
+    fn default() -> Self {
+        Self {
+            connection: CollabConnectionState::Offline,
+            server_rev: 0,
+            next_client_rev: 1,
+            pending_ops: Vec::new(),
+            queued_while_offline: Vec::new(),
+        }
+    }
+}
+
+impl CollabOtState {
+    pub fn connected(server_rev: i64) -> Self {
+        Self {
+            connection: CollabConnectionState::Connected,
+            server_rev,
+            ..Default::default()
+        }
+    }
+
+    pub fn enqueue_local_op(&mut self, op_type: impl Into<String>) -> Option<i64> {
+        if matches!(self.connection, CollabConnectionState::ReadOnly) {
+            return None;
+        }
+        let op = CollabPendingOp {
+            client_rev: self.next_client_rev,
+            op_type: op_type.into(),
+        };
+        self.next_client_rev += 1;
+        if matches!(self.connection, CollabConnectionState::Connected) {
+            self.pending_ops.push(op.clone());
+        } else {
+            self.queued_while_offline.push(op.clone());
+        }
+        Some(op.client_rev)
+    }
+
+    pub fn ack(&mut self, client_rev: Option<i64>, server_rev: i64) {
+        self.server_rev = self.server_rev.max(server_rev);
+        if let Some(client_rev) = client_rev {
+            self.pending_ops.retain(|op| op.client_rev != client_rev);
+        } else if !self.pending_ops.is_empty() {
+            self.pending_ops.remove(0);
+        }
+    }
+
+    pub fn mark_reconnecting(&mut self) {
+        self.connection = CollabConnectionState::Reconnecting;
+    }
+
+    pub fn apply_sync(&mut self, server_rev: i64) {
+        self.server_rev = self.server_rev.max(server_rev);
+        self.connection = CollabConnectionState::Connected;
+        self.pending_ops.extend(self.queued_while_offline.drain(..));
+    }
+
+    pub fn mark_read_only(&mut self) {
+        self.connection = CollabConnectionState::ReadOnly;
+        self.pending_ops.clear();
+        self.queued_while_offline.clear();
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct CommandStack {
     undo: Vec<Command>,
@@ -770,5 +858,39 @@ mod tests {
         let mut stack = CommandStack::new();
         let popped = stack.redo();
         assert!(popped.is_none(), "UT-MM-16: 空 redo 栈应返回 None");
+    }
+
+    #[test]
+    fn ut_fe_s05_07_collab_ot_queue_and_ack() {
+        let mut state = CollabOtState::connected(3);
+        assert_eq!(state.enqueue_local_op("table.create"), Some(1));
+        assert_eq!(state.pending_ops.len(), 1);
+        state.ack(Some(1), 4);
+        assert_eq!(state.server_rev, 4);
+        assert!(state.pending_ops.is_empty());
+    }
+
+    #[test]
+    fn ut_fe_s05_08_collab_ot_reconnect_flushes_offline_queue() {
+        let mut state = CollabOtState::connected(4);
+        state.mark_reconnecting();
+        assert_eq!(state.enqueue_local_op("field.update"), Some(1));
+        assert_eq!(state.queued_while_offline.len(), 1);
+        assert!(state.pending_ops.is_empty());
+
+        state.apply_sync(6);
+        assert_eq!(state.connection, CollabConnectionState::Connected);
+        assert_eq!(state.server_rev, 6);
+        assert!(state.queued_while_offline.is_empty());
+        assert_eq!(state.pending_ops.len(), 1);
+    }
+
+    #[test]
+    fn ut_fe_s05_09_collab_ot_read_only_blocks_local_op() {
+        let mut state = CollabOtState::connected(0);
+        state.mark_read_only();
+        assert_eq!(state.enqueue_local_op("table.create"), None);
+        assert!(state.pending_ops.is_empty());
+        assert!(state.queued_while_offline.is_empty());
     }
 }

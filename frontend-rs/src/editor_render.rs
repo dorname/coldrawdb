@@ -7,12 +7,10 @@
 //! Architecture: DAG dependency -> editor-core (store + types).
 //! All types re-exported from `crate::editor_core::types`.
 
-use crate::editor_core::types::{
-    Area, Diagram, Field, Note, Reference, Table,
-};
+use crate::editor_core::types::{Area, Note, Reference, Table};
 use leptos::{RwSignal, SignalGet, SignalSet, SignalUpdate};
 use wasm_bindgen::JsCast;
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, MouseEvent, WheelEvent};
+use web_sys::{CanvasRenderingContext2d, MouseEvent, WheelEvent};
 
 // ─── Canvas constants ────────────────────────────────────────────────────────
 
@@ -91,6 +89,7 @@ mod leptos_canvas {
     pub fn Canvas(
         store: EditorStore,
         transform: RwSignal<Transform>,
+        remote_presence: RwSignal<Vec<RemotePresence>>,
         on_select: Option<Box<dyn Fn(String) + 'static>>,
         on_deselect: Option<Box<dyn Fn() + 'static>>,
         on_dblclick_blank: Option<Box<dyn Fn() + 'static>>,
@@ -135,11 +134,23 @@ mod leptos_canvas {
             let refs = store.references.get();
             let areas = store.areas.get();
             let notes = store.notes.get();
+            let presence = remote_presence.get();
             let sel = selected_id.get();
 
             let width = canvas.width() as f64;
             let height = canvas.height() as f64;
-            super::draw_canvas(&ctx, &t, width, height, &tables, &refs, &areas, &notes, sel.as_deref());
+            super::draw_canvas(
+                &ctx,
+                &t,
+                width,
+                height,
+                &tables,
+                &refs,
+                &areas,
+                &notes,
+                &presence,
+                sel.as_deref(),
+            );
         });
 
         let on_mousedown = move |ev: MouseEvent| {
@@ -350,6 +361,7 @@ pub fn draw_canvas(
     refs: &[Reference],
     areas: &[Area],
     notes: &[Note],
+    remote_presence: &[RemotePresence],
     selected_id: Option<&str>,
 ) {
     ctx.clear_rect(0.0, 0.0, width, height);
@@ -383,7 +395,53 @@ pub fn draw_canvas(
         draw_note(ctx, note);
     }
 
+    for presence in remote_presence {
+        draw_remote_presence(ctx, presence);
+    }
+
     ctx.restore();
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct RemotePresence {
+    pub user_id: String,
+    pub display_name: Option<String>,
+    pub x: f64,
+    pub y: f64,
+    pub online: bool,
+}
+
+pub fn remote_presence_slots(
+    members: impl IntoIterator<Item = (String, Option<String>, bool)>,
+) -> Vec<RemotePresence> {
+    members
+        .into_iter()
+        .enumerate()
+        .map(|(idx, (user_id, display_name, online))| RemotePresence {
+            user_id,
+            display_name,
+            x: 80.0 + (idx as f64) * 18.0,
+            y: 72.0 + (idx as f64) * 14.0,
+            online,
+        })
+        .collect()
+}
+
+fn draw_remote_presence(ctx: &CanvasRenderingContext2d, presence: &RemotePresence) {
+    if !presence.online {
+        return;
+    }
+    let _ = ctx.set_fill_style_str("#ef4444");
+    ctx.begin_path();
+    let _ = ctx.arc(presence.x, presence.y, 5.0, 0.0, std::f64::consts::TAU);
+    ctx.fill();
+    let label = presence
+        .display_name
+        .as_deref()
+        .unwrap_or(presence.user_id.as_str());
+    let _ = ctx.set_fill_style_str("#0f172a");
+    let _ = ctx.set_font("11px sans-serif");
+    let _ = ctx.fill_text(label, presence.x + 8.0, presence.y + 4.0);
 }
 
 fn draw_grid(ctx: &CanvasRenderingContext2d, t: &Transform, width: f64, height: f64) {
@@ -913,5 +971,19 @@ mod tests {
             Some(("t1".into(), "f1".into())),
             "UT-PB-01: 字段行命中应返回 (table_id, field_id)"
         );
+    }
+
+    #[test]
+    fn ut_fe_s05_10_remote_presence_slots_are_stable() {
+        let slots = remote_presence_slots(vec![
+            ("u1".to_string(), Some("Dev".to_string()), true),
+            ("u2".to_string(), None, false),
+        ]);
+        assert_eq!(slots.len(), 2);
+        assert_eq!(slots[0].x, 80.0);
+        assert_eq!(slots[0].y, 72.0);
+        assert_eq!(slots[1].x, 98.0);
+        assert_eq!(slots[1].y, 86.0);
+        assert!(!slots[1].online);
     }
 }

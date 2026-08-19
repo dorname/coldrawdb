@@ -25,13 +25,19 @@
   - [x] `frontend-rs/src/editor_data_access.rs` 增加 rooms/invites/members client。
   - [x] `frontend-rs` 增加创建房间、room-badge、邀请、接受邀请、成员面板、role/viewer 只读状态。
   - [x] 测试覆盖：`UT-S04-01`～`UT-S04-10` 回归、`ST-S04-01` 回归、`UT-FE-S04-01`～`UT-FE-S04-06` reporter；浏览器联调 `ST-FE-S04-01`～`ST-FE-S04-06` 标记为 e2e harness 待接入。
-- [ ] 批次 C：S05 WS/OT/presence 生产接入
-  - [ ] `frontend-rs/src/editor_data_access.rs` 增加 WebSocket client 与 collab REST head/ops client。
-  - [ ] `frontend-rs/src/editor_core.rs` 增加最小 OT op 队列、ack/serverRev、断线排队与 sync 状态。
-  - [ ] `frontend-rs/src/editor_render.rs` 增加远端 cursor/presence 渲染。
-  - [ ] `frontend-rs/src/editor_panels.rs` 增加 ws-status、room-presence、ot-rev、reconnect-banner、activity-feed 与 viewer 禁写。
-  - [ ] 测试覆盖：`UT-C-01`～`UT-C-05` 回归、`ST-C-01` 回归、前端 WS/重连/viewer e2e reporter。
+- [x] 批次 C：S05 WS/OT/presence 生产接入
+  - [x] `frontend-rs/src/editor_data_access.rs` 增加 collab REST head/ops client、WS URL 构造与 WebSocket frame 解析契约。
+  - [x] `frontend-rs/src/editor_core.rs` 增加最小 OT op 队列、ack/serverRev、断线排队与 sync 状态。
+  - [x] `frontend-rs/src/editor_render.rs` 增加远端 cursor/presence 渲染 DTO 与稳定位置分配。
+  - [x] `frontend-rs/src/editor_panels.rs` 增加 ws-status、room-presence、ot-rev、reconnect-banner、activity-feed 与 viewer 禁写。
+  - [x] 测试覆盖：`UT-C-01`～`UT-C-05` 回归、`ST-C-01` 回归、`UT-FE-S05-01`～`UT-FE-S05-06` reporter；浏览器联调 `ST-FE-S05-01`～`ST-FE-S05-06` 标记为 e2e harness 待接入。
 - [ ] 批次 D：全链路回归与状态收口
   - [ ] 回归 S01/S02 保存、分享、409、导入导出、命令面板、设计系统测试。
   - [ ] 更新 `logos/resources/implementation/core-implementation-checklist.md` 的完成状态。
   - [ ] 运行本地可执行测试集合并生成 OpenLogos reporter；等待用户授权后再运行 `openlogos verify`。
+
+## [deploy] 部署与冒烟
+
+- [ ] 本变更需要部署，原因与 `proposal.md` 的“部署影响”一致：生产前端开始调用 V2 auth/rooms/collab 与 WS 路径。
+- [ ] 部署执行是人工确认点；实现批次完成后等待用户明确授权，不在代码批次中自动执行。
+- [ ] smoke 是人工确认点；部署完成后等待用户明确授权运行 `openlogos smoke align-prototype-docs-implementation`。

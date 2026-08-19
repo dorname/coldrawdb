@@ -15,19 +15,21 @@ use crate::command_palette::{
     build_palette_items, setup_command_palette_shortcut, CommandPalette, PaletteItem,
 };
 use crate::editor_core::types::{Area, Field, Note, Reference, Table};
-use crate::editor_core::{ConflictAction, ConflictInfo, DebounceTrigger, EditorStore};
+use crate::editor_core::{
+    CollabConnectionState, CollabOtState, ConflictInfo, DebounceTrigger, EditorStore,
+};
 use crate::editor_data_access::{
-    save_with_retry, AuthClient, AuthSession, BridgeConfig, BridgeConfigUpdate, DiagramClient,
-    ImportLocalResponse, ImportLogEntry, InvitePreview, RoomClient, RoomDetail, RoomMember,
-    RoomSummary, SaveError,
+    save_with_retry, AuthClient, AuthSession, BridgeConfigUpdate, CollabClient, CollabFrame,
+    CollabMemberPresence, DiagramClient, ImportLocalResponse, ImportLogEntry, InvitePreview,
+    RoomClient, RoomDetail, RoomMember, RoomSummary, SaveError,
 };
 use crate::editor_render::Canvas;
+use crate::editor_render::{remote_presence_slots, RemotePresence};
 use crate::editor_render::{zoom_in, zoom_out, zoom_reset, Transform};
 use crate::icons::{
     IconAdd, IconAddArea, IconAddNote, IconAddTable, IconBox, IconChevronLeft, IconChevronRight,
     IconClose, IconEnum, IconExport, IconImport, IconKey, IconMinus, IconMoon, IconMore, IconPan,
-    IconRedo, IconRelationship, IconSelect, IconSettings, IconSidebar, IconSun, IconType, IconUndo,
-    IconWarning,
+    IconRedo, IconRelationship, IconSelect, IconSettings, IconSun, IconType, IconUndo, IconWarning,
 };
 use leptos::*;
 use std::cell::RefCell;
@@ -1463,6 +1465,8 @@ pub fn AppBar(
     on_refresh_session: Rc<dyn Fn()>,
     on_logout: Rc<dyn Fn()>,
     current_room: RwSignal<Option<RoomDetail>>,
+    collab_state: RwSignal<CollabOtState>,
+    remote_members: RwSignal<Vec<CollabMemberPresence>>,
     on_open_rooms: Rc<dyn Fn()>,
 ) -> impl IntoView {
     let _ = (transform, inspector_open);
@@ -1493,6 +1497,19 @@ pub fn AppBar(
             />
             {move || current_room.get().map(|room| view! {
                 <span class="cdb-room-badge" data-testid="room-badge">{room.name}</span>
+            })}
+            {move || current_room.get().map(|_| view! {
+                <div class="cdb-collab-pills">
+                    <span class="cdb-collab-pill" data-testid="ws-status">
+                        {move || collab_status_label(&collab_state.get()).to_string()}
+                    </span>
+                    <span class="cdb-collab-pill" data-testid="ot-rev">
+                        {move || format!("OT rev {}", collab_state.get().server_rev)}
+                    </span>
+                    <span class="cdb-collab-pill" data-testid="room-presence">
+                        {move || format!("在线 {}", remote_members.get().iter().filter(|m| m.online).count())}
+                    </span>
+                </div>
             })}
             <span class="cdb-app-bar__spacer"></span>
             <div class="cdb-app-bar__actions">
@@ -1531,6 +1548,44 @@ pub fn AppBar(
 
 fn room_is_viewer(room: RwSignal<Option<RoomDetail>>) -> bool {
     room.get().as_ref().map(|r| r.is_viewer()).unwrap_or(false)
+}
+
+pub fn collab_status_label(state: &CollabOtState) -> &'static str {
+    match state.connection {
+        CollabConnectionState::Offline => "离线",
+        CollabConnectionState::Connecting => "连接中",
+        CollabConnectionState::Connected => "已连接",
+        CollabConnectionState::Reconnecting => "重连中",
+        CollabConnectionState::ReadOnly => "只读",
+    }
+}
+
+pub fn collab_activity_from_frame(frame: &CollabFrame) -> String {
+    match frame {
+        CollabFrame::Connected { server_rev, .. } => format!("协作已连接 · rev {server_rev}"),
+        CollabFrame::Ack {
+            server_rev,
+            client_rev,
+            ..
+        } => format!("本地变更已确认 · client {:?} → rev {server_rev}", client_rev),
+        CollabFrame::RemoteOp {
+            server_rev,
+            author_id,
+            ..
+        } => format!("{author_id} 推送远端变更 · rev {server_rev}"),
+        CollabFrame::Presence { user_id, .. } => format!("{user_id} 更新了在线状态"),
+        CollabFrame::Sync { server_rev, ops, .. } => {
+            format!("同步完成 · rev {} · {} 条变更", server_rev.unwrap_or(0), ops.len())
+        }
+        CollabFrame::Error { code, message } => format!("{code}: {message}"),
+    }
+}
+
+fn prepend_activity(feed: RwSignal<Vec<String>>, item: String) {
+    feed.update(|items| {
+        items.insert(0, item);
+        items.truncate(6);
+    });
 }
 
 #[component]
@@ -1831,6 +1886,35 @@ pub fn InviteAcceptPanel(
             })}
             <button class="cdb-btn cdb-btn--primary" data-testid="btn-accept-invite" on:click=move |_| accept()>"加入房间"</button>
         </section>
+    }
+}
+
+#[component]
+pub fn ReconnectBanner(collab_state: RwSignal<CollabOtState>) -> impl IntoView {
+    view! {
+        {move || {
+            let state = collab_state.get();
+            if matches!(state.connection, CollabConnectionState::Reconnecting) {
+                view! {
+                    <div class="cdb-reconnect-banner" data-testid="reconnect-banner">
+                        {format!("连接中断，{} 个本地变更等待同步", state.queued_while_offline.len())}
+                    </div>
+                }.into_view()
+            } else {
+                view! { <div class="cdb-reconnect-banner cdb-reconnect-banner--hidden" data-testid="reconnect-banner"></div> }.into_view()
+            }
+        }}
+    }
+}
+
+#[component]
+pub fn ActivityFeed(items: RwSignal<Vec<String>>) -> impl IntoView {
+    view! {
+        <aside class="cdb-activity-feed" data-testid="activity-feed">
+            <For each=move || items.get() key=|item| item.clone() children=move |item: String| {
+                view! { <div class="cdb-activity-feed__item">{item}</div> }
+            } />
+        </aside>
     }
 }
 
@@ -3091,6 +3175,8 @@ pub fn StatusBar(
     store: EditorStore,
     transform: RwSignal<Transform>,
     inspector_open: RwSignal<bool>,
+    collab_state: RwSignal<CollabOtState>,
+    remote_members: RwSignal<Vec<CollabMemberPresence>>,
 ) -> impl IntoView {
     view! {
         <footer class="cdb-status-bar" data-testid="status-bar">
@@ -3105,6 +3191,15 @@ pub fn StatusBar(
                 )}
             </span>
             <span>"db: generic"</span>
+            <span data-testid="status-ws-status">{move || collab_status_label(&collab_state.get()).to_string()}</span>
+            <span data-testid="status-ot-rev">{move || format!("ot:{}", collab_state.get().server_rev)}</span>
+            <span data-testid="status-room-presence">
+                {move || format!(
+                    "在线 {}/{}",
+                    remote_members.get().iter().filter(|m| m.online).count(),
+                    remote_members.get().len()
+                )}
+            </span>
             <span class="cdb-status-bar__spacer"></span>
             <button
                 class="cdb-btn cdb-btn--icon"
@@ -3938,6 +4033,10 @@ pub fn AppRoot(
     let current_room: RwSignal<Option<RoomDetail>> = create_rw_signal(None);
     let room_panel_visible: RwSignal<bool> = create_rw_signal(false);
     let room_members: RwSignal<Vec<RoomMember>> = create_rw_signal(Vec::new());
+    let collab_state: RwSignal<CollabOtState> = create_rw_signal(CollabOtState::default());
+    let remote_members: RwSignal<Vec<CollabMemberPresence>> = create_rw_signal(Vec::new());
+    let activity_feed: RwSignal<Vec<String>> = create_rw_signal(Vec::new());
+    let remote_presence: RwSignal<Vec<RemotePresence>> = create_rw_signal(Vec::new());
 
     // Phase B：关系工具
     let active_tool: RwSignal<ActiveTool> = create_rw_signal(ActiveTool::Select);
@@ -4029,6 +4128,82 @@ pub fn AppRoot(
     let client = DiagramClient::new("http://127.0.0.1:3000");
     let auth_client = AuthClient::new("http://127.0.0.1:3000");
     let room_client = RoomClient::new("http://127.0.0.1:3000");
+    let collab_client = CollabClient::new("http://127.0.0.1:3000");
+
+    create_effect({
+        let room_client = room_client.clone();
+        let collab_client = collab_client.clone();
+        let auth_session = auth_session.clone();
+        let current_room = current_room.clone();
+        let room_members = room_members.clone();
+        let remote_members = remote_members.clone();
+        let remote_presence = remote_presence.clone();
+        let collab_state = collab_state.clone();
+        let activity_feed = activity_feed.clone();
+        let error = error.clone();
+        move |_| {
+            let Some(session) = auth_session.get() else {
+                collab_state.set(CollabOtState::default());
+                remote_members.set(Vec::new());
+                remote_presence.set(Vec::new());
+                return;
+            };
+            let Some(room) = current_room.get() else {
+                collab_state.set(CollabOtState::default());
+                remote_members.set(Vec::new());
+                remote_presence.set(Vec::new());
+                return;
+            };
+            let token = session.access_token;
+            let room_id = room.id;
+            let user_id = session.user.as_ref().map(|u| u.id.clone());
+            collab_state.update(|state| {
+                state.connection = CollabConnectionState::Connecting;
+            });
+            let room_client = room_client.clone();
+            let collab_client = collab_client.clone();
+            spawn_local(async move {
+                match collab_client.get_head(&token, &room_id).await {
+                    Ok(head) => {
+                        collab_state.set(CollabOtState::connected(head.server_rev));
+                        prepend_activity(
+                            activity_feed,
+                            format!("协作 head 已加载 · rev {}", head.server_rev),
+                        );
+                    }
+                    Err(e) => {
+                        collab_state.update(|state| state.mark_reconnecting());
+                        prepend_activity(activity_feed, format!("协作连接待恢复 · {e}"));
+                        error.set(Some(e.to_string()));
+                    }
+                }
+
+                match room_client.list_members(&token, &room_id).await {
+                    Ok(items) => {
+                        let presence = items
+                            .iter()
+                            .map(|member| CollabMemberPresence {
+                                user_id: member.user_id.clone(),
+                                display_name: member.display_name.clone().or_else(|| Some(member.email.clone())),
+                                role: Some(member.role.clone()),
+                                online: user_id.as_deref() == Some(member.user_id.as_str()),
+                            })
+                            .collect::<Vec<_>>();
+                        room_members.set(items);
+                        remote_members.set(presence);
+                        remote_presence.set(remote_presence_slots(
+                            remote_members.get_untracked().into_iter().map(|m| {
+                                (m.user_id, m.display_name, m.online)
+                            }),
+                        ));
+                    }
+                    Err(e) => {
+                        prepend_activity(activity_feed, format!("成员状态加载失败 · {e}"));
+                    }
+                }
+            });
+        }
+    });
 
     let on_refresh_session = {
         let auth_client = auth_client.clone();
@@ -4243,6 +4418,8 @@ pub fn AppRoot(
         let next_id = next_id.clone();
         let error_for_create = error.clone();
         let current_room = current_room.clone();
+        let collab_state_for_create = collab_state.clone();
+        let activity_feed_for_create = activity_feed.clone();
         Rc::new(move || {
             if room_is_viewer(current_room) {
                 error_for_create.set(Some("只读角色不能编辑图表".to_string()));
@@ -4293,6 +4470,15 @@ pub fn AppRoot(
                 .get()
                 .borrow_mut()
                 .record(crate::editor_core::Command::AddTable(new_table.clone()));
+            if current_room.get_untracked().is_some() {
+                collab_state_for_create.update(|state| {
+                    let _ = state.enqueue_local_op("table.create");
+                });
+                prepend_activity(
+                    activity_feed_for_create,
+                    format!("本地创建表 {}，等待 OT ack", new_table.name),
+                );
+            }
 
             if current_diagram_id.get() == "default" {
                 let client = client_for_create.clone();
@@ -4764,6 +4950,8 @@ pub fn AppRoot(
                 on_refresh_session=on_refresh_session.clone()
                 on_logout=on_logout.clone()
                 current_room=current_room
+                collab_state=collab_state
+                remote_members=remote_members
                 on_open_rooms=on_open_rooms.clone()
             />
             {invite_token.clone().map(|token| view! {
@@ -4805,9 +4993,11 @@ pub fn AppRoot(
                         view! { <></> }.into_view()
                     }}
                     <RelToolHint rel_state=rel_tool_state />
+                    <ReconnectBanner collab_state=collab_state />
                     <Canvas
                         store=store.clone()
                         transform=canvas_transform
+                        remote_presence=remote_presence
                         on_select=on_canvas_select
                         on_deselect=on_canvas_deselect
                         on_dblclick_blank=on_dblclick_blank
@@ -4820,6 +5010,7 @@ pub fn AppRoot(
                         next_ref_id=next_ref_id.clone()
                         on_create=on_create_reference.clone()
                     />
+                    <ActivityFeed items=activity_feed />
                     <FloatingControls transform=canvas_transform />
                 </div>
                 <aside
@@ -4862,6 +5053,8 @@ pub fn AppRoot(
                 store=store.clone()
                 transform=canvas_transform
                 inspector_open=inspector_open
+                collab_state=collab_state
+                remote_members=remote_members
             />
             <CodeView
                 visible=code_visible
@@ -4955,7 +5148,6 @@ pub mod modals {
 
     use super::*;
     use crate::editor_core::types::Diagram;
-    use leptos::*;
 
     /// 模态种类 (B4: 4 个核心 + B5: 5 个剩余 = 9 个，spec §3 全集)
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -6557,6 +6749,38 @@ mod tests {
             field_id: "f1".into(),
         }));
         assert!(!selection_auto_opens_inspector(&SelectionKind::None));
+    }
+
+    #[test]
+    fn ut_fe_s05_11_collab_status_labels() {
+        let mut state = CollabOtState::default();
+        assert_eq!(collab_status_label(&state), "离线");
+        state.connection = CollabConnectionState::Connecting;
+        assert_eq!(collab_status_label(&state), "连接中");
+        state.connection = CollabConnectionState::Connected;
+        assert_eq!(collab_status_label(&state), "已连接");
+        state.connection = CollabConnectionState::Reconnecting;
+        assert_eq!(collab_status_label(&state), "重连中");
+        state.connection = CollabConnectionState::ReadOnly;
+        assert_eq!(collab_status_label(&state), "只读");
+    }
+
+    #[test]
+    fn ut_fe_s05_12_collab_activity_from_frame() {
+        let connected = CollabFrame::Connected {
+            server_rev: 3,
+            diagram_id: "d1".into(),
+            snapshot_hash: None,
+            members: Vec::new(),
+            your_role: Some("editor".into()),
+        };
+        assert_eq!(collab_activity_from_frame(&connected), "协作已连接 · rev 3");
+
+        let err = CollabFrame::Error {
+            code: "READ_ONLY".into(),
+            message: "只读成员不能提交 op".into(),
+        };
+        assert!(collab_activity_from_frame(&err).contains("READ_ONLY"));
     }
 
     // ─── UT-STUB-01: is_table_selected 纯函数 4 case (fix-add-frontend-stub-leftover) ─

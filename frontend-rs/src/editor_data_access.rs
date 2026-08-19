@@ -244,6 +244,131 @@ pub struct RoomMembersResponse {
     pub items: Vec<RoomMember>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CollabHead {
+    #[serde(rename = "roomId")]
+    pub room_id: String,
+    #[serde(rename = "diagramId")]
+    pub diagram_id: String,
+    #[serde(rename = "serverRev")]
+    pub server_rev: i64,
+    #[serde(rename = "snapshotHash", default)]
+    pub snapshot_hash: Option<String>,
+    #[serde(rename = "checkpointRevision", default)]
+    pub checkpoint_revision: Option<i64>,
+    #[serde(rename = "lastCheckpointAt", default)]
+    pub last_checkpoint_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CollabOpEntry {
+    #[serde(rename = "serverRev")]
+    pub server_rev: i64,
+    #[serde(rename = "operationId")]
+    pub operation_id: String,
+    #[serde(rename = "opType")]
+    pub op_type: String,
+    pub payload: serde_json::Value,
+    #[serde(rename = "userId")]
+    pub user_id: String,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct CollabOpsResponse {
+    #[serde(rename = "roomId")]
+    pub room_id: String,
+    #[serde(rename = "fromRev")]
+    pub from_rev: i64,
+    #[serde(rename = "toRev")]
+    pub to_rev: i64,
+    pub items: Vec<CollabOpEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CollabMemberPresence {
+    #[serde(rename = "userId")]
+    pub user_id: String,
+    #[serde(rename = "displayName", default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub role: Option<String>,
+    pub online: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(tag = "type")]
+pub enum CollabFrame {
+    #[serde(rename = "connected")]
+    Connected {
+        #[serde(rename = "serverRev")]
+        server_rev: i64,
+        #[serde(rename = "diagramId")]
+        diagram_id: String,
+        #[serde(rename = "snapshotHash", default)]
+        snapshot_hash: Option<String>,
+        #[serde(default)]
+        members: Vec<CollabMemberPresence>,
+        #[serde(rename = "yourRole", default)]
+        your_role: Option<String>,
+    },
+    #[serde(rename = "ack")]
+    Ack {
+        #[serde(rename = "serverRev")]
+        server_rev: i64,
+        #[serde(rename = "clientRev", default)]
+        client_rev: Option<i64>,
+        #[serde(rename = "appliedOp", default)]
+        applied_op: Option<serde_json::Value>,
+    },
+    #[serde(rename = "remote_op")]
+    RemoteOp {
+        #[serde(rename = "serverRev")]
+        server_rev: i64,
+        #[serde(rename = "authorId")]
+        author_id: String,
+        op: serde_json::Value,
+    },
+    #[serde(rename = "presence")]
+    Presence {
+        #[serde(rename = "userId")]
+        user_id: String,
+        #[serde(default)]
+        cursor: Option<serde_json::Value>,
+        #[serde(default)]
+        selection: Option<serde_json::Value>,
+    },
+    #[serde(rename = "sync")]
+    Sync {
+        #[serde(rename = "serverRev", default)]
+        server_rev: Option<i64>,
+        #[serde(default)]
+        ops: Vec<CollabOpEntry>,
+        #[serde(default)]
+        snapshot: Option<serde_json::Value>,
+    },
+    #[serde(rename = "error")]
+    Error {
+        code: String,
+        message: String,
+    },
+}
+
+pub fn parse_collab_frame(text: &str) -> Result<CollabFrame, ApiError> {
+    serde_json::from_str(text).map_err(|e| ApiError::Parse(e.to_string()))
+}
+
+pub fn build_ws_url(base_url: &str, room_id: &str, token: &str) -> String {
+    let mut base = base_url.trim_end_matches('/').to_string();
+    if let Some(rest) = base.strip_prefix("https://") {
+        base = format!("wss://{rest}");
+    } else if let Some(rest) = base.strip_prefix("http://") {
+        base = format!("ws://{rest}");
+    }
+    format!("{base}/ws/rooms/{room_id}?token={token}")
+}
+
 #[derive(Serialize)]
 struct CreateRoomReq {
     name: String,
@@ -264,6 +389,67 @@ struct UpdateMemberRoleReq {
 #[derive(Clone)]
 pub struct RoomClient {
     base_url: String,
+}
+
+#[derive(Clone)]
+pub struct CollabClient {
+    base_url: String,
+}
+
+impl CollabClient {
+    pub fn new(base_url: impl Into<String>) -> Self {
+        Self {
+            base_url: base_url.into(),
+        }
+    }
+
+    fn auth(token: &str) -> String {
+        format!("Bearer {token}")
+    }
+
+    pub fn ws_url(&self, room_id: &str, token: &str) -> String {
+        build_ws_url(&self.base_url, room_id, token)
+    }
+
+    pub async fn get_head(&self, access_token: &str, room_id: &str) -> Result<CollabHead, ApiError> {
+        let url = format!("{}/api/v1/rooms/{}/collab/head", self.base_url, room_id);
+        let resp = Request::get(&url)
+            .header("Authorization", &Self::auth(access_token))
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+        match resp.status() {
+            200 => resp
+                .json()
+                .await
+                .map_err(|e| ApiError::Parse(e.to_string())),
+            s => Err(ApiError::Server(s, resp.text().await.unwrap_or_default())),
+        }
+    }
+
+    pub async fn list_ops(
+        &self,
+        access_token: &str,
+        room_id: &str,
+        after_rev: i64,
+    ) -> Result<CollabOpsResponse, ApiError> {
+        let url = format!(
+            "{}/api/v1/rooms/{}/collab/ops?afterRev={}",
+            self.base_url, room_id, after_rev
+        );
+        let resp = Request::get(&url)
+            .header("Authorization", &Self::auth(access_token))
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+        match resp.status() {
+            200 => resp
+                .json()
+                .await
+                .map_err(|e| ApiError::Parse(e.to_string())),
+            s => Err(ApiError::Server(s, resp.text().await.unwrap_or_default())),
+        }
+    }
 }
 
 impl RoomClient {
@@ -1570,6 +1756,129 @@ mod room_tests {
         .unwrap();
         assert_eq!(member.role, "editor");
         assert_eq!(member.display_name.as_deref(), Some("Guest"));
+    }
+}
+
+#[cfg(test)]
+mod collab_tests {
+    use super::{build_ws_url, parse_collab_frame, CollabFrame, CollabHead, CollabOpsResponse};
+
+    #[test]
+    fn ut_fe_s05_01_connected_frame_parse() {
+        let frame = parse_collab_frame(
+            r#"{"type":"connected","serverRev":7,"diagramId":"d1","snapshotHash":"sha","yourRole":"editor","members":[{"userId":"u1","displayName":"Dev","role":"editor","online":true}]}"#,
+        )
+        .unwrap();
+        match frame {
+            CollabFrame::Connected {
+                server_rev,
+                diagram_id,
+                snapshot_hash,
+                members,
+                your_role,
+            } => {
+                assert_eq!(server_rev, 7);
+                assert_eq!(diagram_id, "d1");
+                assert_eq!(snapshot_hash.as_deref(), Some("sha"));
+                assert_eq!(members[0].display_name.as_deref(), Some("Dev"));
+                assert_eq!(your_role.as_deref(), Some("editor"));
+            }
+            other => panic!("unexpected frame: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ut_fe_s05_02_ack_and_remote_op_parse() {
+        let ack = parse_collab_frame(
+            r#"{"type":"ack","serverRev":8,"clientRev":2,"appliedOp":{"type":"table.create","targetId":"t1"}}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            ack,
+            CollabFrame::Ack {
+                server_rev: 8,
+                client_rev: Some(2),
+                ..
+            }
+        ));
+
+        let remote = parse_collab_frame(
+            r#"{"type":"remote_op","serverRev":9,"authorId":"u2","op":{"type":"field.update","targetId":"f1"}}"#,
+        )
+        .unwrap();
+        match remote {
+            CollabFrame::RemoteOp {
+                server_rev,
+                author_id,
+                op,
+            } => {
+                assert_eq!(server_rev, 9);
+                assert_eq!(author_id, "u2");
+                assert_eq!(op["type"], "field.update");
+            }
+            other => panic!("unexpected frame: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ut_fe_s05_03_sync_frame_parse() {
+        let frame = parse_collab_frame(
+            r#"{"type":"sync","serverRev":10,"ops":[{"serverRev":10,"operationId":"op-1","opType":"table.update","payload":{"type":"table.update"},"userId":"u1","createdAt":"2026-08-19T00:00:00Z"}]}"#,
+        )
+        .unwrap();
+        match frame {
+            CollabFrame::Sync { server_rev, ops, .. } => {
+                assert_eq!(server_rev, Some(10));
+                assert_eq!(ops.len(), 1);
+                assert_eq!(ops[0].op_type, "table.update");
+            }
+            other => panic!("unexpected frame: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ut_fe_s05_04_read_only_error_parse() {
+        let frame = parse_collab_frame(
+            r#"{"type":"error","code":"READ_ONLY","message":"只读成员不能提交 op"}"#,
+        )
+        .unwrap();
+        match frame {
+            CollabFrame::Error { code, message } => {
+                assert_eq!(code, "READ_ONLY");
+                assert!(message.contains("只读"));
+            }
+            other => panic!("unexpected frame: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ut_fe_s05_05_ws_url_build() {
+        assert_eq!(
+            build_ws_url("http://127.0.0.1:3000", "r1", "jwt"),
+            "ws://127.0.0.1:3000/ws/rooms/r1?token=jwt"
+        );
+        assert_eq!(
+            build_ws_url("https://staging.example.com/", "r1", "jwt"),
+            "wss://staging.example.com/ws/rooms/r1?token=jwt"
+        );
+    }
+
+    #[test]
+    fn ut_fe_s05_06_collab_rest_dto_parse() {
+        let head: CollabHead = serde_json::from_str(
+            r#"{"roomId":"r1","diagramId":"d1","serverRev":11,"snapshotHash":null,"checkpointRevision":3,"lastCheckpointAt":"2026-08-19T00:00:00Z"}"#,
+        )
+        .unwrap();
+        assert_eq!(head.server_rev, 11);
+        assert_eq!(head.checkpoint_revision, Some(3));
+
+        let ops: CollabOpsResponse = serde_json::from_str(
+            r#"{"roomId":"r1","fromRev":8,"toRev":11,"items":[{"serverRev":11,"operationId":"op-11","opType":"note.create","payload":{"type":"note.create"},"userId":"u1","createdAt":"2026-08-19T00:00:00Z"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(ops.from_rev, 8);
+        assert_eq!(ops.to_rev, 11);
+        assert_eq!(ops.items[0].payload["type"], "note.create");
     }
 }
 

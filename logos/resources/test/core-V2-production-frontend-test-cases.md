@@ -56,6 +56,19 @@
 
 ## 4. S05 前端协作用例
 
+### 4.1 单元 / 组件辅助用例
+
+| ID | 前置 | 操作 | 预期 |
+|---|---|---|---|
+| UT-FE-S05-01 | WS connected frame JSON | 解析 `connected` | serverRev、diagramId、snapshotHash、members、yourRole 正确 |
+| UT-FE-S05-02 | WS ack / remote_op frame JSON | 解析 `ack` 与 `remote_op` | clientRev、serverRev、authorId、op payload 正确 |
+| UT-FE-S05-03 | WS sync frame JSON | 解析 `sync` | serverRev 与 missed ops 列表正确 |
+| UT-FE-S05-04 | WS error frame JSON | 解析 `READ_ONLY` | UI 状态机可识别只读错误并不递增 head |
+| UT-FE-S05-05 | backend base URL | 构造 WS URL | `http://` 转 `ws://`，`https://` 转 `wss://`，路径为 `/ws/rooms/{roomId}?token=...` |
+| UT-FE-S05-06 | collab REST JSON | 解析 head/ops 响应 | roomId、serverRev、checkpointRevision、op payload 正确 |
+
+### 4.2 浏览器链路用例
+
 | ID | 前置 | 操作 | 预期 |
 |---|---|---|---|
 | ST-FE-S05-01 | owner/editor 进入 room 编辑器 | 建立 WebSocket | 连接 `/ws/rooms/{roomId}?token=...`；收到 connected；显示 `ws-status` 和 `ot-rev` |
