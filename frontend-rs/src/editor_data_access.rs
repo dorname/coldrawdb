@@ -148,11 +148,11 @@ pub struct RoomSummary {
     pub diagram_id: String,
     #[serde(rename = "diagramTitle")]
     pub diagram_title: String,
-    #[serde(rename = "myRole")]
+    #[serde(rename = "myRole", default)]
     pub my_role: String,
-    #[serde(rename = "memberCount")]
+    #[serde(rename = "memberCount", default)]
     pub member_count: i64,
-    #[serde(rename = "updatedAt")]
+    #[serde(rename = "updatedAt", default)]
     pub updated_at: String,
 }
 
@@ -1756,6 +1756,61 @@ mod room_tests {
         .unwrap();
         assert_eq!(member.role, "editor");
         assert_eq!(member.display_name.as_deref(), Some("Guest"));
+    }
+
+    // ─── align-frontend-to-prototype UT-FE-PROTO-03/04 ────
+
+    #[test]
+    fn ut_fe_proto_03_rooms_list_empty_and_full_parse() {
+        // 空列表
+        let empty: RoomListResponse = serde_json::from_str(r#"{"items":[],"total":0}"#).unwrap();
+        assert_eq!(empty.items.len(), 0);
+        assert_eq!(empty.total, 0);
+
+        // 多 room 完整字段
+        let json = r#"{"items":[
+            {"id":"r1","name":"评审周会","diagramId":"d1","diagramTitle":"核心模型","myRole":"owner","memberCount":2,"updatedAt":"2026-08-19T00:00:00Z"},
+            {"id":"r2","name":"API 重构","diagramId":"d2","diagramTitle":"迁移计划","myRole":"viewer","memberCount":4,"updatedAt":"2026-08-18T00:00:00Z"}
+        ],"total":2}"#;
+        let out: RoomListResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(out.total, 2);
+        assert_eq!(out.items.len(), 2);
+        assert_eq!(out.items[0].name, "评审周会");
+        assert_eq!(out.items[1].my_role, "viewer");
+        assert_eq!(out.items[1].member_count, 4);
+
+        // 缺省字段（myRole 缺失 → String 默认空）
+        let partial = r#"{"items":[{"id":"r3","name":"草稿","diagramId":"d3","diagramTitle":"d3","memberCount":0,"updatedAt":"2026-08-19T00:00:00Z"}],"total":1}"#;
+        let out: RoomListResponse = serde_json::from_str(partial).unwrap();
+        assert_eq!(out.items[0].my_role, "");
+    }
+
+    #[test]
+    fn ut_fe_proto_04_create_room_response_sets_required_fields() {
+        // 201 响应：必需字段 id/name/diagramId；其他字段用默认值（myRole/memberCount）
+        let json = r#"{"id":"r-new","name":"评审周会","diagramId":"d-new","ownerId":"u1","createdAt":"2026-08-19T00:00:00Z","updatedAt":"2026-08-19T00:00:00Z"}"#;
+        let out: RoomDetail = serde_json::from_str(json).unwrap();
+        assert_eq!(out.id, "r-new");
+        assert_eq!(out.name, "评审周会");
+        assert_eq!(out.diagram_id, "d-new");
+        assert_eq!(out.owner_id, "u1");
+        // 缺省字段：my_role 空字符串、member_count = 0、diagram_title 空
+        assert_eq!(out.my_role, "");
+        assert_eq!(out.member_count, 0);
+        assert_eq!(out.diagram_title, "");
+        // 完整字段时 role = owner
+        let mut out = out;
+        out.my_role = "owner".into();
+        out.member_count = 1;
+        assert!(out.can_invite());
+
+        // 审批：缺省 my_role → can_invite = false（不是 owner/editor）
+        let raw: RoomDetail = serde_json::from_str(
+            r#"{"id":"r-x","name":"x","diagramId":"d-x","ownerId":"u1"}"#,
+        )
+        .unwrap();
+        assert!(!raw.can_invite());
+        assert!(!raw.is_viewer());
     }
 }
 

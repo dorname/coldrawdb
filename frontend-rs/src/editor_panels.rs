@@ -2157,25 +2157,95 @@ pub fn AuthGate(
     }
 }
 
-/// `rooms-list-page` 骨架（align-frontend-to-prototype Batch A）。
+/// `rooms-list-page`（align-frontend-to-prototype Batch B 完整实现）。
 ///
 /// 顶栏 + 房间列表 + 新建房间入口 + 用户菜单 + session-indicator。
-/// Batch A 只补路由锚点 + 可见性 + 退出登录/进入房间两条按钮；Batch B 补真实 `GET /api/v1/rooms` 与 `POST /api/v1/rooms`。
+/// 真实调用：
+/// - 首屏自动 `GET /api/v1/rooms`（需 `auth_session`）。
+/// - 点击「新建房间」→ `POST /api/v1/rooms`（room name + diagram_id）→ 进入 editor。
+/// - 点击 room card → 写入 `current_room`、`current_diagram_id`、`current_title`，进入 editor。
 #[component]
 pub fn RoomsListPage(
     auth_session: RwSignal<Option<AuthSession>>,
     session_notice: RwSignal<Option<String>>,
+    room_client: RoomClient,
     on_logout: Rc<dyn Fn()>,
-    on_select_room: Rc<dyn Fn(String)>,
-    on_create_room: Rc<dyn Fn()>,
+    on_select_room: Rc<dyn Fn(RoomDetail)>,
+    on_create_room: Rc<dyn Fn(RoomDetail)>,
 ) -> impl IntoView {
     let loading = create_rw_signal(true);
-    let rooms_empty = create_rw_signal(true);
-    create_effect(move |_| {
-        // Batch A 暴露 rooms-list-page 锚点；Batch B 把 create_effect 替换为真实 fetch。
-        let _ = (auth_session.get(), session_notice.get());
-        loading.set(false);
+    let rooms: RwSignal<Vec<RoomSummary>> = create_rw_signal(Vec::new());
+    let error: RwSignal<Option<String>> = create_rw_signal(None);
+    let creating = create_rw_signal(false);
+
+    // 首屏 fetch：依赖 auth_session；session 变化时重新拉。
+    create_effect({
+        let room_client = room_client.clone();
+        let auth_session = auth_session.clone();
+        move |_| {
+            let Some(session) = auth_session.get() else {
+                loading.set(false);
+                rooms.set(Vec::new());
+                return;
+            };
+            let token = session.access_token;
+            let room_client = room_client.clone();
+            loading.set(true);
+            error.set(None);
+            spawn_local(async move {
+                match room_client.list_rooms(&token).await {
+                    Ok(resp) => {
+                        rooms.set(resp.items);
+                        loading.set(false);
+                    }
+                    Err(e) => {
+                        error.set(Some(e.to_string()));
+                        loading.set(false);
+                    }
+                }
+            });
+        }
     });
+
+    // 新建房间：使用 current_diagram_id 绑定；缺省时使用 "default"。
+    let create_click = {
+        let room_client = room_client.clone();
+        let auth_session = auth_session.clone();
+        let on_create_room = on_create_room.clone();
+        let error = error.clone();
+        let current_diagram_id = create_rw_signal(String::from("default"));
+        let current_title = create_rw_signal(String::from("Untitled Diagram"));
+        move |_| {
+            if creating.get() {
+                return;
+            }
+            let Some(session) = auth_session.get() else {
+                login_required_redirect();
+                return;
+            };
+            creating.set(true);
+            error.set(None);
+            let token = session.access_token;
+            let name = current_title.get();
+            let diagram_id = current_diagram_id.get();
+            let room_client = room_client.clone();
+            let on_create_room = on_create_room.clone();
+            let error = error.clone();
+            spawn_local(async move {
+                match room_client.create_room(&token, &name, &diagram_id).await {
+                    Ok(detail) => {
+                        creating.set(false);
+                        on_create_room(detail);
+                    }
+                    Err(e) => {
+                        error.set(Some(e.to_string()));
+                        creating.set(false);
+                    }
+                }
+            });
+        }
+    };
+
     view! {
         <main class="cdb-rooms-list-page" data-testid="rooms-list-page">
             <header class="cdb-rooms-topbar">
@@ -2194,24 +2264,75 @@ pub fn RoomsListPage(
                     <button
                         class="cdb-btn cdb-btn--primary"
                         data-testid="btn-create-room"
-                        on:click=move |_| on_create_room()
+                        disabled=move || creating.get()
+                        on:click=move |_| create_click(())
                     >
-                        "新建房间"
+                        {move || if creating.get() { "创建中..." } else { "新建房间" }}
                     </button>
                 </div>
+                {move || error.get().map(|msg| view! {
+                    <p class="cdb-rooms-error" data-testid="rooms-error">{msg}</p>
+                })}
                 {move || if loading.get() {
                     view! { <p class="cdb-rooms-loading" data-testid="rooms-loading">"加载中..."</p> }.into_view()
-                } else if rooms_empty.get() {
+                } else if rooms.get().is_empty() {
                     view! {
                         <div class="cdb-rooms-empty" data-testid="rooms-empty">
                             <p>"还没有房间，点击右上角「新建房间」开始。"</p>
                         </div>
                     }.into_view()
                 } else {
-                    view! { <ul class="cdb-room-list" data-testid="room-list"></ul> }.into_view()
+                    let on_select = on_select_room.clone();
+                    view! {
+                        <ul class="cdb-room-list" data-testid="room-list">
+                            <For each=move || rooms.get() key=|r| r.id.clone() children=move |room: RoomSummary| {
+                                let on_select = on_select.clone();
+                                let summary = room.clone();
+                                view! {
+                                    <li
+                                        class="cdb-room-list-item"
+                                        data-testid=format!("room-list-item-{}", room.id)
+                                    >
+                                        <button
+                                            class="cdb-room-card"
+                                            data-testid=format!("room-card-{}", room.id)
+                                            on:click=move |_| on_select(RoomDetail::from_summary(&summary))
+                                        >
+                                            <strong>{room.name.clone()}</strong>
+                                            <small>{format!("图表：{} · 角色：{}", room.diagram_title, room.my_role)}</small>
+                                            <small>{format!("成员数：{} · 更新：{}", room.member_count, room.updated_at)}</small>
+                                        </button>
+                                    </li>
+                                }
+                            } />
+                        </ul>
+                    }.into_view()
                 }}
             </section>
         </main>
+    }
+}
+
+/// 重定向到 auth 入口（未登录情况下创建房间）。
+fn login_required_redirect() {
+    if let Some(win) = web_sys::window() {
+        let _ = win.location().set_href("/editor");
+    }
+}
+
+impl RoomDetail {
+    /// 从 RoomSummary 构造最小 RoomDetail（仅含 id/name/diagram_id/role/member_count/diagram_title）。
+    /// 用于 rooms-list-page 点击后立即进入 editor；后续 GET /api/v1/rooms/{id} 会补全 ownerId。
+    pub fn from_summary(s: &RoomSummary) -> Self {
+        Self {
+            id: s.id.clone(),
+            name: s.name.clone(),
+            diagram_id: s.diagram_id.clone(),
+            owner_id: String::new(),
+            diagram_title: s.diagram_title.clone(),
+            my_role: s.my_role.clone(),
+            member_count: s.member_count,
+        }
     }
 }
 
@@ -4450,23 +4571,20 @@ pub fn AppRoot(
     };
 
     // align-frontend-to-prototype：rooms list → 选中/创建房间 → 进入 editor
-    let on_enter_room: Rc<dyn Fn(String)> = {
+    let on_enter_room: Rc<dyn Fn(RoomDetail)> = {
         let current_page = current_page.clone();
         let current_diagram_id = current_diagram_id.clone();
         let current_room = current_room.clone();
-        Rc::new(move |room_id: String| {
+        let current_title = current_title.clone();
+        Rc::new(move |detail: RoomDetail| {
             current_page.set(PageState::RoomEditor);
-            // 起始绑定后续由 set_current_room 负责；Batch B 补真实 GET /api/v1/rooms/{id}
-            let _ = (current_diagram_id.clone(), current_room.clone(), room_id);
+            current_diagram_id.set(detail.diagram_id.clone());
+            current_title.set(detail.diagram_title.clone());
+            current_room.set(Some(detail));
         })
     };
 
-    let on_create_room_enter: Rc<dyn Fn()> = {
-        let current_page = current_page.clone();
-        Rc::new(move || {
-            current_page.set(PageState::RoomEditor);
-        })
-    };
+    let on_create_room_enter: Rc<dyn Fn(RoomDetail)> = on_enter_room.clone();
 
     // invite → 接受成功后进入 editor；未登录跳 auth
     let on_invite_after_accept: Rc<dyn Fn()> = {
@@ -5172,11 +5290,9 @@ pub fn AppRoot(
             <RoomsListPage
                 auth_session=auth_session
                 session_notice=session_notice
+                room_client=room_client.clone()
                 on_logout=on_logout.clone()
-                on_select_room=Rc::new({
-                    let on_enter_room = on_enter_room.clone();
-                    move |id: String| on_enter_room(id)
-                })
+                on_select_room=on_enter_room.clone()
                 on_create_room=on_create_room_enter.clone()
             />
         </div>
