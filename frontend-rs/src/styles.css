@@ -5,7 +5,8 @@
  * Token naming: .cdb-* prefix (coldrawdb)
  *
  * Verify with:
- *   find frontend-rs -name "*.css" -not -path "*/node_modules/*"     # 1 match
+ *   find frontend-rs -name "*.css" -not -path "*node_modules*"       # 1 match
+ *   （注意：CSS 注释内禁止出现星号+斜杠序列，会提前截断注释）
  *   grep -rn 'style="' frontend-rs/src/                                # 0 match
  *   grep -c 'var(--cdb-' frontend-rs/src/styles.css                    # >= 30
  */

@@ -97,6 +97,15 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-FE-S05-04",
     "UT-FE-S05-05",
     "UT-FE-S05-06",
+    // align-frontend-to-prototype：页面流 + collab 状态 + 响应式 + 回归（01～09）
+    "UT-FE-PROTO-01",
+    "UT-FE-PROTO-02",
+    "UT-FE-PROTO-03",
+    "UT-FE-PROTO-04",
+    "UT-FE-PROTO-05",
+    "UT-FE-PROTO-06",
+    "UT-FE-PROTO-08",
+    "UT-FE-PROTO-09",
 ];
 
 const ST_SKIP_IDS: &[&str] = &[
@@ -130,4 +139,13 @@ const ST_SKIP_IDS: &[&str] = &[
     "ST-FE-V2-02",
     "ST-FE-V2-03",
     "ST-FE-V2-04",
+    // align-frontend-to-prototype：浏览器/真实后端联调 ST 由 Playwright harness 承接
+    "ST-FE-PROTO-01",
+    "ST-FE-PROTO-02",
+    "ST-FE-PROTO-03",
+    "ST-FE-PROTO-04",
+    "ST-FE-PROTO-05",
+    "ST-FE-PROTO-06",
+    "ST-FE-PROTO-07",
+    "ST-FE-PROTO-08",
 ];

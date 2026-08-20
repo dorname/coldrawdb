@@ -103,6 +103,8 @@
 | UT-FE-PROTO-04 | create room 结果 | room detail 含 diagramId/name/role | 设置 current_room、diagram_id、title，并进入 editor 页面 |
 | UT-FE-PROTO-05 | collab UI 状态 | Offline/Connecting/Connected/Reconnecting/ReadOnly | `ws-status`、`ot-rev`、`reconnect-banner`、只读提示文案稳定 |
 | UT-FE-PROTO-06 | 响应式布局 class | 720px 视口或 inspector/io drawer 切换 | editor、members、IO 抽屉不会同时占用不可关闭层级 |
+| UT-FE-PROTO-08 | styles.css 设计 token 块 | 检查裸 `:root` 选择器上的 token 块 | 无注释截断、无选择器污染、无 node_modules glob 残留 |
+| UT-FE-PROTO-09 | AuthGate 输入绑定 | 检查登录/注册表单的 prop:value + on:input | 表单输入双向绑定，否则无法提交 |
 
 ## 8. 生产前端原型页面流浏览器用例（align-frontend-to-prototype 增量）
 

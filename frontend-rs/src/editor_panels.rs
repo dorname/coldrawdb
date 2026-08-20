@@ -2223,6 +2223,7 @@ pub fn AuthGate(
                                         id="auth-display-name"
                                         data-testid="auth-display-name"
                                         prop:value=move || display_name.get()
+                                        on:input=move |ev| display_name.set(event_target_value(&ev))
                                         maxlength="32"
                                         autocomplete="name"
                                         aria-describedby="auth-display-name-error"
@@ -2243,6 +2244,7 @@ pub fn AuthGate(
                                 data-testid="auth-email"
                                 type="email"
                                 prop:value=move || email.get()
+                                on:input=move |ev| email.set(event_target_value(&ev))
                                 autocomplete="email"
                                 aria-describedby="auth-email-error"
                             />
@@ -2259,6 +2261,7 @@ pub fn AuthGate(
                                     data-testid="auth-password"
                                     type=move || if password_visible.get() { "text" } else { "password" }
                                     prop:value=move || password.get()
+                                    on:input=move |ev| password.set(event_target_value(&ev))
                                     autocomplete=move || if mode.get() == AuthMode::Register { "new-password" } else { "current-password" }
                                     aria-describedby="auth-password-error"
                                 />
@@ -2300,6 +2303,7 @@ pub fn AuthGate(
                                         data-testid="auth-confirm-password"
                                         type="password"
                                         prop:value=move || confirm_password.get()
+                                        on:input=move |ev| confirm_password.set(event_target_value(&ev))
                                         autocomplete="new-password"
                                         aria-describedby="auth-confirm-error"
                                     />
@@ -5520,17 +5524,21 @@ pub fn AppRoot(
                 />
             })}
         </div>
+        // ─── Editor 页（RoomEditor / ShareEdit 共用；room-editor-page 为页面态锚点，editor-ready 供既有 e2e 回归） ───
         <div
-            class="cdb-app"
-            data-testid="editor-ready"
+            data-testid="room-editor-page"
             style:display=move || {
                 let p = current_page.get();
                 if p == PageState::RoomEditor || p == PageState::ShareEdit {
-                    "grid"
+                    "block"
                 } else {
                     "none"
                 }
             }
+        >
+        <div
+            class="cdb-app"
+            data-testid="editor-ready"
         >
             <AppBar
                 modal_kind=modal_kind
@@ -5713,6 +5721,7 @@ pub fn AppRoot(
                     }
                 }
             />
+        </div>
         </div>
     }
 }
@@ -7516,6 +7525,57 @@ mod tests {
         assert_eq!(password_strength_label(3), "良好");
         assert_eq!(password_strength_label(4), "强");
     }
+
+    /// UT-FE-PROTO-08：styles.css 设计 token 块必须挂载在裸 `:root` 选择器上。
+    ///
+    /// 回归背景（2026-08-20 真机诊断）：文件头注释里的 glob `"*/node_modules/*"`
+    /// 含注释终止序列，提前截断注释，使首个 `:root` token 块被解析为
+    /// `node_modules :root` 后代选择器 → 114 个亮色 token 全部失效。
+    #[test]
+    fn test_styles_css_root_token_block_intact() {
+        let css = include_str!("styles.css");
+        assert!(
+            css.contains("\n:root {"),
+            "UT-FE-PROTO-08: 设计 token 块必须挂在裸 `:root {{` 选择器上（防注释截断/选择器污染）"
+        );
+        assert!(
+            !css.contains("node_modules :root"),
+            "UT-FE-PROTO-08: token 块选择器不得被注释残留污染"
+        );
+        // 注释体内不得再出现提前终止序列：逐注释扫描。
+        let mut rest = css;
+        while let Some(open) = rest.find("/*") {
+            let body = &rest[open + 2..];
+            let close = body.find("*/").expect("UT-FE-PROTO-08: 注释未闭合");
+            rest = &body[close + 2..];
+        }
+        // 全部注释闭合后，剩余文本中不得存在以 `*` 起始行紧跟 `/` 的 glob 片段。
+        assert!(
+            !rest.contains("node_modules/*"),
+            "UT-FE-PROTO-08: 注释外不得残留 node_modules glob 片段"
+        );
+    }
+
+    /// UT-FE-PROTO-09：AuthGate 表单输入必须双向绑定（prop:value + on:input）。
+    ///
+    /// 回归背景（2026-08-20 真机诊断）：四个输入框只有 `prop:value` 单向输出，
+    /// signal 永远为空 → 字段校验必然失败 → 登录/注册从未真正可提交。
+    #[test]
+    fn test_auth_gate_inputs_two_way_bound() {
+        let src = include_str!("editor_panels.rs");
+        for binding in [
+            "on:input=move |ev| display_name.set(event_target_value(&ev))",
+            "on:input=move |ev| email.set(event_target_value(&ev))",
+            "on:input=move |ev| password.set(event_target_value(&ev))",
+            "on:input=move |ev| confirm_password.set(event_target_value(&ev))",
+        ] {
+            assert!(
+                src.contains(binding),
+                "UT-FE-PROTO-09: AuthGate 缺少输入绑定 `{binding}`（登录/注册表单将永远无法提交）"
+            );
+        }
+    }
+
 
     /// ST-FE-PROTO-08 session 状态机不会重新引入 token 泄漏。
     #[test]
