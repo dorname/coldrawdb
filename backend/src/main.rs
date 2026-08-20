@@ -52,6 +52,18 @@ pub fn next_ids(count: usize) -> Vec<String> {
 }
 
 
+/// 统一挂载所有 V1 API 路由。
+///
+/// 禁止在 App::service 中重复注册 `web::scope("/api/v1")`；actix-web 遇到相同前缀的多个
+/// scope 时只会匹配第一个，导致 auth / rooms / collab / bridge 端点全部 404。
+pub fn api_v1_routes(cfg: &mut web::ServiceConfig) {
+    diagrams_v1::diagrams_v1_routes(cfg);
+    auth_v1::auth_v1_routes(cfg);
+    rooms_v1::rooms_v1_routes(cfg);
+    collab_v1::collab_rest_routes(cfg);
+    phase3_bridge::phase3_bridge_routes(cfg);
+}
+
 /// 初始化日志
 fn init_log() {
     // 1) 初始化 env filter
@@ -88,11 +100,7 @@ async fn main() -> Result<(), DrawDBError> {
             .service(web::scope("/todos").configure(todos::todos_routes))
             .service(web::scope("/tables").configure(tables::tables_routes))
             .service(web::scope("/diagrams").configure(diagrams::diagrams_routes))
-            .service(web::scope("/api/v1").configure(diagrams_v1::diagrams_v1_routes))
-            .service(web::scope("/api/v1").configure(auth_v1::auth_v1_routes))
-            .service(web::scope("/api/v1").configure(rooms_v1::rooms_v1_routes))
-            .service(web::scope("/api/v1").configure(collab_v1::collab_rest_routes))
-            .service(web::scope("/api/v1").configure(phase3_bridge::phase3_bridge_routes))
+            .service(web::scope("/api/v1").configure(api_v1_routes))
             .route("/ws/rooms/{room_id}", web::get().to(collab::collab_ws_handler))
 
     })
