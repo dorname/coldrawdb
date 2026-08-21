@@ -15,11 +15,11 @@
 ## [merge] 规格合并
 - [x] 审核通过后，提醒用户明确授权执行 `openlogos merge optimize-prototype-dark-glass-contrast`（2026-08-21 已授权并生成 MERGE_PROMPT）
 - [x] 按 MERGE_PROMPT 合并 delta 到 `logos/resources/`（S03/S04/S05 视觉基准行 + dark 主题验收行已落盘；HTML 全量 delta 与资源一致为 no-op；SPEC_MERGED 已写入）
-- [ ] AI 自动 commit 合并后的规格文档
+- [x] AI 自动 commit 合并后的规格文档（191463e `docs(optimize-prototype-dark-glass-contrast): merge spec deltas`）
 
 ## [verify] 轻量验收
-- [ ] 确认合并后的原型文件可在浏览器正常打开，无样式崩溃或横向溢出
-- [ ] 提醒用户明确授权执行 `openlogos verify`（本提案无新增 UT/ST，主要验证规格完整性与原型可访问）
+- [x] 确认合并后的原型文件可在浏览器正常打开，无样式崩溃或横向溢出（第 2 轮复审回归扫描已覆盖：五状态 scrollWidth == clientWidth、零 JS 错误、零布局错位）
+- [x] 提醒用户明确授权执行 `openlogos verify`（本提案无新增 UT/ST，主要验证规格完整性与原型可访问）（2026-08-21 已授权执行：211 用例 100% 覆盖、0 失败、Gate 3.6 PASS，VERIFY_PASS 已写入）
 
 ## [archive] 归档
 - [ ] `verify` 通过后，提醒用户明确授权执行 `openlogos archive optimize-prototype-dark-glass-contrast`
