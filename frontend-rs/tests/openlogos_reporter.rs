@@ -25,6 +25,8 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-CR-03",
     "UT-CR-04",
     "UT-CR-05",
+    "UT-CR-06",
+    "UT-CR-07",
     // core-PE-design-system E3
     "UT-E3-01",
     "UT-E3-02",
@@ -57,6 +59,9 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-PB-03",
     "UT-PB-04",
     "UT-PB-05",
+    "UT-PB-06",
+    "UT-PB-06b",
+    "UT-PB-07",
     // core-PC-import-export + AB
     "UT-PC-01",
     "UT-PC-02",
@@ -110,10 +115,12 @@ const UT_PASS_IDS: &[&str] = &[
 
 const ST_SKIP_IDS: &[&str] = &[
     "ST-CR-01",
+    "ST-CR-02",
     "ST-MM-01",
     "ST-MM-02",
     "ST-MM-03",
     "ST-PB-01",
+    "ST-PB-02",
     "ST-PC-01",
     "ST-SP-01",
     "ST-UI-05",

@@ -115,6 +115,62 @@ await withPage("ST-PU-06", "创建字段关系", async page => {
   assert.equal(after.relations.length, before.relations.length + 1);
 });
 
+await withPage("ST-PU-20", "拖字段出线创建关系", async page => {
+  await enterEditor(page);
+  const before = await snapshot(page);
+  await page.locator('[data-testid="tool-relationship"]').click();
+  await page.evaluate(() => {
+    const app = document.querySelector("#app");
+    window.__appIdentity = app;
+    const probe = { records: 0 };
+    probe.observer = new MutationObserver(records => { probe.records += records.length; });
+    probe.observer.observe(app, { childList: true });
+    window.__dragProbe = probe;
+  });
+  const src = page.locator('[data-action="field-click"][data-field="users-email"]');
+  const dst = page.locator('[data-action="field-click"][data-field="posts-title"]');
+  const s = await src.boundingBox();
+  const d = await dst.boundingBox();
+  assert.ok(s && d);
+  await page.mouse.move(s.x + s.width / 2, s.y + s.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(s.x + s.width / 2 + 24, s.y + s.height / 2, { steps: 4 });
+  const rubber = page.locator('[data-testid="rel-rubber-band"]');
+  await assert.doesNotReject(rubber.waitFor({ state: "visible", timeout: 1_000 }));
+  await page.mouse.move(d.x + d.width / 2, d.y + d.height / 2, { steps: 8 });
+  const during = await page.evaluate(() => ({
+    sameApp: window.__appIdentity === document.querySelector("#app"),
+    records: window.__dragProbe.records,
+  }));
+  assert.equal(during.sameApp, true);
+  assert.equal(during.records, 0, `拖线过程不应重建 #app，实际 childList ${during.records}`);
+  await page.mouse.up();
+  const after = await snapshot(page);
+  assert.equal(after.relations.length, before.relations.length + 1);
+});
+
+await withPage("ST-PU-21", "拖表时关系线每帧跟随并松手对齐网格", async page => {
+  await enterEditor(page);
+  const path = page.locator('[data-relation="rel-users-posts"]');
+  await path.waitFor();
+  const d0 = await path.getAttribute("d");
+  assert.ok(d0);
+  const head = page.locator('[data-drag-table="users"]');
+  const box = await head.boundingBox();
+  assert.ok(box);
+  await page.mouse.move(box.x + 30, box.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 90, box.y + 60, { steps: 6 });
+  const d1 = await path.getAttribute("d");
+  assert.notEqual(d1, d0, "ST-PU-21: pointerup 前 path d 应已变化");
+  await page.mouse.up();
+  const after = await snapshot(page);
+  const users = after.tables.find(table => table.id === "users");
+  assert.ok(users);
+  assert.equal(users.x % 12, 0, `松手后 users.x 应为 12 的倍数，实际 ${users.x}`);
+  assert.equal(users.y % 12, 0, `松手后 users.y 应为 12 的倍数，实际 ${users.y}`);
+});
+
 await withPage("ST-PU-07", "撤销重做与自动保存", async page => {
   await enterEditor(page);
   const before = await snapshot(page);

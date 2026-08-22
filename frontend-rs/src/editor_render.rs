@@ -10,7 +10,7 @@
 use crate::editor_core::types::{Area, Note, Reference, Table};
 use leptos::{RwSignal, SignalGet, SignalSet, SignalUpdate};
 use wasm_bindgen::JsCast;
-use web_sys::{CanvasRenderingContext2d, MouseEvent, WheelEvent};
+use web_sys::{CanvasRenderingContext2d, MouseEvent, PointerEvent, WheelEvent};
 
 // ─── Canvas constants ────────────────────────────────────────────────────────
 
@@ -21,7 +21,10 @@ const AREA_COLOR: &str = "rgba(59, 130, 246, 0.08)";
 const AREA_BORDER_COLOR: &str = "rgba(59, 130, 246, 0.4)";
 const NOTE_BG: &str = "#fef3c7";
 const NOTE_BORDER: &str = "#f59e0b";
-const GRID_SIZE: f64 = 20.0;
+/// 生产端网格尺寸；仅在 pointerup 时对齐，拖动中不量化。
+pub const GRID_SIZE: f64 = 20.0;
+/// 关系工具：屏幕像素欧氏位移达到该阈值才视为拖线（UT-PB-06）。
+pub const DRAG_THRESHOLD: f64 = 4.0;
 const CANVAS_BG: &str = "#f8fafc";
 const TABLE_BG: &str = "#ffffff";
 const TABLE_BORDER: &str = "#dbe3ea";
@@ -50,9 +53,20 @@ impl Default for Transform {
 // ─── Drag state ─────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug)]
+struct RelFieldDrag {
+    start_table_id: String,
+    start_field_id: String,
+    anchor_x: f64,
+    anchor_y: f64,
+    moved: bool,
+}
+
+#[derive(Clone, Debug)]
 struct DragState {
     table_id: Option<String>,
     endpoint_drag: Option<(String, EndpointEnd)>, // (ref_id, end) when dragging an endpoint
+    rel_drag: Option<RelFieldDrag>,
+    pointer_id: i32,
     start_mouse_x: f64,
     start_mouse_y: f64,
     start_pan_x: f64,
@@ -66,6 +80,8 @@ impl Default for DragState {
         DragState {
             table_id: None,
             endpoint_drag: None,
+            rel_drag: None,
+            pointer_id: 0,
             start_mouse_x: 0.0,
             start_mouse_y: 0.0,
             start_pan_x: 0.0,
@@ -76,6 +92,12 @@ impl Default for DragState {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+struct LivePaint {
+    tables: Option<Vec<Table>>,
+    rubber: Option<(f64, f64, f64, f64)>,
+}
+
 // ─── Leptos canvas component ─────────────────────────────────────────────────
 
 mod leptos_canvas {
@@ -83,6 +105,10 @@ mod leptos_canvas {
     use crate::editor_core::EditorStore;
     use leptos::html;
     use leptos::*;
+    use std::cell::{Cell, RefCell};
+    use std::rc::Rc;
+    use wasm_bindgen::closure::Closure;
+    use wasm_bindgen::JsValue;
 
     /// Main canvas component for the database diagram editor.
     #[component]
@@ -95,12 +121,65 @@ mod leptos_canvas {
         on_dblclick_blank: Option<Box<dyn Fn() + 'static>>,
         rel_tool_active: RwSignal<bool>,
         on_field_pick: Option<Box<dyn Fn(String, String) + 'static>>,
+        on_relation_drag_start: Option<Box<dyn Fn(String, String) + 'static>>,
+        on_relation_drop: Option<Box<dyn Fn(String, String, String, String) + 'static>>,
+        on_relation_drag_cancel: Option<Box<dyn Fn() + 'static>>,
     ) -> impl IntoView {
         let canvas_ref = create_node_ref::<html::Canvas>();
         let selected_id = create_rw_signal(None::<String>);
         let drag_state = create_rw_signal(None::<DragState>);
+        let rubber_d = create_rw_signal(None::<String>);
+        let follow_path = create_rw_signal(String::new());
+        let frame_tick = create_rw_signal(0u32);
+        let live = Rc::new(RefCell::new(LivePaint::default()));
+        let raf_pending = Rc::new(Cell::new(false));
+        let raf_closure: Rc<RefCell<Option<Closure<dyn FnMut(JsValue)>>>> =
+            Rc::new(RefCell::new(None));
 
-        let screen_to_diagram = move |screen_x: f64, screen_y: f64, canvas: &web_sys::HtmlCanvasElement, t: &Transform| -> (f64, f64) {
+        let on_select = Rc::new(on_select);
+        let on_deselect = Rc::new(on_deselect);
+        let on_dblclick_blank = Rc::new(on_dblclick_blank);
+        let on_field_pick = Rc::new(on_field_pick);
+        let on_relation_drag_start = Rc::new(on_relation_drag_start);
+        let on_relation_drop = Rc::new(on_relation_drop);
+        let on_relation_drag_cancel = Rc::new(on_relation_drag_cancel);
+
+        {
+            let raf_pending = raf_pending.clone();
+            let c = Closure::wrap(Box::new(move |_: JsValue| {
+                raf_pending.set(false);
+                frame_tick.update(|n| *n = n.wrapping_add(1));
+            }) as Box<dyn FnMut(JsValue)>);
+            *raf_closure.borrow_mut() = Some(c);
+        }
+
+        let schedule_paint = {
+            let raf_pending = raf_pending.clone();
+            let raf_closure = raf_closure.clone();
+            Rc::new(move || {
+                if raf_pending.get() {
+                    return;
+                }
+                raf_pending.set(true);
+                match (web_sys::window(), raf_closure.borrow().as_ref()) {
+                    (Some(window), Some(cb)) => {
+                        if window
+                            .request_animation_frame(cb.as_ref().unchecked_ref())
+                            .is_err()
+                        {
+                            raf_pending.set(false);
+                        }
+                    }
+                    _ => raf_pending.set(false),
+                }
+            })
+        };
+
+        let screen_to_diagram = move |screen_x: f64,
+                                      screen_y: f64,
+                                      canvas: &web_sys::HtmlCanvasElement,
+                                      t: &Transform|
+              -> (f64, f64) {
             let rect = canvas.get_bounding_client_rect();
             let canvas_x = screen_x - rect.left();
             let canvas_y = screen_y - rect.top();
@@ -109,8 +188,39 @@ mod leptos_canvas {
             (diagram_x, diagram_y)
         };
 
-        create_effect(move |_| {
-            let Some(canvas) = canvas_ref.get() else { return; };
+        {
+            let live = live.clone();
+            let on_relation_drag_cancel = on_relation_drag_cancel.clone();
+            gloo::events::EventListener::new(&gloo::utils::document(), "keydown", move |ev| {
+                let Some(ke) = ev.dyn_ref::<web_sys::KeyboardEvent>() else {
+                    return;
+                };
+                if ke.key() != "Escape" {
+                    return;
+                }
+                let dragging = drag_state
+                    .get_untracked()
+                    .and_then(|d| d.rel_drag)
+                    .is_some();
+                if dragging {
+                    live.borrow_mut().rubber = None;
+                    rubber_d.set(None);
+                    drag_state.set(None);
+                    if let Some(cb) = on_relation_drag_cancel.as_ref() {
+                        cb();
+                    }
+                }
+            })
+            .forget();
+        }
+
+        {
+            let live = live.clone();
+            create_effect(move |_| {
+            frame_tick.get();
+            let Some(canvas) = canvas_ref.get() else {
+                return;
+            };
             let ctx = match canvas.get_context("2d") {
                 Ok(Some(ctx)) => match ctx.dyn_into::<CanvasRenderingContext2d>() {
                     Ok(ctx) => ctx,
@@ -119,7 +229,6 @@ mod leptos_canvas {
                 _ => return,
             };
 
-            // 使 canvas 内部分辨率匹配容器尺寸
             if let Some(parent) = canvas.parent_element() {
                 let w = parent.client_width().max(1) as u32;
                 let h = parent.client_height().max(1) as u32;
@@ -130,7 +239,11 @@ mod leptos_canvas {
             }
 
             let t = transform.get();
-            let tables = store.tables.get();
+            let store_tables = store.tables.get();
+            let live_g = live.borrow();
+            let tables = live_g.tables.clone().unwrap_or(store_tables);
+            let rubber = live_g.rubber;
+            drop(live_g);
             let refs = store.references.get();
             let areas = store.areas.get();
             let notes = store.notes.get();
@@ -150,147 +263,334 @@ mod leptos_canvas {
                 &notes,
                 &presence,
                 sel.as_deref(),
-            );
-        });
-
-        let on_mousedown = move |ev: MouseEvent| {
-            let canvas = match canvas_ref.get() {
-                Some(c) => c,
-                None => return,
-            };
-            let (dx, dy) = screen_to_diagram(
-                ev.client_x() as f64,
-                ev.client_y() as f64,
-                &canvas,
-                &transform.get_untracked(),
+                rubber,
             );
 
-            let tables = store.tables.get_untracked();
-            let refs = store.references.get_untracked();
-            // 关系工具：优先字段命中
-            if rel_tool_active.get_untracked() {
-                if let Some((tid, fid)) = super::hit_test_field(&tables, dx, dy) {
-                    if let Some(cb) = &on_field_pick {
-                        cb(tid, fid);
-                    }
-                    return;
-                }
-                return;
-            }
-            // B3: hit-test endpoint first (priority over table body)
-            if let Some((ref_id, end)) = super::hit_test_endpoint(&tables, &refs, dx, dy) {
-                drag_state.set(Some(DragState {
-                    table_id: None,
-                    endpoint_drag: Some((ref_id, end)),
-                    start_mouse_x: ev.client_x() as f64,
-                    start_mouse_y: ev.client_y() as f64,
-                    start_pan_x: 0.0,
-                    start_pan_y: 0.0,
-                    start_table_x: 0.0,
-                    start_table_y: 0.0,
-                }));
-                return;
-            }
-            if let Some(id) = super::hit_test(&tables, dx, dy) {
-                let table_x = tables.iter().find(|t| t.id == id).map(|t| t.x).unwrap_or(0.0);
-                let table_y = tables.iter().find(|t| t.id == id).map(|t| t.y).unwrap_or(0.0);
-                selected_id.set(Some(id.clone()));
-                if let Some(cb) = &on_select {
-                    cb(id.clone());
-                }
-                drag_state.set(Some(DragState {
-                    table_id: Some(id),
-                    endpoint_drag: None,
-                    start_mouse_x: ev.client_x() as f64,
-                    start_mouse_y: ev.client_y() as f64,
-                    start_pan_x: transform.get_untracked().pan_x,
-                    start_pan_y: transform.get_untracked().pan_y,
-                    start_table_x: table_x,
-                    start_table_y: table_y,
-                }));
+            if let Some((x1, y1, x2, y2)) = rubber {
+                rubber_d.set(Some(super::rubber_band_path(x1, y1, x2, y2)));
             } else {
-                selected_id.set(None);
-                if let Some(cb) = &on_deselect {
-                    cb();
-                }
-                let t = transform.get_untracked();
-                drag_state.set(Some(DragState {
-                    table_id: None,
-                    endpoint_drag: None,
-                    start_mouse_x: ev.client_x() as f64,
-                    start_mouse_y: ev.client_y() as f64,
-                    start_pan_x: t.pan_x,
-                    start_pan_y: t.pan_y,
-                    start_table_x: 0.0,
-                    start_table_y: 0.0,
-                }));
+                rubber_d.set(None);
             }
+
+            if let Some(first) = refs.first() {
+                if let (Some(from), Some(to_tbl)) = (
+                    tables.iter().find(|tbl| tbl.id == first.start_table_id),
+                    tables.iter().find(|tbl| tbl.id == first.end_table_id),
+                ) {
+                    let d = super::calc_path(from, &first.start_field_id, to_tbl, &first.end_field_id)
+                        .to_svg_d();
+                    follow_path.set(d.clone());
+                    let _ = canvas.set_attribute("data-follow-path", &d);
+                }
+            } else {
+                follow_path.set(String::new());
+                let _ = canvas.set_attribute("data-follow-path", "");
+            }
+        });
+        }
+
+        let capture_pointer = move |canvas: &web_sys::HtmlCanvasElement, pointer_id: i32| {
+            let _ = canvas.set_pointer_capture(pointer_id);
         };
 
-        let on_mousemove = move |ev: MouseEvent| {
-            let Some(drag) = drag_state.get_untracked() else { return; };
-            let canvas = match canvas_ref.get() {
-                Some(c) => c,
-                None => return,
-            };
-            let dx = ev.client_x() as f64 - drag.start_mouse_x;
-            let dy = ev.client_y() as f64 - drag.start_mouse_y;
-
-            if let Some((ref_id, end)) = &drag.endpoint_drag {
-                // B3: endpoint drag — find nearest field in the connected table
-                let (dx_d, dy_d) = screen_to_diagram(
+        let on_pointerdown = {
+            let live = live.clone();
+            let on_select = on_select.clone();
+            let on_deselect = on_deselect.clone();
+            move |ev: PointerEvent| {
+                let canvas = match canvas_ref.get() {
+                    Some(c) => c,
+                    None => return,
+                };
+                let (dx, dy) = screen_to_diagram(
                     ev.client_x() as f64,
                     ev.client_y() as f64,
                     &canvas,
                     &transform.get_untracked(),
                 );
+
                 let tables = store.tables.get_untracked();
-                let target_table_id = match end {
-                    EndpointEnd::Start => store.references.get_untracked().iter()
-                        .find(|r| r.id == *ref_id).map(|r| r.start_table_id.clone()),
-                    EndpointEnd::End => store.references.get_untracked().iter()
-                        .find(|r| r.id == *ref_id).map(|r| r.end_table_id.clone()),
-                };
-                if let Some(tid) = target_table_id {
-                    let new_field = tables.iter()
-                        .find(|t| t.id == tid)
-                        .and_then(|t| {
-                            t.fields.iter().min_by(|a, b| {
-                                let ay = t.y + TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT *
-                                    t.fields.iter().position(|f| f.id == a.id).unwrap_or(0) as f64;
-                                let by = t.y + TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT *
-                                    t.fields.iter().position(|f| f.id == b.id).unwrap_or(0) as f64;
-                                let da = (dx_d - t.x).powi(2) + (dy_d - ay).powi(2);
-                                let db = (dx_d - t.x).powi(2) + (dy_d - by).powi(2);
-                                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
-                            })
-                        })
-                        .map(|f| f.id.clone());
-                    if let Some(fid) = new_field {
-                        let refs_now = store.references.get_untracked();
-                        let updated = super::update_reference_endpoint(&refs_now, ref_id, *end, &fid);
-                        store.references.set(updated);
+                let refs = store.references.get_untracked();
+                if rel_tool_active.get_untracked() {
+                    if let Some((tid, fid)) = super::hit_test_field(&tables, dx, dy) {
+                        let (anchor_x, anchor_y) = tables
+                            .iter()
+                            .find(|t| t.id == tid)
+                            .map(|t| super::field_anchor_start(t, &fid))
+                            .unwrap_or((dx, dy));
+                        capture_pointer(&canvas, ev.pointer_id());
+                        drag_state.set(Some(DragState {
+                            table_id: None,
+                            endpoint_drag: None,
+                            rel_drag: Some(RelFieldDrag {
+                                start_table_id: tid,
+                                start_field_id: fid,
+                                anchor_x,
+                                anchor_y,
+                                moved: false,
+                            }),
+                            pointer_id: ev.pointer_id(),
+                            start_mouse_x: ev.client_x() as f64,
+                            start_mouse_y: ev.client_y() as f64,
+                            start_pan_x: 0.0,
+                            start_pan_y: 0.0,
+                            start_table_x: 0.0,
+                            start_table_y: 0.0,
+                        }));
+                        return;
                     }
+                    return;
                 }
-            } else if let Some(table_id) = &drag.table_id {
-                let new_x = drag.start_table_x + dx / transform.get_untracked().zoom;
-                let new_y = drag.start_table_y + dy / transform.get_untracked().zoom;
-                let mut tables = store.tables.get_untracked();
-                if let Some(table) = tables.iter_mut().find(|t| &t.id == table_id) {
-                    table.x = new_x;
-                    table.y = new_y;
-                    store.tables.set(tables);
+                if let Some((ref_id, end)) = super::hit_test_endpoint(&tables, &refs, dx, dy) {
+                    capture_pointer(&canvas, ev.pointer_id());
+                    drag_state.set(Some(DragState {
+                        table_id: None,
+                        endpoint_drag: Some((ref_id, end)),
+                        rel_drag: None,
+                        pointer_id: ev.pointer_id(),
+                        start_mouse_x: ev.client_x() as f64,
+                        start_mouse_y: ev.client_y() as f64,
+                        start_pan_x: 0.0,
+                        start_pan_y: 0.0,
+                        start_table_x: 0.0,
+                        start_table_y: 0.0,
+                    }));
+                    return;
                 }
-            } else {
-                transform.update(|t| {
-                    t.pan_x = drag.start_pan_x + dx;
-                    t.pan_y = drag.start_pan_y + dy;
-                });
+                if let Some(id) = super::hit_test(&tables, dx, dy) {
+                    let table_x = tables.iter().find(|t| t.id == id).map(|t| t.x).unwrap_or(0.0);
+                    let table_y = tables.iter().find(|t| t.id == id).map(|t| t.y).unwrap_or(0.0);
+                    selected_id.set(Some(id.clone()));
+                    if let Some(cb) = on_select.as_ref() {
+                        cb(id.clone());
+                    }
+                    capture_pointer(&canvas, ev.pointer_id());
+                    live.borrow_mut().tables = None;
+                    drag_state.set(Some(DragState {
+                        table_id: Some(id),
+                        endpoint_drag: None,
+                        rel_drag: None,
+                        pointer_id: ev.pointer_id(),
+                        start_mouse_x: ev.client_x() as f64,
+                        start_mouse_y: ev.client_y() as f64,
+                        start_pan_x: transform.get_untracked().pan_x,
+                        start_pan_y: transform.get_untracked().pan_y,
+                        start_table_x: table_x,
+                        start_table_y: table_y,
+                    }));
+                } else {
+                    selected_id.set(None);
+                    if let Some(cb) = on_deselect.as_ref() {
+                        cb();
+                    }
+                    let t = transform.get_untracked();
+                    capture_pointer(&canvas, ev.pointer_id());
+                    drag_state.set(Some(DragState {
+                        table_id: None,
+                        endpoint_drag: None,
+                        rel_drag: None,
+                        pointer_id: ev.pointer_id(),
+                        start_mouse_x: ev.client_x() as f64,
+                        start_mouse_y: ev.client_y() as f64,
+                        start_pan_x: t.pan_x,
+                        start_pan_y: t.pan_y,
+                        start_table_x: 0.0,
+                        start_table_y: 0.0,
+                    }));
+                }
             }
         };
 
-        let on_mouseup = move |_ev: MouseEvent| {
-            drag_state.set(None);
+        let on_pointermove = {
+            let live = live.clone();
+            let schedule_paint = schedule_paint.clone();
+            let on_relation_drag_start = on_relation_drag_start.clone();
+            move |ev: PointerEvent| {
+                let Some(drag) = drag_state.get_untracked() else {
+                    return;
+                };
+                let canvas = match canvas_ref.get() {
+                    Some(c) => c,
+                    None => return,
+                };
+                let dx = ev.client_x() as f64 - drag.start_mouse_x;
+                let dy = ev.client_y() as f64 - drag.start_mouse_y;
+
+                if let Some(rel) = drag.rel_drag.clone() {
+                    let (diag_x, diag_y) = screen_to_diagram(
+                        ev.client_x() as f64,
+                        ev.client_y() as f64,
+                        &canvas,
+                        &transform.get_untracked(),
+                    );
+                    let crossed = super::is_relation_drag(dx, dy, super::DRAG_THRESHOLD);
+                    if !rel.moved && crossed {
+                        drag_state.update(|d| {
+                            if let Some(ds) = d {
+                                if let Some(r) = &mut ds.rel_drag {
+                                    r.moved = true;
+                                }
+                            }
+                        });
+                        if let Some(cb) = on_relation_drag_start.as_ref() {
+                            cb(rel.start_table_id.clone(), rel.start_field_id.clone());
+                        }
+                    }
+                    if rel.moved || crossed {
+                        live.borrow_mut().rubber =
+                            Some((rel.anchor_x, rel.anchor_y, diag_x, diag_y));
+                        schedule_paint();
+                    }
+                    return;
+                }
+
+                if let Some((ref_id, end)) = &drag.endpoint_drag {
+                    let (dx_d, dy_d) = screen_to_diagram(
+                        ev.client_x() as f64,
+                        ev.client_y() as f64,
+                        &canvas,
+                        &transform.get_untracked(),
+                    );
+                    let tables = store.tables.get_untracked();
+                    let target_table_id = match end {
+                        EndpointEnd::Start => store
+                            .references
+                            .get_untracked()
+                            .iter()
+                            .find(|r| r.id == *ref_id)
+                            .map(|r| r.start_table_id.clone()),
+                        EndpointEnd::End => store
+                            .references
+                            .get_untracked()
+                            .iter()
+                            .find(|r| r.id == *ref_id)
+                            .map(|r| r.end_table_id.clone()),
+                    };
+                    if let Some(tid) = target_table_id {
+                        let new_field = tables
+                            .iter()
+                            .find(|t| t.id == tid)
+                            .and_then(|t| {
+                                t.fields.iter().min_by(|a, b| {
+                                    let ay = t.y
+                                        + TABLE_HEADER_HEIGHT
+                                        + FIELD_ROW_HEIGHT
+                                            * t.fields.iter().position(|f| f.id == a.id).unwrap_or(0)
+                                                as f64;
+                                    let by = t.y
+                                        + TABLE_HEADER_HEIGHT
+                                        + FIELD_ROW_HEIGHT
+                                            * t.fields.iter().position(|f| f.id == b.id).unwrap_or(0)
+                                                as f64;
+                                    let da = (dx_d - t.x).powi(2) + (dy_d - ay).powi(2);
+                                    let db = (dx_d - t.x).powi(2) + (dy_d - by).powi(2);
+                                    da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+                                })
+                            })
+                            .map(|f| f.id.clone());
+                        if let Some(fid) = new_field {
+                            let refs_now = store.references.get_untracked();
+                            let updated =
+                                super::update_reference_endpoint(&refs_now, ref_id, *end, &fid);
+                            store.references.set(updated);
+                        }
+                    }
+                } else if let Some(table_id) = &drag.table_id {
+                    // 拖动中只用临时视觉坐标，禁止 store.tables.set（UT-CR-06 / ST-CR-02）
+                    let new_x = drag.start_table_x + dx / transform.get_untracked().zoom;
+                    let new_y = drag.start_table_y + dy / transform.get_untracked().zoom;
+                    let visual = super::apply_visual_table_position(
+                        &store.tables.get_untracked(),
+                        table_id,
+                        new_x,
+                        new_y,
+                    );
+                    live.borrow_mut().tables = Some(visual);
+                    schedule_paint();
+                } else {
+                    transform.update(|t| {
+                        t.pan_x = drag.start_pan_x + dx;
+                        t.pan_y = drag.start_pan_y + dy;
+                    });
+                }
+            }
+        };
+
+        let on_pointerup = {
+            let live = live.clone();
+            let schedule_paint = schedule_paint.clone();
+            let on_field_pick = on_field_pick.clone();
+            let on_relation_drop = on_relation_drop.clone();
+            let on_relation_drag_cancel = on_relation_drag_cancel.clone();
+            move |ev: PointerEvent| {
+                let Some(drag) = drag_state.get_untracked() else {
+                    return;
+                };
+                let canvas = canvas_ref.get();
+                if let Some(c) = &canvas {
+                    let _ = c.release_pointer_capture(drag.pointer_id);
+                }
+
+                if let Some(rel) = drag.rel_drag {
+                    let tables = store.tables.get_untracked();
+                    let (diag_x, diag_y) = canvas
+                        .as_ref()
+                        .map(|c| {
+                            screen_to_diagram(
+                                ev.client_x() as f64,
+                                ev.client_y() as f64,
+                                c,
+                                &transform.get_untracked(),
+                            )
+                        })
+                        .unwrap_or((0.0, 0.0));
+                    live.borrow_mut().rubber = None;
+                    rubber_d.set(None);
+                    drag_state.set(None);
+                    schedule_paint();
+                    if !rel.moved {
+                        if let Some(cb) = on_field_pick.as_ref() {
+                            cb(rel.start_table_id, rel.start_field_id);
+                        }
+                        return;
+                    }
+                    match super::hit_test_field(&tables, diag_x, diag_y) {
+                        Some((tid, fid))
+                            if tid != rel.start_table_id || fid != rel.start_field_id =>
+                        {
+                            if let Some(cb) = on_relation_drop.as_ref() {
+                                cb(rel.start_table_id, rel.start_field_id, tid, fid);
+                            }
+                        }
+                        _ => {
+                            if let Some(cb) = on_relation_drag_cancel.as_ref() {
+                                cb();
+                            }
+                        }
+                    }
+                    return;
+                }
+
+                if let Some(table_id) = drag.table_id {
+                    let dx = ev.client_x() as f64 - drag.start_mouse_x;
+                    let dy = ev.client_y() as f64 - drag.start_mouse_y;
+                    let new_x = drag.start_table_x + dx / transform.get_untracked().zoom;
+                    let new_y = drag.start_table_y + dy / transform.get_untracked().zoom;
+                    let (sx, sy) = super::snap_to_grid(new_x, new_y, super::GRID_SIZE);
+                    let mut tables = store.tables.get_untracked();
+                    if let Some(table) = tables.iter_mut().find(|t| t.id == table_id) {
+                        table.x = sx;
+                        table.y = sy;
+                    }
+                    live.borrow_mut().tables = None;
+                    store.tables.set(tables);
+                    drag_state.set(None);
+                    return;
+                }
+
+                live.borrow_mut().tables = None;
+                drag_state.set(None);
+            }
         };
 
         let on_wheel = move |ev: WheelEvent| {
@@ -312,42 +612,165 @@ mod leptos_canvas {
             });
         };
 
-        let on_dblclick = move |ev: MouseEvent| {
-            let canvas = match canvas_ref.get() {
-                Some(c) => c,
-                None => return,
-            };
-            let (dx, dy) = screen_to_diagram(
-                ev.client_x() as f64,
-                ev.client_y() as f64,
-                &canvas,
-                &transform.get_untracked(),
-            );
-            let tables = store.tables.get_untracked();
-            if super::hit_test(&tables, dx, dy).is_none() {
-                if let Some(cb) = &on_dblclick_blank {
-                    cb();
+        let on_dblclick = {
+            let on_dblclick_blank = on_dblclick_blank.clone();
+            move |ev: MouseEvent| {
+                let canvas = match canvas_ref.get() {
+                    Some(c) => c,
+                    None => return,
+                };
+                let (dx, dy) = screen_to_diagram(
+                    ev.client_x() as f64,
+                    ev.client_y() as f64,
+                    &canvas,
+                    &transform.get_untracked(),
+                );
+                let tables = store.tables.get_untracked();
+                if super::hit_test(&tables, dx, dy).is_none() {
+                    if let Some(cb) = on_dblclick_blank.as_ref() {
+                        cb();
+                    }
                 }
             }
         };
 
         view! {
-            <canvas
-                id="editor-canvas"
-                data-testid="editor-canvas"
-                class="cdb-canvas-element"
-                node_ref=canvas_ref
-                on:mousedown=on_mousedown
-                on:mousemove=on_mousemove
-                on:mouseup=on_mouseup
-                on:wheel=on_wheel
-                on:dblclick=on_dblclick
-            ></canvas>
+            <div class="cdb-canvas-stack">
+                <canvas
+                    id="editor-canvas"
+                    data-testid="editor-canvas"
+                    class="cdb-canvas-element"
+                    node_ref=canvas_ref
+                    on:pointerdown=on_pointerdown
+                    on:pointermove=on_pointermove
+                    on:pointerup=on_pointerup
+                    on:wheel=on_wheel
+                    on:dblclick=on_dblclick
+                ></canvas>
+                <svg class="cdb-rel-overlay" aria-hidden="true">
+                    <g transform=move || {
+                        let t = transform.get();
+                        format!("translate({},{}) scale({})", t.pan_x, t.pan_y, t.zoom)
+                    }>
+                        <path
+                            data-testid="rel-follow-path"
+                            fill="none"
+                            stroke="transparent"
+                            attr:d=move || follow_path.get()
+                        ></path>
+                        <path
+                            class="cdb-rel-rubber-band"
+                            data-testid="rel-rubber-band"
+                            fill="none"
+                            stroke="#5b7cfa"
+                            stroke-width="1.5"
+                            attr:d=move || rubber_d.get().unwrap_or_default()
+                            prop:hidden=move || rubber_d.get().is_none()
+                        ></path>
+                    </g>
+                </svg>
+            </div>
         }
     }
 }
 
 pub use leptos_canvas::Canvas;
+
+// ─── Pure geometry helpers（可在非 wasm 单测中覆盖 UT-PB-06 / UT-CR-06 / UT-CR-07）──
+
+/// 关系拖线阈值：屏幕像素欧氏距离（除以 zoom 之前）。
+pub fn is_relation_drag(dx: f64, dy: f64, threshold: f64) -> bool {
+    (dx * dx + dy * dy).sqrt() >= threshold
+}
+
+/// 松手网格对齐：`round(n / grid) * grid`。
+pub fn snap_to_grid(x: f64, y: f64, grid: f64) -> (f64, f64) {
+    ((x / grid).round() * grid, (y / grid).round() * grid)
+}
+
+/// 源字段右侧锚点（与正式关系线起点一致）。
+pub fn field_anchor_start(table: &Table, field_id: &str) -> (f64, f64) {
+    (table.x + TABLE_WIDTH, field_anchor_y(table, field_id))
+}
+
+/// 拖动中写入临时视觉坐标，不量化网格。
+pub fn apply_visual_table_position(tables: &[Table], table_id: &str, x: f64, y: f64) -> Vec<Table> {
+    tables
+        .iter()
+        .map(|t| {
+            if t.id == table_id {
+                let mut cloned = t.clone();
+                cloned.x = x;
+                cloned.y = y;
+                cloned
+            } else {
+                t.clone()
+            }
+        })
+        .collect()
+}
+
+/// 贝塞尔关系路径（与 `draw_bezier_fields` 同一算法）。
+#[derive(Clone, Debug, PartialEq)]
+pub struct RelationPath {
+    pub x1: f64,
+    pub y1: f64,
+    pub cx1: f64,
+    pub cy1: f64,
+    pub cx2: f64,
+    pub cy2: f64,
+    pub x2: f64,
+    pub y2: f64,
+}
+
+impl RelationPath {
+    pub fn to_svg_d(&self) -> String {
+        format!(
+            "M{} {} C{} {},{} {},{} {}",
+            self.x1, self.y1, self.cx1, self.cy1, self.cx2, self.cy2, self.x2, self.y2
+        )
+    }
+}
+
+fn bezier_controls(x1: f64, y1: f64, x2: f64, y2: f64) -> (f64, f64, f64, f64) {
+    let cx1 = x1 + (x2 - x1) * 0.5;
+    let cx2 = x1 + (x2 - x1) * 0.5;
+    (cx1, y1, cx2, y2)
+}
+
+pub fn calc_path(from: &Table, from_field_id: &str, to: &Table, to_field_id: &str) -> RelationPath {
+    let x1 = from.x + TABLE_WIDTH;
+    let y1 = field_anchor_y(from, from_field_id);
+    let x2 = to.x;
+    let y2 = field_anchor_y(to, to_field_id);
+    let (cx1, cy1, cx2, cy2) = bezier_controls(x1, y1, x2, y2);
+    RelationPath {
+        x1,
+        y1,
+        cx1,
+        cy1,
+        cx2,
+        cy2,
+        x2,
+        y2,
+    }
+}
+
+/// 橡皮筋 SVG `d`：起点为源字段锚点，终点为指针坐标。
+pub fn rubber_band_path(x1: f64, y1: f64, x2: f64, y2: f64) -> String {
+    let (cx1, cy1, cx2, cy2) = bezier_controls(x1, y1, x2, y2);
+    RelationPath {
+        x1,
+        y1,
+        cx1,
+        cy1,
+        cx2,
+        cy2,
+        x2,
+        y2,
+    }
+    .to_svg_d()
+}
 
 // ─── Pure rendering functions ────────────────────────────────────────────────
 
@@ -363,6 +786,7 @@ pub fn draw_canvas(
     notes: &[Note],
     remote_presence: &[RemotePresence],
     selected_id: Option<&str>,
+    rubber_band: Option<(f64, f64, f64, f64)>,
 ) {
     ctx.clear_rect(0.0, 0.0, width, height);
     let _ = ctx.set_fill_style_str(CANVAS_BG);
@@ -397,6 +821,10 @@ pub fn draw_canvas(
 
     for presence in remote_presence {
         draw_remote_presence(ctx, presence);
+    }
+
+    if let Some((x1, y1, x2, y2)) = rubber_band {
+        draw_rubber_band(ctx, x1, y1, x2, y2);
     }
 
     ctx.restore();
@@ -631,26 +1059,39 @@ fn draw_bezier_fields(
     to: &Table,
     to_field_id: &str,
 ) {
-    let x1 = from.x + TABLE_WIDTH;
-    let y1 = field_anchor_y(from, from_field_id);
-    let x2 = to.x;
-    let y2 = field_anchor_y(to, to_field_id);
-    let cx1 = x1 + (x2 - x1) * 0.5;
-    let cx2 = x1 + (x2 - x1) * 0.5;
+    let path = calc_path(from, from_field_id, to, to_field_id);
 
     let _ = ctx.set_stroke_style_str(RELATION_COLOR);
     ctx.set_line_width(1.5);
     ctx.begin_path();
-    ctx.move_to(x1, y1);
-    ctx.bezier_curve_to(cx1, y1, cx2, y2, x2, y2);
+    ctx.move_to(path.x1, path.y1);
+    ctx.bezier_curve_to(path.cx1, path.cy1, path.cx2, path.cy2, path.x2, path.y2);
     ctx.stroke();
 
-    draw_arrow_head(ctx, cx2, y2, x2, y2);
+    draw_arrow_head(ctx, path.cx2, path.cy2, path.x2, path.y2);
 
     let _ = ctx.set_fill_style_str(RELATION_COLOR);
     ctx.begin_path();
-    ctx.arc(x1, y1, 4.0, 0.0, std::f64::consts::TAU).ok();
+    ctx.arc(path.x1, path.y1, 4.0, 0.0, std::f64::consts::TAU).ok();
     ctx.fill();
+}
+
+fn draw_rubber_band(ctx: &CanvasRenderingContext2d, x1: f64, y1: f64, x2: f64, y2: f64) {
+    let (cx1, cy1, cx2, cy2) = bezier_controls(x1, y1, x2, y2);
+    let dash_arr = {
+        let a = js_sys::Array::new();
+        a.push(&wasm_bindgen::JsValue::from(6.0));
+        a.push(&wasm_bindgen::JsValue::from(4.0));
+        a
+    };
+    let _ = ctx.set_line_dash(&dash_arr);
+    let _ = ctx.set_stroke_style_str(RELATION_COLOR);
+    ctx.set_line_width(1.5);
+    ctx.begin_path();
+    ctx.move_to(x1, y1);
+    ctx.bezier_curve_to(cx1, cy1, cx2, cy2, x2, y2);
+    ctx.stroke();
+    let _ = ctx.set_line_dash(&js_sys::Array::new());
 }
 
 fn draw_bezier(ctx: &CanvasRenderingContext2d, from: &Table, to: &Table) {
@@ -890,7 +1331,7 @@ fn round_rect_top(ctx: &CanvasRenderingContext2d, x: f64, y: f64, w: f64, h: f64
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::editor_core::types::Reference;
+    use crate::editor_core::types::{Field, Reference, Table};
 
     fn make_ref(id: &str, start_f: &str, end_f: &str) -> Reference {
         Reference {
@@ -985,5 +1426,57 @@ mod tests {
         assert_eq!(slots[1].x, 98.0);
         assert_eq!(slots[1].y, 86.0);
         assert!(!slots[1].online);
+    }
+
+    fn fixture_table(id: &str, field_id: &str, x: f64, y: f64) -> Table {
+        Table {
+            id: id.into(),
+            name: id.into(),
+            x,
+            y,
+            color: "#000".into(),
+            comment: String::new(),
+            fields: vec![Field {
+                id: field_id.into(),
+                name: "id".into(),
+                type_: "INT".into(),
+                default: String::new(),
+                check: String::new(),
+                primary: true,
+                unique: false,
+                not_null: false,
+                increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn ut_cr_06_snap_to_grid_rounds_on_release() {
+        let (x, y) = snap_to_grid(133.4, 87.1, 20.0);
+        assert_eq!((x, y), (140.0, 80.0), "UT-CR-06: snap_to_grid(133.4, 87.1, 20) → (140, 80)");
+        let visual = apply_visual_table_position(
+            &[fixture_table("a", "f1", 100.0, 100.0)],
+            "a",
+            133.4,
+            87.1,
+        );
+        assert_eq!(visual[0].x, 133.4, "UT-CR-06: 拖动中保持未量化坐标");
+        assert_eq!(visual[0].y, 87.1);
+    }
+
+    #[test]
+    fn ut_cr_07_calc_path_uses_current_visual_coords() {
+        let a = fixture_table("a", "fa", 100.0, 100.0);
+        let b = fixture_table("b", "fb", 400.0, 100.0);
+        let before = calc_path(&a, "fa", &b, "fb");
+        let mut moved = a.clone();
+        moved.x = 160.0;
+        moved.y = 140.0;
+        let during = calc_path(&moved, "fa", &b, "fb");
+        assert_ne!(before.x1, during.x1, "UT-CR-07: 不得仍使用 100/100");
+        assert_eq!(during.x1, 160.0 + TABLE_WIDTH);
+        assert_eq!(during.y1, field_anchor_y(&moved, "fa"));
     }
 }

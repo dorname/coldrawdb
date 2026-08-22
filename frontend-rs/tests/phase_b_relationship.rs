@@ -12,8 +12,12 @@
 //! - UT-PB-05 确认条创建后 `references.len()+1` 信号断言（源码扫描方式）
 
 use frontend_rs::editor_core::types::{Field, Reference, Table};
-use frontend_rs::editor_panels::{build_reference, flip_reference_endpoints, toggle_field_primary};
-use frontend_rs::editor_render::hit_test_field;
+use frontend_rs::editor_panels::{
+    build_reference, flip_reference_endpoints, toggle_field_primary, RelToolState,
+};
+use frontend_rs::editor_render::{
+    hit_test_field, is_relation_drag, rubber_band_path, DRAG_THRESHOLD,
+};
 
 /// 测试辅助：构造一个含两字段的最小 Table
 fn fixture_table_two_fields() -> Table {
@@ -212,4 +216,56 @@ fn ut_pb_05_confirm_bar_increments_references_count() {
         panels_src.contains("UT-PB-05"),
         "UT-PB-05 FAIL: 内联测试用例缺失（应在 editor_panels.rs::tests 模块内）"
     );
+}
+
+// ─── UT-PB-06: 点击 / 拖线阈值 ─────────────────────────────────────────────
+
+#[test]
+fn ut_pb_06_relation_drag_threshold_is_euclidean_screen_px() {
+    assert!(
+        !is_relation_drag(3.0, 0.0, 4.0),
+        "UT-PB-06: 位移 3px 应判定为点击"
+    );
+    assert!(
+        is_relation_drag(0.0, 4.0, 4.0),
+        "UT-PB-06: 位移 4px 应判定为拖线"
+    );
+    assert!(
+        is_relation_drag(3.0, 3.0, 4.0),
+        "UT-PB-06: hypot(3,3)≥4 应判定为拖线"
+    );
+    assert_eq!(DRAG_THRESHOLD, 4.0);
+}
+
+#[test]
+fn ut_pb_06b_eight_px_enters_dragging_and_shows_rubber_band() {
+    assert!(
+        is_relation_drag(8.0, 0.0, DRAG_THRESHOLD),
+        "UT-PB-06b: 位移 8px 进入 Dragging"
+    );
+    let state = RelToolState::Dragging {
+        start_table_id: "t1".into(),
+        start_field_id: "f1".into(),
+    };
+    assert_eq!(state.hint(), Some("拖到目标字段后松开"));
+    let render_src = include_str!("../src/editor_render.rs");
+    assert!(
+        render_src.contains("rel-rubber-band"),
+        "UT-PB-06b: 画布必须暴露 data-testid=rel-rubber-band"
+    );
+}
+
+#[test]
+fn ut_pb_07_rubber_band_path_uses_source_anchor_and_pointer() {
+    let d = rubber_band_path(10.0, 20.0, 110.0, 80.0);
+    assert!(
+        d.starts_with("M10 20 "),
+        "UT-PB-07: 起点应为源字段锚点 (10,20)，实际 {d}"
+    );
+    assert!(
+        d.ends_with("110 80"),
+        "UT-PB-07: 终点应为指针 (110,80)，实际 {d}"
+    );
+    let official = rubber_band_path(10.0, 20.0, 110.0, 80.0);
+    assert_eq!(d, official, "UT-PB-07: 橡皮筋与正式关系线使用同一贝塞尔算法");
 }

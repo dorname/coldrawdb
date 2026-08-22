@@ -210,6 +210,10 @@ pub enum RelToolState {
         start_table_id: String,
         start_field_id: String,
     },
+    Dragging {
+        start_table_id: String,
+        start_field_id: String,
+    },
     Confirm {
         start_table_id: String,
         start_field_id: String,
@@ -222,10 +226,20 @@ pub enum RelToolState {
 impl RelToolState {
     pub fn hint(&self) -> Option<&'static str> {
         match self {
-            RelToolState::PickSource => Some("选择源字段"),
-            RelToolState::PickTarget { .. } => Some("选择目标字段"),
+            RelToolState::PickSource => Some("从字段拖出连线，或点击选择源字段"),
+            RelToolState::Dragging { .. } => Some("拖到目标字段后松开"),
+            RelToolState::PickTarget { .. } => Some("选择目标字段，或从源字段拖出连线"),
             _ => None,
         }
+    }
+
+    pub fn is_picking(&self) -> bool {
+        matches!(
+            self,
+            RelToolState::PickSource
+                | RelToolState::PickTarget { .. }
+                | RelToolState::Dragging { .. }
+        )
     }
 }
 
@@ -4560,10 +4574,7 @@ pub fn AppRoot(
     let rel_tool_active: RwSignal<bool> = create_rw_signal(false);
     create_effect(move |_| {
         let picking = active_tool.get() == ActiveTool::Relationship
-            && matches!(
-                rel_tool_state.get(),
-                RelToolState::PickSource | RelToolState::PickTarget { .. }
-            );
+            && rel_tool_state.get().is_picking();
         rel_tool_active.set(picking);
     });
 
@@ -5277,9 +5288,45 @@ pub fn AppRoot(
                         cardinality: "one_to_many".into(),
                     });
                 }
+                RelToolState::Dragging { .. } => {}
                 _ => {}
             },
         ))
+    };
+
+    let on_relation_drag_start: Option<Box<dyn Fn(String, String) + 'static>> = {
+        let rel_tool_state = rel_tool_state.clone();
+        Some(Box::new(move |table_id: String, field_id: String| {
+            rel_tool_state.set(RelToolState::Dragging {
+                start_table_id: table_id,
+                start_field_id: field_id,
+            });
+        }))
+    };
+
+    let on_relation_drop: Option<Box<dyn Fn(String, String, String, String) + 'static>> = {
+        let rel_tool_state = rel_tool_state.clone();
+        Some(Box::new(
+            move |start_table_id: String,
+                  start_field_id: String,
+                  end_table_id: String,
+                  end_field_id: String| {
+                rel_tool_state.set(RelToolState::Confirm {
+                    start_table_id,
+                    start_field_id,
+                    end_table_id,
+                    end_field_id,
+                    cardinality: "one_to_many".into(),
+                });
+            },
+        ))
+    };
+
+    let on_relation_drag_cancel: Option<Box<dyn Fn() + 'static>> = {
+        let rel_tool_state = rel_tool_state.clone();
+        Some(Box::new(move || {
+            rel_tool_state.set(RelToolState::PickSource);
+        }))
     };
 
     let on_toggle_pk = {
@@ -5606,6 +5653,9 @@ pub fn AppRoot(
                         on_dblclick_blank=on_dblclick_blank
                         rel_tool_active=rel_tool_active
                         on_field_pick=on_field_pick
+                        on_relation_drag_start=on_relation_drag_start
+                        on_relation_drop=on_relation_drop
+                        on_relation_drag_cancel=on_relation_drag_cancel
                     />
                     <RelationshipConfirmBar
                         store=store.clone()

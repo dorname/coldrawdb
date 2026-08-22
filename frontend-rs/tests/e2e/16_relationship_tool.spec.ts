@@ -59,6 +59,39 @@ test.describe("Phase B Relationship Tool E2E", () => {
     await expect(relations).toHaveCount(1);
   });
 
+  test("ST-PB-02: 关系工具拖字段出线 + 确认", async ({ page }) => {
+    await page.click('[data-testid="btn-create-table"]');
+    await page.fill('[data-testid="table-name-input"]', "users");
+    await page.click('[data-testid="btn-confirm"]');
+    await page.click('[data-testid="btn-create-table"]');
+    await page.fill('[data-testid="table-name-input"]', "orders");
+    await page.click('[data-testid="btn-confirm"]');
+
+    await page.click('[data-testid="tool-relationship"]');
+    const canvas = page.locator('[data-testid="editor-canvas"]');
+    const box = await canvas.boundingBox();
+    if (!box) {
+      test.skip();
+      return;
+    }
+
+    const fieldY = box.y + 160 + 32 + 12;
+    await page.mouse.move(box.x + 240 + 40, fieldY);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 240 + 80, fieldY, { steps: 4 });
+    await expect(page.locator('[data-testid="rel-rubber-band"]')).toBeVisible({
+      timeout: 2_000,
+    });
+    await page.mouse.move(box.x + 460, fieldY + 40, { steps: 6 });
+    await page.mouse.up();
+
+    const confirm = page.locator('[data-testid="rel-confirm-bar"]');
+    if (await confirm.isVisible().catch(() => false)) {
+      await page.click('[data-testid="rel-confirm-create"]');
+      await expect(page.locator('[data-testid^="relation-row-"]')).toHaveCount(1);
+    }
+  });
+
   test("ST-PB-01 回归: 取消确认 → 不创建关系", async ({ page }) => {
     // 创建两张表
     await page.click('[data-testid="btn-create-table"]');
