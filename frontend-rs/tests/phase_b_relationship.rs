@@ -241,7 +241,7 @@ fn ut_pb_06_relation_drag_threshold_is_euclidean_screen_px() {
 fn ut_pb_06b_eight_px_enters_dragging_and_shows_rubber_band() {
     assert!(
         is_relation_drag(8.0, 0.0, DRAG_THRESHOLD),
-        "UT-PB-06b: 位移 8px 进入 Dragging"
+        "UT-PB-06B: 位移 8px 进入 Dragging"
     );
     let state = RelToolState::Dragging {
         start_table_id: "t1".into(),
@@ -251,7 +251,7 @@ fn ut_pb_06b_eight_px_enters_dragging_and_shows_rubber_band() {
     let render_src = include_str!("../src/editor_render.rs");
     assert!(
         render_src.contains("rel-rubber-band"),
-        "UT-PB-06b: 画布必须暴露 data-testid=rel-rubber-band"
+        "UT-PB-06B: 画布必须暴露 data-testid=rel-rubber-band"
     );
 }
 

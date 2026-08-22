@@ -12,7 +12,7 @@
 | UT-PB-04 | 表两字段 f1 PK | `toggle_field_primary(f2)` | f2.primary=true, f1.primary=false |
 | UT-PB-05 | 确认条可见 | 点 create | `references.len()+1` |
 | UT-PB-06 | 源字段 pointerdown | 位移 3px 后 pointerup | 判定为点击，进入 `PickTarget`，无橡皮筋 |
-| UT-PB-06b | 源字段 pointerdown | 位移 8px | 判定为 `Dragging`，出现 `rel-rubber-band` |
+| UT-PB-06B | 源字段 pointerdown | 位移 8px | 判定为 `Dragging`，出现 `rel-rubber-band` |
 | UT-PB-07 | `Dragging` 源字段锚点 (x1,y1) | 指针 (x2,y2) | 橡皮筋 `d` 以 (x1,y1) 为起点、(x2,y2) 为终点 |
 | ST-PB-01 | 两张表各一字段 | 关系工具**点击**两点+确认 | Inspector 可编辑关系 |
 | ST-PB-02 | 两张表各一字段 | 关系工具从字段 **pointerdown 拖到**另一字段 + 确认 | `references.len()==1`；确认条曾可见 |

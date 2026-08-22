@@ -6,12 +6,12 @@
 
 | Metric | Value |
 |--------|-------|
-| Defined cases | 211 |
+| Defined cases | 219 |
 | Manual cases (excluded) | 0 |
-| Executed cases | 211 |
-| Passed | 154 |
+| Executed cases | 219 |
+| Passed | 160 |
 | Failed | 0 |
-| Skipped | 57 |
+| Skipped | 59 |
 | Uncovered | 0 |
 | Coverage | 100% |
 | Pass rate | 100% |
@@ -40,10 +40,12 @@
 - ST-S02-05
 - ST-S02-06
 - ST-CR-01
+- ST-CR-02
 - ST-MM-01
 - ST-MM-02
 - ST-MM-03
 - ST-PB-01
+- ST-PB-02
 - ST-PC-01
 - ST-SP-01
 - ST-UI-05

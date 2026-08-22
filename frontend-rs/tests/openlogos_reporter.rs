@@ -60,7 +60,7 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-PB-04",
     "UT-PB-05",
     "UT-PB-06",
-    "UT-PB-06b",
+    "UT-PB-06B",
     "UT-PB-07",
     // core-PC-import-export + AB
     "UT-PC-01",
