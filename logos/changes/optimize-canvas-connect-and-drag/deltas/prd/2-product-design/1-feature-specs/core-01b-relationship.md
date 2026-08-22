@@ -1,33 +1,8 @@
-# 关系编辑规格（V1）
+# Delta — core-01b-relationship.md
 
-## 1. 关系（Relationship）对象结构
+> 模块：core | 提案：optimize-canvas-connect-and-drag
 
-```ts
-interface Relationship {
-  id: string;
-  name: string;              // 关系名（可选；如 "user_posts"）
-  startTableId: string;      // 起点表 id
-  startFieldId: string;      // 起点字段 id
-  endTableId: string;        // 终点表 id
-  endFieldId: string;        // 终点字段 id
-  cardinality: "one_to_one" | "one_to_many" | "many_to_one" | "many_to_many";
-  onUpdate: "CASCADE" | "RESTRICT" | "SET NULL" | "NO ACTION" | "SET DEFAULT";
-  onDelete: "CASCADE" | "RESTRICT" | "SET NULL" | "NO ACTION" | "SET DEFAULT";
-}
-```
-
-## 2. 关系类型语义
-
-| cardinality | SQL 表达（以 MySQL 为例） | 含义 |
-|---|---|---|
-| `one_to_one` | `FOREIGN KEY (...) REFERENCES ... UNIQUE` | 1 : 1（双向唯一） |
-| `one_to_many` | `FOREIGN KEY (...) REFERENCES ...` | 1 : N（外键在 N 端） |
-| `many_to_one` | 同 `one_to_many`（方向相反） | N : 1 |
-| `many_to_many` | 中间表 `link_<rel_name>` | N : N（需中间表） |
-
-> `many_to_many` 实际实现：coldrawdb V1 在导出 SQL 时自动生成中间表 `link_<name>`（含两端外键）。中间表不在前端展示，但占用 `table_link` 关联。
-
-## 3. 关系操作
+## MODIFIED — 3. 关系操作
 
 | 操作 | 触发 | 数据变化 |
 |---|---|---|
@@ -89,7 +64,7 @@ interface Relationship {
 - 拖字段出线与点击两点**共用**本确认条（生产前端）
 - 主原型为单文件演示、无确认条：第二次点击或拖放到目标字段后立即 `commit` 写入关系（对齐 ST-PU-06）
 
-## 4. 渲染
+## MODIFIED — 4. 渲染
 
 - **连线**：贝塞尔曲线（`BezierCurve` 算法，详见 `frontend-rs/editor_render` 中的 `calc_path`）
 - **端点**：箭头（drawdb 用 SVG marker；coldrawdb V1 用 canvas 自绘）
@@ -99,30 +74,7 @@ interface Relationship {
 - **指针捕获**：表拖动与关系拖线均 `setPointerCapture`，光标离开画布不得丢事件
 - **碰撞**：连线与表头有最小间距，绕开
 
-## 5. 校验
-
-- 起点表 / 起点字段 / 终点表 / 终点字段必须存在
-- 起点 ≠ 终点（**允许** self-reference：起点 = 终点）
-- 字段类型匹配检查：V1 **不强制**（允许任意类型间建关系）
-- onUpdate / onDelete 必填
-
-## 6. 撤销 / 重做
-
-关系的所有操作（创建 / 编辑 / 删除）都进入 `UndoRedoContext`。V1 不持久化。
-
-## 7. 与后端实体的对账
-
-| 前端 | 后端 | 说明 |
-|---|---|---|
-| `Relationship` | `reference` 表 | 1:1 映射 |
-| cardinality | `reference.cardinality` 字段 | 枚举值 |
-| onUpdate | `reference.on_update` | snake_case 存库 |
-| onDelete | `reference.on_delete` | snake_case 存库 |
-| startTableId + startFieldId | `reference.start_table_id` + `reference.start_field_id` | UUID |
-| endTableId + endFieldId | `reference.end_table_id` + `reference.end_field_id` | UUID |
-| many_to_many 中间表 | `table_link` 表 | 自动生成 |
-
-## 8. 测试用例 ID 索引
+## MODIFIED — 8. 测试用例 ID 索引
 
 | TC ID | 描述 |
 |---|---|
@@ -141,56 +93,3 @@ interface Relationship {
 | UT-PB-07 | 橡皮筋路径起点为源字段锚点、终点为指针坐标 |
 | ST-PB-01 | e2e：关系工具点击两点 + 确认 → Inspector 可编辑关系 |
 | ST-PB-02 | e2e：关系工具从字段拖到另一字段 + 确认 → 新增 1 条 reference |
-
-## 9. V1 边界
-
-- ❌ 关系标签编辑（V1 不可编辑，drawdb 有）
-- ❌ 关系颜色（V1 不可改）
-- ❌ 关系线型（实线/虚线）（V1 统一实线）
-- ❌ 关系的元数据（注释、tag）（V1 不支持）
-
-## 10. 对齐参考源
-
-- drawdb `src/components/EditorCanvas/Relationship.jsx`
-- drawdb `src/components/EditorSidePanel/RelationshipsTab/RelationshipInfo.jsx`
-- drawdb `src/utils/calcPath.js`（贝塞尔路径计算）
-- coldrawdb `frontend-rs/src/editor_render.rs`（连线渲染）
-
----
-# Delta — core-01b-relationship.md（修改）
-
-> 模块：core | 提案：redesign-phase-e-design-system-migration（E3 增量）
-
-## MODIFIED — §3 关系操作（E3 Tooltip / Popover 替换）
-
-**merge 时在 §3 末尾追加**：
-
-### §3.x 关系工具 Tooltip / Popover（E3）
-
-关系工具激活时（`cdb-tool-rail-relationship` 按钮）显示：
-
-| 元素 | E3 组件 | 内容 |
-|---|---|---|
-| 起点表 hover | `<Tooltip placement=Top>` | `"{table_name} ({field_count} 字段)"` |
-| 起点字段 hover | `<Tooltip placement=Top>` | `"{field_name} : {field_type}"` |
-| 终点表 hover | `<Tooltip placement=Top>` | `"{table_name}"` |
-| 关系线 hover | `<Popover trigger=Click>` | 关系详情：起点、终点、cardinality、onUpdate / onDelete（来自 main `RelationshipInfo.jsx`） |
-| 关系线点击 | `<Popover>` 展开 | 同上 |
-
-**视觉**：
-- Tooltip：黑底白字，`--cdb-shadow-md`，`--cdb-radius-sm`
-- Popover：白底，`--cdb-shadow-md`，`--cdb-radius-lg`，内容宽度 280px
-
-**z-index**：Tooltip `--cdb-z-tooltip`（L4），Popover `--cdb-z-popover`（L4.5）
-
-## MODIFIED — §4 渲染（E2 关系线端点图标）
-
-**merge 时在 §4 末尾追加**：
-
-### §4.x 关系线端点图标（E2）
-
-- 起点端点：`<IconKey />` 或 `<IconLink />`（小尺寸 12px）
-- 终点端点：`<IconCaretDown />` 旋转 90°（one-to-many 视觉）
-- 颜色：`var(--cdb-color-primary)`（默认）、`var(--cdb-color-warning)`（hover）
-- 选中态：线粗 2.5px，色 `--cdb-color-primary-active`
-

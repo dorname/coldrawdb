@@ -1,11 +1,8 @@
-# core-PU 单文件一体化原型验收矩阵
+# Delta — core-PU-unified-prototype-test-cases.md
 
-> module: core | proposal: improve-unified-collab-prototype | type: prototype acceptance
+> 模块：core | 提案：optimize-canvas-connect-and-drag
 
-## 1. 范围与说明
-
-本矩阵验证静态产品原型，不调用生产 API，因此不产生 API 编排 JSON。ST-PU-01～ST-PU-19 全部由 Playwright 自动回归，并向 OpenLogos 结果文件写入独立 reporter。脚本从仓库正式测试目录运行，不依赖 `.understand-anything/tmp`。人工视觉复核可保留，但不再是功能完整性的唯一证据。生产 S01/S02/S04/S05 编排测试保持不变。
-## 2. 用例
+## MODIFIED — 2. 用例
 
 | ID | 前置 | 操作 | 预期 |
 |---|---|---|---|
@@ -31,7 +28,7 @@
 | ST-PU-20 | 已有两张表、关系工具开启 | 从源字段 pointerdown 拖到目标字段后松开（位移 ≥ 4px） | `rel-rubber-band` 在拖动中可见；松手后 `relations.length + 1`；拖动过程不重建 `#app` |
 | ST-PU-21 | 编辑器已有 users→posts 关系 | 拖动 `users` 表头至少 40px，在 pointerup **之前**读取关系 path | `path[data-relation="rel-users-posts"]` 的 `d` 已相对按下时变化；松手后 `users.x`、`users.y` 均为 12 的倍数 |
 
-## 3. PU-AC 追溯
+## MODIFIED — 3. PU-AC 追溯
 
 | 验收标准 | 覆盖用例 |
 |---|---|
@@ -43,33 +40,3 @@
 | PU-AC-06 视觉质量 | ST-PU-01、09、17、18 |
 | PU-AC-07 可访问性 | ST-PU-03、09、17、18 |
 | PU-AC-08 可诊断性 | `window.__cdbPrototype.diagnose()` 全部检查项通过；ST-PU-19 验证渲染次数不变量 |
-
-## 4. 自动诊断契约
-
-主原型暴露只读对象 `window.__cdbPrototype`：
-
-- `diagnose()`：返回 `{ pass, checks[] }`，检查外部依赖、关键 testid、重复 ID、可见 overlay、store 不变量。
-- `snapshot()`：返回深拷贝的当前 view、role、connection、serverRev、pendingOps、tables、relations 与 openLayer。
-- `demo(action)`：只接受白名单动作 `remote-cursor`、`remote-table`、`disconnect`、`reconnect`、`reconnect-fail`、`viewer`，供验收驱动界面。
-
-诊断接口不得返回密码、Token 或可变 store 引用。
-
-## 5. 本次 delta 验证结果（2026-08-18）
-
-| 验证组 | 结果 | 实测摘要 |
-|---|---|---|
-| 静态单文件 | PASS | JavaScript 语法有效；无外部 CSS/JS/字体/图片依赖；52 个唯一 `data-testid` 文本锚点 |
-| 编辑与协作主链 | PASS | 2→6 张表、1→2 条关系；server revision 同步至 48；断线队列恢复后为 0；浏览器错误 0 |
-| 房间与浮层链 | PASS | 注册校验、创建房间、Viewer 邀请、成员改权/移除、DBML、命令导出全部通过 |
-| 内置诊断 | PASS | 单文件依赖、DOM ID、角色、revision、队列、数据模型、浮层状态共 7 项通过 |
-| 窄屏布局 | PASS | 720px 视口下 Canvas/ToolRail/Drawer 宽度均为 708px；页面 `scrollWidth=720px`，无横向溢出 |
-| 重复刷新回归 | PASS | 新增表、创建关系、批量导入均仅 1 次主视图重建和 1 个渲染批次；保存阶段 Canvas DOM 保持；revision 12→15；ST-PU-19 reporter 为 PASS |
-
-浏览器验证期间发现并修复两项问题：AppBar Popover 被 Inspector 截获点击；移动端关闭 Inspector 后桌面三列规则覆盖单列布局。修复后已重跑对应完整链路。
-
-## 6. 自动化执行约束与审计基线
-
-- 每个用例使用独立或显式重置的 browser context，避免状态串扰。
-- 失败必须记录步骤、可见锚点和脱敏错误；截图写测试产物目录，不嵌入 reporter。
-- 2026-08-18 完整性审计结果：ST-PU-01～ST-PU-19 共 19/19 PASS。
-- 历史 S04/S05 独立原型的未绑定控件不纳入现行验收；资源索引必须明确其历史属性。

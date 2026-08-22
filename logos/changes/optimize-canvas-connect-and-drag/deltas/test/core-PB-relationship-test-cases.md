@@ -1,10 +1,8 @@
-# core-PB-relationship-test-cases.md
+# Delta — core-PB-relationship-test-cases.md
 
 > 模块：core | 提案：optimize-canvas-connect-and-drag
-> 路径：`logos/resources/test/core-PB-relationship-test-cases.md`
-> 最后更新：2026-08-22
 
-## Phase B 关系工具测试用例
+## MODIFIED — Phase B 关系工具测试用例
 
 | TC ID | Given | When | Then |
 |-------|-------|------|------|
@@ -19,7 +17,7 @@
 | ST-PB-01 | 两张表各一字段 | 关系工具**点击**两点+确认 | Inspector 可编辑关系 |
 | ST-PB-02 | 两张表各一字段 | 关系工具从字段 **pointerdown 拖到**另一字段 + 确认 | `references.len()==1`；确认条曾可见 |
 
-### UT-PB-06 — 点击 / 拖线阈值
+## ADDED — UT-PB-06 — 点击 / 拖线阈值
 
 - **位置**：`frontend-rs/src/editor_render.rs` 或 `editor_panels.rs` 纯函数（如 `is_relation_drag(dx, dy, threshold=4.0)`）
 - **前置**：关系工具 `PickSource`
@@ -29,14 +27,14 @@
   3. `is_relation_drag(3, 3, 4)` → true（欧氏距离）
 - **断言**：阈值比较使用指针位移的欧氏距离，单位为屏幕像素（再除以 zoom 前）
 
-### UT-PB-07 — 橡皮筋路径端点
+## ADDED — UT-PB-07 — 橡皮筋路径端点
 
 - **位置**：`frontend-rs/src/editor_render.rs`（`calc_path` 或 `rubber_band_path`）
 - **前置**：源字段锚点已知
 - **步骤**：用源锚点与指针坐标生成路径
 - **断言**：路径起点等于源字段锚点；终点等于指针画布坐标；与正式关系线使用同一贝塞尔算法
 
-### ST-PB-02 — 拖字段出线创建关系（e2e）
+## ADDED — ST-PB-02 — 拖字段出线创建关系（e2e）
 
 - **位置**：`frontend-rs/tests/e2e/16_relationship_tool.spec.ts`
 - **步骤**：
