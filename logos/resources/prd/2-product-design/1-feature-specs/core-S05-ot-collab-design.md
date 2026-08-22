@@ -17,7 +17,7 @@
 | 原型形式 | 单文件可交互 HTML（模拟双端：本地编辑 + 远端 op / 光标 / 重连） |
 | 历史参考 | `core-05-ot-collab-prototype.html`（ToolRail 控件未完整绑定，不再作为验收入口） |
 | 生产实现 | 后端 collab REST/WS、OT 持久化与编排已实现；`frontend-rs` WS/OT/presence 尚未接入 |
-| 视觉基准 | 在统一协作编辑器上叠加 presence、远端光标、连接态 Banner 与演示控制台；Dark 模式采用高对比度暗色色板（以主原型 `html[data-mode="dark"]` token 组为准：`--bg:#050f13`、`--surface` 不透明度 .86、文字层级 `--text:#f2fdfe` / `--text-2:#b8d2d8` / `--text-3:#86a3ab`），tool-rail、inspector、presence 列表、状态徽章与 Banner 文字对背景对比度均 ≥ WCAG AA 4.5:1 |
+| 视觉基准 | 在统一协作编辑器上叠加 presence、远端光标、连接态 Banner 与演示控制台；Dark 模式采用高对比度暗色色板（以主原型 `html[data-mode="dark"]` token 组为准：`--bg:#050f13`、`--surface` 不透明度 .86、文字层级 `--text:#f2fdfe` / `--text-2:#b8d2d8` / `--text-3:#86a3ab`），tool-rail、inspector、presence 列表、状态徽章与 Banner 文字对背景对比度均 ≥ WCAG AA 4.5:1；presence 头像 initials 对浅色填充统一深色字 `rgba(20,16,40,.85)`（dark 模式全部头像；light 模式内联浅色填充头像，渐变深底头像保持白字）；微字号地板 10px（field-type、constraint 由 9px 提升） |
 | 痛点关联 | **P03**——消除「邮件传 JSON + 手动 merge」；多人同时改 schema 可收敛 |
 
 ## 2. 架构与数据流（交互视角）
@@ -204,7 +204,7 @@
 | 「模拟断线重连」 | Banner 流程 + rev 更新 |
 | 「模拟重连失败」 | 降级 Banner |
 | 「Viewer 模式」 | 只读 + 仍可见远端 op |
-| 切换 dark 主题 | `data-mode` 切换；tool-rail 图标、inspector 字段、presence 头像与用户名、连接态 Banner（含 banner--danger）、画布便签（canvas-note）、远端光标名字牌（remote-label）与诊断项（diagnostic）在暗色玻璃背景下对比度 ≥ WCAG AA 4.5:1，远端光标与本地选中框保持可区分 |
+| 切换 dark 主题 | `data-mode` 切换；tool-rail 图标、inspector 字段、presence 头像与用户名、连接态 Banner（含 banner--danger）、画布便签（canvas-note）、远端光标名字牌（remote-label）与诊断项（diagnostic）在暗色玻璃背景下对比度 ≥ WCAG AA 4.5:1，远端光标与本地选中框保持可区分；presence 头像 initials 深色字压各成员色填充 ≥ 4.5:1；field-type / constraint 以 10px 渲染且无截断 |
 
 `core-05-ot-collab-prototype.html` 中 ToolRail 控件未完整绑定，只用于历史视觉对照，不纳入现行修复与验收。
 ## 9. 反模式
