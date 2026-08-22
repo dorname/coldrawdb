@@ -1,211 +1,211 @@
-{"id":"ST-S03-01","status":"pass","timestamp":"2026-08-21T09:07:46Z","duration_ms":0}
-{"id":"UT-S03-01","status":"pass","timestamp":"2026-08-21T09:07:46Z","duration_ms":0}
-{"id":"UT-S03-04","status":"pass","timestamp":"2026-08-21T09:07:46Z","duration_ms":0}
-{"id":"UT-S03-07","status":"pass","timestamp":"2026-08-21T09:07:46Z","duration_ms":0}
-{"id":"UT-S03-02","status":"pass","timestamp":"2026-08-21T09:07:46Z","duration_ms":0}
-{"id":"UT-S03-06","status":"pass","timestamp":"2026-08-21T09:07:46Z","duration_ms":0}
-{"id":"ST-C-01","status":"pass","timestamp":"2026-08-21T09:07:46Z","duration_ms":0}
-{"id":"UT-C-04","status":"pass","timestamp":"2026-08-21T09:07:46Z","duration_ms":0}
-{"id":"UT-C-03","status":"pass","timestamp":"2026-08-21T09:07:46Z","duration_ms":0}
-{"id":"UT-C-01","status":"pass","timestamp":"2026-08-21T09:07:46Z","duration_ms":0}
-{"id":"UT-S03-05","status":"pass","timestamp":"2026-08-21T09:07:46Z","duration_ms":0}
-{"id":"UT-S03-03","status":"pass","timestamp":"2026-08-21T09:07:46Z","duration_ms":0}
-{"id":"UT-C-02","status":"pass","timestamp":"2026-08-21T09:07:46Z","duration_ms":0}
-{"id":"UT-C-05","status":"pass","timestamp":"2026-08-21T09:07:46Z","duration_ms":0}
-{"id":"UT-PU-20","status":"pass","timestamp":"2026-08-21T09:07:46Z","duration_ms":0}
-{"id":"ST-S01-01","status":"pass","timestamp":"2026-08-21T09:07:46Z","duration_ms":0}
-{"id":"ST-S01-02","status":"pass","timestamp":"2026-08-21T09:07:46Z","duration_ms":0}
-{"id":"UT-S01-01","status":"pass","timestamp":"2026-08-21T09:07:46Z","duration_ms":0}
-{"id":"UT-S01-03","status":"pass","timestamp":"2026-08-21T09:07:46Z","duration_ms":0}
-{"id":"UT-S01-04","status":"pass","timestamp":"2026-08-21T09:07:47Z","duration_ms":0}
-{"id":"UT-S01-05","status":"pass","timestamp":"2026-08-21T09:07:47Z","duration_ms":0}
-{"id":"UT-S02-01","status":"pass","timestamp":"2026-08-21T09:07:47Z","duration_ms":0}
-{"id":"UT-S02-02","status":"pass","timestamp":"2026-08-21T09:07:48Z","duration_ms":0}
-{"id":"ST-B-01","status":"pass","timestamp":"2026-08-21T09:07:48Z","duration_ms":0}
-{"id":"ST-S04-01","status":"pass","timestamp":"2026-08-21T09:07:48Z","duration_ms":0}
-{"id":"UT-S04-01","status":"pass","timestamp":"2026-08-21T09:07:48Z","duration_ms":0}
-{"id":"UT-S04-02","status":"pass","timestamp":"2026-08-21T09:07:48Z","duration_ms":0}
-{"id":"UT-S04-03","status":"pass","timestamp":"2026-08-21T09:07:48Z","duration_ms":0}
-{"id":"UT-S04-04","status":"pass","timestamp":"2026-08-21T09:07:48Z","duration_ms":0}
-{"id":"UT-S04-05","status":"pass","timestamp":"2026-08-21T09:07:49Z","duration_ms":0}
-{"id":"UT-S04-06","status":"pass","timestamp":"2026-08-21T09:07:49Z","duration_ms":0}
-{"id":"UT-S04-07","status":"pass","timestamp":"2026-08-21T09:07:49Z","duration_ms":0}
-{"id":"UT-S04-08","status":"pass","timestamp":"2026-08-21T09:07:49Z","duration_ms":0}
-{"id":"UT-S04-09","status":"pass","timestamp":"2026-08-21T09:07:49Z","duration_ms":0}
-{"id":"UT-S04-10","status":"pass","timestamp":"2026-08-21T09:07:49Z","duration_ms":0}
-{"id":"UT-S01-02","status":"skip","timestamp":"2026-08-21T09:07:52Z","error":"spec-defined, no Rust impl in this batch (import path covered by ST-S01-02)"}
-{"id":"UT-S01-06","status":"skip","timestamp":"2026-08-21T09:07:52Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S01-07","status":"skip","timestamp":"2026-08-21T09:07:52Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S01-08","status":"skip","timestamp":"2026-08-21T09:07:52Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S01-09","status":"skip","timestamp":"2026-08-21T09:07:52Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S01-10","status":"skip","timestamp":"2026-08-21T09:07:52Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"ST-S01-03","status":"skip","timestamp":"2026-08-21T09:07:52Z","error":"spec-defined, requires wasm-pack headless harness, deferred"}
-{"id":"UT-S02-03","status":"skip","timestamp":"2026-08-21T09:07:52Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S02-04","status":"skip","timestamp":"2026-08-21T09:07:52Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S02-05","status":"skip","timestamp":"2026-08-21T09:07:52Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S02-06","status":"skip","timestamp":"2026-08-21T09:07:52Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S02-07","status":"skip","timestamp":"2026-08-21T09:07:52Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S02-08","status":"skip","timestamp":"2026-08-21T09:07:52Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-S02-09","status":"skip","timestamp":"2026-08-21T09:07:52Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"ST-S02-01","status":"skip","timestamp":"2026-08-21T09:07:52Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"ST-S02-02","status":"skip","timestamp":"2026-08-21T09:07:52Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"ST-S02-03","status":"skip","timestamp":"2026-08-21T09:07:52Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"ST-S02-04","status":"skip","timestamp":"2026-08-21T09:07:52Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"ST-S02-05","status":"skip","timestamp":"2026-08-21T09:07:52Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"ST-S02-06","status":"skip","timestamp":"2026-08-21T09:07:52Z","error":"spec-defined, no Rust impl in this batch"}
-{"id":"UT-CR-01","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-CR-02","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-CR-03","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-CR-04","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-CR-05","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-E3-01","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-E3-02","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-E3-03","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-E3-04","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-E3-05","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-E3-06","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-E3-07","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-E3-08","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-KB-01","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-MM-01","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-MM-04","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-MM-05","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-MM-06","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-MM-07","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-MM-08","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-MM-09","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-MM-10","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-MM-11","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-MM-12","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-MM-13","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-MM-14","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-MM-15","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-MM-16","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-PB-01","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-PB-02","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-PB-03","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-PB-04","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-PB-05","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-PC-01","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-PC-02","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-PC-03","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-PC-04","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-PC-05","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-PC-06","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-AB-04","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-SP-02","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-SP-09","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-SP-10","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-ALIGN-A01","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-ALIGN-B01","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-ALIGN-B02","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-ALIGN-B03","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-R6-01","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-R6-02","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-R6-03","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-S03-01","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-S03-02","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-S03-03","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-S03-04","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-S03-05","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-S04-01","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-S04-02","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-S04-03","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-S04-04","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-S04-05","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-S04-06","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-S05-01","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-S05-02","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-S05-03","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-S05-04","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-S05-05","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-S05-06","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-PROTO-01","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-PROTO-02","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-PROTO-03","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-PROTO-04","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-PROTO-05","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-PROTO-06","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-PROTO-08","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"UT-FE-PROTO-09","status":"pass","timestamp":"2026-08-21T09:08:37Z","duration_ms":0}
-{"id":"ST-CR-01","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-MM-01","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-MM-02","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-MM-03","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-PB-01","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-PC-01","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-SP-01","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-UI-05","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-S03-01","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-S03-02","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-S03-03","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-S03-04","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-S03-05","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-S04-01","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-S04-02","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-S04-03","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-S04-04","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-S04-05","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-S04-06","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-S05-01","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-S05-02","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-S05-03","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-S05-04","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-S05-05","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-S05-06","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-V2-01","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-V2-02","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-V2-03","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-V2-04","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-PROTO-01","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-PROTO-02","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-PROTO-03","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-PROTO-04","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-PROTO-05","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-PROTO-06","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-PROTO-07","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"id":"ST-FE-PROTO-08","status":"skip","timestamp":"2026-08-21T09:08:37Z","error":"requires wasm-pack or Playwright e2e harness"}
-{"duration_ms":0,"id":"UT-MCP-04","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:55.618858626+00:00"}
-{"duration_ms":0,"id":"UT-MCP-09","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:55.619436811+00:00"}
-{"duration_ms":0,"id":"UT-MCP-14","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:55.619881362+00:00"}
-{"duration_ms":1,"id":"UT-MCP-05","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:55.620763341+00:00"}
-{"duration_ms":1,"id":"UT-MCP-06","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:55.620900782+00:00"}
-{"duration_ms":2,"id":"ST-MCP-02","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:55.621027898+00:00"}
-{"duration_ms":4,"id":"UT-MCP-02","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:55.623610519+00:00"}
-{"duration_ms":4,"id":"UT-MCP-03","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:55.623759362+00:00"}
-{"duration_ms":7,"id":"UT-MCP-01","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:55.624886919+00:00"}
-{"duration_ms":12,"id":"ST-MCP-01","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:55.630656890+00:00"}
-{"duration_ms":0,"id":"UT-MCP-13","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:55.635411728+00:00"}
-{"duration_ms":0,"id":"UT-MCP-10","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:55.635832354+00:00"}
-{"duration_ms":5,"id":"UT-MCP-07","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:55.641264928+00:00"}
-{"duration_ms":6,"id":"UT-MCP-08","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:55.641409719+00:00"}
-{"duration_ms":6,"id":"UT-MCP-12","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:55.641523886+00:00"}
-{"duration_ms":6,"id":"ST-MCP-03","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:55.641636330+00:00"}
-{"duration_ms":6,"id":"ST-MCP-04","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:55.641779252+00:00"}
-{"duration_ms":1001,"id":"UT-MCP-15","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:56.636658607+00:00"}
-{"duration_ms":1001,"id":"ST-MCP-05","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:56.636863246+00:00"}
-{"duration_ms":0,"id":"UT-MCP-11","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:56.640818652+00:00"}
-{"duration_ms":11,"id":"ST-MCP-06","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:56.652448859+00:00"}
-{"duration_ms":12,"id":"ST-MCP-07","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:56.664844675+00:00"}
-{"duration_ms":13,"id":"ST-MCP-08","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:56.678306+00:00"}
-{"duration_ms":11,"id":"ST-MCP-09","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-21T09:08:56.690152112+00:00"}
-{"id":"ST-PU-01","status":"pass","duration_ms":184,"timestamp":"2026-08-21T09:08:58.074Z"}
-{"id":"ST-PU-02","status":"pass","duration_ms":1397,"timestamp":"2026-08-21T09:08:59.606Z"}
-{"id":"ST-PU-03","status":"pass","duration_ms":1793,"timestamp":"2026-08-21T09:09:01.433Z"}
-{"id":"ST-PU-04","status":"pass","duration_ms":6396,"timestamp":"2026-08-21T09:09:07.897Z"}
-{"id":"ST-PU-05","status":"pass","duration_ms":2615,"timestamp":"2026-08-21T09:09:10.548Z"}
-{"id":"ST-PU-06","status":"pass","duration_ms":2339,"timestamp":"2026-08-21T09:09:12.919Z"}
-{"id":"ST-PU-07","status":"pass","duration_ms":3573,"timestamp":"2026-08-21T09:09:16.525Z"}
-{"id":"ST-PU-08","status":"pass","duration_ms":9214,"timestamp":"2026-08-21T09:09:25.775Z"}
-{"id":"ST-PU-09","status":"pass","duration_ms":5220,"timestamp":"2026-08-21T09:09:31.071Z"}
-{"id":"ST-PU-10","status":"pass","duration_ms":4857,"timestamp":"2026-08-21T09:09:35.967Z"}
-{"id":"ST-PU-11","status":"pass","duration_ms":5250,"timestamp":"2026-08-21T09:09:41.261Z"}
-{"id":"ST-PU-12","status":"pass","duration_ms":2283,"timestamp":"2026-08-21T09:09:43.576Z"}
-{"id":"ST-PU-13","status":"pass","duration_ms":3185,"timestamp":"2026-08-21T09:09:46.793Z"}
-{"id":"ST-PU-14","status":"pass","duration_ms":2341,"timestamp":"2026-08-21T09:09:49.168Z"}
-{"id":"ST-PU-15","status":"pass","duration_ms":2447,"timestamp":"2026-08-21T09:09:51.650Z"}
-{"id":"ST-PU-16","status":"pass","duration_ms":5277,"timestamp":"2026-08-21T09:09:56.959Z"}
-{"id":"ST-PU-17","status":"pass","duration_ms":5612,"timestamp":"2026-08-21T09:10:02.603Z"}
-{"id":"ST-PU-18","status":"pass","duration_ms":1150,"timestamp":"2026-08-21T09:10:03.787Z"}
-{"id":"ST-PU-19","status":"pass","duration_ms":6313,"timestamp":"2026-08-21T09:10:10.594Z"}
-{"id":"ST-PU-20","status":"pass","duration_ms":25,"timestamp":"2026-08-21T09:10:10.735Z"}
+{"id":"UT-C-04","status":"pass","timestamp":"2026-08-22T11:05:03Z","duration_ms":0}
+{"id":"UT-S03-06","status":"pass","timestamp":"2026-08-22T11:05:03Z","duration_ms":0}
+{"id":"UT-S03-03","status":"pass","timestamp":"2026-08-22T11:05:03Z","duration_ms":0}
+{"id":"UT-S03-07","status":"pass","timestamp":"2026-08-22T11:05:03Z","duration_ms":0}
+{"id":"UT-C-03","status":"pass","timestamp":"2026-08-22T11:05:03Z","duration_ms":0}
+{"id":"UT-S03-01","status":"pass","timestamp":"2026-08-22T11:05:03Z","duration_ms":0}
+{"id":"UT-S03-05","status":"pass","timestamp":"2026-08-22T11:05:03Z","duration_ms":0}
+{"id":"UT-S03-02","status":"pass","timestamp":"2026-08-22T11:05:03Z","duration_ms":0}
+{"id":"UT-C-02","status":"pass","timestamp":"2026-08-22T11:05:03Z","duration_ms":0}
+{"id":"ST-S03-01","status":"pass","timestamp":"2026-08-22T11:05:03Z","duration_ms":0}
+{"id":"UT-C-05","status":"pass","timestamp":"2026-08-22T11:05:03Z","duration_ms":0}
+{"id":"UT-C-01","status":"pass","timestamp":"2026-08-22T11:05:03Z","duration_ms":0}
+{"id":"UT-S03-04","status":"pass","timestamp":"2026-08-22T11:05:03Z","duration_ms":0}
+{"id":"ST-C-01","status":"pass","timestamp":"2026-08-22T11:05:03Z","duration_ms":0}
+{"id":"UT-PU-20","status":"pass","timestamp":"2026-08-22T11:05:03Z","duration_ms":0}
+{"id":"ST-S01-01","status":"pass","timestamp":"2026-08-22T11:05:03Z","duration_ms":0}
+{"id":"ST-S01-02","status":"pass","timestamp":"2026-08-22T11:05:04Z","duration_ms":0}
+{"id":"UT-S01-01","status":"pass","timestamp":"2026-08-22T11:05:04Z","duration_ms":0}
+{"id":"UT-S01-03","status":"pass","timestamp":"2026-08-22T11:05:04Z","duration_ms":0}
+{"id":"UT-S01-04","status":"pass","timestamp":"2026-08-22T11:05:04Z","duration_ms":0}
+{"id":"UT-S01-05","status":"pass","timestamp":"2026-08-22T11:05:04Z","duration_ms":0}
+{"id":"UT-S02-01","status":"pass","timestamp":"2026-08-22T11:05:05Z","duration_ms":0}
+{"id":"UT-S02-02","status":"pass","timestamp":"2026-08-22T11:05:05Z","duration_ms":0}
+{"id":"ST-B-01","status":"pass","timestamp":"2026-08-22T11:05:05Z","duration_ms":0}
+{"id":"ST-S04-01","status":"pass","timestamp":"2026-08-22T11:05:05Z","duration_ms":0}
+{"id":"UT-S04-01","status":"pass","timestamp":"2026-08-22T11:05:05Z","duration_ms":0}
+{"id":"UT-S04-02","status":"pass","timestamp":"2026-08-22T11:05:05Z","duration_ms":0}
+{"id":"UT-S04-03","status":"pass","timestamp":"2026-08-22T11:05:05Z","duration_ms":0}
+{"id":"UT-S04-04","status":"pass","timestamp":"2026-08-22T11:05:07Z","duration_ms":0}
+{"id":"UT-S04-05","status":"pass","timestamp":"2026-08-22T11:05:08Z","duration_ms":0}
+{"id":"UT-S04-06","status":"pass","timestamp":"2026-08-22T11:05:08Z","duration_ms":0}
+{"id":"UT-S04-07","status":"pass","timestamp":"2026-08-22T11:05:08Z","duration_ms":0}
+{"id":"UT-S04-08","status":"pass","timestamp":"2026-08-22T11:05:08Z","duration_ms":0}
+{"id":"UT-S04-09","status":"pass","timestamp":"2026-08-22T11:05:08Z","duration_ms":0}
+{"id":"UT-S04-10","status":"pass","timestamp":"2026-08-22T11:05:08Z","duration_ms":0}
+{"id":"UT-S01-02","status":"skip","timestamp":"2026-08-22T11:05:15Z","error":"spec-defined, no Rust impl in this batch (import path covered by ST-S01-02)"}
+{"id":"UT-S01-06","status":"skip","timestamp":"2026-08-22T11:05:15Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S01-07","status":"skip","timestamp":"2026-08-22T11:05:15Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S01-08","status":"skip","timestamp":"2026-08-22T11:05:15Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S01-09","status":"skip","timestamp":"2026-08-22T11:05:15Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S01-10","status":"skip","timestamp":"2026-08-22T11:05:15Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"ST-S01-03","status":"skip","timestamp":"2026-08-22T11:05:15Z","error":"spec-defined, requires wasm-pack headless harness, deferred"}
+{"id":"UT-S02-03","status":"skip","timestamp":"2026-08-22T11:05:15Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S02-04","status":"skip","timestamp":"2026-08-22T11:05:15Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S02-05","status":"skip","timestamp":"2026-08-22T11:05:15Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S02-06","status":"skip","timestamp":"2026-08-22T11:05:15Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S02-07","status":"skip","timestamp":"2026-08-22T11:05:15Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S02-08","status":"skip","timestamp":"2026-08-22T11:05:15Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-S02-09","status":"skip","timestamp":"2026-08-22T11:05:15Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"ST-S02-01","status":"skip","timestamp":"2026-08-22T11:05:15Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"ST-S02-02","status":"skip","timestamp":"2026-08-22T11:05:15Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"ST-S02-03","status":"skip","timestamp":"2026-08-22T11:05:15Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"ST-S02-04","status":"skip","timestamp":"2026-08-22T11:05:15Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"ST-S02-05","status":"skip","timestamp":"2026-08-22T11:05:15Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"ST-S02-06","status":"skip","timestamp":"2026-08-22T11:05:15Z","error":"spec-defined, no Rust impl in this batch"}
+{"id":"UT-CR-01","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-CR-02","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-CR-03","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-CR-04","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-CR-05","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-E3-01","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-E3-02","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-E3-03","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-E3-04","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-E3-05","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-E3-06","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-E3-07","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-E3-08","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-KB-01","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-MM-01","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-MM-04","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-MM-05","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-MM-06","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-MM-07","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-MM-08","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-MM-09","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-MM-10","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-MM-11","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-MM-12","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-MM-13","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-MM-14","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-MM-15","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-MM-16","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-PB-01","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-PB-02","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-PB-03","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-PB-04","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-PB-05","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-PC-01","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-PC-02","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-PC-03","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-PC-04","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-PC-05","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-PC-06","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-AB-04","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-SP-02","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-SP-09","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-SP-10","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-ALIGN-A01","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-ALIGN-B01","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-ALIGN-B02","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-ALIGN-B03","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-R6-01","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-R6-02","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-R6-03","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-S03-01","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-S03-02","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-S03-03","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-S03-04","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-S03-05","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-S04-01","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-S04-02","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-S04-03","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-S04-04","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-S04-05","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-S04-06","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-S05-01","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-S05-02","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-S05-03","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-S05-04","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-S05-05","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-S05-06","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-PROTO-01","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-PROTO-02","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-PROTO-03","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-PROTO-04","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-PROTO-05","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-PROTO-06","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-PROTO-08","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"UT-FE-PROTO-09","status":"pass","timestamp":"2026-08-22T11:07:15Z","duration_ms":0}
+{"id":"ST-CR-01","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-MM-01","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-MM-02","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-MM-03","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-PB-01","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-PC-01","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-SP-01","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-UI-05","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-S03-01","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-S03-02","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-S03-03","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-S03-04","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-S03-05","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-S04-01","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-S04-02","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-S04-03","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-S04-04","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-S04-05","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-S04-06","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-S05-01","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-S05-02","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-S05-03","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-S05-04","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-S05-05","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-S05-06","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-V2-01","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-V2-02","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-V2-03","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-V2-04","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-PROTO-01","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-PROTO-02","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-PROTO-03","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-PROTO-04","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-PROTO-05","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-PROTO-06","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-PROTO-07","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"id":"ST-FE-PROTO-08","status":"skip","timestamp":"2026-08-22T11:07:15Z","error":"requires wasm-pack or Playwright e2e harness"}
+{"duration_ms":2,"id":"UT-MCP-05","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:01.073491697+00:00"}
+{"duration_ms":2,"id":"UT-MCP-06","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:01.073739733+00:00"}
+{"duration_ms":2,"id":"ST-MCP-02","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:01.073906783+00:00"}
+{"duration_ms":0,"id":"UT-MCP-04","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:01.074346102+00:00"}
+{"duration_ms":0,"id":"UT-MCP-14","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:01.075346237+00:00"}
+{"duration_ms":0,"id":"UT-MCP-09","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:01.079751007+00:00"}
+{"duration_ms":14,"id":"UT-MCP-02","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:01.086253258+00:00"}
+{"duration_ms":15,"id":"UT-MCP-03","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:01.087659307+00:00"}
+{"duration_ms":24,"id":"UT-MCP-01","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:01.098807097+00:00"}
+{"duration_ms":43,"id":"ST-MCP-01","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:01.103930052+00:00"}
+{"duration_ms":0,"id":"UT-MCP-13","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:01.119646769+00:00"}
+{"duration_ms":0,"id":"UT-MCP-10","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:01.120422197+00:00"}
+{"duration_ms":17,"id":"UT-MCP-07","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:01.146418621+00:00"}
+{"duration_ms":18,"id":"UT-MCP-08","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:01.146767331+00:00"}
+{"duration_ms":18,"id":"UT-MCP-12","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:01.146997056+00:00"}
+{"duration_ms":18,"id":"ST-MCP-03","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:01.147318033+00:00"}
+{"duration_ms":19,"id":"ST-MCP-04","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:01.148005620+00:00"}
+{"duration_ms":1001,"id":"UT-MCP-15","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:02.122648697+00:00"}
+{"duration_ms":1001,"id":"ST-MCP-05","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:02.122919977+00:00"}
+{"duration_ms":0,"id":"UT-MCP-11","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:02.149532402+00:00"}
+{"duration_ms":42,"id":"ST-MCP-06","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:02.194000619+00:00"}
+{"duration_ms":46,"id":"ST-MCP-07","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:02.240466413+00:00"}
+{"duration_ms":63,"id":"ST-MCP-08","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:02.304199705+00:00"}
+{"duration_ms":47,"id":"ST-MCP-09","module":"core","scenario":"S06","status":"pass","timestamp":"2026-08-22T11:08:02.352338222+00:00"}
+{"id":"ST-PU-01","status":"pass","duration_ms":250,"timestamp":"2026-08-22T11:08:05.471Z"}
+{"id":"ST-PU-02","status":"pass","duration_ms":1962,"timestamp":"2026-08-22T11:08:07.678Z"}
+{"id":"ST-PU-03","status":"pass","duration_ms":3407,"timestamp":"2026-08-22T11:08:11.210Z"}
+{"id":"ST-PU-04","status":"pass","duration_ms":6504,"timestamp":"2026-08-22T11:08:17.826Z"}
+{"id":"ST-PU-05","status":"pass","duration_ms":4209,"timestamp":"2026-08-22T11:08:22.174Z"}
+{"id":"ST-PU-06","status":"pass","duration_ms":3208,"timestamp":"2026-08-22T11:08:25.499Z"}
+{"id":"ST-PU-07","status":"pass","duration_ms":4272,"timestamp":"2026-08-22T11:08:29.889Z"}
+{"id":"ST-PU-08","status":"pass","duration_ms":9699,"timestamp":"2026-08-22T11:08:39.696Z"}
+{"id":"ST-PU-09","status":"pass","duration_ms":7589,"timestamp":"2026-08-22T11:08:47.354Z"}
+{"id":"ST-PU-10","status":"pass","duration_ms":7296,"timestamp":"2026-08-22T11:08:54.762Z"}
+{"id":"ST-PU-11","status":"pass","duration_ms":6352,"timestamp":"2026-08-22T11:09:01.201Z"}
+{"id":"ST-PU-12","status":"pass","duration_ms":4082,"timestamp":"2026-08-22T11:09:05.468Z"}
+{"id":"ST-PU-13","status":"pass","duration_ms":4078,"timestamp":"2026-08-22T11:09:09.667Z"}
+{"id":"ST-PU-14","status":"pass","duration_ms":4696,"timestamp":"2026-08-22T11:09:14.455Z"}
+{"id":"ST-PU-15","status":"pass","duration_ms":2645,"timestamp":"2026-08-22T11:09:17.184Z"}
+{"id":"ST-PU-16","status":"pass","duration_ms":5908,"timestamp":"2026-08-22T11:09:23.196Z"}
+{"id":"ST-PU-17","status":"pass","duration_ms":6184,"timestamp":"2026-08-22T11:09:29.612Z"}
+{"id":"ST-PU-18","status":"pass","duration_ms":2199,"timestamp":"2026-08-22T11:09:31.965Z"}
+{"id":"ST-PU-19","status":"pass","duration_ms":8249,"timestamp":"2026-08-22T11:09:42.709Z"}
+{"id":"ST-PU-20","status":"pass","duration_ms":35,"timestamp":"2026-08-22T11:09:43.131Z"}

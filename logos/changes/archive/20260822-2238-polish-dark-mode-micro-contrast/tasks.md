@@ -14,13 +14,13 @@
 ## [merge] 规格合并
 - [x] 审核通过后，提醒用户明确授权执行 `openlogos merge polish-dark-mode-micro-contrast`（2026-08-22 已授权并生成 MERGE_PROMPT）
 - [x] 按 MERGE_PROMPT 合并 delta 到 `logos/resources/`（原型全量覆盖；S04/S05 视觉基准行与 dark 验收行已落盘并读回确认；SPEC_MERGED 已写入）
-- [ ] AI 自动 commit 合并后的规格文档
+- [x] AI 自动 commit 合并后的规格文档（7b7158b `docs(polish-dark-mode-micro-contrast): merge spec deltas`）
 
 ## [verify] 轻量验收
 - [x] 确认合并后的原型文件可在浏览器正常打开，无样式崩溃或横向溢出（艺术总监两轮回归扫描覆盖：双模式八组视图零溢出、零 JS 错误、零错位）
-- [ ] 提醒用户明确授权执行 `openlogos verify`（本提案无新增 UT/ST，主要验证规格完整性与原型可访问）
+- [x] 提醒用户明确授权执行 `openlogos verify`（本提案无新增 UT/ST，主要验证规格完整性与原型可访问）（2026-08-22 已授权执行：211 用例 100% 覆盖、0 失败、Gate 3.6 PASS，VERIFY_PASS 已写入）
 
 ## [archive] 归档
-- [ ] `verify` 通过后，提醒用户明确授权执行 `openlogos archive polish-dark-mode-micro-contrast`
-- [ ] AI 自动 commit 归档
+- [x] `verify` 通过后，提醒用户明确授权执行 `openlogos archive polish-dark-mode-micro-contrast`（2026-08-22 已授权执行，guard 已删除）
+- [x] AI 自动 commit 归档
 - [ ] 提醒用户确认是否执行 `git push`
