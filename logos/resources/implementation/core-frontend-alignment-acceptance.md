@@ -8,7 +8,7 @@
 
 历史 `core-03/04/05-*-prototype.html` 不作为验收入口。
 
-状态：后端已实现；生产前端部分接入；逐项对齐待第二阶段。实现与联调验收由 `implement-unified-prototype-spec-parity` 执行。
+状态：本提案 `implement-unified-prototype-spec-parity` 执行生产前端逐项对齐。代码完成前仍为「后端已实现；生产前端部分接入」。§7 勾选仅表示对应区域已对照主原型验证，不得因演示器通过而提前勾选。
 
 ## 2. 生产验收标准
 
@@ -57,33 +57,37 @@
 
 ## 4. verify 前检查
 
-运行 `openlogos verify align-prototype-docs-implementation` 前，至少应完成：
+运行 `openlogos verify implement-unified-prototype-spec-parity` 前，至少应完成：
 
+- A～D 批次业务代码与对应 UT/ST/e2e。
+- `SPEC_PARITY_SKIP_IDS` 清空，或仅余带缺口说明的显式 skip。
 - 后端 auth/rooms/collab Rust 测试回归。
 - 前端 Rust 单元测试回归。
-- 前端 Playwright/e2e 覆盖 S03/S04/S05 生产接入主链。
-- 统一原型 ST-PU-01～ST-PU-19 回归，确认视觉交互基线未破坏。
-- reporter 中新增用例 ID 与 `core-V2-production-frontend-test-cases.md` 一一对应。
+- 统一原型 ST-PU 回归，确认视觉交互基线未破坏。
+- reporter 中本提案落地用例 ID 与测试文档一一对应。
+- §7 区域 checklist 已按已验证批次勾选。
 
 ## 7. 按页面区域 checklist（生产逐项）
 
-### 7.1 auth
+本提案按 A～D 批次逐项勾选。合并本 delta 时保持未勾选；仅在对应代码批次验证后勾选。7.6 为非验收约束，不因演示通过而勾选完成。
+
+### 7.1 auth（A 批）
 - [ ] 默认未登录入口为 auth（非空白 editor）
 - [ ] `login-form` / `register-form` 双 tab、字段错误、loading
 - [ ] 错误不枚举用户；无 token 原文
 - [ ] 成功进入 rooms
 
-### 7.2 rooms
+### 7.2 rooms（B 批）
 - [ ] `rooms-list-page` + 列表/空状态 + 创建入口 + 用户菜单
 - [ ] 创建/打开进入 `room-editor-page`
 - [ ] `room-badge` 可回 rooms
 
-### 7.3 invite
+### 7.3 invite（B 批）
 - [ ] `invite-accept-page` preview；过期无加入
 - [ ] 未登录接受→提示登录；登录后可续接
 - [ ] 接受后进入同一 room
 
-### 7.4 room-editor · 壳层
+### 7.4 room-editor · 壳层（C/D 批）
 - [ ] `app-bar` / `tool-rail` / `editor-canvas` / `inspector` / `status-bar`
 - [ ] 保存态 `save-state` + revision（S01）
 - [ ] 协作 `ws-status` / `ot-rev` / `room-presence` / `reconnect-banner` / Activity
@@ -91,7 +95,7 @@
 - [ ] 更多菜单 → IO；⌘K 命令面板；代码视图
 - [ ] 主题切换；720px 关键操作可达
 
-### 7.5 画布 / 关系 / IO
+### 7.5 画布 / 关系 / IO（D 批）
 - [ ] 表拖动 pointer capture；生产松手 `GRID_SIZE=20`；关系跟手
 - [ ] 关系：4px 阈值、rubber-band、点击两点、确认条（生产）
 - [ ] IO 抽屉格式预览
@@ -102,4 +106,4 @@
 
 ## 8. 既有 FEALIGN / FEUX 的第二阶段解读
 
-保留 FEALIGN-AC-* / FEUX-AC-* 作为能力维度；本提案以**页面区域 checklist** 为第二阶段主验收入口。Reporter：实现阶段写入 `test-results.jsonl`。
+保留 FEALIGN-AC-* / FEUX-AC-* 作为能力维度；本提案以**页面区域 checklist** 为验收入口并执行实现。Reporter：本提案写入 `test-results.jsonl`；skip 必须说明 harness 缺口，不得静默缺失。
