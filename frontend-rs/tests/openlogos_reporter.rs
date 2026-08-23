@@ -125,12 +125,9 @@ const UT_PASS_IDS: &[&str] = &[
 
 const ST_SKIP_IDS: &[&str] = &[
     "ST-CR-01",
-    "ST-CR-02",
     "ST-MM-01",
     "ST-MM-02",
     "ST-MM-03",
-    "ST-PB-01",
-    "ST-PB-02",
     "ST-PC-01",
     "ST-SP-01",
     "ST-UI-05",
@@ -165,21 +162,15 @@ const ST_SKIP_IDS: &[&str] = &[
     "ST-FE-PROTO-06",
     "ST-FE-PROTO-07",
     "ST-FE-PROTO-08",
+    // D 批已落地（e2e: scripts/test-spec-parity-d.mjs）：ST-CR-02、ST-PB-01、ST-PB-02
 ];
 
-const SPEC_PARITY_SKIP_IDS: &[&str] = &[
-    "ST-KB-CMD-01",
-    "ST-KB-ESC-01",
-    "ST-KB-T-01",
-    "ST-KB-R-01",
-    "ST-PC-MENU-01",
-    "ST-PC-FMT-01",
-    "ST-PC-INSPECTOR",
-    "ST-PU-25",
-    "ST-PU-26",
-    // B 批已落地（e2e: scripts/test-spec-parity-b.mjs）：
-    // ST-S04-UI-03～07、ST-PU-23
-    // C 批已落地（e2e: scripts/test-spec-parity-c.mjs + cargo: tests/spec_parity_c.rs）：
-    // UT-S01-SS-01/02、ST-S01-SS-01、ST-S01-409-SCOPE、ST-S01-NO-409-OT、ST-S01-409-LOCAL-ONLY、
-    // ST-S05-UI-01～06、ST-FE-ALIGN-03/04、ST-PU-24
-];
+// implement-unified-prototype-spec-parity：A～D 批全部落地，无剩余 skip。
+// A 批：ST-S03-UI-*、S02 SHARE/*、ST-FE-ALIGN-01/02、ST-PU-22（scripts/test-spec-parity-a.mjs）
+// B 批：ST-S04-UI-03～07、ST-PU-23（scripts/test-spec-parity-b.mjs）
+// C 批（e2e + cargo tests/spec_parity_c.rs）：UT-S01-SS-01/02、ST-S01-SS-01、ST-S01-409-SCOPE、
+//   ST-S01-NO-409-OT、ST-S01-409-LOCAL-ONLY、ST-S05-UI-01～06、ST-FE-ALIGN-03/04、ST-PU-24
+// D 批（e2e scripts/test-spec-parity-d.mjs + cargo tests/spec_parity_d.rs）：
+//   ST-KB-CMD-01、ST-KB-ESC-01、ST-KB-T-01、ST-KB-R-01、ST-KB-VIEWER、
+//   ST-PC-MENU-01、ST-PC-FMT-01、ST-PC-INSPECTOR、ST-PU-25、ST-PU-26
+const SPEC_PARITY_SKIP_IDS: &[&str] = &[];

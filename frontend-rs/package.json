@@ -11,7 +11,8 @@
     "test:spec-parity-a": "node scripts/test-spec-parity-a.mjs",
     "test:spec-parity-b": "node scripts/test-spec-parity-b.mjs",
     "test:spec-parity-c": "node scripts/test-spec-parity-c.mjs",
-    "test:unified-prototype": "node scripts/test-unified-prototype.mjs && node scripts/test-unified-prototype-render.mjs"
+    "test:unified-prototype": "node scripts/test-unified-prototype.mjs && node scripts/test-unified-prototype-render.mjs",
+    "test:spec-parity-d": "node scripts/test-spec-parity-d.mjs"
   },
   "keywords": [],
   "author": "",

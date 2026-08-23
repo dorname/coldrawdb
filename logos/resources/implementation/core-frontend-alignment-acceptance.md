@@ -91,14 +91,14 @@
 - [x] `app-bar` / `tool-rail` / `editor-canvas` / `inspector` / `status-bar`（C 批：ST-S05-UI-01 等锚点断言）
 - [x] 保存态 `save-state` + revision（S01）（C 批：UT-S01-SS-01/02 + ST-S01-SS-01）
 - [x] 协作 `ws-status` / `ot-rev` / `room-presence` / `reconnect-banner` / Activity（C 批：ST-S05-UI-01～05、ST-FE-ALIGN-03；REST head 明确降级）
-- [x] Viewer 只读（C 批：ST-S05-UI-06）
-- [ ] 更多菜单 → IO；⌘K 命令面板；代码视图
-- [ ] 主题切换；720px 关键操作可达
+- [x] Viewer 只读（C 批：ST-S05-UI-06；D 批：ST-KB-VIEWER 快捷键路径同受只读门控）
+- [x] 更多菜单 → IO；⌘K 命令面板；代码视图（D 批：ST-PC-MENU-01 更多菜单→IO 抽屉；ST-KB-CMD-01 ⌘K 开关无残留；代码视图既有 `btn-code-view`/`code-tab-*` 经 ST-FE-PROTO-08 回归）
+- [x] 主题切换；720px 关键操作可达（D 批：ST-PU-25 `data-mode` 切换 + 画布随主题重绘 + 无残留层；ST-PU-26 720px 抽屉化、可关闭、无动态滚动锁定）
 
 ### 7.5 画布 / 关系 / IO（D 批）
-- [ ] 表拖动 pointer capture；生产松手 `GRID_SIZE=20`；关系跟手
-- [ ] 关系：4px 阈值、rubber-band、点击两点、确认条（生产）
-- [ ] IO 抽屉格式预览
+- [x] 表拖动 pointer capture；生产松手 `GRID_SIZE=20`；关系跟手（D 批：ST-CR-02 拖动中 `data-follow-path` 跟手采样 + 松手 20 倍数随 PUT 落账；UT-CR-06 锁定 `GRID_SIZE==20.0` 常量）
+- [x] 关系：4px 阈值、rubber-band、点击两点、确认条（生产）（D 批：ST-PB-01 点击两点+确认条；ST-PB-02 拖线+确认条+rubber-band 可见；UT-PB-06/06B/07 阈值与路径端点）
+- [x] IO 抽屉格式预览（D 批：ST-PC-FMT-01 SQL/DBML/JSON 预览随模型切换 + 复制反馈 + 下载事件）
 
 ### 7.6 明确非验收（演示）
 - [ ] 主原型「模拟远端/断线/诊断」控件不要求生产原样提供

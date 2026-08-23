@@ -46,6 +46,169 @@ fn read_html_data_mode() -> String {
         .unwrap_or_else(|| "light".to_string())
 }
 
+// ─── D 批：全局工具快捷键 + Esc 浮层层级（ST-KB-T-01 / R-01 / ESC-01 / VIEWER）──
+
+/// 快捷键目标检查：事件源自输入控件时不触发全局快捷键
+///（core-KB-shortcut-test-cases.md §1：「输入框焦点时快捷键不抢焦点」）。
+/// `tag_name` 为 DOM 元素标签名（任意大小写），`is_editable` 为 contentEditable 态。
+pub fn is_shortcut_text_target(tag_name: &str, is_editable: bool) -> bool {
+    is_editable
+        || matches!(
+            tag_name.to_ascii_lowercase().as_str(),
+            "input" | "textarea" | "select"
+        )
+}
+
+/// 从 keydown 事件目标判定是否为文本输入上下文（非 HtmlElement 目标视为非输入）。
+fn shortcut_event_is_text_target(ke: &web_sys::KeyboardEvent) -> bool {
+    use wasm_bindgen::JsCast;
+    ke.target()
+        .and_then(|t| t.dyn_into::<web_sys::HtmlElement>().ok())
+        .map(|el| is_shortcut_text_target(&el.tag_name(), el.is_content_editable()))
+        .unwrap_or(false)
+}
+
+/// 单键工具快捷键（无修饰键）：与主原型 tool-tip 标注一致（新建表 T / 创建关系 R）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ToolShortcut {
+    CreateTable,
+    Relationship,
+}
+
+/// 判定 keydown 是否映射到工具快捷键；带 Ctrl/Meta/Alt 修饰时不拦截（如 Ctrl+R 刷新）。
+pub fn tool_shortcut_for_key(key: &str, ctrl: bool, meta: bool, alt: bool) -> Option<ToolShortcut> {
+    if ctrl || meta || alt {
+        return None;
+    }
+    match key.to_ascii_lowercase().as_str() {
+        "t" => Some(ToolShortcut::CreateTable),
+        "r" => Some(ToolShortcut::Relationship),
+        _ => None,
+    }
+}
+
+/// D 批：T/R 全局工具快捷键（ST-KB-T-01 / ST-KB-R-01 / ST-KB-VIEWER）。
+/// 仅在编辑器页、非只读、无输入焦点、无浮层遮挡时生效；Viewer / 分享只读不响应。
+#[allow(clippy::too_many_arguments)]
+pub fn setup_editor_tool_shortcuts(
+    current_page: RwSignal<PageState>,
+    share_mode: bool,
+    current_room: RwSignal<Option<RoomDetail>>,
+    palette_visible: RwSignal<bool>,
+    view_mode: RwSignal<ViewMode>,
+    modal_kind: RwSignal<Option<modals::ModalKind>>,
+    active_tool: RwSignal<ActiveTool>,
+    rel_tool_state: RwSignal<RelToolState>,
+    on_create_table: Rc<dyn Fn()>,
+) {
+    use wasm_bindgen::JsCast;
+    gloo::events::EventListener::new(&gloo::utils::document(), "keydown", move |ev| {
+        let Some(ke) = ev.dyn_ref::<web_sys::KeyboardEvent>() else {
+            return;
+        };
+        // 编辑器页门控：auth / rooms / invite 页不响应工具快捷键
+        let page = current_page.get_untracked();
+        if !matches!(page, PageState::RoomEditor | PageState::ShareEdit) {
+            return;
+        }
+        // 只读门控（ST-KB-VIEWER）：分享只读 / Viewer 角色不响应
+        if editor_is_read_only(share_mode, current_room) {
+            return;
+        }
+        // 浮层门控：命令面板 / 代码视图 / 主模态打开时不触发
+        if palette_visible.get_untracked()
+            || matches!(view_mode.get_untracked(), ViewMode::Code)
+            || modal_kind.get_untracked().is_some()
+        {
+            return;
+        }
+        // 输入焦点门控：输入框 / contentEditable 内不抢键
+        if shortcut_event_is_text_target(ke) {
+            return;
+        }
+        let Some(shortcut) =
+            tool_shortcut_for_key(&ke.key(), ke.ctrl_key(), ke.meta_key(), ke.alt_key())
+        else {
+            return;
+        };
+        match shortcut {
+            ToolShortcut::CreateTable => on_create_table(),
+            ToolShortcut::Relationship => {
+                active_tool.set(ActiveTool::Relationship);
+                rel_tool_state.set(RelToolState::PickSource);
+            }
+        }
+    })
+    .forget();
+}
+
+/// D 批：Esc 浮层层级关闭（ST-KB-ESC-01：按层级关闭最上层；不误关编辑器页）。
+/// 一次 Esc 只处理一层。命令面板 / 代码视图 / 关系拖拽的 Esc 由各自既有监听处理，
+/// 本处理器在它们打开时直接让位；409 冲突对话框必须显式选择，Esc 不关闭也不穿透。
+#[allow(clippy::too_many_arguments)]
+pub fn setup_escape_layer_handler(
+    palette_visible: RwSignal<bool>,
+    view_mode: RwSignal<ViewMode>,
+    conflict: RwSignal<Option<ConflictInfo>>,
+    modal_kind: RwSignal<Option<modals::ModalKind>>,
+    invite_modal_open: RwSignal<bool>,
+    io_drawer: RwSignal<IoDrawerKind>,
+    room_panel_visible: RwSignal<bool>,
+    active_tool: RwSignal<ActiveTool>,
+    rel_tool_state: RwSignal<RelToolState>,
+    on_close_io_drawer: Rc<dyn Fn()>,
+) {
+    use wasm_bindgen::JsCast;
+    gloo::events::EventListener::new(&gloo::utils::document(), "keydown", move |ev| {
+        let Some(ke) = ev.dyn_ref::<web_sys::KeyboardEvent>() else {
+            return;
+        };
+        if ke.key() != "Escape" {
+            return;
+        }
+        // L1 命令面板 / L2 代码视图：由既有 window 监听关闭，这里让位（保持一次 Esc 一层）
+        if palette_visible.get_untracked() {
+            return;
+        }
+        if matches!(view_mode.get_untracked(), ViewMode::Code) {
+            return;
+        }
+        // L3 409 冲突对话框：必须显式选择（强制覆盖 / 重新加载），Esc 不关闭也不穿透到下层
+        if conflict.get_untracked().is_some() {
+            return;
+        }
+        // L4 主模态（New/Open/Share/Rename/BridgeSettings 等）
+        if modal_kind.get_untracked().is_some() {
+            modal_kind.set(None);
+            return;
+        }
+        // L5 邀请模态
+        if invite_modal_open.get_untracked() {
+            invite_modal_open.set(false);
+            return;
+        }
+        // L6 IO 抽屉（关闭后按缓存恢复 Inspector）
+        if io_drawer.get_untracked() != IoDrawerKind::None {
+            on_close_io_drawer();
+            return;
+        }
+        // L7 成员面板
+        if room_panel_visible.get_untracked() {
+            room_panel_visible.set(false);
+            return;
+        }
+        // L8 关系工具模式（对齐主原型 Esc 退出 relationMode；拖拽中的取消由 Canvas 监听处理）
+        if active_tool.get_untracked() == ActiveTool::Relationship {
+            rel_tool_state.set(RelToolState::Idle);
+            active_tool.set(ActiveTool::Select);
+            return;
+        }
+        // 无浮层：不动作 — 编辑器页本身永不被 Esc 关闭
+    })
+    .forget();
+}
+
+
 /// Side-panel Tab 标识符（B2 范围：6 业务 Tab + Issues = 7 Tab）
 /// 顺序与 `core-04-side-panel-tabs.md` §1 布局保持一致。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -6307,8 +6470,31 @@ pub fn AppRoot(
 
     let on_relation_drag_cancel: Option<Box<dyn Fn() + 'static>> = {
         let rel_tool_state = rel_tool_state.clone();
+        let active_tool = active_tool.clone();
         Some(Box::new(move || {
-            rel_tool_state.set(RelToolState::PickSource);
+            // D 批：Esc 层级处理器可能已退出关系工具（active_tool=Select），此时不回溯 PickSource
+            if active_tool.get_untracked() == ActiveTool::Relationship {
+                rel_tool_state.set(RelToolState::PickSource);
+            }
+        }))
+    };
+
+    // D 批：表拖动松手（已吸附写回 store）→ dirty + 协作 op + S01 保存链路（ST-CR-02 落账依据）
+    let on_table_drop: Option<Box<dyn Fn() + 'static>> = {
+        let store = store.clone();
+        let on_after_change = on_after_change.clone();
+        Some(Box::new(move || {
+            if editor_is_read_only(share_mode, current_room) {
+                return;
+            }
+            store.dirty.set(true);
+            if current_room.get_untracked().is_some() {
+                collab_state.update(|state| {
+                    let _ = state.enqueue_local_op("table.move");
+                });
+                prepend_activity(activity_feed, "本地移动表位置，等待 OT ack".to_string());
+            }
+            on_after_change();
         }))
     };
 
@@ -6789,6 +6975,31 @@ pub fn AppRoot(
         })
     };
 
+    // D 批：T/R 工具快捷键 + Esc 浮层层级（ST-KB-T-01/R-01/ESC-01/VIEWER）
+    setup_editor_tool_shortcuts(
+        current_page,
+        share_mode,
+        current_room,
+        palette_visible,
+        view_mode,
+        modal_kind,
+        active_tool,
+        rel_tool_state,
+        on_create_table.clone(),
+    );
+    setup_escape_layer_handler(
+        palette_visible,
+        view_mode,
+        conflict,
+        modal_kind,
+        invite_modal_open,
+        io_drawer,
+        room_panel_visible,
+        active_tool,
+        rel_tool_state,
+        close_io_drawer.clone(),
+    );
+
     view! {
         // ─── Auth 页（align-frontend-to-prototype） ───
         <div
@@ -6962,6 +7173,7 @@ pub fn AppRoot(
                         on_relation_drag_start=on_relation_drag_start
                         on_relation_drop=on_relation_drop
                         on_relation_drag_cancel=on_relation_drag_cancel
+                        on_table_drop=on_table_drop
                         theme_mode=theme_mode
                     />
                     <RelationshipConfirmBar
@@ -8030,6 +8242,10 @@ pub mod modals {
                 use wasm_bindgen::JsCast;
                 let key_event: Option<&web_sys::KeyboardEvent> = ev.dyn_ref();
                 if let Some(ke) = key_event {
+                    // D 批：输入框 / contentEditable 焦点时不抢撤销重做（core-KB §1 既有合同）
+                    if shortcut_event_is_text_target(ke) {
+                        return;
+                    }
                     let key = ke.key();
                     let ctrl_or_meta = ke.ctrl_key() || ke.meta_key();
                     let shift = ke.shift_key();

@@ -18,8 +18,9 @@ use web_sys::{CanvasRenderingContext2d, MouseEvent, PointerEvent, WheelEvent};
 const TABLE_WIDTH: f64 = 230.0;
 const TABLE_HEADER_HEIGHT: f64 = 43.0;
 const FIELD_ROW_HEIGHT: f64 = 35.0;
-/// 生产端网格尺寸（主原型点阵 24px）；仅在 pointerup 时对齐，拖动中不量化。
-pub const GRID_SIZE: f64 = 24.0;
+/// 生产端网格尺寸：松手吸附 20px（core-CR-canvas-test-cases.md §1 合同；
+/// 主原型演示 GRID=12、点阵视觉 24px，均不得写成生产合同）。仅在 pointerup 时对齐，拖动中不量化。
+pub const GRID_SIZE: f64 = 20.0;
 /// 关系工具：屏幕像素欧氏位移达到该阈值才视为拖线（UT-PB-06）。
 pub const DRAG_THRESHOLD: f64 = 4.0;
 /// 画布字体族（与壳层一致，core-07 §字体配对）
@@ -207,6 +208,8 @@ mod leptos_canvas {
         on_relation_drag_start: Option<Box<dyn Fn(String, String) + 'static>>,
         on_relation_drop: Option<Box<dyn Fn(String, String, String, String) + 'static>>,
         on_relation_drag_cancel: Option<Box<dyn Fn() + 'static>>,
+        /// 表拖动松手（吸附写回 store 后）通知调用方持久化（D 批：dirty + schedule_save）
+        on_table_drop: Option<Box<dyn Fn() + 'static>>,
         // 主题模式（"dark"/"light"）：绘制 effect 需跟踪以在主题切换时重刷调色板
         theme_mode: RwSignal<String>,
     ) -> impl IntoView {
@@ -228,6 +231,7 @@ mod leptos_canvas {
         let on_relation_drag_start = Rc::new(on_relation_drag_start);
         let on_relation_drop = Rc::new(on_relation_drop);
         let on_relation_drag_cancel = Rc::new(on_relation_drag_cancel);
+        let on_table_drop = Rc::new(on_table_drop);
 
         {
             let raf_pending = raf_pending.clone();
@@ -617,6 +621,7 @@ mod leptos_canvas {
             let on_field_pick = on_field_pick.clone();
             let on_relation_drop = on_relation_drop.clone();
             let on_relation_drag_cancel = on_relation_drag_cancel.clone();
+            let on_table_drop = on_table_drop.clone();
             move |ev: PointerEvent| {
                 let Some(drag) = drag_state.get_untracked() else {
                     return;
@@ -669,6 +674,13 @@ mod leptos_canvas {
                 if let Some(table_id) = drag.table_id {
                     let dx = ev.client_x() as f64 - drag.start_mouse_x;
                     let dy = ev.client_y() as f64 - drag.start_mouse_y;
+                    live.borrow_mut().tables = None;
+                    drag_state.set(None);
+                    // 纯点击（位移 < 4px）= 选中语义：不写回坐标、不触发持久化，仅重绘复位视觉
+                    if !super::is_relation_drag(dx, dy, super::DRAG_THRESHOLD) {
+                        schedule_paint();
+                        return;
+                    }
                     let new_x = drag.start_table_x + dx / transform.get_untracked().zoom;
                     let new_y = drag.start_table_y + dy / transform.get_untracked().zoom;
                     let (sx, sy) = super::snap_to_grid(new_x, new_y, super::GRID_SIZE);
@@ -677,9 +689,11 @@ mod leptos_canvas {
                         table.x = sx;
                         table.y = sy;
                     }
-                    live.borrow_mut().tables = None;
                     store.tables.set(tables);
-                    drag_state.set(None);
+                    // D 批：松手吸附后必须通知持久化（S01 保存链路），否则拖表位置不落账
+                    if let Some(cb) = on_table_drop.as_ref() {
+                        cb();
+                    }
                     return;
                 }
 
@@ -1525,7 +1539,9 @@ mod tests {
 
     #[test]
     fn ut_cr_06_snap_to_grid_rounds_on_release() {
-        let (x, y) = snap_to_grid(133.4, 87.1, 20.0);
+        // 生产合同：松手网格即 GRID_SIZE 常量本身（core-CR §1：20，禁止写成主原型的 12/24）
+        assert_eq!(GRID_SIZE, 20.0, "UT-CR-06: 生产松手网格必须是 20（验收 §7.5）");
+        let (x, y) = snap_to_grid(133.4, 87.1, GRID_SIZE);
         assert_eq!((x, y), (140.0, 80.0), "UT-CR-06: snap_to_grid(133.4, 87.1, 20) → (140, 80)");
         let visual = apply_visual_table_position(
             &[fixture_table("a", "f1", 100.0, 100.0)],

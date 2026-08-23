@@ -27,4 +27,8 @@
 
 ## [code] 代码实现
 
-- [ ] 实现代码变更
+- [x] 实现代码变更
+  - A 批：auth / share / 页面流入口（ST-S03-UI-*、S02 SHARE/*、ST-FE-ALIGN-01/02、ST-PU-22）
+  - B 批：rooms / invite（ST-S04-UI-03～07、ST-PU-23）
+  - C 批：room-editor 壳层 / 保存态 / 协作（UT-S01-SS-01/02、ST-S01-SS-01、S01-409/*、ST-S05-UI-01～06、ST-FE-ALIGN-03/04、ST-PU-24）
+  - D 批：IO / 快捷键 / 主题 / 响应式 / 画布与关系（ST-KB-CMD-01/ESC-01/T-01/R-01/VIEWER、ST-PC-MENU-01/FMT-01/INSPECTOR、ST-PU-25/26、ST-CR-02、ST-PB-01/02；`SPEC_PARITY_SKIP_IDS` 已清空）

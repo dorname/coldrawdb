@@ -3562,10 +3562,21 @@ textarea {
     min-height: 200px;
   }
   .cdb-inspector {
+    /* D 批：720px 下以覆盖抽屉呈现（对齐主原型 760px 断点的 absolute 浮层），
+       修复 flex 静态流中被挤压且右缘溢出视口、关闭按钮不可达（ST-PU-26） */
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
     width: 100%;
     max-width: 100%;
     border-left: none;
     border-top: 1px solid var(--cdb-color-border);
+    background: var(--cdb-color-surface);
+  }
+  /* D 批：720px 网格中 StatusBar 落入正确的列（原自动落位到 48px 首列） */
+  .cdb-status-bar {
+    grid-column: 2 / 4;
   }
   .cdb-io-drawer {
     width: 100%;
@@ -3587,8 +3598,11 @@ textarea {
 
 /* ============================================================
  * Responsive: V1 边界 (spec §5.4) — 最小宽度 1024px
+ * D 批修复：警告区间限定 721–1023px；≤720px 由上方紧凑布局接管，
+ * 否则两条媒体查询同优先级、本块后置会覆盖 720px 块的 body::before 隐藏，
+ * 导致全屏遮罩拦截全部点击（ST-PU-26）。
  * ============================================================ */
-@media (max-width: 1023px) {
+@media (min-width: 721px) and (max-width: 1023px) {
   body::before {
     content: "请使用 ≥ 1024px 宽度的屏幕（coldrawdb V1 不支持小屏）";
     position: fixed;

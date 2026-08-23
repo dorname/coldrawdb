@@ -371,18 +371,18 @@
 
 | 能力项 | 已有能力 | 规格已收口 | 本提案实现 |
 |---|---|---|---|
-| S01 保存 / SaveState / 非 OT 409 | 是（后端+前端保存链路） | 是（含协作禁 409） | C 批 |
+| S01 保存 / SaveState / 非 OT 409 | 是（后端+前端保存链路） | 是（含协作禁 409） | C 批（已验证） |
 | S02 分享只读 / 404 / 无 share→auth | 是（分享加载） | 是 | A 批（已验证） |
 | S03 auth→rooms / 会话 / 不枚举用户 | 是（API+部分 UI） | 是 | A 批（已验证） |
-| S04 rooms/invite/成员/Viewer | 是（API+部分 UI） | 是 | B 批 |
-| S05 ws-status/ot-rev/presence/reconnect/queue/local-only | 是（WS+部分 UI） | 是 | C 批 |
-| 画布拖表 GRID_SIZE=20 + 跟线 | 部分 | 是 | D 批 |
-| 关系 4px / rubber-band / 两点 / 确认条 | 部分 | 是 | D 批 |
-| IO 更多菜单→抽屉 | 部分 | 是 | D 批 |
-| 主模态 Esc 无残留 | 部分 | 是 | D 批 |
-| Inspector 锚点 + 响应式抽屉 | 部分 | 是 | D 批 |
-| ⌘K / Esc / T / R | 部分 | 是 | D 批 |
-| Design system 主题/motion | 部分（E1–E6 已落地基础） | 是（与统一壳层对齐合同） | D 批 |
+| S04 rooms/invite/成员/Viewer | 是（API+部分 UI） | 是 | B 批（已验证） |
+| S05 ws-status/ot-rev/presence/reconnect/queue/local-only | 是（WS+部分 UI） | 是 | C 批（已验证） |
+| 画布拖表 GRID_SIZE=20 + 跟线 | 部分 | 是 | D 批（已验证） |
+| 关系 4px / rubber-band / 两点 / 确认条 | 部分 | 是 | D 批（已验证） |
+| IO 更多菜单→抽屉 | 部分 | 是 | D 批（已验证） |
+| 主模态 Esc 无残留 | 部分 | 是 | D 批（已验证） |
+| Inspector 锚点 + 响应式抽屉 | 部分 | 是 | D 批（已验证） |
+| ⌘K / Esc / T / R | 部分 | 是 | D 批（已验证） |
+| Design system 主题/motion | 部分（E1–E6 已落地基础） | 是（与统一壳层对齐合同） | D 批（已验证） |
 | 主原型演示器本身 | 是（静态 HTML） | N/A（不改原型） | 禁止标生产完成 |
 
 ### 13.2 既有勾选区解读规则
@@ -398,6 +398,6 @@
 | 批次 | 范围 | 主要用例 |
 |---|---|---|
 | A（已验证） | auth / share / 页面流入口 | ST-S03-UI-*、S02 SHARE/*、ST-FE-ALIGN-01/02、ST-PU-22 |
-| B | rooms / invite | ST-S04-UI-*、ST-PU-23 |
-| C | room-editor 壳层 / 保存 / 协作 | S01-SS/*、S01-409/*、ST-S05-UI-*、ST-FE-ALIGN-03/04、ST-PU-24 |
-| D | IO / 快捷键 / 主题 / 响应式 | ST-KB-*、ST-PC-*、ST-PU-25/26 |
+| B（已验证） | rooms / invite | ST-S04-UI-*、ST-PU-23 |
+| C（已验证） | room-editor 壳层 / 保存 / 协作 | S01-SS/*、S01-409/*、ST-S05-UI-*、ST-FE-ALIGN-03/04、ST-PU-24 |
+| D（已验证） | IO / 快捷键 / 主题 / 响应式 / 画布与关系 | ST-KB-*、ST-PC-MENU-01/FMT-01/INSPECTOR、ST-PU-25/26、ST-CR-02、ST-PB-01/02 |
