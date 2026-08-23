@@ -1,5 +1,16 @@
 # 表与字段编辑规格（V1）
 
+## 0. 现行基线与实现状态
+
+唯一现行主原型：`core-01-editor-prototype.html`（`room-editor` 内表卡片 + `inspector`）。
+
+| 项 | 约定 |
+|---|---|
+| 页面流 | 表/字段编辑发生在 `auth → rooms → room-editor` 之后的协作编辑器壳内 |
+| 演示 ≠ 生产 | 主原型字段编辑为本地 state + 模拟保存；生产以 diagram REST / OT 为准 |
+| 实现状态 | **后端已实现**；**生产前端部分接入**；逐项对齐待 `implement-unified-prototype-spec-parity` |
+| Inspector 锚点 | **`data-testid="inspector"`**（不是 `inspector-panel`） |
+
 ## 1. 表（Table）
 
 ### 1.1 表对象结构
@@ -23,19 +34,15 @@ interface Table {
 
 | 操作 | 触发 | 数据变化 |
 |---|---|---|
-| 创建 | 侧栏"+"或快捷键 `T` | 分配 UUID + 默认坐标 |
-| 重命名 | 双击表名 | `name` 变更 |
-| 移动 | 拖拽标题栏 | 拖动中 `{x, y}` 为未量化视觉坐标，关联关系线每帧跟随；`pointerup` 时对齐网格后写入 undo |
-| 缩放 | 拖拽右下角 | `width` 变更（高度自适应） |
-| 锁定 | 右键菜单 / 工具栏 | `locked = true` 后禁止移动/编辑 |
-| 复制 | Ctrl/Cmd + D | 深拷贝 + 偏移 (20, 20) |
-| 删除 | Delete / 右键 | 从 diagram 中移除；级联删除字段 |
-| 改色 | ColorPicker | `color` 变更 |
+| 移动 | 拖拽表头（`data-drag-table`） | 拖动中未量化视觉坐标；关联关系线同帧跟随；`pointerup` 对齐网格后写入 undo |
 
-**移动补充**：
-- 主原型网格 12px；生产端 `GRID_SIZE`（当前 20px）。对齐只发生在 pointerup。
-- 拖动中不得调用整页 `render()`（原型）或 `store.tables.set`（生产）；连线必须用当前视觉坐标重算。
-- `locked === true` 时 pointerdown 不得开始拖动。
+**移动补充（对齐主原型 + optimize-canvas）**：
+
+- **捕获**：`setPointerCapture`，避免跟丢。
+- **rAF**：拖动中只更新表 `left/top` 与关系 `path[d]`；不得整页重渲染或整表 store set。
+- **网格**：松手对齐；生产 **`GRID_SIZE = 20`**；主原型演示网格 12px，不作生产合同。
+- **Viewer / 只读**：`canEdit() === false` 时 pointerdown 不得开始拖动；Inspector 输入 disabled。
+- **锁定**：`locked === true` 时同 Viewer，不得开始拖动。
 
 ### 1.3 表级校验
 
@@ -81,18 +88,13 @@ interface Field {
 
 ### 2.3 字段操作
 
-| 操作 | 触发 | 数据变化 |
-|---|---|---|
-| 添加 | 表内底部"+"或快捷键 | 默认字段：name="field_N" type="VARCHAR" size=255 |
-| 重命名 | 双击 | `name` 变更 |
-| 改类型 | 类型下拉 | `type` 变更 + 联动 `size` 默认值 |
-| 改大小 | size 输入框 | `size` 变更 |
-| 改默认值 | default 输入框 | `default` 变更（含类型校验） |
-| 改 check | check 输入框 | `check` 变更 |
-| 切主键/唯一/非空/自增 | 复选框 | 标志位变更 |
-| 改注释 | comment 输入框 | `comment` 变更 |
-| 排序 | 拖拽字段行 | 字段顺序变更（影响 SQL 生成） |
-| 删除 | 行右键菜单 | 从 table 中移除 |
+字段增删改、类型与约束的主编辑面为右侧 **Inspector**（选中表后展开），与主原型 `renderInspector` 一致：
+
+- 表名 / 强调色
+- 字段列表卡片：名称、类型、PK / NOT NULL / UNIQUE、删除
+- 「添加」字段、删除数据表（确认模态）
+
+历史左栏 Tables Tab 浏览能力已迁至 Command Palette / 画布选中；不以 V1 左栏 7 Tab 作为默认编辑路径。
 
 ### 2.4 字段级校验
 
@@ -137,6 +139,13 @@ interface Field {
 - ❌ 表锁定状态持久化（V1 仅前端）
 - ❌ 字段级权限控制（V1 不做）
 
+### 6.1 边界与对齐补充
+
+- ❌ 要求生产端使用主原型 12px 网格步长
+- ❌ Viewer 可拖表或改字段
+- ✅ 表拖动 pointer 捕获 + rAF + 松手 `GRID_SIZE=20`
+- ✅ Inspector `data-testid="inspector"` 为 e2e / 规格锚点
+
 ## 7. 对齐参考源
 
 - drawdb `src/components/EditorCanvas/Table.jsx`
@@ -150,7 +159,7 @@ interface Field {
 
 > 模块：core | 提案：redesign-phase-e-design-system-migration（E2 增量）
 
-## MODIFIED — §2 字段（Field）— 字段类型徽章 E2 Tag + Icon
+## 2 字段（Field）— 字段类型徽章 E2 Tag + Icon
 
 **merge 时在 §2 末尾追加**：
 
@@ -175,7 +184,7 @@ V1 字段类型用 `text-orange-500`（main `stringColor`）等 Tailwind 颜色 
 
 **视觉**：inline-flex 22px 高，gap 4px，Icon size=12，Tag 不带文字（仅 icon + soft 背景）
 
-## MODIFIED — §2 主键/外键图标（E2 Icon 替换）
+## 2 主键/外键图标（E2 Icon 替换）
 
 **merge 时在 §2 主键/外键说明处替换**：
 
@@ -184,4 +193,3 @@ V1 字段类型用 `text-orange-500`（main `stringColor`）等 Tailwind 颜色 
 - 索引：`<IconIndex />` + `<Tag color=Neutral size=Small>IDX</Tag>`
 - 唯一约束：`<IconUnique />` + `<Tag color=Success size=Small>UQ</Tag>`
 - 非空：`<IconNotNull />`（无 Tag，纯图标 hover 提示）
-

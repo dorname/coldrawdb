@@ -1,5 +1,16 @@
 # 关系编辑规格（V1）
 
+## 0. 现行基线与实现状态
+
+唯一现行主原型：`core-01-editor-prototype.html`（Tool Rail `tool-relationship` + 画布 `rel-rubber-band` / `rel-tool-hint`）。
+
+| 项 | 约定 |
+|---|---|
+| 页面流 | 关系创建发生在 `room-editor`；入口为 Tool Rail，非独立历史原型 |
+| 演示 ≠ 生产 | 主原型拖放/点击两点后**立即 commit**；生产须进入确认条再写入 |
+| 实现状态 | **后端已实现**（reference）；**生产前端部分接入**；逐项对齐待 `implement-unified-prototype-spec-parity` |
+| 状态机命名 | 生产端关系工具状态含 **`RelToolState::Dragging`**（与 Idle / PickSource / PickTarget / Confirm 并列） |
+
 ## 1. 关系（Relationship）对象结构
 
 ```ts
@@ -42,62 +53,30 @@ interface Relationship {
 
 ### 3.1 关系工具模式（Tool Rail `🔗`）
 
-**激活**：点击 Tool Rail `tool-relationship` 或快捷键 `R`；按钮进入 `cdb-is-active` 态。
+**激活**：`tool-relationship` 或快捷键 `R`；Viewer 下按钮 disabled。
 
-**状态机**：
+**关键规则（合同）**：
 
-| 状态 | 用户操作 | 下一状态 |
-|------|----------|----------|
-| `Idle` | 激活关系工具 | `PickSource` |
-| `PickSource` | 在字段上 pointerdown 且移动 ≥ 4px | `Dragging` |
-| `PickSource` | 点击源字段（移动 < 4px） | `PickTarget` |
-| `Dragging` | pointermove | 保持 `Dragging`；橡皮筋端点跟随指针；悬停目标字段高亮 |
-| `Dragging` | 在**不同**目标字段 pointerup | 生产：`Confirm`；原型：立即写入关系并回 `Idle` |
-| `Dragging` | 松在空白、同源字段或无效命中 | `PickSource`（不写入） |
-| `PickTarget` | 点击目标字段 | 生产：`Confirm`；原型：立即写入关系并回 `Idle` |
-| `PickTarget` | 从已选源字段再次按下并拖出 | `Dragging` |
-| `Confirm` | 点「创建」 | `Idle`（关系写入 store） |
-| `Confirm` | 点「取消」 | `PickSource` |
-| 任意 | 按 `Esc` 或切回选择工具 | `Idle` |
+| 规则 | 规格 |
+|---|---|
+| 拖线阈值 | `DRAG_THRESHOLD = 4`px；位移 < 4px 视为点击，不进入 `Dragging`、不显示橡皮筋 |
+| `Dragging` | 移动 ≥ 4px 后进入；`setPointerCapture`；橡皮筋 `data-testid="rel-rubber-band"` 可见；悬停目标字段高亮 |
+| 松手 | 落在**不同**目标字段 → 生产进入 **Confirm**（确认条）；主原型立即写入。落空白/同源 → 保留源选中（PickSource），不写入 |
+| 点击两点 | **必须保留**（ST-PB-01 / ST-PU-06）：第一次点源 → PickTarget；第二次点目标 → 生产 Confirm / 原型 commit |
+| Esc / 取消工具 | 回 Idle；隐藏橡皮筋 |
 
-**橡皮筋预览**（`data-testid="rel-rubber-band"`）：
-- 仅在 `Dragging` 且已超过 4px 阈值时可见
-- 起点 = 源字段行锚点（表右侧中线）；终点 = 指针的画布坐标
-- 路径算法与正式关系线相同（`calc_path` / 原型贝塞尔）
-- 不得每帧重建整页 DOM；只更新该 `<path>` 的 `d`
-
-**画布提示**（`data-testid="rel-tool-hint"`）：
-- `PickSource`：「从字段拖出连线，或点击选择源字段」
-- `Dragging`：「拖到目标字段后松开」
-- `PickTarget`：「选择目标字段，或从源字段拖出连线」
-
-**Viewer / 只读**：关系工具 disabled；按下字段不得进入 `Dragging`。
+**橡皮筋**：仅 `Dragging && moved` 时更新 `path[d]`；禁止每帧重建整页 DOM。
 
 ### 3.2 关系确认条（非模态）
 
-**位置**：画布底部居中（`z-index: L2`，不遮挡 AppBar / Inspector）。
-
-```
-┌──────────────────────────────────────────────────────┐
-│ users.id → orders.user_id   [1:N ▼]  [创建] [取消]   │
-└──────────────────────────────────────────────────────┘
-```
-
-- testid：`rel-confirm-bar` / `rel-confirm-create` / `rel-confirm-cancel` / `rel-confirm-cardinality`
-- 默认 cardinality：`one_to_many`
-- 创建后：写入 `Reference`，`type_` = cardinality，`on_delete`/`on_update` 默认 `RESTRICT`
-- 拖字段出线与点击两点**共用**本确认条（生产前端）
-- 主原型为单文件演示、无确认条：第二次点击或拖放到目标字段后立即 `commit` 写入关系（对齐 ST-PU-06）
+- 生产：拖字段出线与点击两点**共用** `rel-confirm-bar`；默认 cardinality `one_to_many`；确认后写 `Reference`。
+- 主原型：无确认条，第二次命中即 `commit`——验收生产时不得要求「与原型一样立即写入」。
 
 ## 4. 渲染
 
-- **连线**：贝塞尔曲线（`BezierCurve` 算法，详见 `frontend-rs/editor_render` 中的 `calc_path`）
-- **端点**：箭头（drawdb 用 SVG marker；coldrawdb V1 用 canvas 自绘）
-- **标签**：起点端 cardinality 标签 + 终点端 cardinality 标签
-- **路径重算**：起点 / 终点表在**拖动过程中**按未量化的视觉坐标每动画帧重算并重绘；禁止等到 pointerup 才更新连线
-- **生产端绘制**：`requestAnimationFrame` 合并；拖动中使用临时坐标，不得每 pointermove `store.tables.set(整表数组)`
-- **指针捕获**：表拖动与关系拖线均 `setPointerCapture`，光标离开画布不得丢事件
-- **碰撞**：连线与表头有最小间距，绕开
+- 表拖动与关系拖线均 `setPointerCapture`。
+- 拖表过程中已有关系路径按未量化坐标在 rAF 中重算（见 `core-01`）。
+- 生产松手网格 **`GRID_SIZE = 20`**（关系端点几何跟随表位置）。
 
 ## 5. 校验
 
@@ -149,6 +128,11 @@ interface Relationship {
 - ❌ 关系线型（实线/虚线）（V1 统一实线）
 - ❌ 关系的元数据（注释、tag）（V1 不支持）
 
+### 9.1 Viewer / 只读
+
+- Viewer：不得进入 `Dragging`；点击字段不得建立 `relationSource`。
+- 只读分享（`share-readonly`）：同 Viewer，无关系工具。
+
 ## 10. 对齐参考源
 
 - drawdb `src/components/EditorCanvas/Relationship.jsx`
@@ -157,11 +141,17 @@ interface Relationship {
 - coldrawdb `frontend-rs/src/editor_render.rs`（连线渲染）
 
 ---
+
+### 10.1 对齐参考补充
+
+- 事实基线：`core-01-editor-prototype.html`（`DRAG_THRESHOLD`、`rel-rubber-band`、`schedulePaint`）
+- 前序已合并：`optimize-canvas-connect-and-drag` 关系状态机与测试 ID（UT-PB-* / ST-PB-*）仍有效，本提案仅统一原型边界与实现状态措辞
+
 # Delta — core-01b-relationship.md（修改）
 
 > 模块：core | 提案：redesign-phase-e-design-system-migration（E3 增量）
 
-## MODIFIED — §3 关系操作（E3 Tooltip / Popover 替换）
+## 3 关系操作（E3 Tooltip / Popover 替换）
 
 **merge 时在 §3 末尾追加**：
 
@@ -183,7 +173,7 @@ interface Relationship {
 
 **z-index**：Tooltip `--cdb-z-tooltip`（L4），Popover `--cdb-z-popover`（L4.5）
 
-## MODIFIED — §4 渲染（E2 关系线端点图标）
+## 4 渲染（E2 关系线端点图标）
 
 **merge 时在 §4 末尾追加**：
 
@@ -193,4 +183,3 @@ interface Relationship {
 - 终点端点：`<IconCaretDown />` 旋转 90°（one-to-many 视觉）
 - 颜色：`var(--cdb-color-primary)`（默认）、`var(--cdb-color-warning)`（hover）
 - 选中态：线粗 2.5px，色 `--cdb-color-primary-active`
-

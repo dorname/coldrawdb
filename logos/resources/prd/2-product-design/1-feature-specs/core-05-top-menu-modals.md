@@ -1,5 +1,15 @@
 # 顶部菜单 + 模态规格（V1）
 
+## 0. 现行基线与实现状态
+
+唯一现行主原型：`core-01-editor-prototype.html`。AppBar / 菜单 / 模态以 `room-editor` 顶栏为准。
+
+| 项 | 约定 |
+|---|---|
+| 页面流 | 用户经 `auth → rooms` 进入编辑器；`room-badge` 可返回 rooms |
+| 演示 ≠ 生产 | 邀请复制、分享链接、会话续期、原型诊断可为模拟；生产以 auth/rooms API 为准 |
+| 实现状态 | **后端已实现**；**生产前端部分接入**；逐项对齐待 `implement-unified-prototype-spec-parity` |
+
 ## 1. 顶部菜单布局（V2 — R4 信息分层）
 
 V1 双行顶栏已在 Phase A 合并；E3 统一按钮视觉；**R4** 进一步三区 + 溢出菜单（见 §1.1）。
@@ -56,6 +66,22 @@ V1 双行顶栏已在 Phase A 合并；E3 统一按钮视觉；**R4** 进一步�
 - AppBar 内 IO pill 容器（导入/导出文字按钮）
 - AppBar 末尾独立 `btn-theme-toggle` / `btn-inspector-toggle` 图标按钮
 - StatusBar 内重复的 `revision-display`（rev 仅由状态 Chip 承载）
+
+### 1.2 成员抽屉 · 设置 / 分享模态
+
+| UI | `data-testid` / 层 | 行为 |
+|---|---|---|
+| 成员抽屉 | `room-members-panel` | 在线数、角色变更、移除确认；邀请入口 |
+| 邀请模态 | `modal-invite` / `invite-url` | 角色 Editor/Viewer；7 天有效文案 |
+| 分享模态 | share 层 | 房间可编辑 vs 持链接只读；复制链接 |
+| 偏好设置 | settings 层 | 主题、网格、自动保存等 |
+| 创建房间 | `modal-create-room` | 位于 rooms 页，不在编辑器默认打开 |
+
+### 1.3 响应式与 Viewer
+
+- ≤1179：可隐藏 `room-badge`；保存 chip 可省略 revision 文案。
+- ≤760：隐藏品牌分隔、save-chip、presence；操作区仅保留 `mobile-keep`（邀请、成员、更多等）。
+- **Viewer**：undo/redo/标题/邀请写操作按 `canEdit` / `canInvite` disabled；仍可见 presence、代码视图、只读画布。
 
 ## 2. 菜单项
 
@@ -237,6 +263,39 @@ V1 双行顶栏已在 Phase A 合并；E3 统一按钮视觉；**R4** 进一步�
 | UT-MM-09 | ConfigureCustomTypes 关闭 → 自定义类型保留（仅当前 session） |
 | ST-MM-01 | 端到端：菜单 / 模态 / 工具栏 / 快捷键 全链路操作 |
 
+## AppBar 统一工作空间信息分层补充
+
+```
+[品牌] Logo · Undo/Redo · diagram-title · room-badge · save-state
+                                    …spacer…
+[操作] presence · invite · 成员 · code · more · user-menu
+```
+
+| 元素 | `data-testid` | 说明 |
+|---|---|---|
+| 顶栏容器 | `app-bar` | 玻璃态 AppBar |
+| 撤销 / 重做 | `btn-undo` / `btn-redo` | Viewer 或空栈时 disabled |
+| 标题 | `diagram-title` | 可编辑；Viewer disabled |
+| 房间徽章 | `room-badge` | 显示房间名；点击回 rooms |
+| 保存态 | `save-state` + `revision-display` | dirty / saving / saved / error |
+| Presence | `room-presence` / `presence-online` | 在线成员头像 |
+| 邀请 | `btn-invite` | 打开邀请模态；非 Owner/Editor disabled |
+| 成员 | （图标按钮） | `open-drawer` → `room-members-panel` |
+| 代码视图 | `btn-code-view` | SQL/DBML/JSON 只读生成 |
+| 更多 | `btn-more-menu` | 导入 / 导出 / 分享 / 主题 / 命令等 |
+| 用户菜单 | `user-menu` | 会话指示、偏好设置、退出 |
+
+**移除为默认路径的项**：AppBar 常驻导入/导出 pill（改由更多菜单，见 `core-01d`）。
+
+## AppBar IO 统一入口校正
+
+| 入口 | 行为 |
+|------|------|
+| `btn-more-menu` → `btn-import` | 打开 `import-drawer` |
+| `btn-more-menu` → `btn-export` | 打开 `export-drawer` |
+| `btn-more-menu` → `btn-share` | 打开分享模态 |
+| Command Palette | 可命令打开同一 IO 抽屉 |
+
 ## 8. V1 边界
 
 - ❌ Remote Import（V1 仅 local）
@@ -245,6 +304,13 @@ V1 双行顶栏已在 Phase A 合并；E3 统一按钮视觉；**R4** 进一步�
 - ❌ ConfigureCustomTypes 跨刷新保留（V1 仅前端 session state）
 - ❌ Share 链接权限控制（V1 公开访问，V2 计划私有房间）
 - ❌ 多语言扩展（V1 仅 en / zh）
+
+### 8.1 统一原型边界补充
+
+- ❌ 将主原型诊断面板、演示控制台标为生产必选
+- ❌ 以独立 `core-03/04/05-*-prototype.html` 验收 AppBar
+- ✅ AppBar 锚点：room-badge、save-state、presence、invite、code、more、user-menu
+- ✅ 成员抽屉 + 设置/分享模态与主原型层叠一致
 
 ## 9. 对齐参考源
 
@@ -255,7 +321,7 @@ V1 双行顶栏已在 Phase A 合并；E3 统一按钮视觉；**R4** 进一步�
 - drawdb `src/components/Modals/Import/`
 - coldrawdb `frontend-rs/src/editor_panels.rs`（标题编辑器等）
 - `docs/drawdb-capability-checklist.md` §2.2
-## ADDED — §9.1 B4 测试 ID 索引（提案：add-frontend-completeness）
+## 9.1 B4 测试 ID 索引（提案：add-frontend-completeness）
 
 > 模块：core | 提案：add-frontend-completeness
 > 路径：deltas/prd/2-product-design/1-feature-specs/core-05-top-menu-modals.md
@@ -298,7 +364,7 @@ B4 在 §3 的 9 个模态清单中，**仅实现 4 个核心模态**：
 - `core-05-top-menu-modals.md` §3 / §4 / §5.1 / §5.2 / §5.7 / §5.8
 - `core-UI-modals-test-cases.md`（详细 UT 步骤）
 - `frontend-rs/src/editor_panels.rs::modals`（新增子模块）
-## ADDED — §9.2 B5 测试 ID 索引（提案：add-frontend-completeness）
+## 9.2 B5 测试 ID 索引（提案：add-frontend-completeness）
 
 > 模块：core | 提案：add-frontend-completeness
 > 路径：deltas/prd/2-product-design/1-feature-specs/core-05-top-menu-modals.md
@@ -354,7 +420,7 @@ B5 在 §3 的 9 个模态清单中，补齐最后 **5 个模态** + **键盘快
 - `frontend-rs/src/editor_panels.rs::modals`（B4 子模块扩展）
 - `frontend-rs/src/editor_core.rs::CommandStack`（扩展 undo/redo）
 
-## ADDED — §9.3 B1 测试 ID 索引（提案：fix-modal-overlay-blocking）
+## 9.3 B1 测试 ID 索引（提案：fix-modal-overlay-blocking）
 
 > 模块：core | 提案：fix-modal-overlay-blocking
 > 路径：deltas/prd/2-product-design/1-feature-specs/core-05-top-menu-modals.md
@@ -403,7 +469,7 @@ B1 修一处真实 UI bug（ModalRoot 遮罩无条件渲染）+ 补 1 个 testid
 - `logos/spec/smoke-report.md`（前次 0/5 FAIL 证据）
 - `logos/changes/archive/20260610-2122-add-frontend-completeness/`（前置提案）
 
-## ADDED — §12 AppBar IO 按钮与 IO 抽屉（Phase C）
+## 12 AppBar IO 按钮与 IO 抽屉（Phase C）
 
 > 模块：core | 提案：redesign-phase-c-import-export
 
@@ -437,7 +503,7 @@ New / Open / Rename / Share 仍走模态。
 | UT-AB-04 | **更新**：`btn-import` Phase C 为 **enabled** |
 | ST-PC-01 | e2e：AppBar 导入 → 抽屉 → 解析摘要 |
 
-## MODIFIED — §5.3 Import 模态（补充说明）
+## 5.3 Import 模态（补充说明）
 
 **Phase C 备注**：主交互迁移至 `core-01d-import-export.md` ImportDrawer；本节模态规格保留供回归 UT-MM-10，不作为默认用户路径。
 
@@ -448,7 +514,7 @@ New / Open / Rename / Share 仍走模态。
 
 > 模块：core | 提案：redesign-phase-e-design-system-migration（E3 + E4 + E5 增量）
 
-## MODIFIED — §1 AppBar 单行布局（E3 Button + Dropdown 视觉）
+## 1 AppBar 单行布局（E3 Button + Dropdown 视觉）
 
 **merge 时替换** §1 段，更新为：
 
@@ -481,7 +547,7 @@ V1 双行顶栏（菜单 + 工具栏）已在 **Phase A** 中合并为单行 App
 
 **E5 增量**：Theme toggle 按钮实现 `data-mode` 切换 + `localStorage` 持久化。详见 `core-0b-dark-mode.md`。
 
-## MODIFIED — §2 菜单项（保留 V1 语义 + E3 Dropdown 视觉）
+## 2 菜单项（保留 V1 语义 + E3 Dropdown 视觉）
 
 **merge 时在 §2 顶部插入**：
 
@@ -493,7 +559,7 @@ V1 双行顶栏（菜单 + 工具栏）已在 **Phase A** 中合并为单行 App
 >
 > 详细 Dropdown 行为见 `core-09-core-components.md` §4。
 
-## MODIFIED — §3 9 模态（E3 Modal 视觉统一）
+## 3 9 模态（E3 Modal 视觉统一）
 
 **merge 时替换** §3 段，更新为：
 
@@ -523,7 +589,7 @@ V1 双行顶栏（菜单 + 工具栏）已在 **Phase A** 中合并为单行 App
 - 模态关闭（modal 回到 None）时遮罩必须从 DOM 移除
 - 失效时遮罩会持续拦截 pointer events，HP-01~HP-05 回归验收点
 
-## MODIFIED — §4.2 模态布局（E3 Modal body style 对齐）
+## 4.2 模态布局（E3 Modal body style 对齐）
 
 **merge 时替换** §4.2 段，更新为：
 
@@ -550,4 +616,3 @@ V1 双行顶栏（菜单 + 工具栏）已在 **Phase A** 中合并为单行 App
 | 关闭 × | `<IconClose />`, 32×32 圆形按钮, hover `--cdb-color-grey-1` | E3 Button Tertiary |
 
 **Code/Image 模态特殊**：body `overflow: hidden`（避免 Monaco 滚动冲突），高度自适应内容。E4 Code View 用 `XLarge` (1200px)。
-

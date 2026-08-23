@@ -6,14 +6,18 @@
 
 ## 1. 范围
 
-B5 模态补全（5 个剩余）：
-- `ImportModal`：粘贴 SQL → 调用 `/api/v1/bridge/import/local`（B5 解析后端 stub）
-- `ImportSourceModal`：选择 local / remote（V1 仅 local 实际生效）
-- `LanguageModal`：切换 zh / en（V1 提示 toast）
-- `SetTableWidthModal`：批量设置表宽（0 = auto）
-- `ConfigureCustomTypesModal`：增删改自定义类型（V1 仅前端 session state）
+剩余模态 / 历史边界：ImportSource、Language、SetTableWidth、ConfigureCustomTypes 等。主路径 IO 已迁抽屉后，历史 Import 模态不得再标为唯一入口。
 
-**对应实现**：`frontend-rs/src/editor_panels.rs::modals`（B4 子模块扩展）
+状态：后端已实现；生产前端部分接入；逐项对齐待第二阶段。实现阶段须将用例结果写入 `logos/resources/verify/test-results.jsonl`（OpenLogos reporter）；本提案仅规格收口，不执行自动化。
+
+## ADDED / MODIFIED
+
+| ID | 变更 | 合同 |
+|---|---|---|
+| UT-MM-10～14 | 保留 | 纯函数解析仍有效 |
+| ST-MM-HIST-01（ADDED） | ADDED | 文档/用例须标注：历史 Import 模态为边界能力；现行主路径=更多菜单→IO 抽屉 |
+| ST-MM-ESC-02（ADDED） | ADDED | 任一剩余模态 Esc/遮罩关闭后无残留层 |
+| ST-MM-SCOPE（ADDED） | ADDED | remote import / 未支持语言等 V1 边界保持 Err；不得标完成 |
 
 ## 2. UT 用例
 
@@ -91,6 +95,10 @@ B5 模态补全（5 个剩余）：
 - **位置**：`frontend-rs/tests/wasm/ui.rs`（B5 接入）
 - **类型**：wasm-pack test --headless --chrome
 - **B5 标记 skip**：完整 e2e 跑在 B5 wasm-pack test 接入后（V1 限制：仅 session state，不跨刷新）
+
+## 与主原型关系
+
+主原型未演示的次要模态：规格可保留，但第二阶段验收优先级低于 auth/rooms/editor 主链。
 
 ## 4. V1 边界
 

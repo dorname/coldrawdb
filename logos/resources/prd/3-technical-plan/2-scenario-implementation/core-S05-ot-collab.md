@@ -4,41 +4,28 @@
 > Phase 2 输入：`core-S05-ot-collab-design.md`
 > Phase 1 输入：`core-00-scenario-overview.md` §S05
 
+## 0. 现行文档与原型基线
+
+> 版本：V2 | 前置：S03 + S04 | 现行原型：`core-01-editor-prototype.html`
+> 历史参考：`core-05-ot-collab-prototype.html`（非验收入口）
+> 生产状态：后端 WS/OT 已实现；生产前端已有部分协作接入；相对主原型逐项对齐待 `implement-unified-prototype-spec-parity`
+> 入口页面状态：在 **`room-editor`** 内建立 WS（废止仅写 `/editor/{diagramId}?room=` 为唯一表述）
+> API/DB：预期不新增；既有 `collab.yaml` + WS `/ws/rooms/{roomId}`；仅补前端连接态 / 排队 / 重连 / 本地降级映射
+
 ## 1. 场景描述
 
-**用户故事**：作为 room 内 editor，我能在多人同时编辑 ER 图时通过 OT 即时同步变更、看到在线成员与远端光标，并在断线后自动恢复，而无需 S01 的 409 冲突模态。
-
-**触发**：
-
-- S05.1：editor 进入 `/editor/{diagramId}?room={roomId}` 建立 WS
-- S05.2：本地编辑（创建表/改字段）→ 发送 `op` 帧
-- S05.3：两客户端并发 op → collab-server `transform`
-- S05.4：WS 断开 → 重连 → `sync` 补发 missed ops
-- S05.5（辅助）：周期 checkpoint → REST PUT 持久化 diagram 快照
-
-**成功标志**：
-
-- `[data-testid="ws-status"]` 显示「已连接 · OT 同步」
-- 远端客户端 500ms 内收到 `remote_op` 并渲染
-- 并发 op 合并后 Inspector 一致，**无 409 模态**
-- 重连后 `server_rev` 与画布状态一致
-
-**覆盖范围**：`collab-server` WS 网关；`operation` / `operation_log` 表（V2 DDL 待 `collab.yaml`）；JWT + `room_member` 校验
+- S05.1：进入 **`room-editor`** 后建立 WS
+- 成功：`ws-status`「已连接 · OT 同步」；远端 500ms 内可见；**无 S01 409 模态**
+- Viewer：可接收 presence / remote_op，**不可**发送 op
 
 ## 2. 参与者
 
-| 角色 | 模块 | 说明（V2 规划） |
+| 角色 | 模块 | 说明 |
 |---|---|---|
-| User A/B | — | 浏览器用户（room 成员，role ≠ viewer 可发 op） |
-| EditorUI | `frontend-rs` editor + collab 层 | Canvas / Inspector / StatusBar |
-| CollabClient | `frontend-rs` collab_client | WS 连接、op 队列、optimistic apply |
-| WS | Browser WebSocket | `wss://host/ws/rooms/{roomId}` |
-| CollabSrv | `collab-server` | JWT/成员校验、OT transform、广播 |
-| AuthMW | collab-server auth | 校验 Bearer JWT + room_member |
-| RoomRepo | 共享 SQLite 读 | room / member 存在性 |
-| OpLog | collab-server persistence | append `operation_log` |
-| RestAPI | `backend` diagrams_v1 | 周期 checkpoint PUT |
-| DB | SQLite | diagram + operation_log |
+| EditorUI | `frontend-rs` room-editor | Canvas / Inspector / StatusBar / Banner |
+| CollabClient | `frontend-rs` | **真实** WS、op 队列、optimistic apply、sync flush |
+| CollabSrv | **backend**（现行） | JWT + room_member、OT、广播；非「未落地的独立进程」前提 |
+| 主原型 | HTML 本地事件模拟 | 演示 connected/op/ack/remote_op/sync；**不**建立真实 WebSocket |
 
 ## 3. 时序图 — S05.1 建立 WebSocket 会话
 
@@ -287,16 +274,49 @@ sequenceDiagram
 | UT-C-05 | viewer op → READ_ONLY | EX-5.2 |
 | ST-C-01 | A/B 同 room A 建表 B 500ms 内可见 | Phase 2 验收 / `core-S05-ot-collab.json` Step 13 |
 
+## 连接态不变量（对齐主原型）
+
+| 连接态 | UI | 写操作（Owner/Editor） |
+|---|---|---|
+| `connected` | `ws-status` 正常；`ot-rev` 递增 | optimistic + 等 ack |
+| `reconnecting` / `syncing` | Banner；显示**待同步数量** | 可本地应用但须入**可见队列** |
+| `failed` | 危险 Banner | 默认暂停协作写；可选「仅本地编辑」并持续警告（有 S01 409 风险，须明示） |
+| `viewer` | 角色 Tag | 不得入队或伪造 ack；仍收 presence/remote_op |
+
+锚点：`ws-status`、`ot-rev`、`remote-cursor`、`activity-feed`、`reconnect-banner`、`room-presence`。
+
+## 异常映射（前端补齐）
+
+| 条件 | 前端 |
+|---|---|
+| WS close 4403 / NOT_A_MEMBER | Toast + 回 rooms 或只读降级 |
+| READ_ONLY（viewer op） | 忽略发送；保持只读连接 |
+| token_expired mid-session | S03 refresh 后重连；offline queue 保留 |
+| sync 缺口过大 | 全量 snapshot；Activity「已同步服务器版本」 |
+| 5 次重连失败 | `failed` Banner；「刷新」或「仅本地编辑」 |
+
+## 断线排队与重连可见性
+
+1. 断线期间本地编辑必须进入 **可见待同步队列**（数量可在 Banner/Status 读取）
+2. 重连 `sync { last_rev }` 后 flush；成功 Toast「已恢复协作」并隐藏 Banner
+3. 队列不得静默丢弃
+
+## OT 合并与 S01 409 边界
+
+协作合并成功或 `CONFLICT_RESOLVED` → Toast / Activity；**禁止**弹出 S01 `modal-conflict`。
+
+非 room、或用户主动「仅本地编辑」降级后的 PUT，才允许走 S01 409 路径。
+
 ## 13. V2 边界
 
 - ✅ 依赖 S03 JWT + S04 room_member
 - ✅ OT 替代 room 内 S01 409 UX
 - ❌ 非 room 单人编辑仍走 S01 PUT + 409
-- ❌ 邮件/第三方推送
+- ✅ 主原型模拟 ≠ 生产前端逐项完成
 
 ## 14. 对齐参考源
 
-- `core-S05-ot-collab-design.md` — Phase 2
-- `core-05-ot-collab-prototype.html` — UI 锚点
-- `core-S04-room-lifecycle.md` — room 前置
-- `core-S01-edit-and-save-diagram.md` — 409 / revision 对比
+- 现行主原型：`core-01-editor-prototype.html`
+- `core-S01-edit-and-save-diagram.md` — 409 仅非 OT
+- `core-00-information-architecture.md` — `room-editor`
+- `collab.yaml` — 既有帧契约（本提案不新增）

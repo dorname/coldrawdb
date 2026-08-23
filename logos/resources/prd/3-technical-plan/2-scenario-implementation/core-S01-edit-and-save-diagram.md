@@ -2,6 +2,13 @@
 
 > Phase 2 输入：`core-S01-edit-and-save-design.md` | 原型：`core-01-editor-prototype.html`
 
+## 0. 现行文档与原型基线
+
+> Phase 2 输入：`core-S01-edit-and-save-design.md` | 原型：`core-01-editor-prototype.html`（唯一现行）
+> 页面上下文：默认在 **`room-editor`** 内编辑；亦可兼容非 room 单人 diagram
+> 生产状态：前后端已实现；与主原型壳层/状态文案的逐项对齐由 `implement-unified-prototype-spec-parity` 承接
+> API/DB：本提案不新增端点或表；仅补前端参与者与异常映射
+
 ## 1. 场景描述
 
 **用户故事**：作为开发者，我在编辑器中新建一张表（含 3 个字段），编辑器自动将变更同步到后端，刷新页面后内容不丢失。
@@ -14,21 +21,15 @@
 
 ## 2. 参与者
 
+在既有表上追加 / 修正：
+
 | 角色 | 模块 | 文件 / 锚点 |
 |---|---|---|
-| User | — | — |
-| AppBar | `frontend-rs/src/editor_panels.rs` | `[data-testid="save-state"]` / `[data-testid="revision-display"]` / `[data-testid="btn-code-view"]` |
-| ToolRail | `frontend-rs/src/editor_panels.rs` | `[data-testid="tool-rail"]` 新建表 / 关系 / 区域 |
-| Inspector | `frontend-rs/src/editor_panels.rs` | `[data-testid="inspector-panel"]` / `[data-testid="field-editor"]` |
-| EditorCore | `frontend-rs/src/editor_core.rs` | `push_undo` / `mark_dirty` / `update_revision` |
-| EditorDataAccess | `frontend-rs/src/editor_data_access.rs` | `save`（debounce 1s） |
-| ModalRoot | `frontend-rs/src/editor_panels.rs` | `[data-testid="modal-conflict"]`（409 分支） |
-| CommandPalette | `frontend-rs/src/command_palette.rs` | `[data-testid="command-palette"]` · `Ctrl+K`（E4，无 HTTP） |
-| CodeView | `frontend-rs/src/code_view.rs` | `[data-testid="code-view"]` · SQL/DBML/JSON 预览（E4，无 PUT） |
-| Browser HTTP | — | `fetch` API |
-| BackendDiagrams | `backend/src/diagrams_v1.rs` | `create` / `update` handler |
-| BackendRepository | `backend/src/repository/...` | `DiagramRepo` / `TableRepo` / `FieldRepo` |
-| SQLite | — | `data/coldrawdb.db` |
+| RoomBadge | AppBar | `[data-testid="room-badge"]`（可回 rooms） |
+| StatusBar | editor_panels | `[data-testid="status-bar"]` / 角色 Tag |
+| Inspector | editor_panels | `[data-testid="inspector"]`（与主原型一致；废止仅写 `inspector-panel` 为唯一名） |
+| CodeView | code_view | `[data-testid="code-view-modal"]` · `[data-testid="btn-code-view"]` |
+| ConflictModal | ModalRoot | `[data-testid="modal-conflict"]` — **仅非 OT 快照冲突路径** |
 
 ## 3. 时序图
 
@@ -185,26 +186,13 @@ pub async fn update(pool: &Pool, id: &str, req: DiagramUpdateRequest) -> Result<
 
 ### 5.1 409 Conflict（最复杂分支）
 
-```mermaid
-sequenceDiagram
-    participant EDA
-    participant BD
-    participant EC
-    participant UI as Conflict Dialog
+**适用**：非 room 单人编辑，或 room 内未走 OT、仍以 revision 快照 PUT 发生冲突时。
 
-    EDA->>BD: PUT /diagrams/{id} (rev=5)
-    BD-->>EDA: 409 Conflict { current_diagram (rev=7) }
-    EDA->>EC: conflict_detected(current_diagram)
-    EC-->>UI: show_dialog(local + remote)
-    UI-->>EC: user_choice (reload / force / cancel)
-    alt reload
-        EC->>EDA: fetch_latest()
-        EDA-->>EC: remote (rev=7) overwrites local
-    else force
-        EC->>EDA: save_with_rev(current_rev + 1)
-    else cancel
-        EC->>EC: mark_conflict_pending
-    end
+**不适用（强制）**：S05 协作模式下服务器已 OT 合并的并发操作 → Toast / Activity 反馈，**禁止**弹出 `modal-conflict`。
+
+```text
+PUT → 409（非 OT）→ modal-conflict（reload / force / cancel）
+S05 remote_op / CONFLICT_RESOLVED → Toast/Activity（无 409 模态）
 ```
 
 ### 5.2 404 Not Found
@@ -249,24 +237,31 @@ sequenceDiagram
 | ST-P-02 | Command Palette Ctrl+K 聚焦表 | §3.1 |
 | ST-P-03 | Code View 复制 SQL 到剪贴板 | §3.2 |
 
+## 进入路径（技术）
+
+1. 用户经 S03 → S04 进入 `room-editor`（或打开既有 diagram）
+2. Viewer：写工具禁用，**不**触发 debounce PUT
+3. Owner/Editor：画布变更 → `editor_core.mark_dirty` → debounce PUT（非 OT）或 S05 op（协作模式）
+4. 主原型仅演示保存态文案；生产以 `frontend-rs` REST/WS 为准
+
+## 异常映射（前端）
+
+| 后端 / 条件 | 前端反馈 | 锚点 |
+|---|---|---|
+| 200 + new revision | 「已保存」+ revision 递增 | `save-state` / `revision-display` |
+| 409 revision_conflict（非 OT） | 冲突模态 | `modal-conflict` |
+| 403 READ_ONLY（viewer） | Toast 只读；不入队 PUT | ToolRail 禁用 |
+| 网络失败 | 「保存失败（离线）」+ 退避重试 | `save-state` |
+| 401 token_expired | 交 S03 refresh 重放；用户无感知 | AuthClient interceptor |
+
 ## 8. V1 边界
 
-- ❌ 局部 PUT（V1 全量更新；V2 计划改为 PATCH 局部）
-- ❌ 实时协作同步（V1 仅单人；V2 OT 引擎）
-- ❌ 后端 schema diff（V1 直接 replace）
-- ❌ WASM 端 ORM（V1 仅后端 ORM）
+- ❌ 局部 PUT（仍全量）— 不变
+- ~~❌ 实时协作同步（V1 仅单人；V2 OT）~~ → room 内协作见 **S05**；本场景保留非 OT 保存语义
+- 非 room 单人编辑仍走本场景 PUT + 409
 
 ## 9. 对齐参考源
 
-- `core-S01-edit-and-save-design.md` — Phase 2 交互 + 验收 G/W/T
-- `core-01-editor-prototype.html` — AppBar / ToolRail / Inspector / 409 模态锚点
-- `core-01-architecture-overview.md`（数据流 §5）
-- `core-02-diagram-persistence.md`（API + 事务 + 乐观锁）
-- `core-01a-table-and-field.md`（Table / Field 对象结构）
-- `core-0a-code-editor.md`（E4 Monaco / Code View）
-- `backend/src/diagrams_v1.rs`（5 端点 Rust 路由）
-- `backend/src/diagrams/service.rs`（事务逻辑）
-- `frontend-rs/src/editor_core.rs`（状态机）
-- `frontend-rs/src/editor_data_access.rs`（HTTP + debounce）
-- `docs/drawdb-capability-checklist.md` §2.5
-
+- `core-01-editor-prototype.html` — AppBar / 保存态 / room-badge
+- `core-S05-ot-collab.md` — 协作路径禁止 409 模态
+- `core-00-information-architecture.md` — `room-editor` 页面状态

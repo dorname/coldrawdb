@@ -1,13 +1,8 @@
 ## 1. 范围
 
-本文件覆盖场景 S01（编辑 + 自动保存）的全部 UT（单元测试）和 ST（场景测试）用例规格。
+S01 覆盖编辑、自动保存、`SaveState`、非 OT 路径 409。房间协作合并见 S05。
 
-**对应实现**：`backend/src/diagrams_v1.rs` + `backend/src/diagrams/service.rs` + `frontend-rs/src/editor_*`
-
-**对账**：
-- UT-P-01..06（来自 `core-02-diagram-persistence.md` §8）
-- UT-T-01..05（来自 `core-01a-table-and-field.md` §5）
-- ST-P-01/02（来自 `core-02-diagram-persistence.md` §8）
+状态：后端已实现；生产前端部分接入；逐项对齐待第二阶段。实现阶段须将用例结果写入 `logos/resources/verify/test-results.jsonl`（OpenLogos reporter）；本提案仅规格收口，不执行自动化。
 
 ## 2. UT 用例（单元测试）
 
@@ -237,6 +232,38 @@ pub fn make_diagram() -> DiagramCreateRequest {
 
 字段定义见 `logos/spec/test-results.md`。
 
+## SaveState 与页面锚点
+
+| ID | 前置 | 操作 | 预期 | 变更 |
+|---|---|---|---|---|
+| UT-S01-SS-01 | dirty 编辑 | debounce 触发 PUT 成功 | `save-state`：未保存→保存中→已保存；`revision-display` +1 | ADDED |
+| UT-S01-SS-02 | PUT 网络失败 | 重试耗尽 | `save-state=Error`；可手动重试；不丢本地 dirty | ADDED |
+| ST-S01-SS-01 | room-editor 可写角色 | 改表后等待自动保存 | AppBar 保存态与 revision 与主原型文案阶段一致 | ADDED |
+
+## 非 OT 409
+
+| ID | 说明 | 变更 |
+|---|---|---|
+| UT-S01-04 / ST-S01-02 | 过期 revision → 409 → `modal-conflict`（reload/force/cancel） | MODIFIED：仅**非 OT** 快照冲突路径 |
+| ST-S01-409-SCOPE | 协作模式（S05 已连接 OT）下服务器合并成功 | **禁止**出现 `modal-conflict`；Toast/Activity 反馈 | ADDED |
+
+## 协作模式禁 409（合同）
+
+| ID | 前置 | 操作 | 预期 |
+|---|---|---|---|
+| ST-S01-NO-409-OT | 两用户 OT 已连接 | A、B 近同时编辑并 ack | 无 S01 409 模态；`ot-rev` 前进；Activity 有记录 |
+| ST-S01-409-LOCAL-ONLY | 用户选择「仅本地编辑」后 PUT 冲突 | 可走 409 模态 | 须持续显示离线/409 风险文案 |
+
+## 附录 A 增量：统一原型对齐用例 ID
+
+| ID | 标题 | 对齐实现 |
+|---|---|---|
+| UT-S01-SS-01 | SaveState 成功路径 | `editor_data_access` + AppBar |
+| UT-S01-SS-02 | SaveState 失败 | 同上 |
+| ST-S01-SS-01 | 保存态 UI | room-editor |
+| ST-S01-NO-409-OT | 协作禁 409 模态 | 与 S05 联测 |
+| ST-S01-409-LOCAL-ONLY | 降级后允许 409 | S01+S05 |
+
 ## 6. V1 边界
 
 - ❌ 性能压测（V1 仅功能正确性；V2 计划）
@@ -272,4 +299,3 @@ pub fn make_diagram() -> DiagramCreateRequest {
 | ST-S01-01 | 编辑保存端到端 | `backend/src/diagrams_v1.rs::tests` |
 | ST-S01-02 | 导入端到端 | `backend/src/diagrams_v1.rs::tests` |
 | ST-S01-03 | 浏览器 wasm 渲染 | `frontend-rs/tests/wasm/` |
-

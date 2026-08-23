@@ -1,5 +1,11 @@
 # Core Components 规格（E3）
 
+## 0. 事实基线
+
+唯一现行组件行为与视觉基线：`core-01-editor-prototype.html`。本 delta 对齐 Button / Popover / Modal / SideSheet(Drawer) / Tag / Banner / Toast；其余（Dropdown 菜单项、Tooltip、Collapse）沿用主原型等价行为。
+
+统一约束：视觉引用 `core-07` token；键盘可达；遮罩/浮层关闭后 **DOM 与交互层不得残留**（无透明拦截、无遗留 `pointer-events`、无僵尸 overlay）。
+
 ## 1. 概述
 
 E3 定义 drawdb-web 的 8 个核心 UI 组件规格，对齐 main `@douyinfe/semi-ui` 的视觉与行为。每个组件以 Leptos 函数组件形式落地在 `frontend-rs/src/components/`，命名 `snake_case.rs`（如 `button.rs` / `modal.rs`），通过 `pub use` 导出。
@@ -13,78 +19,41 @@ E3 定义 drawdb-web 的 8 个核心 UI 组件规格，对齐 main `@douyinfe/se
 
 ## 2. Button
 
-```rust
-#[component]
-pub fn Button(
-    children: Children,
-    #[prop(default = ButtonVariant::Secondary)] variant: ButtonVariant,
-    #[prop(default = ButtonSize::Medium)] size: ButtonSize,
-    #[prop(default = false)] disabled: bool,
-    #[prop(default = false)] loading: bool,
-    #[prop(default = false)] block: bool,
-    #[prop(optional)] on_click: Option<Callback<ev::MouseEvent>>,
-) -> impl IntoView
-```
+对齐主原型 `.btn` 族：
 
-| Variant | 背景 | 文字 | 边框 | 用途 |
-|---|---|---|---|---|
-| `Primary` | `--cdb-color-primary` | `--cdb-color-text-on-primary` | none | 主操作（保存、确认） |
-| `Secondary` | `--cdb-color-bg-0` | `--cdb-color-text-0` | `--cdb-color-border` | 默认（导入、导出） |
-| `Tertiary` | transparent | `--cdb-color-text-0` | none | 文本按钮（取消、链接） |
-| `Warning` | `--cdb-color-warning` | `--cdb-color-text-on-primary` | none | 危险操作（删除） |
-| `Ghost` | transparent | `--cdb-color-primary` | `--cdb-color-primary` | 次要主操作 |
+| 变体 | 行为摘要 |
+|---|---|
+| 默认 / soft | `--surface-soft` 底 + `--line` 边；hover 上浮 1px |
+| `--primary` | brand 渐变；浅色模式白字，暗色模式近黑字 `#050f13` |
+| `--danger` | `--red` 字色与淡红边 |
+| `--ghost` / `--icon` | 透明底；图标按钮方形 |
+| `--sm` | 紧凑高度（画布工具、Banner 动作） |
 
-| Size | 高度 | padding-x | 字号 |
-|---|---|---|---|
-| `Small` | 24px | 8px | `--cdb-font-size-sm` |
-| `Medium` | 32px | 12px | `--cdb-font-size-base` |
-| `Large` | 40px | 16px | `--cdb-font-size-md` |
-
-**行为**：
-- hover：背景变 `--cdb-color-primary-hover`（200ms `--cdb-easing-out`）
-- active：背景变 `--cdb-color-primary-active`
-- disabled：opacity 0.5 + `cursor: not-allowed` + 无 hover
-- loading：替换 children 为 spinner + 禁用点击
-- block：`width: 100%`
+- `disabled`：不可点、无 hover 位移
+- `loading` / `aria-busy`：Auth 提交显示 spinner +「正在验证…」
+- 过渡：`.18s var(--ease)`；active `scale(.98)`
 
 ## 3. Modal
 
-```rust
-#[component]
-pub fn Modal(
-    children: Children,
-    visible: RwSignal<bool>,
-    #[prop(default = None)] title: Option<String>,
-    #[prop(default = ModalWidth::Medium)] width: ModalWidth,
-    #[prop(default = true)] centered: bool,
-    #[prop(default = true)] closable: bool,
-    #[prop(default = true)] mask_closable: bool,
-    #[prop(default = true)] esc_closable: bool,
-    #[prop(default = None)] on_ok: Option<Callback<()>>,
-    #[prop(default = None)] on_cancel: Option<Callback<()>>,
-    #[prop(default = None)] ok_text: Option<String>,
-    #[prop(default = None)] cancel_text: Option<String>,
-) -> impl IntoView
-```
+对齐 `.overlay`（z=50）+ `.modal`：
 
-| Width | 值 | 场景 |
-|---|---|---|
-| `Small` | 400px | 确认（删除、放弃） |
-| `Medium` | 640px | 表单（新建表、重命名） |
-| `Large` | 800px | 复杂（导入设置、共享） |
-| `XLarge` | 1200px | Code View（E4） |
-| `Full` | `calc(100vw - 64px)` | 全屏内容 |
+| 属性 | 事实 |
+|---|---|
+| 遮罩 | `rgba(2,12,16,.54)` + `blur(8px)`；`data-overlay` |
+| 宽度 | 常规 `min(520px,100%)`；宽版 `.modal--wide` → `min(720px,100%)` |
+| 结构 | `modal-head` / `modal-body` / `modal-foot` |
+| a11y | `role="dialog"` `aria-modal="true"` + `aria-labelledby` |
+| 关闭 | 关闭按钮 `close-layer`；点击遮罩（`event.target` 为 overlay）；表单取消 |
+| 入场 | `fade` `.18s` + `modal-in` `.22s` |
 
-**行为**（对齐 main `SemiUIModal`）：
-- 居中（`centered=true`）
-- 打开时 body 锁滚动（`overflow: hidden`）
-- ESC 关闭（`esc_closable=true`）
-- 点击遮罩关闭（`mask_closable=true`）
-- focus trap：打开时焦点移入 modal，循环 Tab
-- 入场动画：`fade-in` 200ms + `slide-down` 200ms（E6 接入）
-- 关闭动画：反向 200ms
+**遮罩关闭后不残留（强制）**：
 
-**z-index**：`--cdb-z-modal`（L5），遮罩 `--cdb-z-modal - 1` = 49
+1. `layer` 置空后整段 overlay 从渲染树移除（主原型：条件渲染返回空串）。
+2. 不得使用 `visibility:hidden` / `opacity:0` 却保留 `position:fixed; inset:0` 拦截点击。
+3. 打开 Drawer / Code / Command 时与 Modal 互斥；关闭路径必须清空对应状态。
+4. 生产实现若使用延迟卸载动画，动画结束后必须真正卸载；超时失败亦须强制移除。
+
+典型 Modal：`modal-create-room`、`modal-invite`、分享、偏好设置、删除确认、原型诊断。
 
 ## 4. Dropdown
 
@@ -154,25 +123,12 @@ pub fn Tooltip(
 
 ## 6. Popover
 
-```rust
-#[component]
-pub fn Popover(
-    children: Children,
-    content: View,                 // 复杂内容（嵌套组件）
-    #[prop(default = PopoverTrigger::Click)] trigger: PopoverTrigger,
-    #[prop(default = PopoverPlacement::BottomLeft)] placement: PopoverPlacement,
-    #[prop(default = false)] controlled: bool,
-) -> impl IntoView
-```
+对齐 `.popover`（z≈46）：
 
-| Trigger | 行为 |
-|---|---|
-| `Click` | 点击切换（TableInfo、字段详情） |
-| `Hover` | hover 200ms 后展开 |
-
-**与 Tooltip 区别**：Popover 可承载复杂内容（表单、列表、表格），Tooltip 仅文本。
-
-**z-index**：`--cdb-z-popover`（L4.5）
+- 触发：AppBar 更多菜单、用户菜单、rooms 用户菜单（`state.layer` 切换）
+- 视觉：玻璃态、宽约 `230px`、圆角 `14px`；`.menu-item` 高 `39px`，可带 shortcut
+- 关闭：再次点击触发器、选择菜单项、打开 Modal/Drawer、Esc（与全局 layer 清理一致）
+- 关闭后菜单节点不渲染，不得留下可点击幽灵层
 
 ## 7. Tag
 
@@ -233,35 +189,19 @@ pub fn CollapsePanel(
 
 ## 9. SideSheet
 
-```rust
-#[component]
-pub fn SideSheet(
-    children: Children,
-    visible: RwSignal<bool>,
-    #[prop(default = None)] title: Option<String>,
-    #[prop(default = SideSheetPlacement::Right)] placement: SideSheetPlacement,
-    #[prop(default = 400)] width: u32,
-    #[prop(default = true)] mask: bool,
-    #[prop(default = true)] mask_closable: bool,
-) -> impl IntoView
-```
+对齐 `.drawer`（z=35，宽 `min(420px, calc(100% - 72px))`）：
 
-| Placement | 方向 |
+| Drawer | `data-testid` |
 |---|---|
-| `Right` | 右侧抽屉（IO 抽屉，Phase C） |
-| `Left` | 左侧抽屉（备用） |
+| 成员 | `room-members-panel` |
+| 活动 | `activity-feed` |
+| 导入 | `import-drawer` |
+| 导出 | `export-drawer` |
 
-**行为**：
-- 与 Modal 共享 z-index（`--cdb-z-drawer` L3，因为 IO 抽屉与 Inspector 互斥）
-- 关闭时 body 解锁滚动
-- 关闭动画：200ms `slide-out-{placement}`（E6 接入）
-
-**视觉**：
-- 阴影 `--cdb-shadow-lg`
-- 圆角外侧 `--cdb-radius-xl`（仅 Right/Left 外侧圆角）
-- 内部 `sidesheet-theme` 背景（`--cdb-color-bg-1`）
-
-**Phase C 升级**：E3 后 `ImportDrawer` / `ExportDrawer` 用 `<SideSheet placement=Right />` 替代内嵌 `<aside>` 实现。
+- 入场：`drawer-in` `.24s`（translateX 25px → 0）
+- 关闭：`close-drawer` / 打开 Modal 时 `drawer=null`
+- ≤760px：全宽 + 圆角收紧
+- 关闭后同样不得残留遮挡画布的透明层（Drawer 无全屏 mask 时，也不得留下不可见 hit-area）
 
 ## 10. 组件间层级关系
 
@@ -287,11 +227,9 @@ Tag (无 z-index)
 
 ## 11. 验收约束
 
-- `frontend-rs/src/components/` 8 个 `.rs` 文件存在（`button.rs` / `modal.rs` / `dropdown.rs` / `tooltip.rs` / `popover.rs` / `tag.rs` / `collapse.rs` / `sidesheet.rs`）
-- 每个组件至少 1 个 `data-testid` 属性（`cdb-button` / `cdb-modal` / 等）
-- 8 个组件 Props 签名与本规格一一对应
-- `grep -rn '#[0-9a-f]\{3,6\}' frontend-rs/src/components/` 匹配 ≤ 0（无硬编码颜色）
-- 8 组件视觉对齐 Playwright 截图（HP-01~HP-05）
+- Button / Popover / Modal / Drawer / Tag / Banner / Toast 均可在主原型对应路径演示
+- 关闭 Modal/Command/Popover/Drawer/Banner/Toast 后，无残留 fixed 遮罩或拦截层（可用诊断「浮层状态」或 DOM 断言）
+- 组件颜色/阴影仅通过 token；硬编码禁止规则见 `core-07`
 
 ## 12. 不在 E3 范围
 
@@ -299,3 +237,35 @@ Tag (无 z-index)
 - Modal/SideSheet 入场动画（→ E6）
 - 复杂组合组件（DatePicker / ColorPicker / Tree）— V2+
 
+## Tag
+
+对齐 `.tag` / `.tag--brand` / `.tag--warn`：
+
+- 胶囊、11px 粗体、可内嵌状态点
+- 用途：角色、在线人数、待同步计数、代码「实时生成」、房间徽章
+
+## Banner
+
+对齐画布顶部 `.banner`（z=12）：
+
+| 态 | 样式 | 用途 |
+|---|---|---|
+| 默认（警告） | amber soft | 重连中 / 同步中（`reconnect-banner`） |
+| `--danger` | red soft | 离线 / 仅本地编辑 |
+
+含文案 + 可选 `.banner-actions` 按钮；连接恢复为 `connected` 时 Banner **整段卸载**。
+
+## Toast
+
+对齐 `#toast-region.toast-region`（z=60，右上）：
+
+- 结构：图标列 + 标题/正文 + 关闭按钮；玻璃态；`toast-in` `.25s`
+- 错误：`.is-error` + info 图标
+- 区域：`aria-live="polite"`；约 3600ms 自动消失；可手动 `dismiss-toast`
+- `pointer-events:none` 在 region，单项 toast `pointer-events:auto`，避免挡住整页
+
+## REMOVED / 降级
+
+- 以 SemiUI Modal/SideSheet API 像素对齐作为唯一验收 → 改为主原型行为与层级
+- Warning 变体按钮若与主原型 `--danger` 冲突，以 danger 语义为准
+- Tooltip 黑底白字强制 → 主原型 ToolRail tip 为表面色玻璃 tip（可保留生产增强，但不得与暗色对比度冲突）

@@ -1,5 +1,16 @@
 # 编辑器画布总规格（V1）
 
+## 0. 现行基线与实现状态
+
+唯一现行主原型：`core-01-editor-prototype.html`。编辑器画布规格以该文件中 `room-editor` 视图为准。
+
+| 项 | 约定 |
+|---|---|
+| 页面流 | 默认经 `auth → rooms → room-editor` 进入画布；历史 Landing / 空白 `/editor` 不再作为默认主路径 |
+| 演示 ≠ 生产 | 协作演示控制台、模拟断线/远端光标/OT 合并仅表达体验；生产语义以 REST/WS 为准 |
+| S03～S05 | **后端已实现**；**生产前端部分接入**；相对主原型的结构/视觉/交互逐项对齐，由下一变更 `implement-unified-prototype-spec-parity` 实现与验收 |
+| 历史原型 | `core-03/04/05-*-prototype.html` 仅参考，不作为验收入口 |
+
 ## 1. 概述
 
 编辑器画布是 V1 的核心交互区域。**所有画布对象在坐标系 `{x, y}` 中定位**，由 `editor-render` 模块渲染为 SVG / Canvas 元素。
@@ -38,10 +49,21 @@
 
 ### 3.1 拖动跟线与网格对齐
 
-- **拖动中**：对象使用未量化的视觉坐标；所有连接到该对象的关系路径在同一 `requestAnimationFrame` 回调内重算。禁止只改对象位置而让连线停留在 pointerdown 时的几何。
-- **松手对齐**：`pointerup` 时将 `{x, y}` 对齐到网格并写入 undo。主原型网格步长 **12px**；生产端网格步长与现有画布网格一致（`GRID_SIZE`，当前 **20px**）。不得在 pointermove 中量化坐标（避免连线一格一格跳）。
-- **DOM/Canvas**：拖动过程禁止重建整页或整块 Canvas 容器；原型只更新表 `left/top` 与 SVG `path[d]`；生产端在 rAF 中调用 `draw_canvas`，拖动中不 `set` 整表数组。
-- **捕获**：`setPointerCapture`，避免指针离开命中面后跟丢。
+- **指针捕获**：表头拖动 `setPointerCapture`；指针离开命中面不得丢跟。
+- **rAF 合并**：`pointermove` 只更新临时坐标；同一 `requestAnimationFrame`（原型 `schedulePaint` / 生产 `draw_canvas`）内重算表位置与关联关系路径。禁止每 move 整页 `render()` 或 `store.tables.set(整表)`。
+- **松手网格**：`pointerup` 才将 `{x, y}` 量化。生产端 **`GRID_SIZE = 20`**；主原型演示网格为 12px（`GRID`），不得把原型步长写成生产合同。
+- **拖动中禁止**在 pointermove 中量化（避免连线一格一格跳）。
+
+### 3.2 协作画布叠加层（与主原型一致）
+
+| 元素 | `data-testid` | 行为 |
+|---|---|---|
+| 远端光标 | `remote-cursor` | 显示协作者指针与标签；pointer-events: none |
+| 连接 Banner | `reconnect-banner` | `connection ≠ connected` 时出现；重连中 / 同步中 / 失败（含仅本地）文案与操作 |
+| 关系橡皮筋 | `rel-rubber-band` | 见 `core-01b`；拖动中仅更新 `path[d]` |
+| 关系提示条 | `rel-tool-hint` | 关系工具激活时显示 |
+
+演示控制台触发的远端事件**不得**写成生产必选 UI；生产以 WS presence / OT 事件驱动同等反馈。
 
 ## 4. 坐标系
 
@@ -55,11 +77,9 @@
 
 ### 5.1 渲染主体
 
-- **render 层**：`frontend-rs/editor_render` 使用 `<canvas>`（HTML5）+ 贝塞尔连线（自渲染，无 vDOM diff）
-- **响应式**：基于 Leptos signals 细粒度更新（仅重绘变更部分）
-- **拖动绘制**：pointermove 只更新临时变换；`requestAnimationFrame` 合并为每帧至多一次 `draw_canvas`。文件头声明的 rAF 节流必须落地，不得每 mousemove 触发 store 全量 set。
-- **性能预算**：100 张表 / 200 条关系 / 60fps（来源：Phase 4 W4 perf）；拖表跟线计入该预算
-- **画布容器 testid**：`<div class="cdb-canvas-container">` 必须带 `data-testid="editor-canvas"`，用于 e2e 定位画布区域（HP-01 / HP-05 锚点）
+- 画布容器：`data-testid="editor-canvas"`（主原型挂在 `canvas-shell`）。
+- 右侧属性面板：**`data-testid="inspector"`**（禁止继续使用 `inspector-panel` 作为验收锚点）。
+- StatusBar：`status-bar` / `ws-status` / `ot-rev`；Inspector 折叠由 `btn-inspector-toggle` 触发。
 
 ### 5.2 样式底座（CSS Design Tokens + cdb- 前缀规则）— V1 必交付
 
@@ -180,6 +200,12 @@
 - ❌ 自定义字体加载（V1 走系统字体栈）
 - ❌ CSS 动画（V1 无 transition / animation，避免影响 60fps 性能预算）
 
+### 5.5 响应式与 Viewer 只读
+
+- 响应式三档与主原型 `@media` 一致（宽屏 / ≤1179 Inspector 叠层 / ≤760 ToolRail 底栏等）；窄屏可隐藏部分 AppBar 次要控件，画布与写工具仍可达。
+- **Viewer**：写工具、拖表、改 Inspector 字段 disabled；仍可查看远端光标、连接 Banner、只读画布。
+- 协作离线且未选「仅本地」时，写操作暂停（与主原型 `canEdit` 语义对齐）。
+
 ## 6. 与侧栏 / 顶部菜单的联动
 
 - 单击侧栏 Tables Tab 中的某表 → 画布中该表高亮并滚动到视口
@@ -195,12 +221,25 @@
 - 不持久化（仅内存；进程结束即丢）
 - 不支持协作 undo（V1 无协作）
 
+## 画布与 Inspector / AppBar 联动补充
+
+- 选中表 → 打开并填充 **`inspector`**（非历史左栏 Tables Tab 作为主编辑面）。
+- 创建入口：Tool Rail（`tool-add-table` / `tool-relationship` 等）；浏览/搜索：Command Palette（⌘K）。
+- IO、分享、主题：经 AppBar **更多菜单**，见 `core-01d` / `core-05`。
+
 ## 8. V1 边界
 
 - ❌ 自动布局算法（drawdb 有，V1 不实现）
 - ❌ 多选移动时自动吸附到网格（V1 不实现）
 - ❌ 触控板手势（V1 仅鼠标）
 - ❌ 离线渲染（V1 完全依赖后端 API）
+
+### 8.1 V2 边界补充（对齐统一原型）
+
+- ❌ 将主原型演示器当作生产交付物
+- ❌ 以独立 S03/S04/S05 HTML 作为画布验收
+- ✅ 表拖动 pointer 捕获 + rAF + 松手 `GRID_SIZE=20`
+- ✅ 远端光标与连接 Banner 作为协作反馈合同（实现批次见 `implement-unified-prototype-spec-parity`）
 
 ## 9. 详细规格
 
@@ -217,7 +256,7 @@
 - coldrawdb `frontend-rs/src/editor_render.rs`
 - `docs/drawdb-capability-checklist.md` §1.1 / §2.3
 
-## ADDED — §6 空白画布引导（EmptyGuide / Phase C）
+## 6 空白画布引导（EmptyGuide / Phase C）
 
 > 模块：core | 提案：redesign-phase-c-import-export
 
@@ -247,7 +286,7 @@
 
 > 模块：core | 提案：redesign-phase-e-design-system-migration（E3 + E4 增量）
 
-## MODIFIED — §5.2 布局栅格（E1 token 引用统一）
+## 5.2 布局栅格（E1 token 引用统一）
 
 **merge 时替换** §5.2 段，更新为：
 
@@ -274,7 +313,7 @@
 
 **E1 增量**：所有硬编码颜色/阴影/圆角值替换为 `var(--cdb-*)` 引用。`styles.css` 顶部扩展 ~100 token，移除临时硬编码。
 
-## MODIFIED — §6 与侧栏 / 顶部菜单的联动（E3 Inspector 组件对齐）
+## 6 与侧栏 / 顶部菜单的联动（E3 Inspector 组件对齐）
 
 **merge 时在 §6 末尾追加**：
 
@@ -310,7 +349,7 @@ R5 将 Inspector 内 7 业务 Tab + **字段 Tab** 从文字换行栏改为 **4�
 
 **字段 Tab（R5）**：原 `.cdb-side-panel--right` 45% 底部分割废弃；`field-editor` 仅在 `tab-fields` 激活时全高渲染；选中表时自动切换至字段 Tab。
 
-## MODIFIED — §9 详细规格（E3 验收更新）
+## 9 详细规格（E3 验收更新）
 
 **merge 时在 §9 末尾追加**：
 
@@ -320,4 +359,3 @@ R5 将 Inspector 内 7 业务 Tab + **字段 Tab** 从文字换行栏改为 **4�
 - 选中态用 `--cdb-color-primary-soft` 高亮
 - 拖拽用 `--cdb-cursor-grab` / `--cdb-cursor-grabbing`
 - 画布背景：浅色 `--cdb-color-bg-3`，暗色（E5）`--cdb-color-bg-2`
-

@@ -2,18 +2,17 @@
 
 > Phase 2 输入：`core-S02-load-shared-diagram-design.md` | 原型：`core-01-editor-prototype.html` §Share 模态
 
+## 0. 现行文档与原型基线
+
+> Phase 2 输入：`core-S02-load-shared-diagram-design.md` | 原型：`core-01-editor-prototype.html`（Share 模态 + `?share=`）
+> 页面状态：`share-readonly`（鉴权旁路）；与默认 `auth → rooms → room-editor` 主路径并行
+> API/DB：本提案不新增端点；仅补页面状态与只读边界映射
+
 ## 1. 场景描述
 
-**用户故事**：作为协作者 A，我把自己编辑的 diagram 分享给协作者 B；B 通过链接在浏览器中打开该 diagram，看到完整内容并可继续编辑。
+**成功标志**：编辑器加载完整 diagram；URL 保持 `share` 参数；画布 **只读**（写工具禁用）。
 
-**触发**：
-
-- **冷启动**：用户访问 `https://coldrawdb.example.com/?share=<diagram_id>` 或 `/editor?share=<diagram_id>`
-- **编辑器内**：用户点击 AppBar `[data-testid="btn-share"]` 生成并复制分享链接
-
-**成功标志**：编辑器加载完整 diagram（含所有 tables/fields/references/areas/notes），可编辑；URL 保持 `share` 参数
-
-**覆盖范围**：CAP-PERSIST-01（读取）+ Share 模态（`modal-share` / `share-url`）+ `?share=` URL 解析
+**废止**：原文「可继续编辑」作为分享链接默认成功语义 → 改为 **匿名只读**（与 Phase 2 / 主原型一致）。若用户需写权限，须走 S03 登录 + S04 房间成员路径，而非分享旁路。
 
 ## 2. 参与者
 
@@ -101,9 +100,12 @@ sequenceDiagram
 
 ### 3.2 无 share 参数 — Landing 默认路径
 
-1. 用户访问 `/`（无 query）→ 不弹错误
-2. 展示 Landing 或空白编辑器
-3. 用户点击 New → `POST /api/v1/diagrams` → 跳转 `/editor/{id}`
+替换「Landing 或空白编辑器 / New → POST diagrams」为现行默认：
+
+1. 用户访问 `/`（无 query）→ **不**弹分享错误
+2. **未登录** → 进入 `auth`（登录/注册）
+3. **已登录** → 进入 `rooms`
+4. 不再将「Landing → New → 空白 `/editor`」写为现行默认主路径
 
 ## 4. 步骤详解
 
@@ -271,25 +273,33 @@ sequenceDiagram
 | ST-S-01 | 端到端：A 创建 + Share → B 通过链接加载 → 一致 | 完整链路 |
 | ST-S-02 | 端到端：A 编辑保存后 B 加载，B 编辑触发 409 | （S01 + S02 联合） |
 
+## 页面状态与参与者
+
+| 角色 | 模块 | 说明 |
+|---|---|---|
+| Router / Entry | `frontend-rs` `lib.rs` | 解析 `?share=`；**跳过**鉴权拦截 |
+| EditorDataAccess | `editor_data_access` | `GET /api/v1/diagrams/{id}`（匿名） |
+| EditorCore | `editor_core` | `set_diagram` + `readonly=true` |
+| ShareModal | AppBar | `[data-testid="modal-share"]` / `share-url`（生成旁路链接） |
+
+主原型演示加载失败/成功；生产以真实 GET 为准。
+
+## 异常映射（前端）
+
+| 条件 | 前端 | 下一步 |
+|---|---|---|
+| 200 | 只读渲染；禁用 PUT / 关系创建 / 邀请写 | 保持 `?share=` |
+| 404 | Toast「分享链接无效或图表已删除」 | 登录后进 rooms / 可达的创建入口（不得假设旧 Landing New） |
+| 网络失败 | 加载失败 + 重试 | 同 S01 退避策略 |
+| 非法 UUID | 前端拦截，不发请求 | 「无效链接」 |
+
 ## 9. V1 边界
 
-- ❌ 权限校验（V1 链接公开可访问；V2 计划加入鉴权）
-- ❌ 链接过期（V1 链接永久有效）
-- ❌ 链接访问统计（V1 不统计）
-- ❌ SSR 预渲染（V1 纯 SPA + 客户端拉取）
-- ❌ 数据库连接池优化（V1 单连接够用）
+- ✅ `?share=` **不被** S03 鉴权拦截（旁路）
+- ❌ 分享链接不授予 room 写权限（写权限仍走 S04 成员）
+- ❌ 链接过期 / 访问统计 — 仍 Out of Scope（除非独立变更）
 
 ## 10. 对齐参考源
 
-- `core-S02-load-shared-diagram-design.md` — Phase 2 交互 + 验收 G/W/T
-- `core-01-editor-prototype.html` — Share 模态锚点
-- `core-01-architecture-overview.md`（系统上下文 + 数据流）
-- `core-02-diagram-persistence.md`（API 端点）
-- `core-05-top-menu-modals.md`（Share 模态）
-- `core-00-information-architecture.md`（路由 §2）
-- `backend/src/diagrams_v1.rs`（5 端点 Rust 路由）
-- `backend/src/diagrams/service.rs`（read 实现）
-- `frontend-rs/src/lib.rs`（mount_to_body + 路由）
-- `frontend-rs/src/editor_data_access.rs`（fetch_diagram）
-- `docs/drawdb-capability-checklist.md` §2.5
-
+- `core-00-information-architecture.md` — `share-readonly` 状态
+- `core-S03-user-auth.md` — 旁路与私有路由区分

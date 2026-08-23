@@ -7,18 +7,12 @@
 
 | 编号 | 场景名称 | Phase 1 | Phase 2 | Phase 3 时序图 | API | 编排 | 状态 |
 |------|---------|---------|---------|--------------|-----|------|------|
-| S01 | 编辑并保存图表 | ✅ | ✅ | ✅ | ✅ | ✅ | **V1 已实现** |
-| S02 | 加载分享链接图表 | ✅ | ✅ | ✅ | ✅ | ✅ | **V1 已实现** |
-| S03 | 用户注册 / 登录 / Token 续期 | ✅ | ✅ | ✅ | ✅ | 🔲 | **后端已实现，生产前端待接入** |
-| S04 | 创建 / 加入协作房间 | ✅ | ✅ | ✅ | ✅ | ✅ | **后端已实现，生产前端待接入** |
-| S05 | OT 实时协作 | ✅ | ✅ | ✅ | ✅ | ✅ | **后端已实现，生产前端待接入** |
-| S06 | AI 客户端通过 MCP 管理数据库图表 | ✅ | ✅ | ✅ | ✅ MCP | ✅ | **规格变更中** |
-
-> **实现边界声明**：
-> - S01/S02 前后端已实现。
-> - S03～S05 的 auth/rooms/collab REST、DB、WS 与测试已实现，缺口是 `frontend-rs` 生产接入。
-> - 统一 HTML 主原型模拟 S03～S05 状态，不建立真实 auth/room/WS 连接，不能作为生产前端完成证据。
-> - S06 的工具设计源自 `core-S06-ai-client-mcp.md` 时序图，MVP 是独立 Rust stdio adapter。
+| S01 | 编辑并保存图表 | ✅ | ✅ | ✅ | ✅ | ✅ | **V1 已实现**；默认落在 `room-editor` 上下文 |
+| S02 | 加载分享链接图表 | ✅ | ✅ | ✅ | ✅ | ✅ | **V1 已实现**；`?share=` 鉴权旁路 |
+| S03 | 用户注册 / 登录 / Token 续期 | ✅ | ✅ | ✅ | ✅ | ✅ | **后端已实现**；生产前端 API/页面流已部分接入；相对主原型逐项对齐待 `implement-unified-prototype-spec-parity` |
+| S04 | 创建 / 加入协作房间 | ✅ | ✅ | ✅ | ✅ | ✅ | **后端已实现**；生产前端已部分接入；逐项对齐待下一变更 |
+| S05 | OT 实时协作 | ✅ | ✅ | ✅ | ✅ | ✅ | **后端已实现**；生产前端已部分接入；逐项对齐待下一变更 |
+| S06 | AI 客户端通过 MCP 管理数据库图表 | ✅ | ✅ | ✅ | ✅ MCP | ✅ | **规格与实现推进中**；本提案仅回归边界，不改 MCP 契约 |
 
 ## S06 技术索引
 
@@ -29,19 +23,21 @@
 ## 场景依赖关系
 
 ```
-V1 场景（无前置依赖）：
-├── S01 编辑保存 ──┐
-└── S02 分享加载 ──┴── 共享 backend + SQLite，无顺序约束
+V1：
+├── S01 编辑保存（非 room：PUT + 409；room 内：见 S05，禁止 409 模态）
+└── S02 分享加载（?share= 旁路）
 
-V2 场景（链式依赖）：
-S03 鉴权 ─→ S04 房间管理 ─→ S05 OT 协作
-       │              │              │
-       └──────────────┴──────────────┴── 共享 collab-server + WS 网关（V2 引入）
+V2 链式：
+S03 鉴权（成功 → rooms）
+  └─→ S04 房间（创建/打开/接受邀请 → room-editor）
+        └─→ S05 OT（WS 连接态 / 排队 / 重连 / 本地降级）
+
+回归边界：
+S06 MCP ──→ 既有 HTTP diagram 白名单（本提案不改路径）
 ```
 
-- **V1 场景之间无依赖**：S01（编辑保存）和 S02（分享加载）使用同一 backend + SQLite，但 HTTP 端点独立（PUT vs GET），可独立测试
-- **V2 场景存在链式依赖**：S03（鉴权）是 S04（房间）的前置，S04 是 S05（OT 协作）的前置；任一能力不可用都会阻断后续场景
-- **V1 → V2 无前置依赖**：V1 公开 share link 仍可在 V2 中作为「匿名邀请」兼容路径；具体迁移方案待 V2 提案定义
+- **废止**：依赖图中「共享独立 collab-server + WS 网关（V2 引入）」作为未落地计划表述 → 改为 **backend 已实现 WS/OT**；是否再拆进程不在本提案范围。
+- **V1 → V2**：`?share=` 仍为匿名只读兼容路径，与 room 成员写权限独立。
 
 ## 场景索引（V1 ✅ 技术维度）
 
@@ -54,43 +50,37 @@ S03 鉴权 ─→ S04 房间管理 ─→ S05 OT 协作
 
 | 场景 | 时序图 | Phase 2 设计 | 编排测试 | API / DB | 备注 |
 |---|---|---|---|---|---|
-| S03 | `core-S03-user-auth.md` ✅ | `core-S03-user-auth-design.md` ✅ | `core-S03-user-auth.json` 🔲 | `auth.yaml` ✅ + `coldrawdb-v2-auth.sql` ✅ | 后端完成；生产前端待接入 |
-| S04 | `core-S04-room-lifecycle.md` ✅ | `core-S04-room-lifecycle-design.md` ✅ | `core-S04-room-lifecycle.json` ✅ | `rooms.yaml` ✅ + `coldrawdb-v2-rooms.sql` ✅ | 后端完成；生产前端待接入 |
-| S05 | `core-S05-ot-collab.md` ✅ | `core-S05-ot-collab-design.md` ✅ | `core-S05-ot-collab.json` ✅ | `collab.yaml` ✅ + `coldrawdb-v2-collab.sql` ✅ | 后端完成；生产前端待接入 |
-
-### V2 历史占位（已 supersede）
-
-| 场景 | 原 Phase 1 概要 | 现行规格 |
-|---|---|---|
-| S04 | `core-00-scenario-overview.md` §S04 | `core-S04-room-lifecycle-design.md` |
-| S05 | `core-00-scenario-overview.md` §S05 | `core-S05-ot-collab-design.md` |
+| S03 | `core-S03-user-auth.md` ✅ | `core-S03-user-auth-design.md` ✅ | `core-S03-user-auth.json` ✅ | `auth.yaml` + `coldrawdb-v2-auth.sql` | 成功默认进入 **rooms**（非 `/editor`） |
+| S04 | `core-S04-room-lifecycle.md` ✅ | `core-S04-room-lifecycle-design.md` ✅ | `core-S04-room-lifecycle.json` ✅ | `rooms.yaml` + `coldrawdb-v2-rooms.sql` | 进入 **room-editor** |
+| S05 | `core-S05-ot-collab.md` ✅ | `core-S05-ot-collab-design.md` ✅ | `core-S05-ot-collab.json` ✅ | `collab.yaml` + `coldrawdb-v2-collab.sql` | 连接态/排队/重连/本地降级；协作不弹 S01 409 |
 
 ## 与 Phase 1 业务总览的关系
 
 | 维度 | Phase 1 业务总览 | Phase 3 技术总览（本文件） |
 |---|---|---|
-| 路径 | `prd/1-product-requirements/core-00-scenario-overview.md` | `prd/3-technical-plan/2-scenario-implementation/core-00-scenario-overview.md` |
-| 视角 | 用户视角（What）：场景描述、参与者、业务价值、验收 G/W/T | 技术视角（How）：时序图、API、编排、后端 / 前端模块映射 |
-| 受众 | PM / 设计 / 测试 | 后端 / 前端 / DevOps |
-| V2 场景 | 列出真实状态 | 标注「后端已实现、生产前端待接入」；Phase 2/3 规格与后端测试均已就绪 |
-
-**使用建议**：
-- 编写新功能时：从 Phase 1 总览读取业务背景 → 从本文件读取技术实现约束
-- 评估 V2 范围时：以 Phase 1 总览的「场景 ↔ 文档映射」表为索引 → 在本文件确认 S03–S05 后端完成状态与生产前端缺口
-- AI Agent 检索时：先查 Phase 1 确认「这个场景存在吗」，再查本文件确认「这个场景的时序图 / API / 编排在哪里」
+| V2 场景 | 列出真实状态 + 统一页面流 | 标注「后端已实现、生产前端部分接入、逐项对齐待下一变更」；规格映射含 rooms / room-editor / share 旁路 |
 
 ## 参考源
 
-- `logos/resources/prd/2-product-design/1-feature-specs/core-S01-edit-and-save-design.md` —— S01 Phase 2 交互设计
-- `logos/resources/prd/2-product-design/1-feature-specs/core-S02-load-shared-diagram-design.md` —— S02 Phase 2 交互设计
-- `logos/resources/prd/1-product-requirements/core-00-scenario-overview.md` —— Phase 1 业务总览
-- `logos/resources/prd/1-product-requirements/core-04-scenario-detail.md` —— S01 / S02 GIVEN/WHEN/THEN 详述
-- `logos/resources/prd/3-technical-plan/1-architecture/core-01-architecture-overview.md` —— V1 边界 §9 + 模块拆分
-- `logos/resources/prd/3-technical-plan/2-scenario-implementation/core-S01-edit-and-save-diagram.md` —— S01 时序图
-- `logos/resources/prd/3-technical-plan/2-scenario-implementation/core-S02-load-shared-diagram.md` —— S02 时序图
-- `logos/resources/prd/3-technical-plan/2-scenario-implementation/core-S03-user-auth.md` —— S03 时序图（注册/登录/refresh/logout）
-- `logos/resources/prd/3-technical-plan/2-scenario-implementation/core-S04-room-lifecycle.md` —— S04 时序图（创建/邀请/加入/成员管理）
-- `logos/resources/scenario/core-S01-diagram-save.json` —— S01 E2E 编排
-- `logos/resources/scenario/core-S02-shared-link-load.json` —— S02 E2E 编排
-- `logos/skills/scenario-architect/SKILL.md` §Step 5 —— 本文件的输出规范来源
-- `logos/logos-project.yaml` —— `scenarios` 字段 + `core.skip_phases` 配置
+- `core-01-editor-prototype.html` — 唯一现行主原型
+- `core-01-architecture-overview.md` — 页面状态 / 生产 vs 原型边界（本提案 delta）
+- 下一代码变更合同：`implement-unified-prototype-spec-parity`
+
+## 主原型与生产模块映射（摘要）
+
+| 页面状态 | 前端（生产） | 后端 | 主原型 |
+|---|---|---|---|
+| auth | AuthUI + AuthClient | `auth_v1` | 同壳演示登录 |
+| rooms / invite | RoomUI + RoomClient | `rooms_v1` | 本地房间数据 |
+| room-editor | editor_* + CollabClient | diagrams + WS | 本地 OT 模拟 |
+| share-readonly | EditorEntry + DataAccess | diagrams GET | Share 旁路演示 |
+
+## 实现边界声明
+
+> **实现边界声明**：
+> - S01/S02 前后端已实现。
+> - S03～S05 的 auth/rooms/collab REST、DB、WS 与测试已实现；生产前端已有**部分**接入，但不足以证明相对 `core-01-editor-prototype.html` 逐项完成。
+> - 统一 HTML 主原型仅模拟 S03～S05 状态，**不建立**真实 auth/room/WS 连接，不能作为生产前端完成证据。
+> - 默认登录后技术路径：`auth → rooms → room-editor`；`?share=` 旁路不阻断。
+> - 本提案预期不新增 API/DB；仅补齐前端参与者、页面状态与异常映射。
+> - S06 的工具设计源自 `core-S06-ai-client-mcp.md`；MVP 仍是独立 Rust stdio adapter，不受主原型 UI 对齐影响。

@@ -8,17 +8,19 @@
 > Phase 1 输入：`core-00-scenario-overview.md` §S04 / `core-03-pain-points.md` P03
 > 参考：drawdb main `CollabContext` 为 **stub**，无房间 UI；本场景为 coldrawdb V2 net-new
 
+## 0. 现行文档与原型基线
+
+> 模块：core | 场景：S04 | 版本：V2 | 优先级：P0
+> 现行原型：`core-01-editor-prototype.html`
+> 历史参考：`core-04-collab-prototype.html`（不作为验收入口）
+> 生产状态：后端已实现；生产前端 API/页面流已部分接入；相对主原型逐项对齐待下一变更 `implement-unified-prototype-spec-parity`
+> 前置：S03 已登录；后续：S05 OT
+
 ## 1. 产品类型与原型策略
 
 | 项 | 结论 |
 |---|---|
-| 产品类型 | Web 应用（编辑器 + 房间管理 SideSheet / 模态） |
-| 主原型 | `core-01-editor-prototype.html`（S01～S05 唯一评审入口） |
-| 原型形式 | 单文件可交互 HTML（房间列表 → 创建 → 编辑器内协作 → 邀请 / 加入） |
-| 历史参考 | `core-04-collab-prototype.html`（存在未绑定演示控件，不再作为验收入口） |
-| 生产实现 | 后端 rooms API/DB 与编排已实现；`frontend-rs` 房间列表、邀请和成员面板尚未接入 |
-| 视觉基准 | 统一 token + 与编辑器一致的 Light/Dark 玻璃态 AppBar 栅格；Dark 模式采用高对比度暗色色板（以主原型 `html[data-mode="dark"]` token 组为准：`--bg:#050f13`、`--surface` 不透明度 .86、文字层级 `--text:#f2fdfe` / `--text-2:#b8d2d8` / `--text-3:#86a3ab`），房间卡片、空状态、用户菜单与邀请预览页文字对背景对比度均 ≥ WCAG AA 4.5:1；成员头像（avatar）initials 对浅色填充统一深色字 `rgba(20,16,40,.85)`（dark 模式全部头像；light 模式内联浅色填充头像，渐变深底头像保持白字），各成员色组合 ≥ 4.5:1，invite 页 h1 第二行使用品牌色 `<span>` 强调（与 auth 页视觉语言一致） |
-| 痛点关联 | **P03** 团队评审——将「导出 JSON 邮件来回」替换为「同一 diagram 房间内协作入口」 |
+| 生产实现 | 后端 rooms API/DB 与编排已实现；生产前端已有部分房间/邀请接入；须对齐主原型：房间列表、创建 Modal、邀请、成员 SideSheet、角色即时权限、进入 room-editor |
 
 ## 2. 信息架构（V2 增量）
 
@@ -196,6 +198,16 @@
   - B 从列表消失
   - B 再次访问该 room URL 得 403 + 「你已不是成员」
 
+## 页面锚点（主原型强制）
+
+保留并作为生产对齐目标：`rooms-list-page`、`btn-create-room`、`room-list`、`room-badge`、`btn-invite`、`room-presence`、`room-members-panel`、`invite-url`、`btn-accept-invite`、`invite-accept-page`。
+
+浮层关闭后不得遗留可拦截点击的遮罩。
+
+## 角色切换反馈
+
+角色切换必须即时更新 ToolRail、Inspector、邀请按钮、StatusBar 与可发送写操作的能力；Viewer 禁用须同时阻断事件并给出原因 Toast。
+
 ## 5. 与 S03 / S05 的边界
 
 | 场景 | S04 负责 | 不在 S04 |
@@ -228,7 +240,14 @@
 
 ## 8. 生产实现状态
 
-主原型使用本地模拟房间数据；真实 room CRUD、邀请、角色权限由 backend 提供，但生产前端尚未调用。规格中的 `data-testid` 是后续前端接入目标，不得据此把 S04 标记为全栈完成。
+主原型使用本地模拟房间数据。真实 room CRUD、邀请、角色权限由 backend 提供。
+
+准确状态：
+
+1. 后端与编排已完成
+2. 生产前端已有部分调用与页面流
+3. 不得仅因 `data-testid` 存在于规格就标记全栈完成
+4. 逐项 UI/权限对齐合同见本提案与验收矩阵；实现见下一变更
 
 ## 9. 单文件房间生命周期演示
 

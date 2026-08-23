@@ -1,42 +1,29 @@
 # Dark Mode 规格（E5）
 
+## 0. 事实基线
+
+唯一现行主题基线：`core-01-editor-prototype.html`。
+
+- 根节点：`<html lang="zh-CN" data-mode="dark|light">`
+- 默认演示为 **dark**；`document.documentElement.dataset.mode = state.theme` 同步
+- 主题覆盖 **auth / rooms / room-editor（含 Modal、Drawer、Toast、Code）全页**，禁止仅编辑器局部换肤
+
 ## 1. 概述
 
-E5 实现 drawdb-web 的暗色模式，对齐 main `settings.mode === "dark"` 全局切换（`darkBgTheme = "#16161A"`）。E1 阶段已定义 `<html data-mode="light|dark">` DOM 接口与 token 覆盖规则（`core-07-design-tokens.md` §14/§15），E5 填充具体映射值与 JS 切换逻辑。
-
-**E5 目标**：
-- `<html data-mode="dark">` 时全局 token 切换为暗色映射
-- 用户偏好持久化到 `localStorage["cdb-mode"]`
-- 首次访问跟随 `prefers-color-scheme` 媒体查询
-- AppBar 提供 Theme toggle 按钮（E3 §1）+ View → Theme 子菜单
+暗色模式通过 `data-mode` 切换整套表面 token（见 `core-07`）。目标：玻璃态高对比可读、WCAG AA 级正文/控件对比，且三态页面视觉语言一致。
 
 ## 2. Token 暗色映射
 
-完整 token 列表见 `core-07-design-tokens.md` §2–§14。本节定义 light → dark 的映射规则。
+| Token（主原型） | Dark 事实值 |
+|---|---|
+| `--bg` | `#050f13` |
+| `--bg-deep` | `#08191f` |
+| `--surface-solid` | `#10262d` |
+| `--text` | `#f2fdfe` |
+| `--brand` | `#5ee9dc` |
+| `--accent` | `#b9a0ff` |
 
-| Light token | 值 | Dark 值 | 备注 |
-|---|---|---|---|
-| `--cdb-color-primary` | `#175e7a` | `#4ba3c4` | 暗色下提高亮度，对比度 |
-| `--cdb-color-primary-hover` | `#134c63` | `#6cb8d4` | — |
-| `--cdb-color-primary-soft` | `#e6f1f5` | `#1a3a48` | 暗色下加深而非提亮 |
-| `--cdb-color-text-0` | `#1f2937` | `#f9fafb` | 反转 |
-| `--cdb-color-text-1` | `#374151` | `#e5e7eb` | — |
-| `--cdb-color-text-2` | `#6b7280` | `#9ca3af` | — |
-| `--cdb-color-text-3` | `#9ca3af` | `#6b7280` | — |
-| `--cdb-color-bg-0` | `#ffffff` | `#16161a` | **main `darkBgTheme`** |
-| `--cdb-color-bg-1` | `#f9fafb` | `#1f1f23` | toolbar / sidesheet |
-| `--cdb-color-bg-2` | `#f3f4f6` | `#2a2a2e` | popover 嵌套 |
-| `--cdb-color-bg-3` | `#e5e7eb` | `#0e0e10` | 画布背景（最深） |
-| `--cdb-color-border` | `#e5e7eb` | `#2a2a2e` | — |
-| `--cdb-color-border-strong` | `#d1d5db` | `#3a3a3e` | — |
-| `--cdb-color-warning-soft` | `#fef3c7` | `#5c4a0e` | 暗色下加深 |
-| `--cdb-color-success-soft` | `#d1fae5` | `#0e4f3a` | — |
-| `--cdb-color-error-soft` | `#fee2e2` | `#5c1a1a` | — |
-| `--cdb-color-info-soft` | `#dbeafe` | `#1a3a5c` | — |
-| `--cdb-shadow-sm` | `rgba(0,0,0,0.05)` | `rgba(0,0,0,0.3)` | 暗色阴影更深 |
-| `--cdb-shadow-md` | `rgba(0,0,0,0.07)` | `rgba(0,0,0,0.4)` | — |
-| `--cdb-shadow-lg` | `rgba(0,0,0,0.1)` | `rgba(0,0,0,0.5)` | — |
-| `--cdb-shadow-xl` | `rgba(0,0,0,0.1)` | `rgba(0,0,0,0.6)` | — |
+完整映射以 `core-07` dark 表为准。历史 Semi `darkBgTheme = #16161a` **移除为现行事实**。
 
 ## 3. CSS 实现
 
@@ -170,15 +157,11 @@ E4 CodeView 在 `setup_dbml()` 中根据当前 mode 设置 Monaco 主题：
 
 ## 8. 验收约束
 
-- `frontend-rs/src/settings.rs` 含 `THEME_MODE` 全局信号 + `apply_theme_mode` 函数
-- `<html>` 元素 `data-mode` 属性在 light/dark 间切换
-- `localStorage["cdb-mode"]` 持久化用户选择
-- `prefers-color-scheme: dark` 在 System 模式下生效
-- AppBar `btn-theme-toggle` 点击循环切换 Light → Dark → System → Light
-- View → Theme 子菜单点击立即应用并持久化
-- Monaco 主题实时跟随切换（UT-E5-04）
-- 跨标签页 storage 事件触发同步（UT-E5-05）
-- ST-PE-06：Playwright 切换暗色模式，截图含暗色 token
+- 任意页面切换主题后，无未换肤白块/黑块
+- `data-mode` 与可见主题一致
+- AA：抽样 Auth 标题/正文、Primary 按钮、Banner 文案、Toast 标题
+- Code View / Drawer preview 跟随暗色代码表面
+- Monaco（若启用）主题与 `data-mode` 同步
 
 ## 9. 不在 E5 范围
 
@@ -186,3 +169,38 @@ E4 CodeView 在 `setup_dbml()` 中根据当前 mode 设置 Monaco 主题：
 - 用户自定义主题色（替换 `--cdb-color-primary`）— V2+
 - 自动切换（按时间 19:00 切暗色）— V2+
 
+## 全页覆盖范围
+
+| 页面 / 表面 | 要求 |
+|---|---|
+| auth | 故事区、表单、tabs、primary CTA、错误文案 |
+| rooms | nav、房间卡、新建虚线卡、用户菜单 |
+| room-editor | AppBar、ToolRail、画布表/关系、Inspector、StatusBar、Banner |
+| 浮层 | Modal overlay、Popover、Command、Drawer、Toast |
+| 代码 / 预览 | `.code-area` / `.preview` 使用暗色代码底（原型 `#061217`） |
+
+主原型另有 `html[data-mode="dark"] …` 组件级增强（边框改 `--line-strong`、primary 按钮近黑字等），生产须等价实现或收进 token，避免漏表面。
+
+## 全页面主题切换入口
+
+| 入口 | 行为 |
+|---|---|
+| rooms：主题按钮 | `aria-label="切换主题"`；dark↔light |
+| editor：更多菜单 `btn-theme-toggle` | 同上 + Toast「主题已切换」 |
+| 偏好设置 Modal | `<select>` 深色玻璃 / 浅色玻璃 |
+| 命令面板 | 「切换主题」命令 |
+
+生产可保留 Light / Dark / System 三态与 `localStorage["cdb-mode"]`；**未显式选择时**可跟随 `prefers-color-scheme`，但显式 `data-mode` 优先级更高。
+
+## WCAG AA
+
+- 正文 `--text` 对 `--bg` / 实心表面对比度 ≥ 4.5:1
+- 辅助 `--text-2` / `--text-3` 用于非关键文案；关键错误/按钮不得仅用 `--text-3`
+- 暗色 primary 按钮：亮 brand 底 + 深字（`#050f13`），避免亮底亮字
+- 焦点可见：输入/按钮 focus 使用 brand 边或 focus ring token
+- 不依赖「仅色相」区分成功/错误（配合图标与文案）
+
+## 过时主题映射（不再作为现行事实）
+
+- Light→Dark 表中以 `#4ba3c4` / `#16161a` / grey 反转为主的 Semi 映射作为唯一真值
+- View 菜单 emoji（☀🌙💻）作为唯一入口文案 → 改用 SVG 图标 + 中文

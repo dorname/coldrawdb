@@ -1,12 +1,18 @@
 ## 1. 范围
 
-本文件覆盖场景 S02（分享链接加载）的全部 UT 和 ST 用例规格。
+S02：分享链接匿名只读加载。与统一页面流关系：`?share=` **旁路** auth/rooms，不被鉴权阻断；无 share 参数时走 auth→rooms。
 
-**对应实现**：`backend/src/diagrams_v1.rs::read` + `backend/src/diagrams/service.rs::read` + `frontend-rs/src/editor_data_access.rs::fetch_diagram`
+状态：后端已实现；生产前端部分接入；逐项对齐待第二阶段。实现阶段须将用例结果写入 `logos/resources/verify/test-results.jsonl`（OpenLogos reporter）；本提案仅规格收口，不执行自动化。
 
-**对账**：
-- UT-S-01..03（来自 `core-S02-load-shared-diagram.md` §8）
-- ST-S-01/02（来自 `core-S02-load-shared-diagram.md` §8）
+## ADDED / MODIFIED — 分享只读与路由
+
+| ID | 前置 | 操作 | 预期 | 变更 |
+|---|---|---|---|---|
+| ST-S02-SHARE-RO | 未登录 | 打开 `?share=<valid>` | 进入只读编辑器；写工具禁用；不强制登录 | ADDED |
+| ST-S02-404 | 未登录 | `?share=<missing>` 或 GET 404 | 友好 404；不泄漏内部错误；不枚举私有房间 | MODIFIED（对齐 UI） |
+| ST-S02-NO-SHARE | 未登录 | 打开默认入口（无 share） | 进入 **auth**；不进入私有 rooms 数据 | ADDED |
+| ST-S02-SHARE-VS-AUTH | 已登录 | 打开 `?share=` | 仍只读分享态；不因已登录自动升级为可写 | ADDED |
+| UT-S02-ROUTE-01 | URL 解析 | 同时有 diagram path 与 `?share=` | share 优先；`share_mode=true` | ADDED（与 FE-S03 对齐） |
 
 ## 2. UT 用例（单元测试）
 
@@ -124,20 +130,7 @@
 
 ### ST-S02-01 — A 创建 + Share → B 通过链接加载 → 一致
 
-- **位置**：`backend/tests/scenarios/s02.rs`
-- **类型**：Rust integration test
-- **步骤**：
-  1. 启动后端
-  2. A POST `/api/v1/diagrams` body 含 5 表 20 字段 → 创建 diagram (id=X, rev=0)
-  3. B 模拟浏览器：访问 `/editor/{X}`
-  4. B 触发前端 mount → fetch_diagram
-  5. 验证 B 端获取的 Diagram 与 A 提交的一致
-- **断言**：
-  - A 创建响应 201
-  - B fetch 响应 200
-  - 字段数 / 字段名 / 类型 / 关系 / 区域 / 便签 全部一致
-  - B 端 revision == 0
-  - B 端可成功编辑并 PUT 触发 S01 流程
+加载入口文案改为分享只读 / `share-readonly` 页面态；废止「默认 Landing→空白 editor」为主路径的表述。
 
 ### ST-S02-02 — A 编辑保存后 B 加载，B 编辑触发 409
 
@@ -267,4 +260,3 @@ pub fn make_full_diagram() -> Diagram {
 | ST-S02-04 | 网络断开重试 | `backend/tests/scenarios/s02.rs` |
 | ST-S02-05 | 浏览器渲染 | `frontend-rs/tests/wasm/` |
 | ST-S02-06 | 并发分享会话 | `backend/tests/scenarios/s02.rs` |
-

@@ -4,40 +4,29 @@
 > Phase 2 输入：`core-S04-room-lifecycle-design.md`
 > Phase 1 输入：`core-00-scenario-overview.md` §S04
 
+## 0. 现行文档与原型基线
+
+> 版本：V2 | 前置：**S03** | 后续：**S05**
+> Phase 2：`core-S04-room-lifecycle-design.md` | 现行原型：`core-01-editor-prototype.html`
+> 历史参考：`core-04-collab-prototype.html`（非验收入口）
+> 生产状态：后端已实现；生产前端 API/页面流已部分接入；逐项对齐待 `implement-unified-prototype-spec-parity`
+> 跳转目标：创建 / 打开 / 接受邀请后进入 **`room-editor`**（非历史 `/editor/{id}?room=` 文案作为唯一命名）
+> API/DB：预期不新增端点或表；仅补前端参与者、页面状态与权限反馈映射
+
 ## 1. 场景描述
 
-**用户故事**：作为团队负责人，我能为 diagram 创建协作房间、邀请成员并以角色（owner/editor/viewer）加入，以便多人进入同一编辑器上下文（S05 OT 的前置）。
-
-**触发**：
-
-- S04.1：Owner 创建 room 并绑定 diagram
-- S04.2：Owner/Editor 生成邀请链接
-- S04.3：被邀请人接受 invite
-- S04.4：成员管理（改 role / 移除 / 离开）
-
-**成功标志**：
-
-- room 创建后跳转 `/editor/{diagramId}?room={roomId}`
+- room 创建 / 打开 / accept 后进入 **`room-editor`**（`room-editor-page`；路由可为 `/rooms/{id}/editor` 或等价）
 - 被邀请人 accept 后成为 `room_member`
-- viewer 进入编辑器时为只读 UI
-
-**覆盖范围**：`room` / `room_member` / `room_invite` 表；JWT 校验 + room 成员校验
+- viewer 进入编辑器时为只读 UI（ToolRail / 邀请写 / PUT 禁用）
 
 ## 2. 参与者
 
-| 角色 | 模块 | 说明（V2 规划） |
+| 角色 | 模块 | 说明 |
 |---|---|---|
-| User | — | 浏览器用户（须 S03 登录，share 链路除外） |
-| RoomUI | `frontend-rs` room 页面 | `/rooms` `/invite/{token}` |
-| EditorUI | `frontend-rs` editor_panels | room 上下文 AppBar |
-| RoomClient | `frontend-rs` room HTTP 客户端 | 带 Bearer JWT |
-| HTTP | Browser Fetch | REST |
-| AuthMW | `backend` auth middleware | JWT 校验 `sub` → user_id |
-| RoomsAPI | `backend/src/rooms_v1.rs` | `/api/v1/rooms/*` |
-| RoomSvc | `backend/src/rooms/service.rs` | room 业务 |
-| RoomRepo | `backend/src/rooms/repository.rs` | room / member / invite |
-| DiagramRepo | `backend/src/diagrams/` | diagram 存在性校验 |
-| DB | SQLite | V2 表 + V1 diagram |
+| RoomUI | `frontend-rs` | `rooms` / `invite` 页面；`rooms-list-page` / `invite-accept-page` |
+| EditorUI | `frontend-rs` room-editor 壳 | AppBar `room-badge` / `btn-invite` / `room-members-panel` |
+| RoomClient | `frontend-rs` | 真实 Bearer REST（既有 rooms 11 端点） |
+| 主原型 | HTML 本地房间数据 | 仅演示；非生产完成证据 |
 
 ## 3. 时序图 — S04.1 创建协作房间
 
@@ -275,6 +264,42 @@ sequenceDiagram
 | UT-R-06 | viewer PUT 403 | EX-7.1 |
 | ST-R-01 | 创建→邀请→B accept→同 room 编辑 | S04 E2E |
 
+## 房间生命周期跳转语义
+
+凡「navigate editor …」「redirect editor with room」「`/editor/{diagramId}?room={roomId}`」统一语义为：
+
+→ 进入 **`room-editor`**，并携带 room（及 diagram）上下文；AppBar 显示 `room-badge`。
+
+对应：§3 Step 18b–19b、§5 Step 19–20、§7.1 Step 6、§13 与 S05 衔接中的编辑器 URL。
+
+兼容：生产可用 query 或 path 实现同一页面状态，**信息架构状态 ID 以 `room-editor` 为准**。
+
+## 页面流（技术）
+
+```text
+rooms（列表/创建）
+  ├── POST /rooms 201 ──────────────→ room-editor
+  ├── 打开已有房间 ─────────────────→ room-editor
+  └── /invite/{token}
+        ├── preview 410 ────────────→ 失效页（无加入按钮）
+        └── accept 200 ─────────────→ room-editor
+```
+
+未登录访问 `/rooms` → `401` + 前端 redirect `/login?redirect=/rooms`（EX-4.1）。
+
+## 权限反馈映射（前端）
+
+| 条件 | HTTP / 业务码 | 前端 |
+|---|---|---|
+| 非成员进编辑器 | 403 NOT_A_MEMBER | Toast + 回 rooms |
+| viewer 写操作 | 403 READ_ONLY | 禁用工具 + Toast 原因 |
+| diagram 已绑 room | 409 ROOM_DIAGRAM_TAKEN | 创建失败提示，可引导打开已有房间 |
+| 邀请过期 | 410 INVITE_EXPIRED | 失效页，无 `btn-accept-invite` |
+| Owner leave | 409 OWNER_CANNOT_LEAVE | Toast；须删 room 或转让（若规格有） |
+| 角色切换 | PATCH members | **即时**更新 ToolRail / Inspector / 邀请 / StatusBar |
+
+锚点保留：`rooms-list-page`、`btn-create-room`、`room-list`、`room-badge`、`btn-invite`、`room-presence`、`room-members-panel`、`invite-url`、`btn-accept-invite`、`invite-accept-page`。
+
 ## 12. V2 边界
 
 - ✅ 依赖 S03 JWT；不重复实现登录
@@ -284,12 +309,10 @@ sequenceDiagram
 
 ## 13. 与 S05 的衔接
 
-- S04 完成后，用户可在 `/editor?room=` 上下文内建立 **WS 连接**（S05 Step 1）
-- collab-server 校验同一 JWT + `room_member` 后接受 op
+- S04 完成后，用户在 **`room-editor`** 上下文建立 WS（S05）
+- 离开编辑器经 `room-badge` 回 **rooms**，不断开鉴权会话（除非 logout）
 
 ## 14. 对齐参考源
 
-- `core-S04-room-lifecycle-design.md` — Phase 2
-- `core-04-collab-prototype.html` — UI 锚点
-- `core-S03-user-auth.md` — JWT 前置
-- `auth.yaml` — Bearer 安全方案
+- 现行主原型：`core-01-editor-prototype.html`
+- `core-00-information-architecture.md` — rooms / invite / room-editor

@@ -6,18 +6,18 @@
 
 ## 1. 范围
 
-模态补全（B4 范围）：
-- `ModalRoot` 通用壳：遮罩 + ESC 关闭 + 背景点击关闭
-- 4 个模态组件：`NewModal` / `OpenModal` / `ShareModal` / `RenameModal`
-- 顶部 File 菜单展开 4 个下拉项：New / Open / Share / Rename
-- 接入 `editor_data_access::create` / `get`
+主模态：遮罩、Esc、背景点击关闭，关闭后**无残留** overlay。
 
-**对应实现**：
-- `frontend-rs/src/editor_panels.rs`（`ModalRoot` 子模块 + 4 个 `*Modal` 组件 + `TopMenuBar` 下拉）
-- `frontend-rs/src/editor_data_access.rs`（`create` / `get` 已就位，B4 不重写）
+状态：后端已实现；生产前端部分接入；逐项对齐待第二阶段。实现阶段须将用例结果写入 `logos/resources/verify/test-results.jsonl`（OpenLogos reporter）；本提案仅规格收口，不执行自动化。
 
-**对应 spec 测试 ID**（`core-05-top-menu-modals.md` §7）：
-- UT-MM-01 / UT-MM-04 / UT-MM-05 / UT-MM-06 / UT-MM-07 / UT-MM-08
+## MODIFIED / ADDED — 关闭与残留
+
+| ID | 变更 | 合同 |
+|---|---|---|
+| UT-MM-04 / UT-MM-05 | MODIFIED | 背景点击 / Esc → `modal_kind=None`；`modal-root` 与遮罩从 DOM 移除或 `hidden`；焦点回退合理 |
+| ST-MM-ESC-01（ADDED） | ADDED | 连续打开 New/Share/Conflict 再 Esc：无透明拦截层；画布可点击 |
+| ST-MM-CONFLICT-OT（ADDED） | ADDED | 协作 OT 成功路径**不**打开 conflict 模态（与 S01/S05 交叉） |
+| UT-MM-01/06/07/08 | 保留 | 标题校验、Share URL 格式等 |
 
 ## 2. UT 用例
 
@@ -102,6 +102,10 @@
   5. 点击 File → Rename → 改为 "renamed" → OK → 验证标题变化
   6. 点击 File → Open → 输入 URL 中提取的 id → 验证加载
 - **B4 标记 skip**：完整 e2e 跑在 B5 wasm-pack test 接入后
+
+## 层级
+
+主模态必须高于抽屉/Popover；关闭动画结束（或 reduced-motion 即时）后不得残留 pointer-events 挡板。
 
 ## 4. V1 边界
 

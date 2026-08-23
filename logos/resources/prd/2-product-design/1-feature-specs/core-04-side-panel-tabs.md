@@ -1,24 +1,46 @@
 # 侧边栏规格（V1）
 
+## 0. 现行基线与实现状态
+
+唯一现行主原型：`core-01-editor-prototype.html`。侧栏语义以 **Tool Rail + Inspector + 抽屉** 为准，不再以 V1 左栏 7 Tab 为产品主路径。
+
+| 项 | 约定 |
+|---|---|
+| 页面流 | `auth → rooms → room-editor`；侧栏工具仅在 room-editor |
+| 演示 ≠ 生产 | 协作动态抽屉、演示角色切换仅为体验；生产以房间成员 API / WS 为准 |
+| 实现状态 | **后端已实现**；**生产前端部分接入**；逐项对齐待 `implement-unified-prototype-spec-parity` |
+| Inspector | **`data-testid="inspector"`**（禁止 `inspector-panel`） |
+
 ## 1. 侧边栏布局
 
-```
-+---------------------------------+
-| [Search] [Filter]               |
-+---------------------------------+
-| [Tables] [Areas] [Enums] [Notes]|
-| [Relationships] [Types] [Issues]|
-+---------------------------------+
-|                                 |
-|         Tab Content             |
-|                                 |
-+---------------------------------+
-```
+V2 编辑器壳（与主原型 / IA 一致）：
 
-- 顶部固定：搜索框 + 类型筛选器
-- Tab 栏：6 业务 Tab + Issues（V1 关键）
-- 内容区：当前 Tab 的列表 / 树形
-- 状态：默认展开 Tables Tab；切换 Tab 时保留滚动位置
+| 区域 | `data-testid` | 职责 |
+|---|---|---|
+| Tool Rail | `tool-rail` | 建表、关系、区域、便签、命令搜索、协作动态、设置 |
+| Canvas | `editor-canvas` | 对象交互；远端光标；连接 Banner |
+| Inspector | `inspector` | 选中表/对象属性；可折叠 |
+| 成员抽屉 | `room-members-panel` | 成员与角色 |
+| 活动抽屉 | `activity-feed` | 协作动态（可选） |
+| IO 抽屉 | `import-drawer` / `export-drawer` | 经更多菜单 |
+
+**Tool Rail 主按钮（对齐主原型）**：
+
+| 按钮 | testid | 说明 |
+|---|---|---|
+| 新建表 | `tool-add-table` | Viewer disabled |
+| 关系 | `tool-relationship` | 进入关系工具；见 `core-01b` |
+| 区域 / 便签 | — | 画布添加 |
+| 搜索与命令 | `tool-search` | 打开 Command Palette |
+| 协作动态 | — | `open-drawer` activity |
+| 画布设置 | — | 打开设置模态 |
+
+V1 §2～§7 各业务 Tab **仅作历史行为记录**；浏览/搜索迁至 Command Palette，属性编辑迁至 Inspector。
+
+### 1.1 响应式
+
+- ≤1179：Inspector 叠在画布右侧，默认宽度约 330px；可关闭。
+- ≤760：Tool Rail 改底栏横排；Inspector 绝对叠层；写工具保留 `mobile-keep` 可达性策略见 `core-05`。
 
 ## 2. Tables Tab
 
@@ -158,6 +180,10 @@
 - 加载：从后端加载 diagram 后立即触发
 - 手动：顶部菜单"Validate"按钮强制重新校验
 
+### 8.5 Issues / 校验
+
+Issues 不以左栏 Tab 为唯一入口；可与 StatusBar / 折叠条 / 命令面板并存。主原型未单独展示 Issues Tab 时，生产实现不得倒退回强制 280px 七 Tab 左栏。
+
 ## 9. DBML Editor（V1 备选视图）
 
 ### 9.1 入口
@@ -212,6 +238,12 @@ Table users {
 - ❌ Tab 自定义排序（V1 固定 Tab 顺序）
 - ❌ Tab 拖拽收纳（V1 全部展开）
 
+### 12.1 Viewer 只读
+
+- Tool Rail 写按钮 disabled。
+- Inspector 输入与删除 disabled。
+- 仍可打开成员抽屉查看（不可改他人角色，除非 Owner 管理规则另述）。
+
 ## 13. 对齐参考源
 
 - drawdb `src/components/EditorSidePanel/`
@@ -233,7 +265,7 @@ Table users {
 
 > 模块：core | 提案：redesign-phase-e-design-system-migration（E3）
 
-## MODIFIED — §1 侧边栏布局（Phase A 废弃说明 + Tool Rail 图标 E2 替换）
+## 1 侧边栏布局（Phase A 废弃说明 + Tool Rail 图标 E2 替换）
 
 **merge 时替换** §1 段，更新为：
 
@@ -283,7 +315,7 @@ V1 的 280px 左栏 7 Tab 已在 **Phase A** 中废弃（`redesign-phase-a-layou
 
 **z-index**：Tool Rail `--cdb-z-side-rail`（L2.5），Issues Collapse 跟随 AppBar 层（L2）
 
-## MODIFIED — §2 Tables Tab（Phase A 标记废弃）
+## 2 Tables Tab（Phase A 标记废弃）
 
 **merge 时在 §2 顶部插入废弃说明**：
 
@@ -294,11 +326,11 @@ V1 的 280px 左栏 7 Tab 已在 **Phase A** 中废弃（`redesign-phase-a-layou
 >
 > 本节 §2 内容**仅作 V1 行为记录**，不构成 V2 规范。V2 行为以 `core-01-editor-canvas.md` 与 `core-09-core-components.md` §8 Collapse 为准。
 
-## MODIFIED — §3–§7 Areas / Enums / Notes / Relationships / Types Tab（同上废弃说明）
+## 3–7 Areas / Enums / Notes / Relationships / Types Tab（同上废弃说明）
 
 **merge 时在 §3、§4、§5、§6、§7 顶部各插入相同的废弃说明**（与 §2 相同，列表项指向对应 Tool Rail 按钮）。
 
-## MODIFIED — §8 Issues Tab（升级为 E3 Collapse）
+## 8 Issues Tab（升级为 E3 Collapse）
 
 **merge 时替换** §8 Issues 段，更新为：
 
@@ -337,4 +369,3 @@ V1 Issues 是 7 Tab 之一。V2 升级为 AppBar 下方全宽折叠条带，由 
 - header 高度 40px，hover `--cdb-color-grey-1`
 - 列表项 `--cdb-font-size-sm`，`color: var(--cdb-color-text-1)`
 - Tag `color=Warning` 背景 `--cdb-color-warning-soft`
-
