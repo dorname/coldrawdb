@@ -6,12 +6,12 @@
 
 | Metric | Value |
 |--------|-------|
-| Defined cases | 265 |
+| Defined cases | 266 |
 | Manual cases (excluded) | 0 |
-| Executed cases | 265 |
-| Passed | 160 |
+| Executed cases | 266 |
+| Passed | 210 |
 | Failed | 0 |
-| Skipped | 105 |
+| Skipped | 56 |
 | Uncovered | 0 |
 | Coverage | 100% |
 | Pass rate | 100% |
@@ -40,12 +40,9 @@
 - ST-S02-05
 - ST-S02-06
 - ST-CR-01
-- ST-CR-02
 - ST-MM-01
 - ST-MM-02
 - ST-MM-03
-- ST-PB-01
-- ST-PB-02
 - ST-PC-01
 - ST-SP-01
 - ST-UI-05
@@ -78,50 +75,4 @@
 - ST-FE-PROTO-06
 - ST-FE-PROTO-07
 - ST-FE-PROTO-08
-- ST-KB-CMD-01
-- ST-KB-ESC-01
-- ST-KB-T-01
-- ST-KB-R-01
-- ST-PC-MENU-01
-- ST-PC-FMT-01
-- ST-PC-INSPECTOR
-- ST-PU-22
-- ST-PU-23
-- ST-PU-24
-- ST-PU-25
-- ST-PU-26
-- UT-S01-SS-01
-- UT-S01-SS-02
-- ST-S01-SS-01
-- ST-S01-409-SCOPE
-- ST-S01-NO-409-OT
-- ST-S01-409-LOCAL-ONLY
-- ST-S02-SHARE-RO
-- ST-S02-404
-- ST-S02-NO-SHARE
-- ST-S02-SHARE-VS-AUTH
-- UT-S02-ROUTE-01
-- ST-S03-UI-01
-- ST-S03-UI-02
-- ST-S03-UI-03
-- ST-S03-UI-04
-- ST-S03-UI-05
-- UT-S03-ERR-01
-- ST-S04-UI-01
-- ST-S04-UI-02
-- ST-S04-UI-03
-- ST-S04-UI-04
-- ST-S04-UI-05
-- ST-S04-UI-06
-- ST-S04-UI-07
-- ST-S05-UI-01
-- ST-S05-UI-02
-- ST-S05-UI-03
-- ST-S05-UI-04
-- ST-S05-UI-05
-- ST-S05-UI-06
-- ST-FE-ALIGN-01
-- ST-FE-ALIGN-02
-- ST-FE-ALIGN-03
-- ST-FE-ALIGN-04
 
