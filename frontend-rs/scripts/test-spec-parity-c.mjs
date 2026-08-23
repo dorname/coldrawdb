@@ -62,6 +62,23 @@ function startFrontend() {
   });
 }
 
+// 先同步 trunk build：冷环境首建远超 waitForServer 的 30s 窗口，且 serve 重建期间会提供旧 dist
+async function prebuildFrontend() {
+  if (process.env.SPEC_PARITY_FRONTEND_URL) return;
+  const env = { ...process.env };
+  delete env.NO_COLOR;
+  delete env.FORCE_COLOR;
+  const build = spawn("trunk", ["build"], {
+    cwd: new URL("..", import.meta.url),
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let stderr = "";
+  build.stderr.on("data", chunk => { stderr += chunk; });
+  const code = await new Promise(resolve => build.on("close", resolve));
+  if (code !== 0) throw new Error(`trunk build 失败（exit ${code}）：${stderr.slice(-500)}`);
+}
+
 const OWNER = { id: "owner-1", email: "owner@example.com", displayName: "林默" };
 const MEMBERS = {
   items: [
@@ -163,7 +180,7 @@ async function createRoomAndEnter(page) {
   await page.locator('[data-testid="room-editor-page"]:visible').waitFor();
 }
 
-const frontend = startFrontend();
+let frontend = null;
 let browser;
 let failed = false;
 
@@ -187,6 +204,8 @@ async function run(ids, title, body) {
 }
 
 try {
+  await prebuildFrontend();
+  frontend = startFrontend();
   await waitForServer(FRONTEND_URL);
   browser = await chromium.launch({
     headless: true,
