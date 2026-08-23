@@ -72,10 +72,10 @@
 本提案按 A～D 批次逐项勾选。合并本 delta 时保持未勾选；仅在对应代码批次验证后勾选。7.6 为非验收约束，不因演示通过而勾选完成。
 
 ### 7.1 auth（A 批）
-- [ ] 默认未登录入口为 auth（非空白 editor）
-- [ ] `login-form` / `register-form` 双 tab、字段错误、loading
-- [ ] 错误不枚举用户；无 token 原文
-- [ ] 成功进入 rooms
+- [x] 默认未登录入口为 auth（非空白 editor）
+- [x] `login-form` / `register-form` 双 tab、字段错误、loading
+- [x] 错误不枚举用户；无 token 原文
+- [x] 成功进入 rooms
 
 ### 7.2 rooms（B 批）
 - [ ] `rooms-list-page` + 列表/空状态 + 创建入口 + 用户菜单

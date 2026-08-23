@@ -115,6 +115,7 @@ mod leptos_canvas {
     pub fn Canvas(
         store: EditorStore,
         transform: RwSignal<Transform>,
+        read_only: bool,
         remote_presence: RwSignal<Vec<RemotePresence>>,
         on_select: Option<Box<dyn Fn(String) + 'static>>,
         on_deselect: Option<Box<dyn Fn() + 'static>>,
@@ -311,6 +312,15 @@ mod leptos_canvas {
 
                 let tables = store.tables.get_untracked();
                 let refs = store.references.get_untracked();
+                if read_only {
+                    if let Some(id) = super::hit_test(&tables, dx, dy) {
+                        selected_id.set(Some(id.clone()));
+                        if let Some(cb) = on_select.as_ref() {
+                            cb(id);
+                        }
+                        return;
+                    }
+                }
                 if rel_tool_active.get_untracked() {
                     if let Some((tid, fid)) = super::hit_test_field(&tables, dx, dy) {
                         let (anchor_x, anchor_y) = tables

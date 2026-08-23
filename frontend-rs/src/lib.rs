@@ -11,6 +11,7 @@ pub mod editor_render;
 pub mod icons;
 
 use editor_core::{DebounceTrigger, EditorStore};
+use editor_data_access::ApiError;
 use editor_panels::AppRoot;
 use leptos::*;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -145,6 +146,15 @@ pub fn sanitize_session_notice(input: Option<&str>) -> Option<String> {
     Some(s.to_string())
 }
 
+/// 将分享加载失败转换成固定的公开文案，避免透出数据库或私有房间信息。
+pub fn share_load_error_message(error: &ApiError) -> String {
+    match error {
+        ApiError::Server(404, _) => "分享链接不存在或已失效".to_string(),
+        ApiError::Network(_) => "暂时无法加载分享图表，请检查网络后重试".to_string(),
+        _ => "暂时无法加载分享图表，请稍后重试".to_string(),
+    }
+}
+
 fn parse_route_from_location() -> (String, bool, Option<String>) {
     web_sys::window()
         .map(|w| {
@@ -179,8 +189,10 @@ fn expose_test_hooks(store: &EditorStore) {
 mod location_tests {
     use super::{
         diagram_id_from_location, initial_page_state, parse_invite_token, parse_share_param,
-        route_context_from_location, route_from_location, sanitize_session_notice, PageState,
+        route_context_from_location, route_from_location, sanitize_session_notice,
+        share_load_error_message, PageState,
     };
+    use crate::editor_data_access::ApiError;
 
     #[test]
     fn ut_s02_01_share_param_parsed() {
@@ -222,6 +234,26 @@ mod location_tests {
             route_from_location("/editor/private-id", ""),
             ("private-id".to_string(), false)
         );
+    }
+
+    #[test]
+    fn ut_s02_route_01_share_wins_and_enables_read_only_mode() {
+        assert_eq!(
+            route_from_location("/editor/private-id", "?share=public-id"),
+            ("public-id".to_string(), true)
+        );
+        assert_eq!(initial_page_state("/editor/private-id", "?share=public-id"), PageState::ShareEdit);
+    }
+
+    #[test]
+    fn ut_s02_404_error_is_public_and_does_not_leak_body() {
+        let message = share_load_error_message(&ApiError::Server(
+            404,
+            "sqlite: room secret-room does not exist".to_string(),
+        ));
+        assert_eq!(message, "分享链接不存在或已失效");
+        assert!(!message.contains("sqlite"));
+        assert!(!message.contains("secret-room"));
     }
 
     #[test]

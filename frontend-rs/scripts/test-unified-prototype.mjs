@@ -73,6 +73,14 @@ await withPage("ST-PU-01", "单文件断网加载", async page => {
   assert.equal(audit.diagnostic.pass, true);
 });
 
+await withPage("ST-PU-22", "冷启动仅显示鉴权入口", async page => {
+  await assert.doesNotReject(page.locator('[data-testid="login-form"]').waitFor());
+  assert.equal(await page.locator('[data-testid="rooms-list-page"]:visible').count(), 0);
+  assert.equal(await page.locator('[data-testid="room-editor-page"]:visible').count(), 0);
+  await page.locator('[data-action="auth-mode"][data-mode="register"]').click();
+  await assert.doesNotReject(page.locator('[data-testid="register-form"]').waitFor());
+});
+
 await withPage("ST-PU-02", "登录进入空间", async page => {
   await login(page);
   await assert.doesNotReject(page.locator("#toast-region").getByText("欢迎回来").waitFor());

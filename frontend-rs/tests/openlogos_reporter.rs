@@ -115,6 +115,9 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-FE-PROTO-06",
     "UT-FE-PROTO-08",
     "UT-FE-PROTO-09",
+    // implement-unified-prototype-spec-parity A 批
+    "UT-S02-ROUTE-01",
+    "UT-S03-ERR-01",
 ];
 
 const ST_SKIP_IDS: &[&str] = &[
@@ -169,7 +172,6 @@ const SPEC_PARITY_SKIP_IDS: &[&str] = &[
     "ST-PC-MENU-01",
     "ST-PC-FMT-01",
     "ST-PC-INSPECTOR",
-    "ST-PU-22",
     "ST-PU-23",
     "ST-PU-24",
     "ST-PU-25",
@@ -180,17 +182,6 @@ const SPEC_PARITY_SKIP_IDS: &[&str] = &[
     "ST-S01-409-SCOPE",
     "ST-S01-NO-409-OT",
     "ST-S01-409-LOCAL-ONLY",
-    "ST-S02-SHARE-RO",
-    "ST-S02-404",
-    "ST-S02-NO-SHARE",
-    "ST-S02-SHARE-VS-AUTH",
-    "UT-S02-ROUTE-01",
-    "ST-S03-UI-01",
-    "ST-S03-UI-02",
-    "ST-S03-UI-03",
-    "ST-S03-UI-04",
-    "ST-S03-UI-05",
-    "UT-S03-ERR-01",
     "ST-S04-UI-01",
     "ST-S04-UI-02",
     "ST-S04-UI-03",
@@ -204,8 +195,6 @@ const SPEC_PARITY_SKIP_IDS: &[&str] = &[
     "ST-S05-UI-04",
     "ST-S05-UI-05",
     "ST-S05-UI-06",
-    "ST-FE-ALIGN-01",
-    "ST-FE-ALIGN-02",
     "ST-FE-ALIGN-03",
     "ST-FE-ALIGN-04",
 ];

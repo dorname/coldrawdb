@@ -326,6 +326,43 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+.cdb-share-state-page {
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+  background: var(--cdb-color-bg-canvas, #f4f6f8);
+  color: var(--cdb-color-text-primary, #17202a);
+}
+
+.cdb-share-state-page section {
+  width: min(100%, 440px);
+  text-align: center;
+}
+
+.cdb-share-state-page h1 {
+  margin: 0 0 8px;
+  font-size: 24px;
+}
+
+.cdb-share-state-page p {
+  margin: 0;
+  color: var(--cdb-color-text-secondary, #52606d);
+}
+
+.cdb-share-readonly-banner {
+  position: fixed;
+  z-index: var(--cdb-z-toast, 600);
+  right: 16px;
+  bottom: 38px;
+  padding: 6px 10px;
+  border: 1px solid var(--cdb-color-border-strong, #aab4bf);
+  border-radius: 4px;
+  background: var(--cdb-color-bg-surface, #fff);
+  color: var(--cdb-color-text-secondary, #52606d);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .cdb-auth-page {
   min-height: 100vh;
   display: grid;

@@ -16,15 +16,14 @@ use crate::command_palette::{
 };
 use crate::editor_core::types::{Area, Field, Note, Reference, Table};
 use crate::editor_core::{
-    CollabConnectionState, CollabOtState, CollabPendingOp, ConflictInfo, DebounceTrigger,
-    EditorStore,
+    CollabConnectionState, CollabOtState, ConflictInfo, DebounceTrigger, EditorStore,
 };
 use crate::editor_data_access::{
-    save_with_retry, AuthClient, AuthSession, BridgeConfigUpdate, CollabClient, CollabFrame,
-    CollabMemberPresence, DiagramClient, ImportLocalResponse, ImportLogEntry, InvitePreview,
-    RoomClient, RoomDetail, RoomMember, RoomSummary, SaveError,
+    auth_error_display, save_with_retry, AuthClient, AuthSession, BridgeConfigUpdate, CollabClient,
+    CollabFrame, CollabMemberPresence, DiagramClient, ImportLocalResponse, ImportLogEntry,
+    ApiError, InvitePreview, RoomClient, RoomDetail, RoomMember, RoomSummary, SaveError,
 };
-use crate::{sanitize_session_notice, PageState};
+use crate::{sanitize_session_notice, share_load_error_message, PageState};
 use crate::editor_render::Canvas;
 use crate::editor_render::{remote_presence_slots, RemotePresence};
 use crate::editor_render::{zoom_in, zoom_out, zoom_reset, Transform};
@@ -1151,6 +1150,7 @@ pub fn UndoRedoButtons(
     stack: RwSignal<Rc<RefCell<crate::editor_core::CommandStack>>>,
     on_after_change: Rc<dyn Fn()>,
     error: RwSignal<Option<String>>,
+    read_only: bool,
 ) -> impl IntoView {
     let on_after_undo = on_after_change.clone();
     let on_after_redo = on_after_change.clone();
@@ -1159,6 +1159,7 @@ pub fn UndoRedoButtons(
             class="cdb-btn cdb-btn--icon"
             data-testid="btn-undo"
             title="撤销 (Ctrl+Z)"
+            disabled=read_only
             on:click=move |_| {
                 let cmd = {
                     let stack_rc = stack.get();
@@ -1180,6 +1181,7 @@ pub fn UndoRedoButtons(
             class="cdb-btn cdb-btn--icon"
             data-testid="btn-redo"
             title="重做 (Ctrl+Shift+Z)"
+            disabled=read_only
             on:click=move |_| {
                 let cmd = {
                     let stack_rc = stack.get();
@@ -1215,7 +1217,7 @@ pub fn Toolbar(
     let noop = Rc::new(|| {}) as Rc<dyn Fn()>;
     view! {
         <div class="cdb-toolbar">
-            <UndoRedoButtons store=store stack=stack on_after_change=noop error=error />
+            <UndoRedoButtons store=store stack=stack on_after_change=noop error=error read_only=false />
             <input
                 class="cdb-title-edit"
                 data-testid="diagram-title-input"
@@ -1334,6 +1336,7 @@ pub fn AppBarOverflowMenu(
     on_open_export: Rc<dyn Fn()>,
     on_open_settings: Rc<dyn Fn()>,
     on_delete_diagram: Rc<dyn Fn()>,
+    read_only: bool,
 ) -> impl IntoView {
     let overflow_open = create_rw_signal(false);
 
@@ -1360,6 +1363,7 @@ pub fn AppBarOverflowMenu(
                             class="cdb-menu-dropdown-item cdb-menu-dropdown-item--icon"
                             data-testid="btn-import"
                             role="menuitem"
+                            disabled=read_only
                             on:click={
                                 let import_handler = on_open_import.clone();
                                 move |_| {
@@ -1390,6 +1394,7 @@ pub fn AppBarOverflowMenu(
                             class="cdb-menu-dropdown-item cdb-menu-dropdown-item--icon"
                             data-testid="btn-settings"
                             role="menuitem"
+                            disabled=read_only
                             on:click={
                                 let handler = on_open_settings.clone();
                                 move |_| {
@@ -1405,6 +1410,7 @@ pub fn AppBarOverflowMenu(
                             class="cdb-menu-dropdown-item cdb-menu-dropdown-item--icon cdb-menu-dropdown-item--danger"
                             data-testid="btn-delete-diagram"
                             role="menuitem"
+                            disabled=read_only
                             on:click={
                                 let handler = on_delete_diagram.clone();
                                 move |_| {
@@ -1484,6 +1490,7 @@ pub fn AppBar(
     collab_state: RwSignal<CollabOtState>,
     remote_members: RwSignal<Vec<CollabMemberPresence>>,
     on_open_rooms: Rc<dyn Fn()>,
+    read_only: bool,
 ) -> impl IntoView {
     let _ = (transform, inspector_open);
     let dark_mode = create_rw_signal(read_html_data_mode() == "dark");
@@ -1497,13 +1504,19 @@ pub fn AppBar(
                     stack=stack
                     on_after_change=on_after_change.clone()
                     error=error.clone()
+                    read_only=read_only
                 />
                 <input
                     class="cdb-diagram-title"
                     data-testid="diagram-title"
                     prop:value=move || current_title.get()
+                    readonly=read_only
                     on:input=move |ev| current_title.set(event_target_value(&ev))
-                    on:blur=move |ev| on_title_blur(event_target_value(&ev))
+                    on:blur=move |ev| {
+                        if !read_only {
+                            on_title_blur(event_target_value(&ev));
+                        }
+                    }
                 />
             </div>
             <SaveStatusChip
@@ -1556,6 +1569,7 @@ pub fn AppBar(
                     on_open_export=on_open_export
                     on_open_settings=on_open_settings
                     on_delete_diagram=on_delete_diagram
+                    read_only=read_only
                 />
             </div>
         </header>
@@ -1564,6 +1578,18 @@ pub fn AppBar(
 
 fn room_is_viewer(room: RwSignal<Option<RoomDetail>>) -> bool {
     room.get().as_ref().map(|r| r.is_viewer()).unwrap_or(false)
+}
+
+fn editor_is_read_only(share_mode: bool, room: RwSignal<Option<RoomDetail>>) -> bool {
+    share_mode || room_is_viewer(room)
+}
+
+fn protected_api_error_message(error: &ApiError) -> String {
+    match error {
+        ApiError::Server(403, _) => "没有权限访问此资源".to_string(),
+        ApiError::Network(_) => "网络连接失败，请检查网络后重试".to_string(),
+        _ => "暂时无法加载数据，请稍后重试".to_string(),
+    }
 }
 
 /// align-frontend-to-prototype：响应式布局断点（≤720px 视为紧凑布局）。
@@ -2143,7 +2169,13 @@ pub fn AuthGate(
                             cb();
                         }
                     }
-                    Err(e) => error.set(Some(e.to_string())),
+                    Err(e) => {
+                        let message = auth_error_display(&e);
+                        if mode.get_untracked() == AuthMode::Register {
+                            email_error.set(Some(message.clone()));
+                        }
+                        error.set(Some(message));
+                    }
                 }
                 loading.set(false);
             });
@@ -2198,6 +2230,9 @@ pub fn AuthGate(
                             "登录后进入项目空间；你的凭据只用于鉴权，不会写本地存储。"
                         }}
                     </p>
+                    {move || session_notice.get().map(|notice| view! {
+                        <p class="cdb-auth-session-notice" data-testid="auth-session-notice">{notice}</p>
+                    })}
                     <div class="cdb-auth-tabs" role="tablist">
                         <button
                             class="cdb-auth-tab"
@@ -2394,6 +2429,7 @@ pub fn AuthGate(
 pub fn RoomsListPage(
     auth_session: RwSignal<Option<AuthSession>>,
     session_notice: RwSignal<Option<String>>,
+    auth_client: AuthClient,
     room_client: RoomClient,
     on_logout: Rc<dyn Fn()>,
     on_select_room: Rc<dyn Fn(RoomDetail)>,
@@ -2403,9 +2439,11 @@ pub fn RoomsListPage(
     let rooms: RwSignal<Vec<RoomSummary>> = create_rw_signal(Vec::new());
     let error: RwSignal<Option<String>> = create_rw_signal(None);
     let creating = create_rw_signal(false);
+    let last_loaded_token = create_rw_signal(Option::<String>::None);
 
     // 首屏 fetch：依赖 auth_session；session 变化时重新拉。
     create_effect({
+        let auth_client = auth_client.clone();
         let room_client = room_client.clone();
         let auth_session = auth_session.clone();
         move |_| {
@@ -2414,18 +2452,49 @@ pub fn RoomsListPage(
                 rooms.set(Vec::new());
                 return;
             };
-            let token = session.access_token;
+            let token = session.access_token.clone();
+            if last_loaded_token.get_untracked().as_deref() == Some(token.as_str()) {
+                return;
+            }
+            last_loaded_token.set(Some(token.clone()));
+            let current_session = session;
+            let auth_client = auth_client.clone();
             let room_client = room_client.clone();
             loading.set(true);
             error.set(None);
             spawn_local(async move {
-                match room_client.list_rooms(&token).await {
+                let mut result = room_client.list_rooms(&token).await;
+                if matches!(result, Err(ApiError::Server(401, _))) {
+                    session_notice.set(Some("续期中...".to_string()));
+                    match auth_client.refresh_session(&current_session).await {
+                        Ok(next_session) => {
+                            let next_token = next_session.access_token.clone();
+                            last_loaded_token.set(Some(next_token.clone()));
+                            auth_session.set(Some(next_session));
+                            session_notice.set(Some("会话已续期".to_string()));
+                            result = room_client.list_rooms(&next_token).await;
+                            if matches!(result, Err(ApiError::Server(401, _))) {
+                                auth_session.set(None);
+                                session_notice.set(Some("登录已过期，请重新登录".to_string()));
+                                loading.set(false);
+                                return;
+                            }
+                        }
+                        Err(_) => {
+                            auth_session.set(None);
+                            session_notice.set(Some("登录已过期，请重新登录".to_string()));
+                            loading.set(false);
+                            return;
+                        }
+                    }
+                }
+                match result {
                     Ok(resp) => {
                         rooms.set(resp.items);
                         loading.set(false);
                     }
                     Err(e) => {
-                        error.set(Some(e.to_string()));
+                        error.set(Some(protected_api_error_message(&e)));
                         loading.set(false);
                     }
                 }
@@ -2669,6 +2738,7 @@ pub fn ToolRail(
     rel_tool_state: RwSignal<RelToolState>,
     on_create_table: Rc<dyn Fn()>,
     current_room: RwSignal<Option<RoomDetail>>,
+    read_only: bool,
 ) -> impl IntoView {
     let new_menu_open = create_rw_signal(false);
     let issue_count = create_memo(move |_| compute_diagram_issues(&store).len());
@@ -2691,7 +2761,7 @@ pub fn ToolRail(
                 class="cdb-tool-btn"
                 data-testid="tool-new-menu"
                 title="新建"
-                disabled=move || room_is_viewer(current_room)
+                disabled=move || read_only || room_is_viewer(current_room)
                 on:click=move |_| new_menu_open.update(|v| *v = !*v)
             >
                 <IconBox size="md"><IconAdd /></IconBox>
@@ -2734,9 +2804,9 @@ pub fn ToolRail(
                 class:cdb-is-active=move || active_tool.get() == ActiveTool::Relationship
                 data-testid="tool-relationship"
                 title="关系工具 (R)"
-                disabled=move || room_is_viewer(current_room)
+                disabled=move || read_only || room_is_viewer(current_room)
                 on:click=move |_| {
-                    if room_is_viewer(current_room) {
+                    if read_only || room_is_viewer(current_room) {
                         return;
                     }
                     active_tool.set(ActiveTool::Relationship);
@@ -3315,7 +3385,11 @@ pub fn ExportDrawer(
 
 /// Phase A：空白画布引导卡片
 #[component]
-pub fn EmptyGuide(on_create_table: Rc<dyn Fn()>, on_import: Rc<dyn Fn()>) -> impl IntoView {
+pub fn EmptyGuide(
+    on_create_table: Rc<dyn Fn()>,
+    on_import: Rc<dyn Fn()>,
+    read_only: bool,
+) -> impl IntoView {
     view! {
         <div class="cdb-empty-guide" data-testid="canvas-empty-guide">
             <h2>"开始设计你的数据库"</h2>
@@ -3323,6 +3397,7 @@ pub fn EmptyGuide(on_create_table: Rc<dyn Fn()>, on_import: Rc<dyn Fn()>) -> imp
                 <button
                     class="cdb-btn cdb-btn--primary"
                     data-testid="guide-create-table"
+                    disabled=read_only
                     on:click=move |_| on_create_table()
                 >
                     "+ 创建第一张表"
@@ -3330,6 +3405,7 @@ pub fn EmptyGuide(on_create_table: Rc<dyn Fn()>, on_import: Rc<dyn Fn()>) -> imp
                 <button
                     class="cdb-btn"
                     data-testid="guide-import-sql"
+                    disabled=read_only
                     on:click=move |_| on_import()
                 >
                     "↑ 导入 SQL"
@@ -4517,6 +4593,8 @@ pub fn AppRoot(
     let inspector_open: RwSignal<bool> = create_rw_signal(true);
     let conflict: RwSignal<Option<ConflictInfo>> = create_rw_signal(None);
     let error: RwSignal<Option<String>> = create_rw_signal(None);
+    let share_loading = create_rw_signal(share_mode);
+    let share_load_error = create_rw_signal(Option::<String>::None);
     let next_id = create_rw_signal(0i64);
 
     // B4: 模态状态 (4 核心模态)
@@ -4548,9 +4626,14 @@ pub fn AppRoot(
         PageState::Auth
     };
     let current_page: RwSignal<PageState> = create_rw_signal(initial_page);
+    create_effect(move |_| {
+        if auth_session.get().is_none() && current_page.get() == PageState::Rooms {
+            current_page.set(PageState::Auth);
+        }
+    });
     // 防止 session_notice 被注入 token 原文：写入前过滤。
     create_effect(move |_| {
-        let raw = session_notice.get_untracked();
+        let raw = session_notice.get();
         let cleaned = sanitize_session_notice(raw.as_deref());
         match (raw.as_ref(), cleaned) {
             (Some(existing), Some(new_clean)) if existing != &new_clean => {
@@ -4946,6 +5029,7 @@ pub fn AppRoot(
         let store = store.clone();
         let current_title = current_title.clone();
         let error = error.clone();
+        let share_load_error = share_load_error.clone();
         let id = _diagram_id.clone();
         if id != "default" {
             spawn_local(async move {
@@ -4953,12 +5037,21 @@ pub fn AppRoot(
                     Ok(diagram) => {
                         current_title.set(diagram.name.clone());
                         store.load(diagram);
+                        share_loading.set(false);
                     }
                     Err(e) => {
-                        error.set(Some(format!("分享链接无效或图表已删除: {e}")));
+                        if share_mode {
+                            share_load_error.set(Some(share_load_error_message(&e)));
+                            share_loading.set(false);
+                        } else {
+                            error.set(Some(e.to_string()));
+                        }
                     }
                 }
             });
+        } else if share_mode {
+            share_load_error.set(Some("分享链接不存在或已失效".to_string()));
+            share_loading.set(false);
         }
     }
 
@@ -5003,7 +5096,7 @@ pub fn AppRoot(
         let collab_state_for_create = collab_state.clone();
         let activity_feed_for_create = activity_feed.clone();
         Rc::new(move || {
-            if room_is_viewer(current_room) {
+            if editor_is_read_only(share_mode, current_room) {
                 error_for_create.set(Some("只读角色不能编辑图表".to_string()));
                 return;
             }
@@ -5110,6 +5203,9 @@ pub fn AppRoot(
         let store = store.clone();
         let debouncer = debouncer.clone();
         Rc::new(move || {
+            if share_mode {
+                return;
+            }
             schedule_save(
                 client_for_save.clone(),
                 store.clone(),
@@ -5128,6 +5224,9 @@ pub fn AppRoot(
         let store = store.clone();
         let debouncer = debouncer.clone();
         Rc::new(move |title: String| {
+            if share_mode {
+                return;
+            }
             current_title.set(title);
             store.dirty.set(true);
             schedule_save(
@@ -5149,6 +5248,9 @@ pub fn AppRoot(
         let debouncer = debouncer.clone();
         let next_id = next_id.clone();
         Rc::new(move |table_id: String| {
+            if editor_is_read_only(share_mode, current_room) {
+                return;
+            }
             let id = next_id.get();
             next_id.set(id + 1);
             let new_field = Field {
@@ -5187,6 +5289,9 @@ pub fn AppRoot(
         let store = store.clone();
         let debouncer = debouncer.clone();
         Rc::new(move |field_id: String, new_type: String| {
+            if editor_is_read_only(share_mode, current_room) {
+                return;
+            }
             let mut tables = store.tables.get();
             for table in tables.iter_mut() {
                 if let Some(field) = table.fields.iter_mut().find(|f| f.id == field_id) {
@@ -5215,6 +5320,9 @@ pub fn AppRoot(
         let rel_tool_state = rel_tool_state.clone();
         let store = store.clone();
         Rc::new(move |field_id: String| {
+            if editor_is_read_only(share_mode, current_room) {
+                return;
+            }
             let tables = store.tables.get();
             if let Some(table_id) = tables.iter().find_map(|t| {
                 t.fields
@@ -5246,6 +5354,9 @@ pub fn AppRoot(
         let selection = selection.clone();
         let inspector_open = inspector_open.clone();
         Rc::new(move |reference: Reference| {
+            if editor_is_read_only(share_mode, current_room) {
+                return;
+            }
             let mut refs = store.references.get();
             refs.push(reference.clone());
             store.references.set(refs);
@@ -5333,6 +5444,9 @@ pub fn AppRoot(
         let store = store.clone();
         let debouncer = debouncer.clone();
         Rc::new(move |table_id: String, field_id: String, primary: bool| {
+            if editor_is_read_only(share_mode, current_room) {
+                return;
+            }
             let mut tables = store.tables.get();
             toggle_field_primary(&mut tables, &table_id, &field_id, primary);
             store.tables.set(tables);
@@ -5355,6 +5469,9 @@ pub fn AppRoot(
         let store = store.clone();
         let debouncer = debouncer.clone();
         Rc::new(move |ref_id: String, field: &str, value: String| {
+            if editor_is_read_only(share_mode, current_room) {
+                return;
+            }
             let mut refs = store.references.get();
             if let Some(r) = refs.iter_mut().find(|r| r.id == ref_id) {
                 match field {
@@ -5384,6 +5501,9 @@ pub fn AppRoot(
         let store = store.clone();
         let debouncer = debouncer.clone();
         Rc::new(move |ref_id: String| {
+            if editor_is_read_only(share_mode, current_room) {
+                return;
+            }
             let mut refs = store.references.get();
             if let Some(idx) = refs.iter().position(|r| r.id == ref_id) {
                 refs[idx] = flip_reference_endpoints(&refs[idx]);
@@ -5409,6 +5529,9 @@ pub fn AppRoot(
         let debouncer = debouncer.clone();
         let selection = selection.clone();
         Rc::new(move |ref_id: String| {
+            if editor_is_read_only(share_mode, current_room) {
+                return;
+            }
             let mut refs = store.references.get();
             refs.retain(|r| r.id != ref_id);
             store.references.set(refs);
@@ -5549,6 +5672,7 @@ pub fn AppRoot(
             <RoomsListPage
                 auth_session=auth_session
                 session_notice=session_notice
+                auth_client=auth_client.clone()
                 room_client=room_client.clone()
                 on_logout=on_logout.clone()
                 on_select_room=on_enter_room.clone()
@@ -5571,12 +5695,33 @@ pub fn AppRoot(
                 />
             })}
         </div>
+        <main
+            class="cdb-share-state-page"
+            data-testid="share-loading"
+            style:display=move || if current_page.get() == PageState::ShareEdit && share_loading.get() { "grid" } else { "none" }
+        >
+            <section>
+                <h1>"正在加载分享图表"</h1>
+                <p>"请稍候..."</p>
+            </section>
+        </main>
+        <main
+            class="cdb-share-state-page"
+            data-testid="share-not-found"
+            style:display=move || if current_page.get() == PageState::ShareEdit && share_load_error.get().is_some() { "grid" } else { "none" }
+        >
+            <section>
+                <h1>"无法打开分享链接"</h1>
+                <p>{move || share_load_error.get().unwrap_or_default()}</p>
+            </section>
+        </main>
         // ─── Editor 页（RoomEditor / ShareEdit 共用；room-editor-page 为页面态锚点，editor-ready 供既有 e2e 回归） ───
         <div
             data-testid="room-editor-page"
             style:display=move || {
                 let p = current_page.get();
-                if p == PageState::RoomEditor || p == PageState::ShareEdit {
+                if p == PageState::RoomEditor
+                    || (p == PageState::ShareEdit && !share_loading.get() && share_load_error.get().is_none()) {
                     "block"
                 } else {
                     "none"
@@ -5586,7 +5731,13 @@ pub fn AppRoot(
         <div
             class="cdb-app"
             data-testid="editor-ready"
+            data-read-only=share_mode
         >
+            {share_mode.then(|| view! {
+                <div class="cdb-share-readonly-banner" data-testid="share-readonly">
+                    "匿名只读分享"
+                </div>
+            })}
             <AppBar
                 modal_kind=modal_kind
                 current_title=current_title
@@ -5613,6 +5764,7 @@ pub fn AppRoot(
                 collab_state=collab_state
                 remote_members=remote_members
                 on_open_rooms=on_back_to_rooms.clone()
+                read_only=share_mode
             />
             <div
                 class="cdb-main"
@@ -5630,6 +5782,7 @@ pub fn AppRoot(
                     rel_tool_state=rel_tool_state
                     on_create_table=on_create_table_rail.clone()
                     current_room=current_room
+                    read_only=share_mode
                 />
                 <div class="cdb-canvas-container" data-testid="editor-canvas-container">
                     {move || if store.tables.get().is_empty() {
@@ -5637,6 +5790,7 @@ pub fn AppRoot(
                             <EmptyGuide
                                 on_create_table=on_create_table_guide.clone()
                                 on_import=open_import_drawer.clone()
+                                read_only=share_mode
                             />
                         }.into_view()
                     } else {
@@ -5647,6 +5801,7 @@ pub fn AppRoot(
                     <Canvas
                         store=store.clone()
                         transform=canvas_transform
+                        read_only=share_mode
                         remote_presence=remote_presence
                         on_select=on_canvas_select
                         on_deselect=on_canvas_deselect
@@ -5738,6 +5893,7 @@ pub fn AppRoot(
                 on_rename=on_rename_diagram
             />
             <modals::KeyboardShortcuts
+                enabled=!share_mode
                 on_undo={
                     let store = store.clone();
                     let stack = command_stack.clone();
@@ -6692,7 +6848,7 @@ pub mod modals {
     /// is_redo_shortcut 时通过传入的回调通知调用方。调用方负责实际调用
     /// CommandStack::undo() / CommandStack::redo()。
     #[component]
-    pub fn KeyboardShortcuts<F1, F2>(on_undo: F1, on_redo: F2) -> impl IntoView
+    pub fn KeyboardShortcuts<F1, F2>(enabled: bool, on_undo: F1, on_redo: F2) -> impl IntoView
     where
         F1: Fn() + Clone + 'static,
         F2: Fn() + Clone + 'static,
@@ -6706,6 +6862,9 @@ pub mod modals {
             "keydown",
             gloo::events::EventListenerOptions::enable_prevent_default(),
             move |ev| {
+                if !enabled {
+                    return;
+                }
                 use wasm_bindgen::JsCast;
                 let key_event: Option<&web_sys::KeyboardEvent> = ev.dyn_ref();
                 if let Some(ke) = key_event {
@@ -6742,6 +6901,7 @@ mod tests {
 
     use super::*;
     use crate::editor_core::types::{Area, Field, Note, Reference, Table};
+    use crate::editor_core::CollabPendingOp;
 
     fn make_table(id: &str, name: &str) -> Table {
         Table {

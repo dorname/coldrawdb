@@ -54,6 +54,9 @@ echo "[verify-pre-run] PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-unse
 echo "[verify-pre-run] 单文件原型 Playwright 回归 ..."
 (cd "$ROOT/frontend-rs" && "$NPM_BIN" run test:unified-prototype)
 
+echo "[verify-pre-run] A 批生产前端 Playwright 回归 ..."
+(cd "$ROOT/frontend-rs" && "$NPM_BIN" run test:spec-parity-a)
+
 echo "[verify-pre-run] 校验 reporter ID 与覆盖度 ..."
 "$NODE_BIN" "$ROOT/scripts/validate-openlogos-ledger.mjs" --report ST-PU-20
 

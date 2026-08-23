@@ -114,7 +114,6 @@ struct LoginReq {
 #[derive(Deserialize)]
 struct ErrorBody {
     code: Option<String>,
-    message: Option<String>,
 }
 
 pub fn is_token_expired_error(status: u16, body: &str) -> bool {
@@ -129,10 +128,27 @@ pub fn is_token_expired_error(status: u16, body: &str) -> bool {
 }
 
 pub fn auth_error_message(status: u16, body: &str) -> String {
-    serde_json::from_str::<ErrorBody>(body)
+    let code = serde_json::from_str::<ErrorBody>(body)
         .ok()
-        .and_then(|b| b.message.or(b.code))
-        .unwrap_or_else(|| format!("认证请求失败（HTTP {status}）"))
+        .and_then(|b| b.code)
+        .unwrap_or_default()
+        .to_ascii_uppercase();
+
+    match (status, code.as_str()) {
+        (401, _) | (_, "INVALID_CREDENTIALS") => "邮箱或密码错误".to_string(),
+        (409, _) | (_, "EMAIL_EXISTS") => "无法创建账户，请检查输入后重试".to_string(),
+        (429, _) => "请求过于频繁，请稍后重试".to_string(),
+        (500..=599, _) => "服务暂时不可用，请稍后重试".to_string(),
+        _ => "认证请求失败，请稍后重试".to_string(),
+    }
+}
+
+pub fn auth_error_display(error: &AuthError) -> String {
+    match error {
+        AuthError::Server(_, message) => message.clone(),
+        AuthError::Network(_) => "网络连接失败，请检查网络后重试".to_string(),
+        AuthError::Parse(_) => "认证响应无效，请稍后重试".to_string(),
+    }
 }
 
 #[derive(Clone)]
@@ -1614,6 +1630,34 @@ mod bridge_api_tests {
 }
 
 #[cfg(test)]
+mod auth_error_tests {
+    use super::{auth_error_display, auth_error_message, AuthError};
+
+    #[test]
+    fn ut_s03_err_01_auth_errors_are_redacted() {
+        let login = auth_error_message(
+            401,
+            r#"{"code":"INVALID_CREDENTIALS","message":"email alice@example.com exists; token=secret"}"#,
+        );
+        let register = auth_error_message(
+            409,
+            r#"{"code":"EMAIL_EXISTS","message":"alice@example.com is registered"}"#,
+        );
+        let network = auth_error_display(&AuthError::Network(
+            "Authorization: Bearer secret-token".to_string(),
+        ));
+
+        assert_eq!(login, "邮箱或密码错误");
+        assert_eq!(register, "无法创建账户，请检查输入后重试");
+        for message in [login, register, network] {
+            assert!(!message.contains("alice@example.com"));
+            assert!(!message.to_ascii_lowercase().contains("token"));
+            assert!(!message.contains("secret"));
+        }
+    }
+}
+
+#[cfg(test)]
 mod save_retry_tests {
     use super::{save_retry_total_attempts, SAVE_RETRY_DELAYS_MS, SAVE_RETRY_MAX_ELAPSED_MS};
 
@@ -1679,7 +1723,7 @@ mod auth_tests {
         );
         assert_eq!(
             auth_error_message(500, "not-json"),
-            "认证请求失败（HTTP 500）"
+            "服务暂时不可用，请稍后重试"
         );
     }
 }
