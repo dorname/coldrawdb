@@ -182,8 +182,6 @@ const SPEC_PARITY_SKIP_IDS: &[&str] = &[
     "ST-S01-409-SCOPE",
     "ST-S01-NO-409-OT",
     "ST-S01-409-LOCAL-ONLY",
-    "ST-S04-UI-01",
-    "ST-S04-UI-02",
     "ST-S04-UI-03",
     "ST-S04-UI-04",
     "ST-S04-UI-05",

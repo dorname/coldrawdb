@@ -173,6 +173,13 @@ pub struct RoomSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DiagramSummary {
+    pub id: String,
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RoomDetail {
     pub id: String,
     pub name: String,
@@ -819,6 +826,11 @@ struct ApiResp<T> {
     data: T,
 }
 
+#[derive(Deserialize)]
+struct LegacyApiResp<T> {
+    data: Option<T>,
+}
+
 /// Inner data for POST /diagrams success envelope (`data.id`).
 #[derive(Deserialize)]
 struct IdData {
@@ -981,6 +993,28 @@ impl DiagramClient {
                     .await
                     .map_err(|e| ApiError::Parse(e.to_string()))?;
                 Ok(out.data.id)
+            }
+            s => Err(ApiError::Server(s, resp.text().await.unwrap_or_default())),
+        }
+    }
+
+    /// GET /diagrams/queryAll
+    ///
+    /// 复用既有只读兼容端点，为创建房间模态提供可绑定的 diagram。
+    pub async fn list_summaries(&self) -> Result<Vec<DiagramSummary>, ApiError> {
+        let url = format!("{}/diagrams/queryAll", self.base_url);
+        let resp = Request::get(&url)
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+
+        match resp.status() {
+            200 => {
+                let out: LegacyApiResp<Vec<DiagramSummary>> = resp
+                    .json()
+                    .await
+                    .map_err(|e| ApiError::Parse(e.to_string()))?;
+                Ok(out.data.unwrap_or_default())
             }
             s => Err(ApiError::Server(s, resp.text().await.unwrap_or_default())),
         }

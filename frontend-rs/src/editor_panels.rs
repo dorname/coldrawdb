@@ -20,8 +20,9 @@ use crate::editor_core::{
 };
 use crate::editor_data_access::{
     auth_error_display, save_with_retry, AuthClient, AuthSession, BridgeConfigUpdate, CollabClient,
-    CollabFrame, CollabMemberPresence, DiagramClient, ImportLocalResponse, ImportLogEntry,
-    ApiError, InvitePreview, RoomClient, RoomDetail, RoomMember, RoomSummary, SaveError,
+    CollabFrame, CollabMemberPresence, DiagramClient, DiagramSummary, ImportLocalResponse,
+    ImportLogEntry, ApiError, InvitePreview, RoomClient, RoomDetail, RoomMember, RoomSummary,
+    SaveError,
 };
 use crate::{sanitize_session_notice, share_load_error_message, PageState};
 use crate::editor_render::Canvas;
@@ -30,7 +31,8 @@ use crate::editor_render::{zoom_in, zoom_out, zoom_reset, Transform};
 use crate::icons::{
     IconAdd, IconAddArea, IconAddNote, IconAddTable, IconBox, IconChevronLeft, IconChevronRight,
     IconClose, IconEnum, IconExport, IconImport, IconKey, IconMinus, IconMoon, IconMore, IconPan,
-    IconRedo, IconRelationship, IconSelect, IconSettings, IconSun, IconType, IconUndo, IconWarning,
+    IconActivity, IconEye, IconEyeOff, IconLogo, IconRedo, IconRefresh, IconRelationship,
+    IconSelect, IconSettings, IconSun, IconType, IconUndo, IconUsers, IconWarning,
 };
 use leptos::*;
 use std::cell::RefCell;
@@ -1830,11 +1832,11 @@ pub fn RoomPanel(
                     <span>"房间名称"</span>
                     <input class="cdb-form-input" data-testid="room-name-input" prop:value=move || create_name.get() on:input=move |ev| create_name.set(event_target_value(&ev)) />
                 </label>
-                <button class="cdb-btn cdb-btn--primary cdb-btn--block" data-testid="btn-create-room" on:click=move |_| create_room()>"创建房间"</button>
+                <button class="cdb-btn cdb-btn--primary cdb-btn--block" data-testid="btn-create-room-from-panel" on:click=move |_| create_room()>"创建房间"</button>
             </div>
             <div class="cdb-room-panel__section">
                 <div class="cdb-room-panel__section-title">"我的房间"</div>
-                <button class="cdb-btn cdb-btn--block" data-testid="btn-refresh-rooms" disabled=move || loading.get() on:click=move |_| load_rooms()>"刷新房间"</button>
+                <button class="cdb-btn cdb-btn--block" data-testid="btn-refresh-rooms-from-panel" disabled=move || loading.get() on:click=move |_| load_rooms()>"刷新房间"</button>
                 <For each=move || rooms.get() key=|room| room.id.clone() children=move |room: RoomSummary| {
                     let room_client = room_client.clone();
                     let auth_session = auth_session.clone();
@@ -2187,30 +2189,42 @@ pub fn AuthGate(
             // ─── 左区：品牌 + hero copy + 3 feature（align-frontend-to-prototype）───
             <article class="cdb-auth-story" data-testid="auth-story">
                 <div class="cdb-auth-brand" data-testid="auth-brand">
-                    <span class="cdb-brand-mark" aria-hidden="true">{"◆"}</span>
+                    <span class="cdb-brand-mark" aria-hidden="true">
+                        <IconBox size="lg"><IconLogo /></IconBox>
+                    </span>
                     <span class="cdb-auth-brand-name">"coldrawdb"</span>
                     <span class="cdb-tag cdb-tag--brand" data-testid="auth-brand-tag">"协作版原型"</span>
                 </div>
                 <div class="cdb-auth-hero" data-testid="auth-hero">
                     <span class="cdb-eyebrow">"结构清晰，协作自然"</span>
-                    <h1 class="cdb-auth-hero-title">"把复杂数据\n画成共同语言。"</h1>
+                    <h1 class="cdb-auth-hero-title">
+                        "把复杂数据"
+                        <br />
+                        <span>"画成共同语言。"</span>
+                    </h1>
                     <p class="cdb-auth-hero-desc">
                         "在一张实时同步的画布里完成数据库建模、关系评审和工程交接，让每个决定都有上下文。"
                     </p>
                 </div>
                 <div class="cdb-auth-feature-row" data-testid="auth-feature-row">
                     <div class="cdb-auth-feature">
-                        <span class="cdb-auth-feature-icon" aria-hidden="true">{"▦"}</span>
+                        <span class="cdb-auth-feature-icon" aria-hidden="true">
+                            <IconBox size="md"><IconAddTable /></IconBox>
+                        </span>
                         <strong>"可视化建模"</strong>
                         <span>"表、字段、关系与约束完整闭环"</span>
                     </div>
                     <div class="cdb-auth-feature">
-                        <span class="cdb-auth-feature-icon" aria-hidden="true">{"◉"}</span>
+                        <span class="cdb-auth-feature-icon" aria-hidden="true">
+                            <IconBox size="md"><IconUsers /></IconBox>
+                        </span>
                         <strong>"多人同步"</strong>
                         <span>"光标、选区、Activity 与角色权限"</span>
                     </div>
                     <div class="cdb-auth-feature">
-                        <span class="cdb-auth-feature-icon" aria-hidden="true">{"⚡"}</span>
+                        <span class="cdb-auth-feature-icon" aria-hidden="true">
+                            <IconBox size="md"><IconActivity /></IconBox>
+                        </span>
                         <strong>"实时协作"</strong>
                         <span>"OT 同步、断线排队、重连续传"</span>
                     </div>
@@ -2321,7 +2335,11 @@ pub fn AuthGate(
                                     aria-label=move || if password_visible.get() { "隐藏密码" } else { "显示密码" }
                                     on:click=move |_| password_visible.update(|v| *v = !*v)
                                 >
-                                    {move || if password_visible.get() { "🙈" } else { "👁" }}
+                                    {move || if password_visible.get() {
+                                        view! { <IconBox size="sm"><IconEyeOff /></IconBox> }.into_view()
+                                    } else {
+                                        view! { <IconBox size="sm"><IconEye /></IconBox> }.into_view()
+                                    }}
                                 </button>
                             </div>
                             <p class="cdb-field-error" id="auth-password-error" data-error="password" data-testid="auth-password-error">
@@ -2400,14 +2418,19 @@ pub fn AuthGate(
                                     {if mode.get() == AuthMode::Register { "创建账户..." } else { "正在验证..." }}
                                 }.into_view()
                             } else if mode.get() == AuthMode::Login {
-                                view! { <span>"登录并进入空间"</span> }.into_view()
+                                view! {
+                                    <span>"登录并进入空间"</span>
+                                    <IconBox size="sm"><IconChevronRight /></IconBox>
+                                }.into_view()
                             } else {
                                 view! { <span>"创建账户"</span> }.into_view()
                             }}
                         </button>
                     </form>
                     <div class="cdb-demo-note" data-testid="auth-demo-note">
-                        <span class="cdb-demo-note-icon" aria-hidden="true">"ⓘ"</span>
+                        <span class="cdb-demo-note-icon" aria-hidden="true">
+                            <IconBox size="sm"><IconActivity /></IconBox>
+                        </span>
                         <span>
                             "演示提示：登录与注册都会调用真实鉴权 API；点击「模拟凭据错误」可查看异常反馈。"
                         </span>
@@ -2430,6 +2453,7 @@ pub fn RoomsListPage(
     auth_session: RwSignal<Option<AuthSession>>,
     session_notice: RwSignal<Option<String>>,
     auth_client: AuthClient,
+    diagram_client: DiagramClient,
     room_client: RoomClient,
     on_logout: Rc<dyn Fn()>,
     on_select_room: Rc<dyn Fn(RoomDetail)>,
@@ -2440,6 +2464,15 @@ pub fn RoomsListPage(
     let error: RwSignal<Option<String>> = create_rw_signal(None);
     let creating = create_rw_signal(false);
     let last_loaded_token = create_rw_signal(Option::<String>::None);
+    let reload_nonce = create_rw_signal(0_u32);
+    let create_modal_open = create_rw_signal(false);
+    let room_name = create_rw_signal(String::from("数据模型评审"));
+    let diagram_choice = create_rw_signal(String::from("__new__"));
+    let default_role = create_rw_signal(String::from("editor"));
+    let diagrams = create_rw_signal(Vec::<DiagramSummary>::new());
+    let diagrams_loading = create_rw_signal(false);
+    let diagrams_loaded = create_rw_signal(false);
+    let create_error = create_rw_signal(Option::<String>::None);
 
     // 首屏 fetch：依赖 auth_session；session 变化时重新拉。
     create_effect({
@@ -2447,6 +2480,7 @@ pub fn RoomsListPage(
         let room_client = room_client.clone();
         let auth_session = auth_session.clone();
         move |_| {
+            reload_nonce.get();
             let Some(session) = auth_session.get() else {
                 loading.set(false);
                 rooms.set(Vec::new());
@@ -2502,16 +2536,53 @@ pub fn RoomsListPage(
         }
     });
 
-    // 新建房间：使用 current_diagram_id 绑定；缺省时使用 "default"。
-    let create_click = {
+    let open_create_modal: Rc<dyn Fn()> = {
+        let diagram_client = diagram_client.clone();
+        Rc::new(move || {
+            create_error.set(None);
+            create_modal_open.set(true);
+            if diagrams_loaded.get_untracked() || diagrams_loading.get_untracked() {
+                return;
+            }
+            diagrams_loading.set(true);
+            let diagram_client = diagram_client.clone();
+            spawn_local(async move {
+                match diagram_client.list_summaries().await {
+                    Ok(items) => {
+                        diagrams.set(items);
+                        diagrams_loaded.set(true);
+                    }
+                    Err(_) => {
+                        create_error.set(Some(
+                            "已有图表加载失败，仍可创建空白模型".to_string(),
+                        ));
+                    }
+                }
+                diagrams_loading.set(false);
+            });
+        })
+    };
+    let open_create_from_header = open_create_modal.clone();
+    let open_create_from_card = open_create_modal.clone();
+
+    let refresh_rooms = move |_| {
+        last_loaded_token.set(None);
+        reload_nonce.update(|value| *value += 1);
+    };
+
+    // 创建房间必须绑定真实 diagram；选择“新建空白模型”时先创建 diagram。
+    let submit_create_room: Rc<dyn Fn()> = {
+        let diagram_client = diagram_client.clone();
         let room_client = room_client.clone();
         let auth_session = auth_session.clone();
         let on_create_room = on_create_room.clone();
-        let error = error.clone();
-        let current_diagram_id = create_rw_signal(String::from("default"));
-        let current_title = create_rw_signal(String::from("Untitled Diagram"));
-        move |_| {
+        Rc::new(move || {
             if creating.get() {
+                return;
+            }
+            let name = room_name.get().trim().to_string();
+            if name.is_empty() || name.chars().count() > 64 {
+                create_error.set(Some("房间名称须为 1–64 个字符".to_string()));
                 return;
             }
             let Some(session) = auth_session.get() else {
@@ -2519,67 +2590,135 @@ pub fn RoomsListPage(
                 return;
             };
             creating.set(true);
-            error.set(None);
+            create_error.set(None);
             let token = session.access_token;
-            let name = current_title.get();
-            let diagram_id = current_diagram_id.get();
+            let selected = diagram_choice.get();
+            let available_diagrams = diagrams.get_untracked();
+            let diagram_client = diagram_client.clone();
             let room_client = room_client.clone();
             let on_create_room = on_create_room.clone();
-            let error = error.clone();
             spawn_local(async move {
+                let (diagram_id, diagram_title, created_diagram) = if selected == "__new__" {
+                    match diagram_client.create(&name).await {
+                        Ok(id) => (id, name.clone(), true),
+                        Err(_) => {
+                            create_error.set(Some("空白模型创建失败，请稍后重试".to_string()));
+                            creating.set(false);
+                            return;
+                        }
+                    }
+                } else {
+                    let title = available_diagrams
+                        .iter()
+                        .find(|diagram| diagram.id == selected)
+                        .and_then(|diagram| diagram.name.clone())
+                        .unwrap_or_else(|| "未命名模型".to_string());
+                    (selected, title, false)
+                };
+
                 match room_client.create_room(&token, &name, &diagram_id).await {
-                    Ok(detail) => {
+                    Ok(mut detail) => {
+                        detail.diagram_title = diagram_title;
+                        detail.my_role = "owner".to_string();
+                        detail.member_count = 1;
                         creating.set(false);
+                        create_modal_open.set(false);
                         on_create_room(detail);
                     }
                     Err(e) => {
-                        error.set(Some(e.to_string()));
+                        if created_diagram {
+                            diagrams.update(|items| {
+                                items.push(DiagramSummary {
+                                    id: diagram_id.clone(),
+                                    name: Some(diagram_title),
+                                });
+                            });
+                            diagram_choice.set(diagram_id);
+                        }
+                        create_error.set(Some(room_create_error_message(&e)));
                         creating.set(false);
                     }
                 }
             });
-        }
+        })
     };
+    let submit_from_modal = submit_create_room.clone();
 
     view! {
         <main class="cdb-rooms-list-page" data-testid="rooms-list-page">
-            <header class="cdb-rooms-topbar">
-                <div class="cdb-rooms-topbar__brand" data-testid="rooms-brand">"coldrawdb"</div>
-                <div class="cdb-rooms-topbar__spacer"></div>
-                <SessionIndicator
-                    auth_session=auth_session
-                    session_notice=session_notice
-                    on_refresh_session=Rc::new(|| {})
-                    on_logout=on_logout
-                />
-            </header>
-            <section class="cdb-rooms-content">
-                <div class="cdb-rooms-toolbar">
-                    <h1 data-testid="rooms-title">"我的协作房间"</h1>
+            <header class="cdb-rooms-topbar cdb-glass">
+                <div class="cdb-rooms-brand" data-testid="rooms-brand">
+                    <span class="cdb-brand-mark" aria-hidden="true">
+                        <IconBox size="lg"><IconLogo /></IconBox>
+                    </span>
+                    <strong>"coldrawdb"</strong>
+                    <span class="cdb-tag cdb-tag--brand">"工作空间"</span>
+                </div>
+                <div class="cdb-rooms-actions">
+                    <button
+                        class="cdb-btn cdb-btn--ghost cdb-btn--icon"
+                        type="button"
+                        data-testid="btn-refresh-rooms"
+                        title="刷新房间"
+                        aria-label="刷新房间"
+                        disabled=move || loading.get()
+                        on:click=refresh_rooms
+                    >
+                        <IconBox size="sm"><IconRefresh /></IconBox>
+                    </button>
                     <button
                         class="cdb-btn cdb-btn--primary"
+                        type="button"
                         data-testid="btn-create-room"
-                        disabled=move || creating.get()
-                        on:click=move |_| create_click(())
+                        on:click=move |_| open_create_from_header()
                     >
-                        {move || if creating.get() { "创建中..." } else { "新建房间" }}
+                        <IconBox size="sm"><IconAdd /></IconBox>
+                        "创建房间"
                     </button>
+                    <SessionIndicator
+                        auth_session=auth_session
+                        session_notice=session_notice
+                        on_refresh_session=Rc::new(|| {})
+                        on_logout=on_logout
+                    />
+                </div>
+            </header>
+            <section class="cdb-rooms-content">
+                <div class="cdb-rooms-heading">
+                    <div>
+                        <span class="cdb-eyebrow">
+                            {move || format!("欢迎回来，{}", auth_session.get().map(|session| session.display_name()).unwrap_or_else(|| "协作者".to_string()))}
+                        </span>
+                        <h1 data-testid="rooms-title">"继续你的模型评审"</h1>
+                        <p>"房间里的改动会实时同步给每一位成员。"</p>
+                    </div>
+                    <span class="cdb-tag cdb-rooms-service-state">
+                        <span class="cdb-status-dot"></span>
+                        "协作服务正常"
+                    </span>
                 </div>
                 {move || error.get().map(|msg| view! {
                     <p class="cdb-rooms-error" data-testid="rooms-error">{msg}</p>
                 })}
                 {move || if loading.get() {
                     view! { <p class="cdb-rooms-loading" data-testid="rooms-loading">"加载中..."</p> }.into_view()
-                } else if rooms.get().is_empty() {
-                    view! {
-                        <div class="cdb-rooms-empty" data-testid="rooms-empty">
-                            <p>"还没有房间，点击右上角「新建房间」开始。"</p>
-                        </div>
-                    }.into_view()
                 } else {
                     let on_select = on_select_room.clone();
+                    let open_create = open_create_from_card.clone();
                     view! {
-                        <ul class="cdb-room-list" data-testid="room-list">
+                        <div>
+                            {move || if rooms.get().is_empty() {
+                                view! {
+                                    <div class="cdb-rooms-empty" data-testid="rooms-empty">
+                                        <strong>"这里还没有协作房间"</strong>
+                                        <p>"创建一个房间，把模型评审和工程上下文集中到一起。"</p>
+                                    </div>
+                                }.into_view()
+                            } else {
+                                view! { <></> }.into_view()
+                            }}
+                        </div>
+                        <ul class="cdb-room-list" class=("cdb-room-list--empty", move || rooms.get().is_empty()) data-testid="room-list">
                             <For each=move || rooms.get() key=|r| r.id.clone() children=move |room: RoomSummary| {
                                 let on_select = on_select.clone();
                                 let summary = room.clone();
@@ -2593,18 +2732,160 @@ pub fn RoomsListPage(
                                             data-testid=format!("room-card-{}", room.id)
                                             on:click=move |_| on_select(RoomDetail::from_summary(&summary))
                                         >
-                                            <strong>{room.name.clone()}</strong>
-                                            <small>{format!("图表：{} · 角色：{}", room.diagram_title, room.my_role)}</small>
-                                            <small>{format!("成员数：{} · 更新：{}", room.member_count, room.updated_at)}</small>
+                                            <div class="cdb-room-card__body">
+                                                <div class="cdb-room-meta">
+                                                    <span class="cdb-tag cdb-tag--brand">{room.my_role.clone()}</span>
+                                                    <span class="cdb-tag">
+                                                        <span class="cdb-status-dot"></span>
+                                                        {format!("{} 人", room.member_count)}
+                                                    </span>
+                                                </div>
+                                                <h2>{room.name.clone()}</h2>
+                                                <p>{room.diagram_title.clone()}</p>
+                                            </div>
+                                            <div class="cdb-room-card__footer">
+                                                <span class="cdb-user-avatar">{room.name.chars().next().unwrap_or('房').to_string()}</span>
+                                                <span>{format!("{}  ", room.updated_at)}<IconBox size="sm"><IconChevronRight /></IconBox></span>
+                                            </div>
                                         </button>
                                     </li>
                                 }
                             } />
+                            <li class="cdb-room-list-item">
+                                <button class="cdb-room-card cdb-room-card--new" type="button" on:click=move |_| open_create()>
+                                    <span class="cdb-brand-mark"><IconBox size="lg"><IconAdd /></IconBox></span>
+                                    <h2>"新建协作房间"</h2>
+                                    <p>"绑定一个 diagram，邀请团队共同编辑"</p>
+                                </button>
+                            </li>
                         </ul>
                     }.into_view()
                 }}
             </section>
+            {move || if create_modal_open.get() {
+                let submit = submit_from_modal.clone();
+                view! {
+                    <div
+                        class="cdb-rooms-modal-overlay"
+                        data-testid="create-room-overlay"
+                        on:click=move |_| {
+                            if !creating.get_untracked() {
+                                create_modal_open.set(false);
+                            }
+                        }
+                    >
+                        <section
+                            class="cdb-create-room-modal cdb-glass"
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="create-room-title"
+                            data-testid="modal-create-room"
+                            on:click=move |event| event.stop_propagation()
+                        >
+                            <header class="cdb-create-room-modal__header">
+                                <div>
+                                    <span class="cdb-eyebrow">"新建协作空间"</span>
+                                    <h2 id="create-room-title">"创建协作房间"</h2>
+                                </div>
+                                <button
+                                    class="cdb-btn cdb-btn--ghost cdb-btn--icon"
+                                    type="button"
+                                    aria-label="关闭"
+                                    disabled=move || creating.get()
+                                    on:click=move |_| create_modal_open.set(false)
+                                >
+                                    <IconBox size="sm"><IconClose /></IconBox>
+                                </button>
+                            </header>
+                            <form
+                                on:submit=move |event| {
+                                    event.prevent_default();
+                                    submit();
+                                }
+                            >
+                                <div class="cdb-create-room-modal__body">
+                                    <div class="cdb-field">
+                                        <label for="room-name">"房间名称"</label>
+                                        <input
+                                            class="cdb-input"
+                                            id="room-name"
+                                            data-testid="create-room-name"
+                                            maxlength="64"
+                                            prop:value=move || room_name.get()
+                                            on:input=move |event| room_name.set(event_target_value(&event))
+                                        />
+                                    </div>
+                                    <div class="cdb-field">
+                                        <label for="room-diagram">"关联 diagram"</label>
+                                        <select
+                                            class="cdb-input cdb-select"
+                                            id="room-diagram"
+                                            data-testid="create-room-diagram"
+                                            prop:value=move || diagram_choice.get()
+                                            on:change=move |event| diagram_choice.set(event_target_value(&event))
+                                        >
+                                            <option value="__new__">"新建空白模型"</option>
+                                            <For
+                                                each=move || {
+                                                    let bound = rooms.get().into_iter().map(|room| room.diagram_id).collect::<Vec<_>>();
+                                                    diagrams.get().into_iter().filter(move |diagram| !bound.contains(&diagram.id)).collect::<Vec<_>>()
+                                                }
+                                                key=|diagram| diagram.id.clone()
+                                                children=move |diagram: DiagramSummary| {
+                                                    let id = diagram.id.clone();
+                                                    let label = diagram.name.unwrap_or_else(|| "未命名模型".to_string());
+                                                    view! { <option value=id>{label}</option> }
+                                                }
+                                            />
+                                        </select>
+                                        {move || if diagrams_loading.get() {
+                                            view! { <small class="cdb-field-hint">"正在加载已有模型..."</small> }.into_view()
+                                        } else {
+                                            view! { <small class="cdb-field-hint">"新建模型会先创建 diagram，再绑定房间。"</small> }.into_view()
+                                        }}
+                                    </div>
+                                    <div class="cdb-field">
+                                        <label for="room-default-role">"默认邀请角色"</label>
+                                        <select
+                                            class="cdb-input cdb-select"
+                                            id="room-default-role"
+                                            prop:value=move || default_role.get()
+                                            on:change=move |event| default_role.set(event_target_value(&event))
+                                        >
+                                            <option value="editor">"Editor · 可编辑"</option>
+                                            <option value="viewer">"Viewer · 只读"</option>
+                                        </select>
+                                    </div>
+                                    <p class="cdb-create-room-error" role="alert" data-testid="create-room-error">
+                                        {move || create_error.get().unwrap_or_default()}
+                                    </p>
+                                </div>
+                                <footer class="cdb-create-room-modal__footer">
+                                    <button class="cdb-btn" type="button" disabled=move || creating.get() on:click=move |_| create_modal_open.set(false)>
+                                        "取消"
+                                    </button>
+                                    <button class="cdb-btn cdb-btn--primary" type="submit" data-testid="create-room-submit" disabled=move || creating.get()>
+                                        {move || if creating.get() { "创建中..." } else { "创建并进入" }}
+                                    </button>
+                                </footer>
+                            </form>
+                        </section>
+                    </div>
+                }.into_view()
+            } else {
+                view! { <></> }.into_view()
+            }}
         </main>
+    }
+}
+
+fn room_create_error_message(error: &ApiError) -> String {
+    match error {
+        ApiError::Server(404, _) => "关联图表不存在，请重新选择".to_string(),
+        ApiError::Server(409, _) => "该图表已绑定其他协作房间".to_string(),
+        ApiError::Server(_, _) => "房间创建失败，请稍后重试".to_string(),
+        ApiError::Network(_) => "网络连接失败，请检查网络后重试".to_string(),
+        ApiError::Parse(_) => "房间响应无效，请稍后重试".to_string(),
     }
 }
 
@@ -4878,15 +5159,31 @@ pub fn AppRoot(
 
     // align-frontend-to-prototype：rooms list → 选中/创建房间 → 进入 editor
     let on_enter_room: Rc<dyn Fn(RoomDetail)> = {
+        let client = client.clone();
+        let store = store.clone();
         let current_page = current_page.clone();
         let current_diagram_id = current_diagram_id.clone();
         let current_room = current_room.clone();
         let current_title = current_title.clone();
+        let error = error.clone();
         Rc::new(move |detail: RoomDetail| {
+            let diagram_id = detail.diagram_id.clone();
             current_page.set(PageState::RoomEditor);
-            current_diagram_id.set(detail.diagram_id.clone());
+            current_diagram_id.set(diagram_id.clone());
             current_title.set(detail.diagram_title.clone());
             current_room.set(Some(detail));
+            let client = client.clone();
+            let store = store.clone();
+            spawn_local(async move {
+                match client.get(&diagram_id).await {
+                    Ok(diagram) => {
+                        current_title.set(diagram.name.clone());
+                        store.load(diagram);
+                        error.set(None);
+                    }
+                    Err(_) => error.set(Some("图表加载失败，请返回房间列表后重试".to_string())),
+                }
+            });
         })
     };
 
@@ -5673,6 +5970,7 @@ pub fn AppRoot(
                 auth_session=auth_session
                 session_notice=session_notice
                 auth_client=auth_client.clone()
+                diagram_client=client.clone()
                 room_client=room_client.clone()
                 on_logout=on_logout.clone()
                 on_select_room=on_enter_room.clone()
@@ -7717,6 +8015,20 @@ mod tests {
                 "Auth 对齐原型：{anchor} 必须保留"
             );
         }
+    }
+
+    #[test]
+    fn test_room_create_error_message_is_friendly() {
+        assert_eq!(
+            room_create_error_message(&ApiError::Server(404, "private sql detail".to_string())),
+            "关联图表不存在，请重新选择"
+        );
+        assert_eq!(
+            room_create_error_message(&ApiError::Server(409, "room-id".to_string())),
+            "该图表已绑定其他协作房间"
+        );
+        assert!(!room_create_error_message(&ApiError::Network("token=secret".to_string()))
+            .contains("secret"));
     }
 
     /// align-frontend-to-prototype：密码强度纯函数测试。

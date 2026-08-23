@@ -182,6 +182,25 @@ try {
     await assert.doesNotReject(page.locator('[data-testid="auth-tab-register"]').waitFor());
     assert.equal(await page.locator('[data-testid="rooms-list-page"]:visible').count(), 0);
     assert.equal(state.requests.some(item => item.includes("/rooms")), false);
+    const visual = await page.locator('[data-testid="auth-gate"]').evaluate(element => {
+      const pageStyle = getComputedStyle(element);
+      const storyStyle = getComputedStyle(element.querySelector('[data-testid="auth-story"]'));
+      const panelStyle = getComputedStyle(element.querySelector('[data-testid="auth-panel"]'));
+      return {
+        padding: pageStyle.paddingTop,
+        gap: pageStyle.columnGap,
+        storyRadius: storyStyle.borderRadius,
+        panelRadius: panelStyle.borderRadius,
+        panelBackdrop: panelStyle.backdropFilter,
+      };
+    });
+    assert.deepEqual(visual, {
+      padding: "18px",
+      gap: "18px",
+      storyRadius: "28px",
+      panelRadius: "28px",
+      panelBackdrop: "blur(22px) saturate(1.45)",
+    });
   });
 
   await run(["ST-S03-UI-02"], "登录错误不枚举用户", async page => {
@@ -217,6 +236,16 @@ try {
     await assert.doesNotReject(page.locator('[data-testid="session-indicator"]:visible').waitFor());
     await assert.doesNotReject(page.locator('[data-testid="user-menu"]:visible').waitFor());
     assert.equal(await page.locator('[data-testid="editor-ready"]:visible').count(), 0);
+    const visual = await page.locator('[data-testid="rooms-list-page"]:visible').evaluate(element => {
+      const pageStyle = getComputedStyle(element);
+      const navStyle = getComputedStyle(element.querySelector(".cdb-rooms-topbar"));
+      return {
+        padding: pageStyle.paddingTop,
+        navHeight: navStyle.height,
+        navRadius: navStyle.borderRadius,
+      };
+    });
+    assert.deepEqual(visual, { padding: "18px", navHeight: "64px", navRadius: "18px" });
   });
 
   await run(["ST-S03-UI-05"], "401 仅续期一次并重放房间请求", async page => {

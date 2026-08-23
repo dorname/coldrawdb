@@ -125,6 +125,36 @@ pub fn IconShare() -> impl IntoView {
     }
 }
 
+#[component]
+pub fn IconLogo() -> impl IntoView {
+    view! { <Icon path="M7 5.5 L19 5.5 A2 2 0 0 1 21 7.5 L21 9.5 A2 2 0 0 1 19 11.5 L7 11.5 A2 2 0 0 1 5 9.5 L5 7.5 A2 2 0 0 1 7 5.5 M7 13.5 L19 13.5 A2 2 0 0 1 21 15.5 L21 17.5 A2 2 0 0 1 19 19.5 L7 19.5 A2 2 0 0 1 5 17.5 L5 15.5 A2 2 0 0 1 7 13.5 M9 8.5 L9.01 8.5 M9 16.5 L9.01 16.5" /> }
+}
+
+#[component]
+pub fn IconEye() -> impl IntoView {
+    view! { <Icon path="M3 13 C6 7 10 5 13 5 C16 5 20 7 23 13 C20 19 16 21 13 21 C10 21 6 19 3 13 M13 9 A4 4 0 1 1 13 17 A4 4 0 1 1 13 9" /> }
+}
+
+#[component]
+pub fn IconEyeOff() -> impl IntoView {
+    view! { <Icon path="M4 4 L22 22 M3 13 C5 9 8 7 11 6 M16 6 C19 7 21 9 23 13 C21 17 18 19 15 20 M9 10 A4 4 0 0 0 16 16" /> }
+}
+
+#[component]
+pub fn IconUsers() -> impl IntoView {
+    view! { <Icon path="M9 5 A4 4 0 1 1 9 13 A4 4 0 1 1 9 5 M2 22 C2 17 5 15 9 15 C13 15 16 17 16 22 M17 6 A3 3 0 0 1 17 12 M17 15 C21 15 24 17 24 21" /> }
+}
+
+#[component]
+pub fn IconActivity() -> impl IntoView {
+    view! { <Icon path="M2 14 L7 14 L10 6 L15 21 L18 14 L24 14" /> }
+}
+
+#[component]
+pub fn IconRefresh() -> impl IntoView {
+    view! { <Icon path="M21 8 L21 3 L16 3 M21 3 C18 0 12 1 8 4 C4 7 3 12 5 16 M5 18 L5 23 L10 23 M5 23 C8 26 14 25 18 22 C22 19 23 14 21 10" /> }
+}
+
 // ============================================================
 // 4.4 画布对象（5 个，main 自建）
 // ============================================================
