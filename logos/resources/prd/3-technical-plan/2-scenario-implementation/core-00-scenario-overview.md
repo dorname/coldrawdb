@@ -46,7 +46,7 @@ S06 MCP ──→ 既有 HTTP diagram 白名单（本提案不改路径）
 | S01 | `core-S01-edit-and-save-diagram.md` | `core-S01-edit-and-save-design.md` | `core-S01-diagram-save.json` | `core-02-diagram-persistence.md` / `core-01a-table-and-field.md` / `core-0a-code-editor.md` | `diagrams_v1.rs` / `diagrams/service.rs` | `editor_data_access` / `editor_core` / `editor_panels` / `command_palette` / `code_view` |
 | S02 | `core-S02-load-shared-diagram.md` | `core-S02-load-shared-diagram-design.md` | `core-S02-shared-link-load.json` | `core-02-diagram-persistence.md` / `core-05-top-menu-modals.md` | `diagrams_v1.rs` / `diagrams/service.rs` | `editor_data_access` / `editor_core` / `editor_render` / `editor_panels`（Share 模态） |
 
-## 场景索引（V2 后端已实现，生产前端待接入）
+## 场景索引（V2 后端已实现，生产前端部分接入）
 
 | 场景 | 时序图 | Phase 2 设计 | 编排测试 | API / DB | 备注 |
 |---|---|---|---|---|---|

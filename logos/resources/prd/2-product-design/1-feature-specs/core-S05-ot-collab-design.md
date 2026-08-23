@@ -3,18 +3,10 @@
 > 模块：core | 场景：S05 | 版本：V2 | 优先级：P2
 > 现行原型：`core-01-editor-prototype.html`
 > 历史参考：`core-05-ot-collab-prototype.html`（不作为验收入口）
-> 生产状态：后端已实现，生产前端待接入
+> 生产状态：后端已实现；生产前端 API/页面流已部分接入；相对主原型逐项对齐待下一变更 `implement-unified-prototype-spec-parity`
 > 前置：**S03 鉴权** + **S04 协作房间**（须在 room 内且 role ≠ viewer）
 > Phase 1 输入：`core-00-scenario-overview.md` §S05 / `core-03-pain-points.md` P03
 > 参考：drawdb main `CollabContext` 为 stub；coldrawdb V2 引入独立 **collab-server** + WS 网关
-
-## 0. 现行文档与原型基线
-
-> 模块：core | 场景：S05 | 版本：V2 | 优先级：P0
-> 现行原型：`core-01-editor-prototype.html`
-> 历史参考：`core-05-ot-collab-prototype.html`（不作为验收入口）
-> 生产状态：后端已实现；生产前端 API/页面流已部分接入；相对主原型逐项对齐待下一变更 `implement-unified-prototype-spec-parity`
-> 前置：S03 + S04；Viewer 可接收不可发送 op
 
 ## 1. 产品类型与原型策略
 

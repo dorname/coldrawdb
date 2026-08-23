@@ -1,10 +1,5 @@
 # 场景总览
 
-> 覆盖范围：V1（S01/S02 全栈已实现）+ V2（S03～S05 后端已实现、生产前端待接入）+ V3（S06 MCP 实现中）
-> 场景编号全局唯一，由 `logos-project.yaml` 的 `scenario_counter.next_id` 维护
-
-## 现行覆盖范围与原型基线
-
 > 覆盖范围：V1（S01/S02 全栈已实现）+ V2（S03～S05 后端已实现；生产前端 API/页面流已部分接入；相对统一主原型的逐项对齐由本提案收口规格，由下一变更 `implement-unified-prototype-spec-parity` 实现）+ V3（S06 MCP 实现中）
 > 场景编号全局唯一，由 `logos-project.yaml` 的 `scenario_counter.next_id` 维护
 > **唯一现行 HTML 主原型**：`prd/2-product-design/2-page-design/core-01-editor-prototype.html`（`core-03/04/05-*-prototype.html` 仅历史参考，不作验收入口）
