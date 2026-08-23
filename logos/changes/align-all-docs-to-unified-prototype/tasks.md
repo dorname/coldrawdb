@@ -60,3 +60,7 @@
 - [x] 产出 delta 到 `deltas/reference/implementation/core-implementation-checklist.md` — 区分已有能力、规格待实现和第二阶段待验证
 
 ## [code] 代码实现
+
+- [x] 新增 `frontend-rs/scripts/resolve-playwright-browsers.mjs` — 解析可用 Chromium / headless shell，必要时安装到可写缓存
+- [x] 更新 `scripts/run-verify-tests.sh` — 预跑原型回归前导出 Playwright 浏览器环境
+- [x] 更新 `frontend-rs/scripts/test-unified-prototype.mjs` 与 `test-unified-prototype-render.mjs` — 启动前应用浏览器解析，工作区只读时截图落到临时目录

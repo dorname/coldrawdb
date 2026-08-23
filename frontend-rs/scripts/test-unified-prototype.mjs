@@ -1,16 +1,29 @@
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { chromium } from "playwright";
 import { reportOpenLogos } from "../tests/e2e/helpers/openlogos-reporter.mjs";
+import { applyPlaywrightBrowserEnv } from "./resolve-playwright-browsers.mjs";
+
+const playwrightBrowsers = applyPlaywrightBrowserEnv();
+const { chromium } = await import("playwright");
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(currentDir, "../..");
-const screenshotDir = resolve(root, "frontend-rs/test-results/unified-prototype");
-mkdirSync(screenshotDir, { recursive: true });
+const preferredScreenshotDir = resolve(root, "frontend-rs/test-results/unified-prototype");
+let screenshotDir = preferredScreenshotDir;
+try {
+  mkdirSync(screenshotDir, { recursive: true });
+} catch {
+  screenshotDir = join(tmpdir(), "coldrawdb-unified-prototype");
+  mkdirSync(screenshotDir, { recursive: true });
+}
 const prototypeUrl = pathToFileURL(resolve(root, "logos/resources/prd/2-product-design/2-page-design/core-01-editor-prototype.html")).href;
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({
+  headless: true,
+  executablePath: playwrightBrowsers.headless ?? playwrightBrowsers.chrome,
+});
 const results = [];
 
 async function withPage(id, title, body, options = {}) {

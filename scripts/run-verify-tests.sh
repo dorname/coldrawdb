@@ -47,6 +47,10 @@ echo "[verify-pre-run] frontend-rs cargo test ..."
 echo "[verify-pre-run] MCP cargo test ..."
 (cd "$ROOT/mcp-server" && "$CARGO_BIN" test)
 
+echo "[verify-pre-run] 解析 Playwright 浏览器 ..."
+eval "$("$NODE_BIN" "$ROOT/frontend-rs/scripts/resolve-playwright-browsers.mjs" --export-env)"
+echo "[verify-pre-run] PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-unset} HEADLESS_SHELL=${PLAYWRIGHT_CHROMIUM_USE_HEADLESS_SHELL:-default}"
+
 echo "[verify-pre-run] 单文件原型 Playwright 回归 ..."
 (cd "$ROOT/frontend-rs" && "$NPM_BIN" run test:unified-prototype)
 

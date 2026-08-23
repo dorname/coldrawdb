@@ -14,7 +14,9 @@
 
 ## 变更类型
 
-需求级纯规格变更。覆盖需求、产品设计、技术场景、测试与验收追溯；本提案不修改生产代码，不改变主原型，不执行部署。
+需求级纯规格变更，外加验收预跑代码级修复。覆盖需求、产品设计、技术场景、测试与验收追溯；不改变主原型与生产前后端业务逻辑，不执行部署。
+
+因本提案尚未归档，无法另建 `fix-verify-playwright-sandbox`；`openlogos verify` 在沙箱内因 Playwright 浏览器缓存不完整失败，故将浏览器解析修复收口到本提案 `[code]`。
 
 ## 变更范围
 
@@ -53,12 +55,16 @@
 - 影响的实现与验收文档：
   - `core-frontend-alignment-acceptance.md`：重建主原型逐项验收标准
   - `core-implementation-checklist.md`：区分“已有能力”“规格待实现”“第二阶段待验证”，禁止提前标记完成
-- 影响的 smoke 测试：无。第一阶段不改代码或部署拓扑。
+- 影响的 smoke 测试：无。
+- 影响的验收预跑：
+  - `scripts/run-verify-tests.sh`：解析可用 Playwright 浏览器后再跑单文件原型回归
+  - `frontend-rs/scripts/resolve-playwright-browsers.mjs`：忽略不完整的 `PLAYWRIGHT_BROWSERS_PATH`，回退到 `~/.cache/ms-playwright` 或可写临时目录；仅有完整 Chromium 时关闭 headless shell
+  - `frontend-rs/scripts/test-unified-prototype.mjs` / `test-unified-prototype-render.mjs`：启动前应用同一解析策略；工作区只读时截图落到临时目录
 
 ## 部署影响
 
 - 是否需要部署：否
-- 部署原因：本提案仅生成并合并规格 delta，不修改前端、后端、数据库或部署资产
+- 部署原因：规格合并与验收预跑脚本修复均不改变运行中的前后端、数据库或部署拓扑
 - 影响环境：无
 - 是否涉及数据迁移：否
 - 是否需要回滚预案：否；文档可通过规格提交回退

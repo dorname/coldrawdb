@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { chromium } from "playwright";
 import { reportOpenLogos } from "../tests/e2e/helpers/openlogos-reporter.mjs";
+import { applyPlaywrightBrowserEnv } from "./resolve-playwright-browsers.mjs";
+
+const playwrightBrowsers = applyPlaywrightBrowserEnv();
+const { chromium } = await import("playwright");
 
 const startedAt = Date.now();
 const currentDir = dirname(fileURLToPath(import.meta.url));
@@ -85,7 +88,10 @@ async function assertSingleRender(page, previousRevision, operation) {
 
 let browser;
 try {
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({
+    headless: true,
+    executablePath: playwrightBrowsers.headless ?? playwrightBrowsers.chrome,
+  });
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
   await page.goto(pathToFileURL(prototypePath).href, { waitUntil: "domcontentloaded" });
 
