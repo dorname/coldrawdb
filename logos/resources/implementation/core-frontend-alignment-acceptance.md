@@ -78,14 +78,14 @@
 - [x] 成功进入 rooms
 
 ### 7.2 rooms（B 批）
-- [ ] `rooms-list-page` + 列表/空状态 + 创建入口 + 用户菜单
-- [ ] 创建/打开进入 `room-editor-page`
-- [ ] `room-badge` 可回 rooms
+- [x] `rooms-list-page` + 列表/空状态 + 创建入口 + 用户菜单（B 批：ST-S04-UI-03 断言 `rooms-empty` / `btn-create-room` / `user-menu`）
+- [x] 创建/打开进入 `room-editor-page`（B 批：ST-S04-UI-03～06 均经创建流）
+- [x] `room-badge` 可回 rooms（B 批：ST-S04-UI-04 点击返回 `rooms-list-page`）
 
 ### 7.3 invite（B 批）
-- [ ] `invite-accept-page` preview；过期无加入
-- [ ] 未登录接受→提示登录；登录后可续接
-- [ ] 接受后进入同一 room
+- [x] `invite-accept-page` preview；过期无加入（B 批：ST-S04-UI-04 preview；ST-S04-UI-07 + ST-PU-23 过期无加入按钮且不透传错误码）
+- [x] 未登录接受→提示登录；登录后可续接（B 批：ST-S04-UI-04 匿名接受→登录提示→登录后续接回邀请页）
+- [x] 接受后进入同一 room（B 批：ST-S04-UI-04 进入 room-editor 且 `room-badge` / `status-role` 正确；ST-S04-UI-03 邀请模态生成/复制链接）
 
 ### 7.4 room-editor · 壳层（C/D 批）
 - [x] `app-bar` / `tool-rail` / `editor-canvas` / `inspector` / `status-bar`（C 批：ST-S05-UI-01 等锚点断言）

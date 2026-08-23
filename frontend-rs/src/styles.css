@@ -957,6 +957,91 @@ body {
   gap: var(--cdb-space-3);
 }
 
+/* B 批：成员抽屉（主原型 members drawer） */
+.cdb-room-panel__section--grow {
+  flex: 1;
+  align-content: start;
+  overflow: auto;
+}
+
+.cdb-room-panel__meta {
+  margin-right: auto;
+  color: var(--cdb-color-text-muted);
+  font-size: var(--cdb-font-size-xs);
+}
+
+.cdb-room-member {
+  justify-content: flex-start;
+  padding: var(--cdb-space-2) 0;
+}
+
+.cdb-room-member .cdb-avatar {
+  position: relative;
+  flex: none;
+}
+
+.cdb-room-member .cdb-presence-dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cdb-color-success);
+  border: 1.5px solid var(--cdb-color-bg);
+}
+
+.cdb-room-member__info {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.cdb-room-member__info small {
+  color: var(--cdb-color-text-muted);
+  font-size: var(--cdb-font-size-xs);
+}
+
+.cdb-room-member__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--cdb-space-2);
+}
+
+.cdb-form-select--sm {
+  padding: 4px 6px;
+  width: 86px;
+  font-size: var(--cdb-font-size-xs);
+}
+
+.cdb-btn--danger {
+  color: var(--cdb-color-error);
+}
+
+.cdb-room-panel__note {
+  display: flex;
+  gap: var(--cdb-space-2);
+  margin: 0;
+  padding: var(--cdb-space-3);
+  border-radius: var(--cdb-radius-md);
+  background: var(--cdb-color-bg-1);
+  color: var(--cdb-color-text-muted);
+  font-size: var(--cdb-font-size-xs);
+}
+
+/* B 批：邀请模态链接行（主原型 .invite-link） */
+.cdb-invite-link {
+  display: grid;
+  gap: var(--cdb-space-2);
+}
+
+.cdb-invite-link .cdb-form-input {
+  font-family: var(--cdb-font-mono, ui-monospace, monospace);
+  font-size: var(--cdb-font-size-xs);
+}
+
+
 .cdb-room-panel__section-title {
   color: var(--cdb-color-text-muted);
   font-size: var(--cdb-font-size-xs);

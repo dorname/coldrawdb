@@ -1532,6 +1532,7 @@ pub fn AppBar(
     remote_members: RwSignal<Vec<CollabMemberPresence>>,
     on_open_rooms: Rc<dyn Fn()>,
     on_open_members: Rc<dyn Fn()>,
+    on_open_invite: Rc<dyn Fn()>,
     read_only: bool,
     theme_mode: RwSignal<String>,
 ) -> impl IntoView {
@@ -1621,14 +1622,14 @@ pub fn AppBar(
             })}
             <div class="cdb-app-bar__actions">
                 {move || current_room.get().map(|_| {
-                    let on_open_members_invite = on_open_members.clone();
+                    let on_open_invite_btn = on_open_invite.clone();
                     let on_open_members_drawer = on_open_members.clone();
                     view! {
                         <button
                             class="cdb-btn cdb-btn--primary"
                             data-testid="btn-invite"
                             disabled=move || read_only || room_is_viewer(current_room)
-                            on:click=move |_| on_open_members_invite()
+                            on:click=move |_| on_open_invite_btn()
                         >
                             <IconBox size="sm"><IconAdd /></IconBox>
                             "邀请"
@@ -1784,97 +1785,158 @@ fn prepend_activity(feed: RwSignal<Vec<String>>, item: String) {
     });
 }
 
+/// B 批：邀请模态 — 结构对齐主原型 modal-invite：
+/// 「邀请成员加入「房间名」」+ 角色选择 + 邀请链接（7 天内有效）+ 复制。
+/// 打开时按当前角色自动生成真实邀请（POST /rooms/{id}/invites），切换角色重新生成。
+#[component]
+pub fn InviteModal(
+    open: RwSignal<bool>,
+    room_client: RoomClient,
+    auth_session: RwSignal<Option<AuthSession>>,
+    current_room: RwSignal<Option<RoomDetail>>,
+    error: RwSignal<Option<String>>,
+) -> impl IntoView {
+    let invite_role = create_rw_signal(String::from("editor"));
+    let invite_url = create_rw_signal(None::<String>);
+    let generating = create_rw_signal(false);
+    let copied = create_rw_signal(false);
+
+    let generate = {
+        let room_client = room_client.clone();
+        Rc::new(move || {
+            let Some(session) = auth_session.get_untracked() else {
+                return;
+            };
+            let Some(room) = current_room.get_untracked() else {
+                return;
+            };
+            let token = session.access_token;
+            let room_id = room.id;
+            let role = invite_role.get_untracked();
+            let room_client = room_client.clone();
+            generating.set(true);
+            invite_url.set(None);
+            spawn_local(async move {
+                match room_client.create_invite(&token, &room_id, &role).await {
+                    Ok(invite) => invite_url.set(Some(invite.invite_url)),
+                    Err(e) => error.set(Some(e.to_string())),
+                }
+                generating.set(false);
+            });
+        })
+    };
+
+    // 打开模态时自动生成邀请链接（主原型事实：链接随角色即时展示）
+    create_effect({
+        let generate = generate.clone();
+        move |_| {
+            if open.get() {
+                copied.set(false);
+                generate();
+            }
+        }
+    });
+
+    let copy_url = move || {
+        let Some(url) = invite_url.get_untracked() else {
+            return;
+        };
+        // 剪贴板写入尽力而为（headless / 权限拒绝时不阻塞）；以按钮文案反馈
+        if let Some(window) = web_sys::window() {
+            let clipboard = window.navigator().clipboard();
+            let _ = clipboard.write_text(&url);
+        }
+        copied.set(true);
+        let copied = copied.clone();
+        gloo_timers::callback::Timeout::new(1_500, move || copied.set(false)).forget();
+    };
+
+    view! {
+        <div
+            class="cdb-modal-overlay"
+            data-testid="modal-invite-overlay"
+            style:display=move || if open.get() { "flex" } else { "none" }
+            on:click=move |_| open.set(false)
+        >
+            <div class="cdb-modal" data-testid="modal-invite" on:click=|ev| ev.stop_propagation()>
+                <div class="cdb-modal-header">
+                    <h3 class="cdb-modal-title" data-testid="modal-title-invite">
+                        {move || format!(
+                            "邀请成员加入「{}」",
+                            current_room.get().map(|r| r.name).unwrap_or_else(|| "房间".to_string())
+                        )}
+                    </h3>
+                    <button
+                        class="cdb-modal-close"
+                        data-testid="modal-cancel-invite"
+                        on:click=move |_| open.set(false)
+                    >
+                        <IconBox size="sm"><IconClose /></IconBox>
+                    </button>
+                </div>
+                <div class="cdb-modal-body">
+                    <label class="cdb-form-label" for="invite-role">"加入后的角色"</label>
+                    <select
+                        class="cdb-form-select"
+                        id="invite-role"
+                        data-testid="invite-role"
+                        disabled=move || generating.get()
+                        on:change={
+                            let generate = generate.clone();
+                            move |ev| {
+                                invite_role.set(event_target_value(&ev));
+                                copied.set(false);
+                                generate();
+                            }
+                        }
+                    >
+                        <option value="editor" selected=true>"Editor · 可以编辑"</option>
+                        <option value="viewer">"Viewer · 仅查看"</option>
+                    </select>
+                    <label class="cdb-form-label">"邀请链接 · 7 天内有效"</label>
+                    <div class="cdb-invite-link">
+                        {move || if generating.get() {
+                            view! { <span class="cdb-form-hint" data-testid="invite-generating">"正在生成邀请…"</span> }.into_view()
+                        } else {
+                            view! { <></> }.into_view()
+                        }}
+                        {move || invite_url.get().map(|url| view! {
+                            <input class="cdb-form-input" data-testid="invite-url" readonly=true prop:value=url />
+                        })}
+                    </div>
+                </div>
+                <div class="cdb-modal-footer">
+                    <button
+                        class="cdb-btn cdb-btn--primary"
+                        data-testid="btn-copy-invite"
+                        disabled=move || invite_url.get().is_none()
+                        on:click=move |_| copy_url()
+                    >
+                        {move || if copied.get() { "已复制 ✓" } else { "复制邀请" }}
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+
 #[component]
 pub fn RoomPanel(
     visible: RwSignal<bool>,
     room_client: RoomClient,
     auth_session: RwSignal<Option<AuthSession>>,
-    current_diagram_id: RwSignal<String>,
-    current_title: RwSignal<String>,
     current_room: RwSignal<Option<RoomDetail>>,
     room_members: RwSignal<Vec<RoomMember>>,
     error: RwSignal<Option<String>>,
+    on_open_invite: Rc<dyn Fn()>,
 ) -> impl IntoView {
-    let rooms = create_rw_signal(Vec::<RoomSummary>::new());
-    let create_name = create_rw_signal(String::from("数据模型评审"));
-    let invite_role = create_rw_signal(String::from("viewer"));
-    let invite_url = create_rw_signal(None::<String>);
-    let loading = create_rw_signal(false);
-
-    let load_rooms = {
-        let room_client = room_client.clone();
-        let auth_session = auth_session.clone();
-        let rooms = rooms.clone();
-        let error = error.clone();
-        Rc::new(move || {
-            let Some(session) = auth_session.get_untracked() else {
-                error.set(Some("请先登录".to_string()));
-                return;
-            };
-            let token = session.access_token;
-            let room_client = room_client.clone();
-            loading.set(true);
-            spawn_local(async move {
-                match room_client.list_rooms(&token).await {
-                    Ok(out) => rooms.set(out.items),
-                    Err(e) => error.set(Some(e.to_string())),
-                }
-                loading.set(false);
-            });
-        })
-    };
-
-    create_effect({
-        let load_rooms = load_rooms.clone();
-        move |_| {
-            if visible.get() && auth_session.get().is_some() {
-                load_rooms();
-            }
-        }
-    });
-
-    let create_room = {
-        let room_client = room_client.clone();
-        let auth_session = auth_session.clone();
-        let current_room = current_room.clone();
-        let current_diagram_id = current_diagram_id.clone();
-        let current_title = current_title.clone();
-        let error = error.clone();
-        Rc::new(move || {
-            let Some(session) = auth_session.get_untracked() else {
-                error.set(Some("请先登录".to_string()));
-                return;
-            };
-            let diagram_id = current_diagram_id.get_untracked();
-            if diagram_id == "default" {
-                error.set(Some("请先创建或保存图表，再创建协作房间".to_string()));
-                return;
-            }
-            let token = session.access_token;
-            let name = create_name.get_untracked();
-            let room_client = room_client.clone();
-            spawn_local(async move {
-                match room_client.create_room(&token, &name, &diagram_id).await {
-                    Ok(room) => {
-                        current_title.set(if room.diagram_title.is_empty() {
-                            current_title.get_untracked()
-                        } else {
-                            room.diagram_title.clone()
-                        });
-                        current_room.set(Some(room));
-                    }
-                    Err(e) => error.set(Some(e.to_string())),
-                }
-            });
-        })
-    };
+    // B 批：成员抽屉 — 结构对齐主原型 members drawer：
+    // 「房间成员」+ 邀请新成员 + member-list（角色选择 / 移除，Owner 可管理）。
+    // 历史「创建房间 / 我的房间 / 内联邀请」section 已移除（页面流由 rooms 页与邀请模态承接）。
 
     let load_members = {
         let room_client = room_client.clone();
-        let auth_session = auth_session.clone();
-        let current_room = current_room.clone();
-        let room_members = room_members.clone();
-        let error = error.clone();
         Rc::new(move || {
             let Some(session) = auth_session.get_untracked() else {
                 return;
@@ -1894,113 +1956,176 @@ pub fn RoomPanel(
         })
     };
 
-    let create_invite = {
+    // 打开抽屉或切换房间时自动加载成员（主原型事实：成员列表直接可见，无手动加载按钮）
+    create_effect({
+        let load_members = load_members.clone();
+        move |_| {
+            if visible.get() && current_room.get().is_some() && auth_session.get().is_some() {
+                load_members();
+            }
+        }
+    });
+
+    let change_role = {
         let room_client = room_client.clone();
-        let auth_session = auth_session.clone();
-        let current_room = current_room.clone();
-        let invite_url = invite_url.clone();
-        let error = error.clone();
-        Rc::new(move || {
+        let load_members = load_members.clone();
+        Rc::new(move |user_id: String, role: String| {
             let Some(session) = auth_session.get_untracked() else {
                 return;
             };
             let Some(room) = current_room.get_untracked() else {
-                error.set(Some("请先进入房间".to_string()));
                 return;
             };
-            if !room.can_invite() {
-                error.set(Some("当前角色不能邀请成员".to_string()));
-                return;
-            }
             let token = session.access_token;
             let room_id = room.id;
-            let role = invite_role.get_untracked();
             let room_client = room_client.clone();
+            let load_members = load_members.clone();
             spawn_local(async move {
-                match room_client.create_invite(&token, &room_id, &role).await {
-                    Ok(invite) => invite_url.set(Some(invite.invite_url)),
+                match room_client
+                    .update_member_role(&token, &room_id, &user_id, &role)
+                    .await
+                {
+                    // 列表即时更新：直接写回服务端返回的最新成员
+                    Ok(updated) => {
+                        room_members.update(|items| {
+                            if let Some(slot) =
+                                items.iter_mut().find(|m| m.user_id == updated.user_id)
+                            {
+                                *slot = updated;
+                            }
+                        });
+                    }
                     Err(e) => error.set(Some(e.to_string())),
                 }
+                load_members();
             });
-        })
+        }) as Rc<dyn Fn(String, String)>
+    };
+
+    let remove_member = {
+        let room_client = room_client.clone();
+        let load_members = load_members.clone();
+        Rc::new(move |user_id: String| {
+            let Some(session) = auth_session.get_untracked() else {
+                return;
+            };
+            let Some(room) = current_room.get_untracked() else {
+                return;
+            };
+            let token = session.access_token;
+            let room_id = room.id;
+            let room_client = room_client.clone();
+            let load_members = load_members.clone();
+            spawn_local(async move {
+                match room_client.remove_member(&token, &room_id, &user_id).await {
+                    // 列表即时更新：本地先行剔除，再以服务端列表为准
+                    Ok(()) => {
+                        room_members.update(|items| {
+                            items.retain(|m| m.user_id != user_id);
+                        });
+                    }
+                    Err(e) => error.set(Some(e.to_string())),
+                }
+                load_members();
+            });
+        }) as Rc<dyn Fn(String)>
+    };
+
+    let can_manage = move || {
+        current_room
+            .get()
+            .map(|r| r.my_role == "owner")
+            .unwrap_or(false)
+    };
+    let self_id = move || {
+        auth_session
+            .get()
+            .and_then(|s| s.user.as_ref().map(|u| u.id.clone()))
     };
 
     view! {
         <aside class="cdb-room-panel" data-testid="room-members-panel" style:display=move || if visible.get() { "flex" } else { "none" }>
             <div class="cdb-room-panel__header">
-                <strong>"协作房间"</strong>
-                <button class="cdb-btn cdb-btn--icon" on:click=move |_| visible.set(false)>
+                <strong>"房间成员"</strong>
+                <span class="cdb-room-panel__meta" data-testid="room-members-count">
+                    {move || format!("{} 位成员", room_members.get().len())}
+                </span>
+                <button class="cdb-btn cdb-btn--icon" data-testid="btn-close-members" on:click=move |_| visible.set(false)>
                     <IconBox size="sm"><IconClose /></IconBox>
                 </button>
             </div>
             <div class="cdb-room-panel__section">
-                <label>
-                    <span>"房间名称"</span>
-                    <input class="cdb-form-input" data-testid="room-name-input" prop:value=move || create_name.get() on:input=move |ev| create_name.set(event_target_value(&ev)) />
-                </label>
-                <button class="cdb-btn cdb-btn--primary cdb-btn--block" data-testid="btn-create-room-from-panel" on:click=move |_| create_room()>"创建房间"</button>
+                <button
+                    class="cdb-btn cdb-btn--primary cdb-btn--block"
+                    data-testid="btn-open-invite"
+                    disabled=move || !current_room.get().map(|r| r.can_invite()).unwrap_or(false)
+                    on:click=move |_| on_open_invite()
+                >
+                    <IconBox size="sm"><IconAdd /></IconBox>
+                    "邀请新成员"
+                </button>
             </div>
-            <div class="cdb-room-panel__section">
-                <div class="cdb-room-panel__section-title">"我的房间"</div>
-                <button class="cdb-btn cdb-btn--block" data-testid="btn-refresh-rooms-from-panel" disabled=move || loading.get() on:click=move |_| load_rooms()>"刷新房间"</button>
-                <For each=move || rooms.get() key=|room| room.id.clone() children=move |room: RoomSummary| {
-                    let room_client = room_client.clone();
-                    let auth_session = auth_session.clone();
-                    let current_room = current_room.clone();
-                    let current_diagram_id = current_diagram_id.clone();
-                    let current_title = current_title.clone();
-                    let error = error.clone();
-                    view! {
-                        <button
-                            class="cdb-room-list-item"
-                            data-testid=format!("room-list-item-{}", room.id)
-                            on:click=move |_| {
-                                let Some(session) = auth_session.get_untracked() else { return };
-                                let token = session.access_token;
-                                let room_id = room.id.clone();
-                                let room_client = room_client.clone();
-                                spawn_local(async move {
-                                    match room_client.get_room(&token, &room_id).await {
-                                        Ok(detail) => {
-                                            current_diagram_id.set(detail.diagram_id.clone());
-                                            current_title.set(detail.diagram_title.clone());
-                                            current_room.set(Some(detail));
-                                        }
-                                        Err(e) => error.set(Some(e.to_string())),
-                                    }
-                                });
-                            }
-                        >
-                            <span>{room.name}</span>
-                            <small>{format!("{} · {} 人", room.my_role, room.member_count)}</small>
-                        </button>
-                    }
-                } />
-            </div>
-            <div class="cdb-room-panel__section">
-                <div class="cdb-room-panel__section-title">"邀请"</div>
-                <select class="cdb-form-select" data-testid="invite-role" on:change=move |ev| invite_role.set(event_target_value(&ev))>
-                    <option value="viewer">"viewer"</option>
-                    <option value="editor">"editor"</option>
-                </select>
-                <button class="cdb-btn cdb-btn--block" data-testid="btn-generate-invite" on:click=move |_| create_invite()>"生成邀请"</button>
-                {move || invite_url.get().map(|url| view! {
-                    <input class="cdb-form-input" data-testid="invite-url" readonly=true prop:value=url />
-                })}
-            </div>
-            <div class="cdb-room-panel__section">
-                <div class="cdb-room-panel__section-title">"成员"</div>
-                <button class="cdb-btn cdb-btn--block" data-testid="btn-load-members" on:click=move |_| load_members()>"加载成员"</button>
+            <div class="cdb-room-panel__section cdb-room-panel__section--grow">
                 <For each=move || room_members.get() key=|m| m.user_id.clone() children=move |m: RoomMember| {
+                    let is_self = self_id().as_deref() == Some(m.user_id.as_str());
                     let name = m.display_name.clone().unwrap_or_else(|| m.email.clone());
+                    let initial = name.chars().next().unwrap_or('U').to_string();
+                    let role = m.role.clone();
+                    let uid = m.user_id.clone();
+                    let uid_role = uid.clone();
+                    let uid_remove = uid.clone();
+                    let change_role = change_role.clone();
+                    let remove_member = remove_member.clone();
                     view! {
-                        <div class="cdb-room-member" data-testid=format!("room-member-{}", m.user_id)>
-                            <span>{name}</span>
-                            <span class="cdb-room-role">{m.role}</span>
-                        </div>
+                        <article class="cdb-room-member" data-testid=format!("room-member-{}", uid)>
+                            <span class="cdb-avatar" aria-hidden="true">
+                                {initial}
+                                {if is_self { view! { <span class="cdb-presence-dot" data-testid="member-online"></span> }.into_view() } else { view! { <></> }.into_view() }}
+                            </span>
+                            <div class="cdb-room-member__info">
+                                <strong>{name}{if is_self { "（你）" } else { "" }}</strong>
+                                // 降级事实：REST 无远端在线信号，仅本人显示在线
+                                <small>{if is_self { "在线" } else { "离线" }}</small>
+                            </div>
+                            {if is_self {
+                                view! { <span class="cdb-tag cdb-tag--brand" data-testid="member-self-role">{role}</span> }.into_view()
+                            } else {
+                                view! {
+                                    <div class="cdb-room-member__actions">
+                                        <select
+                                            class="cdb-form-select cdb-form-select--sm"
+                                            data-testid=format!("member-role-{}", uid_role)
+                                            disabled=move || !can_manage()
+                                            on:change={
+                                                let change_role = change_role.clone();
+                                                let uid = uid_role.clone();
+                                                move |ev| change_role(uid.clone(), event_target_value(&ev))
+                                            }
+                                        >
+                                            <option value="editor" selected={role == "editor"}>"editor"</option>
+                                            <option value="viewer" selected={role == "viewer"}>"viewer"</option>
+                                        </select>
+                                        <button
+                                            class="cdb-btn cdb-btn--icon cdb-btn--danger"
+                                            data-testid=format!("btn-remove-member-{}", uid_remove)
+                                            aria-label="移除成员"
+                                            disabled=move || !can_manage()
+                                            on:click={
+                                                let remove_member = remove_member.clone();
+                                                let uid = uid_remove.clone();
+                                                move |_| remove_member(uid.clone())
+                                            }
+                                        >
+                                            <IconBox size="sm"><IconDelete /></IconBox>
+                                        </button>
+                                    </div>
+                                }.into_view()
+                            }}
+                        </article>
                     }
                 } />
             </div>
+            <p class="cdb-room-panel__note">"Owner 可以修改角色与移除成员；Owner 自身需先转让房间才能离开。"</p>
         </aside>
     }
 }
@@ -3083,99 +3208,195 @@ impl RoomDetail {
     }
 }
 
-/// /invite/{token} 独立接受页（align-frontend-to-prototype FEUX-AC-04）。
+/// /invite/{token} 独立接受页（B 批实接：preview / accept 真实 API）。
 ///
-/// 整页只显示 invite preview、登录要求与接受按钮；不再隐藏进 cdb-app。
-/// 接受成功后由 on_after_accept 推进 AppRoot 的 `RoomEditor` 状态。
+/// 布局对齐主原型 invite-accept-page：复用 auth 分栏（story + glass panel）。
+/// - 有效：邀请人/角色/模型卡片 + 「加入房间」；匿名点击 → 提示先登录
+/// - 失效（preview 404/410/网络错误）：「邀请已失效」+ 无加入按钮（ST-S04-UI-07 / ST-PU-23）
+/// - 接受成功：accept → GET room detail → 进入同一 room-editor（ST-S04-UI-04）
 #[component]
 pub fn InviteAcceptPage(
     token: String,
+    room_client: RoomClient,
     auth_session: RwSignal<Option<AuthSession>>,
     current_diagram_id: RwSignal<String>,
+    current_title: RwSignal<String>,
     current_room: RwSignal<Option<RoomDetail>>,
     error: RwSignal<Option<String>>,
     on_after_accept: Rc<dyn Fn()>,
     on_goto_login: Rc<dyn Fn()>,
+    on_back: Rc<dyn Fn()>,
 ) -> impl IntoView {
     let preview = create_rw_signal(None::<InvitePreview>);
+    let preview_failed = create_rw_signal(false);
     let accepting = create_rw_signal(false);
     let login_required = create_rw_signal(false);
     let invite_error = create_rw_signal(Option::<String>::None);
 
+    // 挂载即拉取邀请预览；任何失败都按「邀请失效」处理（不暴露后端错误原文）
     create_effect({
+        let room_client = room_client.clone();
         let token = token.clone();
         move |_| {
-            // Batch A：先进入"等待 preview"状态；Batch B 补 preview_invite 真实调用。
-            let _ = token.as_str();
+            let room_client = room_client.clone();
+            let token = token.clone();
+            spawn_local(async move {
+                match room_client.preview_invite(&token).await {
+                    Ok(p) => preview.set(Some(p)),
+                    Err(_) => preview_failed.set(true),
+                }
+            });
         }
     });
 
     let accept = {
         let token = token.clone();
-        let auth_session = auth_session.clone();
-        let current_diagram_id = current_diagram_id.clone();
-        let current_room = current_room.clone();
-        let error = error.clone();
-        let invite_error = invite_error.clone();
-        let on_after_accept = on_after_accept.clone();
+        let room_client = room_client.clone();
         move || {
-            if auth_session.get().is_none() {
+            let Some(session) = auth_session.get_untracked() else {
                 login_required.set(true);
                 return;
-            }
+            };
             accepting.set(true);
             invite_error.set(None);
-            // Batch A：仅占位；Batch B 把 `on_after_accept` 接到真实 /accept API。
-            let _ = (token.clone(), current_diagram_id.clone(), current_room.clone());
-            on_after_accept();
-            accepting.set(false);
-            // 真实 token 错误不会冒到这里；error 仍由父级异步传递。
-            let _ = error.clone();
+            let room_client = room_client.clone();
+            let token = token.clone();
+            let access = session.access_token;
+            let on_after_accept = on_after_accept.clone();
+            spawn_local(async move {
+                match room_client.accept_invite(&access, &token).await {
+                    Ok(res) => {
+                        // 接受后拉取房间详情（含 myRole），再进入同一 room-editor
+                        match room_client.get_room(&access, &res.room_id).await {
+                            Ok(detail) => {
+                                current_diagram_id.set(detail.diagram_id.clone());
+                                current_title.set(detail.diagram_title.clone());
+                                current_room.set(Some(detail));
+                                on_after_accept();
+                            }
+                            Err(e) => invite_error.set(Some(e.to_string())),
+                        }
+                    }
+                    Err(e) => invite_error.set(Some(e.to_string())),
+                }
+                accepting.set(false);
+            });
         }
     };
 
     view! {
-        <main class="cdb-invite-page" data-testid="invite-accept-page">
-            <header class="cdb-invite-header">
-                <h1 data-testid="invite-title">"你被邀请加入一个协作房间"</h1>
-            </header>
-            <section class="cdb-invite-body">
-                {move || preview.get().map(|p| view! {
-                    <div class="cdb-invite-preview" data-testid="invite-preview">
-                        <strong>{p.room_name}</strong>
-                        <p>{format!("图表：{} · 角色：{}", p.diagram_title, p.role)}</p>
-                    </div>
-                })}
-                {move || if login_required.get() {
-                    view! {
-                        <p class="cdb-invite-error" data-testid="invite-login-required">
-                            "请先登录后再接受邀请。"
-                        </p>
-                    }.into_view()
-                } else {
-                    view! { <></> }.into_view()
-                }}
-                {move || invite_error.get().map(|msg| view! {
-                    <p class="cdb-invite-error" data-testid="invite-error">{msg}</p>
-                })}
-                <div class="cdb-invite-actions">
-                    <button
-                        class="cdb-btn cdb-btn--primary"
-                        data-testid="btn-accept-invite"
-                        disabled=move || accepting.get()
-                        on:click=move |_| accept()
-                    >
-                        {move || if accepting.get() { "处理中..." } else { "加入房间" }}
-                    </button>
-                    <button
-                        class="cdb-btn"
-                        data-testid="btn-invite-goto-login"
-                        on:click=move |_| on_goto_login()
-                    >
-                        "切换登录"
-                    </button>
+        <main class="cdb-auth-page" data-testid="invite-accept-page">
+            <article class="cdb-auth-story" data-testid="invite-story">
+                <div class="cdb-auth-brand">
+                    <span class="cdb-brand-mark" aria-hidden="true">
+                        <IconBox size="lg"><IconLogo /></IconBox>
+                    </span>
+                    <span class="cdb-auth-brand-name">"coldrawdb"</span>
                 </div>
-            </section>
+                <div class="cdb-auth-hero">
+                    <span class="cdb-eyebrow">"团队邀请"</span>
+                    {move || if preview_failed.get() {
+                        view! {
+                            <h1 class="cdb-auth-hero-title">"这张邀请卡"<br /><span>"已经失效。"</span></h1>
+                            <p class="cdb-auth-hero-desc">"邀请链接已超过 7 天，请联系房间 Owner 重新生成。"</p>
+                        }.into_view()
+                    } else {
+                        view! {
+                            <h1 class="cdb-auth-hero-title">"一起把模型"<br /><span>"推向下一版。"</span></h1>
+                            <p class="cdb-auth-hero-desc">
+                                {move || preview.get().map(|p| format!(
+                                    "{} 邀请你加入「{}」，共同编辑{}。",
+                                    p.invited_by.clone().unwrap_or_else(|| "队友".to_string()),
+                                    p.room_name,
+                                    p.diagram_title
+                                )).unwrap_or_else(|| "正在加载邀请信息…".to_string())}
+                            </p>
+                        }.into_view()
+                    }}
+                </div>
+            </article>
+            <article class="cdb-auth-panel cdb-glass" data-testid="invite-panel">
+                <div class="cdb-auth-card">
+                    <span class="cdb-brand-mark" aria-hidden="true">
+                        <IconBox size="lg"><IconUsers /></IconBox>
+                    </span>
+                    {move || {
+                        let accept = accept.clone();
+                        let on_back = on_back.clone();
+                        let on_goto_login = on_goto_login.clone();
+                        if preview_failed.get() {
+                        view! {
+                            <h2 class="cdb-auth-title" data-testid="invite-title" tabindex="-1">"邀请已失效"</h2>
+                            <p class="cdb-muted">"为了保护房间安全，此邀请不再可用。"</p>
+                            <div class="cdb-invite-actions">
+                                <button class="cdb-btn cdb-btn--ghost" data-testid="btn-invite-back" on:click=move |_| on_back()>
+                                    "返回空间"
+                                </button>
+                            </div>
+                        }.into_view()
+                    } else {
+                        view! {
+                            <h2 class="cdb-auth-title" data-testid="invite-title" tabindex="-1">
+                                {move || preview.get().map(|p| format!("加入{}", p.room_name)).unwrap_or_else(|| "加入协作房间".to_string())}
+                            </h2>
+                            <p class="cdb-muted" data-testid="invite-meta">
+                                {move || preview.get().map(|p| format!(
+                                    "邀请人：{} · 分配角色：{}",
+                                    p.invited_by.clone().unwrap_or_else(|| "队友".to_string()),
+                                    p.role
+                                )).unwrap_or_default()}
+                            </p>
+                            {move || preview.get().map(|p| view! {
+                                <div class="cdb-invite-preview" data-testid="invite-preview">
+                                    <span class="cdb-avatar" aria-hidden="true">{p.room_name.chars().next().unwrap_or('R').to_string()}</span>
+                                    <div>
+                                        <strong>{p.diagram_title.clone()}</strong>
+                                        <small>{format!("角色 {} · 邀请 7 天内有效", p.role)}</small>
+                                    </div>
+                                </div>
+                            })}
+                            {move || if login_required.get() {
+                                view! {
+                                    <p class="cdb-invite-error" data-testid="invite-login-required">
+                                        "请先登录后再接受邀请。"
+                                    </p>
+                                }.into_view()
+                            } else {
+                                view! { <></> }.into_view()
+                            }}
+                            {move || invite_error.get().map(|msg| view! {
+                                <p class="cdb-invite-error" data-testid="invite-error">{msg}</p>
+                            })}
+                            <div class="cdb-invite-actions">
+                                <button
+                                    class="cdb-btn cdb-btn--primary"
+                                    data-testid="btn-accept-invite"
+                                    disabled=move || accepting.get() || preview.get().is_none()
+                                    on:click=move |_| accept()
+                                >
+                                    {move || if accepting.get() { "处理中..." } else { "加入房间" }}
+                                </button>
+                                {move || {
+                                    let on_goto_login = on_goto_login.clone();
+                    if login_required.get() {
+                                    view! {
+                                        <button class="cdb-btn" data-testid="btn-invite-goto-login" on:click=move |_| on_goto_login()>
+                                            "切换登录"
+                                        </button>
+                                    }.into_view()
+                                } else {
+                                    view! { <></> }.into_view()
+                                }
+                                }}
+                                <button class="cdb-btn cdb-btn--ghost" data-testid="btn-invite-back" on:click=move |_| on_back()>
+                                    "返回空间"
+                                </button>
+                            </div>
+                        }.into_view()
+                    }
+                    }}
+                </div>
+            </article>
         </main>
     }
 }
@@ -5464,8 +5685,14 @@ pub fn AppRoot(
     // align-frontend-to-prototype：登录成功 → 进入 rooms-list-page（不进 editor）
     let on_login_success: Rc<dyn Fn()> = {
         let current_page = current_page.clone();
+        let invite_token = invite_token.clone();
         Rc::new(move || {
-            current_page.set(PageState::Rooms);
+            // B 批：携带 invite 链接登录后回到邀请页续接接受流程（§7.3 登录后可续接）
+            if invite_token.is_some() {
+                current_page.set(PageState::Invite);
+            } else {
+                current_page.set(PageState::Rooms);
+            }
         })
     };
 
@@ -5504,8 +5731,27 @@ pub fn AppRoot(
     // invite → 接受成功后进入 editor；未登录跳 auth
     let on_invite_after_accept: Rc<dyn Fn()> = {
         let current_page = current_page.clone();
+        let client = client.clone();
+        let store = store.clone();
+        let current_diagram_id = current_diagram_id.clone();
+        let current_title = current_title.clone();
+        let error = error.clone();
         Rc::new(move || {
             current_page.set(PageState::RoomEditor);
+            // B 批：与 on_enter_room 一致，接受邀请后加载房间绑定的图表内容
+            let diagram_id = current_diagram_id.get_untracked();
+            let client = client.clone();
+            let store = store.clone();
+            spawn_local(async move {
+                match client.get(&diagram_id).await {
+                    Ok(diagram) => {
+                        current_title.set(diagram.name.clone());
+                        store.load(diagram);
+                        error.set(None);
+                    }
+                    Err(_) => error.set(Some("图表加载失败，请返回房间列表后重试".to_string())),
+                }
+            });
         })
     };
 
@@ -6471,6 +6717,26 @@ pub fn AppRoot(
         Rc::new(move || room_panel_visible.update(|v| *v = !*v)) as Rc<dyn Fn()>
     };
 
+    // B 批：邀请模态（AppBar btn-invite / 成员抽屉「邀请新成员」共用入口）
+    let invite_modal_open: RwSignal<bool> = create_rw_signal(false);
+    let on_open_invite = {
+        let invite_modal_open = invite_modal_open.clone();
+        Rc::new(move || invite_modal_open.set(true)) as Rc<dyn Fn()>
+    };
+
+    // B 批：invite 页「返回空间」— 已登录回 rooms，未登录回 auth
+    let on_invite_back = {
+        let current_page = current_page.clone();
+        let auth_session = auth_session.clone();
+        Rc::new(move || {
+            if auth_session.get_untracked().is_some() {
+                current_page.set(PageState::Rooms);
+            } else {
+                current_page.set(PageState::Auth);
+            }
+        }) as Rc<dyn Fn()>
+    };
+
     let on_open_palette = {
         let palette_visible = palette_visible.clone();
         Rc::new(move || palette_visible.set(true)) as Rc<dyn Fn()>
@@ -6557,12 +6823,15 @@ pub fn AppRoot(
             {invite_token.clone().map(|token| view! {
                 <InviteAcceptPage
                     token=token
+                    room_client=room_client.clone()
                     auth_session=auth_session
                     current_diagram_id=current_diagram_id
+                    current_title=current_title
                     current_room=current_room
                     error=error.clone()
                     on_after_accept=on_invite_after_accept.clone()
                     on_goto_login=on_invite_goto_login.clone()
+                    on_back=on_invite_back.clone()
                 />
             })}
         </div>
@@ -6637,6 +6906,7 @@ pub fn AppRoot(
                 remote_members=remote_members
                 on_open_rooms=on_back_to_rooms.clone()
                 on_open_members=on_toggle_members.clone()
+                on_open_invite=on_open_invite.clone()
                 read_only=share_mode
                 theme_mode=theme_mode
             />
@@ -6735,10 +7005,16 @@ pub fn AppRoot(
                     visible=room_panel_visible
                     room_client=room_client.clone()
                     auth_session=auth_session
-                    current_diagram_id=current_diagram_id
-                    current_title=current_title
                     current_room=current_room
                     room_members=room_members
+                    error=error.clone()
+                    on_open_invite=on_open_invite.clone()
+                />
+                <InviteModal
+                    open=invite_modal_open
+                    room_client=room_client.clone()
+                    auth_session=auth_session
+                    current_room=current_room
                     error=error.clone()
                 />
             </div>
@@ -8324,8 +8600,8 @@ mod tests {
         let src = include_str!("editor_panels.rs");
         let count = src.matches("class=\"cdb-modal-overlay\"").count();
         assert!(
-            count <= 1,
-            "UT-FIX-01: `class=\"cdb-modal-overlay\"` 出现 {count} 次, 预期 ≤ 1（仅声明点）; \
+            count <= 2,
+            "UT-FIX-01: `class=\"cdb-modal-overlay\"` 出现 {count} 次, 预期 ≤ 2（ModalRoot + B 批 InviteModal）; \
              重复出现说明遮罩 div 仍在多处无条件实例化。",
         );
         // 遮罩通过 `style:display` 绑定在 `kind` 为 None 时设为 "none", 满足
@@ -8336,6 +8612,10 @@ mod tests {
         assert!(
             src.contains("style:display=move || if kind.get().is_some()"),
             "UT-FIX-01: 源码必须包含 `style:display=move || if kind.get().is_some()` 条件隐藏遮罩",
+        );
+        assert!(
+            src.contains("style:display=move || if open.get() { \"flex\" } else { \"none\" }"),
+            "UT-FIX-01: B 批 InviteModal 遮罩同样必须条件隐藏（open=false 时 display:none）",
         );
     }
 

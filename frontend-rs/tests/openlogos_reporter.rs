@@ -175,14 +175,10 @@ const SPEC_PARITY_SKIP_IDS: &[&str] = &[
     "ST-PC-MENU-01",
     "ST-PC-FMT-01",
     "ST-PC-INSPECTOR",
-    "ST-PU-23",
     "ST-PU-25",
     "ST-PU-26",
-    "ST-S04-UI-03",
-    "ST-S04-UI-04",
-    "ST-S04-UI-05",
-    "ST-S04-UI-06",
-    "ST-S04-UI-07",
+    // B 批已落地（e2e: scripts/test-spec-parity-b.mjs）：
+    // ST-S04-UI-03～07、ST-PU-23
     // C 批已落地（e2e: scripts/test-spec-parity-c.mjs + cargo: tests/spec_parity_c.rs）：
     // UT-S01-SS-01/02、ST-S01-SS-01、ST-S01-409-SCOPE、ST-S01-NO-409-OT、ST-S01-409-LOCAL-ONLY、
     // ST-S05-UI-01～06、ST-FE-ALIGN-03/04、ST-PU-24
