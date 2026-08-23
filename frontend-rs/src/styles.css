@@ -17,15 +17,27 @@
  * Spec: logos/resources/prd/2-product-design/1-feature-specs/core-07-design-tokens.md
  * ============================================================ */
 :root {
-  /* Color — primary (coldrawdb teal, matches Logo / main defaultBlue) */
-  --cdb-color-primary: #175e7a;
-  --cdb-color-primary-hover: #134c63;
-  --cdb-color-primary-active: #0e3a4d;
+  /* Color — primary（统一主原型事实值，core-07 §2；禁止回退 Semi #175e7a） */
+  --cdb-color-primary: #1e8393;        /* 主原型 light --brand */
+  --cdb-color-primary-strong: #116477; /* 主原型 light --brand-strong */
+  --cdb-color-primary-hover: #116477;
+  --cdb-color-primary-active: #0d4f5f;
   --cdb-color-primary-disabled: #a3bcc6;
-  --cdb-color-primary-soft: #e6f1f5;
-  --cdb-color-primary-soft-hover: #d2e4ec;
+  --cdb-color-primary-soft: rgba(30, 131, 147, 0.13);   /* 主原型 --brand-soft */
+  --cdb-color-primary-soft-hover: rgba(30, 131, 147, 0.2);
   --cdb-color-primary-on: #ffffff;
-  --cdb-color-primary-bg: #e6f1f5; /* V1 alias, keep backward-compat */
+  --cdb-color-primary-bg: rgba(30, 131, 147, 0.13); /* V1 alias, keep backward-compat */
+  --cdb-color-accent: #7c5ce7;          /* 主原型 --accent */
+  --cdb-color-accent-soft: rgba(124, 92, 231, 0.12);
+
+  /* 玻璃表面（主原型 surface 系列，core-07 §2） */
+  --cdb-color-bg-page: #eef5f7;         /* 主原型 --bg */
+  --cdb-color-bg-deep: #dce9ee;         /* 主原型 --bg-deep */
+  --cdb-color-surface: rgba(255, 255, 255, 0.72);
+  --cdb-color-surface-solid: #ffffff;
+  --cdb-color-surface-soft: rgba(248, 252, 253, 0.62);
+  --cdb-color-surface-hover: rgba(255, 255, 255, 0.9);
+  --cdb-blur-glass: blur(22px) saturate(145%);
 
   /* Color — neutral (grey scale, aligned main --semi-grey-0..9) */
   --cdb-color-grey-0: #ffffff;
@@ -39,52 +51,52 @@
   --cdb-color-grey-8: #374151;
   --cdb-color-grey-9: #1f2937;
 
-  /* Color — semantic */
-  --cdb-color-success: #10b981;
-  --cdb-color-success-soft: #d1fae5;
-  --cdb-color-warning: #f59e0b;
-  --cdb-color-warning-soft: #fef3c7;
-  --cdb-color-error: #ef4444;
-  --cdb-color-error-soft: #fee2e2;
-  --cdb-color-info: #3b82f6;
-  --cdb-color-info-soft: #dbeafe;
+  /* Color — semantic（主原型 --green/--amber/--red/--blue 事实值） */
+  --cdb-color-success: #19a974;
+  --cdb-color-success-soft: #d1f5e8;
+  --cdb-color-warning: #e59b24;
+  --cdb-color-warning-soft: #fbe9c8;
+  --cdb-color-error: #e05858;
+  --cdb-color-error-soft: #fadfdf;
+  --cdb-color-info: #3788e5;
+  --cdb-color-info-soft: #d8e8fa;
 
-  /* Color — text (aligned main --semi-color-text-0..4) */
-  --cdb-color-text-0: #1f2937; /* V1 alias --cdb-color-text */
-  --cdb-color-text-1: #374151;
-  --cdb-color-text-2: #6b7280; /* V1 alias --cdb-color-text-muted */
-  --cdb-color-text-3: #9ca3af;
+  /* Color — text（主原型 --text 系列事实值） */
+  --cdb-color-text-0: #142c34; /* 主原型 --text；V1 alias --cdb-color-text */
+  --cdb-color-text-1: #2c4a53;
+  --cdb-color-text-2: #506770; /* 主原型 --text-2；V1 alias --cdb-color-text-muted */
+  --cdb-color-text-3: #7b8d93; /* 主原型 --text-3 */
   --cdb-color-text-on-primary: #ffffff;
-  --cdb-color-text: #1f2937; /* V1 alias */
-  --cdb-color-text-muted: #6b7280; /* V1 alias */
+  --cdb-color-text: #142c34; /* V1 alias */
+  --cdb-color-text-muted: #506770; /* V1 alias */
 
-  /* Color — background (aligned main --semi-color-bg-0..3) */
-  --cdb-color-bg-0: #ffffff; /* V1 alias --cdb-color-bg */
-  --cdb-color-bg-1: #f9fafb; /* V1 alias --cdb-color-bg-subtle */
-  --cdb-color-bg-2: #f3f4f6;
-  --cdb-color-bg-3: #e5e7eb; /* V1 alias --cdb-color-bg-canvas */
-  --cdb-color-bg-overlay: rgba(0, 0, 0, 0.45);
+  /* Color — background（映射主原型 surface 层级） */
+  --cdb-color-bg-0: #ffffff; /* = surface-solid；V1 alias --cdb-color-bg */
+  --cdb-color-bg-1: #f4f9fb;
+  --cdb-color-bg-2: #eef5f7; /* = bg-page */
+  --cdb-color-bg-3: #dce9ee; /* = bg-deep */
+  --cdb-color-bg-overlay: rgba(2, 12, 16, 0.54); /* 主原型 .overlay */
   --cdb-color-bg: #ffffff; /* V1 alias */
-  --cdb-color-bg-subtle: #f9fafb; /* V1 alias */
-  --cdb-color-bg-canvas: #f3f4f6; /* V1 alias */
+  --cdb-color-bg-subtle: #f4f9fb; /* V1 alias */
+  --cdb-color-bg-canvas: #eef5f7; /* V1 alias，画布壳底色 */
 
-  /* Color — border */
-  --cdb-color-border: #e5e7eb;
-  --cdb-color-border-strong: #d1d5db;
-  --cdb-color-border-muted: rgba(31, 41, 55, 0.08);
+  /* Color — border（主原型 --line 系列事实值） */
+  --cdb-color-border: rgba(49, 78, 88, 0.14);
+  --cdb-color-border-strong: rgba(49, 78, 88, 0.24);
+  --cdb-color-border-muted: rgba(49, 78, 88, 0.08);
 
   /* Surface / focus（R3：组件层语义 Token，禁止硬编码） */
-  --cdb-color-canvas-grid: rgba(0, 0, 0, 0.04);
+  --cdb-color-canvas-grid: rgba(123, 141, 147, 0.3); /* 主原型点阵 color-mix(text-3 30%) */
   --cdb-color-inspector-edge: rgba(15, 23, 42, 0.02);
-  --cdb-color-focus-error: rgba(239, 68, 68, 0.1);
-  --cdb-color-error-hover-bg: rgba(239, 68, 68, 0.08);
+  --cdb-color-focus-error: rgba(224, 88, 88, 0.1);
+  --cdb-color-error-hover-bg: rgba(224, 88, 88, 0.08);
 
-  /* Shadow — 5 levels (aligned Semi shadow-1/2/3 + extended) */
-  --cdb-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --cdb-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --cdb-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07), 0 2px 4px rgba(0, 0, 0, 0.06);
-  --cdb-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05);
-  --cdb-shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.1), 0 10px 10px rgba(0, 0, 0, 0.04);
+  /* Shadow（主原型 --shadow / --shadow-soft 事实值） */
+  --cdb-shadow-xs: 0 1px 2px rgba(25, 58, 68, 0.06);
+  --cdb-shadow-sm: 0 4px 14px rgba(25, 58, 68, 0.08);
+  --cdb-shadow-md: 0 10px 36px rgba(25, 58, 68, 0.1);   /* 主原型 --shadow-soft */
+  --cdb-shadow-lg: 0 22px 70px rgba(32, 67, 78, 0.14);  /* 主原型 --shadow */
+  --cdb-shadow-xl: 0 22px 70px rgba(32, 67, 78, 0.18);
   --cdb-shadow-focus: 0 0 0 3px var(--cdb-color-primary-soft);
 
   /* Motion — duration */
@@ -154,6 +166,14 @@
   --cdb-z-canvas-overlay: 10;
   --cdb-z-app-bar: 20;
 
+  /* 编辑器壳布局槽位（主原型事实值，core-07 §布局槽位） */
+  --cdb-appbar-h: 64px;      /* 主原型 --appbar；≤760px 时 58px */
+  --cdb-statusbar-h: 34px;   /* 主原型 --status */
+  --cdb-toolrail-w: 64px;    /* 主原型 --rail；≤760px 时 54px */
+  --cdb-inspector-w: 330px;  /* 主原型 --inspector；≤1179px 折叠为浮层 */
+  --cdb-editor-padding: 10px;
+  --cdb-editor-gap: 8px;
+
   /* AppBar 分区间距（R4） */
   --cdb-app-bar-gap: var(--cdb-space-3);
   --cdb-app-bar-brand-gap: var(--cdb-space-2);
@@ -165,7 +185,7 @@
   --cdb-inspector-tab-columns: 4;
   --cdb-z-side-rail: 25;
   --cdb-z-inspector: 30;
-  --cdb-z-drawer: 30;
+  --cdb-z-drawer: 35;
   --cdb-z-tooltip: 40;
   --cdb-z-popover: 45;
   --cdb-z-modal: 50;
@@ -173,78 +193,89 @@
 }
 
 /* ============================================================
- * E5 暗色模式 token 完整映射
- * Spec: core-0b-dark-mode.md §2
- * main `darkBgTheme = #16161A` 作为 base，所有 token 在 dark 模式下反转/加深
+ * E5 暗色模式 token 完整映射（统一主原型 dark 事实值，core-07 §2 dark 表）
+ * 禁止回退 main `darkBgTheme = #16161A` 历史色阶
  * ============================================================ */
 [data-mode="dark"] {
   color-scheme: dark;
-  /* Primary */
-  --cdb-color-primary: #4ba3c4;
-  --cdb-color-primary-hover: #6cb8d4;
-  --cdb-color-primary-active: #2a8aaa;
+  /* Primary — 主原型 dark --brand 系列 */
+  --cdb-color-primary: #5ee9dc;
+  --cdb-color-primary-strong: #8cf0e6;
+  --cdb-color-primary-hover: #8cf0e6;
+  --cdb-color-primary-active: #3fd8c8;
   --cdb-color-primary-disabled: #2a4a55;
-  --cdb-color-primary-soft: #1a3a48;
-  --cdb-color-primary-soft-hover: #234a5a;
-  --cdb-color-primary-bg: #1a3a48;
+  --cdb-color-primary-soft: rgba(79, 209, 197, 0.18);
+  --cdb-color-primary-soft-hover: rgba(79, 209, 197, 0.26);
+  --cdb-color-primary-bg: rgba(79, 209, 197, 0.18);
+  --cdb-color-primary-on: #050f13; /* 暗色 primary 按钮近黑字（WCAG AA） */
+  --cdb-color-accent: #b9a0ff;
+  --cdb-color-accent-soft: rgba(185, 160, 255, 0.14);
 
-  /* Neutral grey 反转 */
-  --cdb-color-grey-0: #16161a;
-  --cdb-color-grey-1: #1f1f23;
-  --cdb-color-grey-2: #2a2a2e;
-  --cdb-color-grey-3: #3a3a3e;
-  --cdb-color-grey-4: #4a4a4e;
-  --cdb-color-grey-5: #6b7280;
-  --cdb-color-grey-6: #9ca3af;
-  --cdb-color-grey-7: #d1d5db;
-  --cdb-color-grey-8: #e5e7eb;
-  --cdb-color-grey-9: #f9fafb;
+  /* 玻璃表面 — 主原型 dark surface 系列 */
+  --cdb-color-bg-page: #050f13;
+  --cdb-color-bg-deep: #08191f;
+  --cdb-color-surface: rgba(16, 38, 45, 0.86);
+  --cdb-color-surface-solid: #10262d;
+  --cdb-color-surface-soft: rgba(22, 48, 56, 0.78);
+  --cdb-color-surface-hover: rgba(34, 68, 78, 0.96);
 
-  /* Semantic — 文字提亮，背景加深 */
-  --cdb-color-success: #34d399;
-  --cdb-color-success-soft: #0e4f3a;
-  --cdb-color-warning: #fbbf24;
-  --cdb-color-warning-soft: #5c4a0e;
-  --cdb-color-error: #f87171;
-  --cdb-color-error-soft: #5c1a1a;
-  --cdb-color-info: #60a5fa;
-  --cdb-color-info-soft: #1a3a5c;
+  /* Neutral grey — 原型暗色阶（深→浅） */
+  --cdb-color-grey-0: #050f13;
+  --cdb-color-grey-1: #08191f;
+  --cdb-color-grey-2: #10262d;
+  --cdb-color-grey-3: #16303a;
+  --cdb-color-grey-4: #1d3d47;
+  --cdb-color-grey-5: #86a3ab;
+  --cdb-color-grey-6: #b8d2d8;
+  --cdb-color-grey-7: #d8edef;
+  --cdb-color-grey-8: #e8f6f8;
+  --cdb-color-grey-9: #f2fdfe;
 
-  /* Text */
-  --cdb-color-text-0: #f9fafb;
-  --cdb-color-text-1: #e5e7eb;
-  --cdb-color-text-2: #9ca3af;
-  --cdb-color-text-3: #6b7280;
-  --cdb-color-text: #f9fafb;
-  --cdb-color-text-muted: #9ca3af;
+  /* Semantic — 主原型 dark --green/--amber/--red/--blue */
+  --cdb-color-success: #5ee2aa;
+  --cdb-color-success-soft: rgba(94, 226, 170, 0.14);
+  --cdb-color-warning: #f5c45c;
+  --cdb-color-warning-soft: rgba(245, 196, 92, 0.14);
+  --cdb-color-error: #ff8a8a;
+  --cdb-color-error-soft: rgba(255, 138, 138, 0.14);
+  --cdb-color-info: #7ab8f5;
+  --cdb-color-info-soft: rgba(122, 184, 245, 0.14);
 
-  /* Background */
-  --cdb-color-bg-0: #16161a; /* main darkBgTheme */
-  --cdb-color-bg-1: #1f1f23;
-  --cdb-color-bg-2: #2a2a2e;
-  --cdb-color-bg-3: #0e0e10;
-  --cdb-color-bg-overlay: rgba(0, 0, 0, 0.7);
-  --cdb-color-bg: #16161a;
-  --cdb-color-bg-subtle: #1f1f23;
-  --cdb-color-bg-canvas: #0e0e10;
+  /* Text — 主原型 dark --text 系列 */
+  --cdb-color-text-0: #f2fdfe;
+  --cdb-color-text-1: #d8edef;
+  --cdb-color-text-2: #b8d2d8;
+  --cdb-color-text-3: #86a3ab;
+  --cdb-color-text: #f2fdfe;
+  --cdb-color-text-muted: #b8d2d8;
 
-  /* Border */
-  --cdb-color-border: #2a2a2e;
-  --cdb-color-border-strong: #3a3a3e;
-  --cdb-color-border-muted: rgba(249, 250, 251, 0.08);
+  /* Background — 映射主原型 dark surface 层级 */
+  --cdb-color-bg-0: #10262d;
+  --cdb-color-bg-1: #0b1e24;
+  --cdb-color-bg-2: #08191f;
+  --cdb-color-bg-3: #050f13;
+  --cdb-color-bg-overlay: rgba(2, 12, 16, 0.54);
+  --cdb-color-bg: #10262d;
+  --cdb-color-bg-subtle: #0b1e24;
+  --cdb-color-bg-canvas: #050f13;
+
+  /* Border — 主原型 dark --line 系列 */
+  --cdb-color-border: rgba(194, 232, 238, 0.16);
+  --cdb-color-border-strong: rgba(194, 232, 238, 0.3);
+  --cdb-color-border-muted: rgba(194, 232, 238, 0.08);
 
   /* Surface / focus — 暗色映射（R3） */
-  --cdb-color-canvas-grid: rgba(255, 255, 255, 0.06);
+  --cdb-color-canvas-grid: rgba(134, 163, 171, 0.3); /* color-mix(dark text-3 30%) */
   --cdb-color-inspector-edge: rgba(255, 255, 255, 0.04);
-  --cdb-color-focus-error: rgba(248, 113, 113, 0.2);
-  --cdb-color-error-hover-bg: rgba(248, 113, 113, 0.12);
+  --cdb-color-focus-error: rgba(255, 138, 138, 0.2);
+  --cdb-color-error-hover-bg: rgba(255, 138, 138, 0.12);
 
-  /* Shadow — 暗色下更深 */
+  /* Shadow — 主原型 dark --shadow 系列 */
   --cdb-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --cdb-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
-  --cdb-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
-  --cdb-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5), 0 4px 6px rgba(0, 0, 0, 0.3);
-  --cdb-shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.6), 0 10px 10px rgba(0, 0, 0, 0.4);
+  --cdb-shadow-sm: 0 6px 18px rgba(0, 0, 0, 0.28);
+  --cdb-shadow-md: 0 12px 42px rgba(0, 0, 0, 0.32);  /* dark --shadow-soft */
+  --cdb-shadow-lg: 0 24px 90px rgba(0, 0, 0, 0.45);   /* dark --shadow */
+  --cdb-shadow-xl: 0 24px 90px rgba(0, 0, 0, 0.55);
 }
 
 /* ============================================================
@@ -254,58 +285,68 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-mode="light"]):not([data-mode="dark"]) {
     color-scheme: dark;
-    /* 与 [data-mode="dark"] 同步 — R3 完整映射 */
-    --cdb-color-primary: #4ba3c4;
-    --cdb-color-primary-hover: #6cb8d4;
-    --cdb-color-primary-active: #2a8aaa;
+    /* 与 [data-mode="dark"] 同步 — R3 完整映射（主原型 dark 事实值） */
+    --cdb-color-primary: #5ee9dc;
+    --cdb-color-primary-strong: #8cf0e6;
+    --cdb-color-primary-hover: #8cf0e6;
+    --cdb-color-primary-active: #3fd8c8;
     --cdb-color-primary-disabled: #2a4a55;
-    --cdb-color-primary-soft: #1a3a48;
-    --cdb-color-primary-soft-hover: #234a5a;
-    --cdb-color-primary-bg: #1a3a48;
-    --cdb-color-grey-0: #16161a;
-    --cdb-color-grey-1: #1f1f23;
-    --cdb-color-grey-2: #2a2a2e;
-    --cdb-color-grey-3: #3a3a3e;
-    --cdb-color-grey-4: #4a4a4e;
-    --cdb-color-grey-5: #6b7280;
-    --cdb-color-grey-6: #9ca3af;
-    --cdb-color-grey-7: #d1d5db;
-    --cdb-color-grey-8: #e5e7eb;
-    --cdb-color-grey-9: #f9fafb;
-    --cdb-color-success: #34d399;
-    --cdb-color-success-soft: #0e4f3a;
-    --cdb-color-warning: #fbbf24;
-    --cdb-color-warning-soft: #5c4a0e;
-    --cdb-color-error: #f87171;
-    --cdb-color-error-soft: #5c1a1a;
-    --cdb-color-info: #60a5fa;
-    --cdb-color-info-soft: #1a3a5c;
-    --cdb-color-text-0: #f9fafb;
-    --cdb-color-text-1: #e5e7eb;
-    --cdb-color-text-2: #9ca3af;
-    --cdb-color-text-3: #6b7280;
-    --cdb-color-text: #f9fafb;
-    --cdb-color-text-muted: #9ca3af;
-    --cdb-color-bg-0: #16161a;
-    --cdb-color-bg-1: #1f1f23;
-    --cdb-color-bg-2: #2a2a2e;
-    --cdb-color-bg-3: #0e0e10;
-    --cdb-color-bg-overlay: rgba(0, 0, 0, 0.7);
-    --cdb-color-bg: #16161a;
-    --cdb-color-bg-subtle: #1f1f23;
-    --cdb-color-bg-canvas: #0e0e10;
-    --cdb-color-border: #2a2a2e;
-    --cdb-color-border-strong: #3a3a3e;
-    --cdb-color-border-muted: rgba(249, 250, 251, 0.08);
-    --cdb-color-canvas-grid: rgba(255, 255, 255, 0.06);
+    --cdb-color-primary-soft: rgba(79, 209, 197, 0.18);
+    --cdb-color-primary-soft-hover: rgba(79, 209, 197, 0.26);
+    --cdb-color-primary-bg: rgba(79, 209, 197, 0.18);
+    --cdb-color-primary-on: #050f13;
+    --cdb-color-accent: #b9a0ff;
+    --cdb-color-accent-soft: rgba(185, 160, 255, 0.14);
+    --cdb-color-bg-page: #050f13;
+    --cdb-color-bg-deep: #08191f;
+    --cdb-color-surface: rgba(16, 38, 45, 0.86);
+    --cdb-color-surface-solid: #10262d;
+    --cdb-color-surface-soft: rgba(22, 48, 56, 0.78);
+    --cdb-color-surface-hover: rgba(34, 68, 78, 0.96);
+    --cdb-color-grey-0: #050f13;
+    --cdb-color-grey-1: #08191f;
+    --cdb-color-grey-2: #10262d;
+    --cdb-color-grey-3: #16303a;
+    --cdb-color-grey-4: #1d3d47;
+    --cdb-color-grey-5: #86a3ab;
+    --cdb-color-grey-6: #b8d2d8;
+    --cdb-color-grey-7: #d8edef;
+    --cdb-color-grey-8: #e8f6f8;
+    --cdb-color-grey-9: #f2fdfe;
+    --cdb-color-success: #5ee2aa;
+    --cdb-color-success-soft: rgba(94, 226, 170, 0.14);
+    --cdb-color-warning: #f5c45c;
+    --cdb-color-warning-soft: rgba(245, 196, 92, 0.14);
+    --cdb-color-error: #ff8a8a;
+    --cdb-color-error-soft: rgba(255, 138, 138, 0.14);
+    --cdb-color-info: #7ab8f5;
+    --cdb-color-info-soft: rgba(122, 184, 245, 0.14);
+    --cdb-color-text-0: #f2fdfe;
+    --cdb-color-text-1: #d8edef;
+    --cdb-color-text-2: #b8d2d8;
+    --cdb-color-text-3: #86a3ab;
+    --cdb-color-text: #f2fdfe;
+    --cdb-color-text-muted: #b8d2d8;
+    --cdb-color-bg-0: #10262d;
+    --cdb-color-bg-1: #0b1e24;
+    --cdb-color-bg-2: #08191f;
+    --cdb-color-bg-3: #050f13;
+    --cdb-color-bg-overlay: rgba(2, 12, 16, 0.54);
+    --cdb-color-bg: #10262d;
+    --cdb-color-bg-subtle: #0b1e24;
+    --cdb-color-bg-canvas: #050f13;
+    --cdb-color-border: rgba(194, 232, 238, 0.16);
+    --cdb-color-border-strong: rgba(194, 232, 238, 0.3);
+    --cdb-color-border-muted: rgba(194, 232, 238, 0.08);
+    --cdb-color-canvas-grid: rgba(134, 163, 171, 0.3);
     --cdb-color-inspector-edge: rgba(255, 255, 255, 0.04);
-    --cdb-color-focus-error: rgba(248, 113, 113, 0.2);
-    --cdb-color-error-hover-bg: rgba(248, 113, 113, 0.12);
+    --cdb-color-focus-error: rgba(255, 138, 138, 0.2);
+    --cdb-color-error-hover-bg: rgba(255, 138, 138, 0.12);
     --cdb-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
-    --cdb-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
-    --cdb-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
-    --cdb-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5), 0 4px 6px rgba(0, 0, 0, 0.3);
-    --cdb-shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.6), 0 10px 10px rgba(0, 0, 0, 0.4);
+    --cdb-shadow-sm: 0 6px 18px rgba(0, 0, 0, 0.28);
+    --cdb-shadow-md: 0 12px 42px rgba(0, 0, 0, 0.32);
+    --cdb-shadow-lg: 0 24px 90px rgba(0, 0, 0, 0.45);
+    --cdb-shadow-xl: 0 24px 90px rgba(0, 0, 0, 0.55);
   }
 }
 
@@ -824,32 +865,48 @@ body {
 
 .cdb-reconnect-banner {
   position: absolute;
-  top: var(--cdb-space-3);
+  top: 12px;
   left: 50%;
-  z-index: var(--cdb-z-toast);
+  z-index: 12;
   transform: translateX(-50%);
-  max-width: min(420px, calc(100% - 32px));
-  border: 1px solid var(--cdb-color-warning);
-  border-radius: var(--cdb-radius-md);
-  background: var(--cdb-color-bg);
-  color: var(--cdb-color-warning);
+  max-width: min(720px, calc(100% - 40px));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid color-mix(in srgb, var(--cdb-color-warning) 35%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--cdb-color-warning) 14%, var(--cdb-color-surface-solid));
+  color: var(--cdb-color-text);
   box-shadow: var(--cdb-shadow-md);
-  padding: var(--cdb-space-2) var(--cdb-space-3);
-  font-size: var(--cdb-font-size-sm);
-  pointer-events: none;
+  padding: 9px 12px;
+  font-size: 12px;
+  pointer-events: auto;
 }
 
 .cdb-reconnect-banner--hidden {
   display: none;
 }
 
+/* danger 变体 — 主原型 .banner--danger（连接失败终态 / 仅本地 409 风险） */
+.cdb-reconnect-banner--danger {
+  border-color: color-mix(in srgb, var(--cdb-color-error) 38%, transparent);
+  background: color-mix(in srgb, var(--cdb-color-error) 13%, var(--cdb-color-surface-solid));
+}
+
+.cdb-reconnect-banner__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
 .cdb-activity-feed {
   position: absolute;
-  right: var(--cdb-space-3);
-  bottom: var(--cdb-space-3);
+  right: 14px;
+  bottom: 14px;
   z-index: 3;
   display: grid;
-  gap: var(--cdb-space-1);
+  gap: 6px;
   width: min(300px, calc(100% - 32px));
   pointer-events: none;
 }
@@ -859,12 +916,14 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   border: 1px solid var(--cdb-color-border);
-  border-radius: var(--cdb-radius-md);
-  background: color-mix(in srgb, var(--cdb-color-bg) 92%, transparent);
-  color: var(--cdb-color-text-muted);
+  border-radius: 11px;
+  background: var(--cdb-color-surface);
+  backdrop-filter: var(--cdb-blur-glass);
+  -webkit-backdrop-filter: var(--cdb-blur-glass);
+  color: var(--cdb-color-text-2);
   box-shadow: var(--cdb-shadow-sm);
-  padding: var(--cdb-space-1) var(--cdb-space-2);
-  font-size: var(--cdb-font-size-xs);
+  padding: 7px 10px;
+  font-size: 11px;
 }
 
 .cdb-room-panel {
@@ -1714,20 +1773,51 @@ textarea {
 }
 
 /* ============================================================
- * App layout (Phase A: AppBar / ToolRail / Canvas / Inspector / StatusBar)
+ * App layout — 统一主原型编辑器壳（aurora + 悬浮玻璃面板）
+ * Spec: core-01-editor-prototype.html .editor/.workspace；core-07 §布局槽位
  * ============================================================ */
+.cdb-aurora {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 16% 8%, color-mix(in srgb, var(--cdb-color-primary) 19%, transparent), transparent 31%),
+    radial-gradient(circle at 84% 14%, color-mix(in srgb, var(--cdb-color-accent) 16%, transparent), transparent 29%),
+    linear-gradient(145deg, var(--cdb-color-bg-page), var(--cdb-color-bg-deep));
+}
+
+.cdb-aurora::before,
+.cdb-aurora::after {
+  content: "";
+  position: absolute;
+  width: 420px;
+  height: 420px;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.18;
+}
+
+.cdb-aurora::before { left: -160px; bottom: -130px; background: var(--cdb-color-primary); }
+.cdb-aurora::after { right: -130px; bottom: 5%; background: var(--cdb-color-accent); }
+
 .cdb-app {
   display: grid;
-  grid-template-rows: 48px 1fr 28px;
+  grid-template-rows: var(--cdb-appbar-h) minmax(0, 1fr) var(--cdb-statusbar-h);
+  gap: var(--cdb-editor-gap);
   height: 100vh;
+  padding: var(--cdb-editor-padding);
   overflow: hidden;
+  position: relative;
 }
 
 .cdb-main {
   display: grid;
-  grid-template-columns: 48px 1fr 320px 0;
-  overflow: hidden;
+  grid-template-columns: var(--cdb-toolrail-w) minmax(0, 1fr) var(--cdb-inspector-w);
+  gap: var(--cdb-editor-gap);
+  overflow: visible;
   min-height: 0;
+  position: relative;
   transition: grid-template-columns var(--cdb-duration-base, 160ms) var(--cdb-easing-out, ease);
 }
 
@@ -1736,15 +1826,26 @@ textarea {
 }
 
 .cdb-main.cdb-is-inspector-collapsed {
-  grid-template-columns: 48px 1fr 0 0;
+  grid-template-columns: var(--cdb-toolrail-w) minmax(0, 1fr) 0;
 }
 
-.cdb-main.cdb-has-io-drawer {
-  grid-template-columns: 48px 1fr 0 400px;
+/* 玻璃面板公共基底（编辑器壳层专用；auth/rooms 仍走 cdb-workspace-* 体系） */
+.cdb-app-bar,
+.cdb-tool-rail,
+.cdb-inspector,
+.cdb-status-bar {
+  background: var(--cdb-color-surface);
+  border: 1px solid var(--cdb-color-border);
+  box-shadow: var(--cdb-shadow-md);
+  backdrop-filter: var(--cdb-blur-glass);
+  -webkit-backdrop-filter: var(--cdb-blur-glass);
 }
 
-.cdb-main.cdb-has-io-drawer.cdb-is-inspector-collapsed {
-  grid-template-columns: 48px 1fr 0 400px;
+[data-mode="dark"] .cdb-app-bar,
+[data-mode="dark"] .cdb-tool-rail,
+[data-mode="dark"] .cdb-inspector,
+[data-mode="dark"] .cdb-status-bar {
+  border-color: var(--cdb-color-border-strong);
 }
 
 .cdb-side-panel {
@@ -1766,20 +1867,17 @@ textarea {
 }
 
 /* ============================================================
- * Phase A: AppBar (merged top menu + toolbar)
+ * Phase A: AppBar — 主原型 .appbar 移植（悬浮玻璃条，64px）
  * ============================================================ */
 .cdb-app-bar {
-  background: var(--cdb-color-bg);
-  border-bottom: 1px solid var(--cdb-color-border);
-  box-shadow: var(--cdb-shadow-sm);
-  padding: 0 var(--cdb-space-4);
+  border-radius: 16px;
   display: flex;
   align-items: center;
-  gap: var(--cdb-app-bar-gap);
-  height: 48px;
-  z-index: 20;
+  padding: 0 10px 0 13px;
+  gap: 8px;
+  z-index: 40;
   position: relative;
-  min-height: 48px;
+  min-width: 0;
 }
 
 .cdb-app-bar__brand {
@@ -1787,22 +1885,47 @@ textarea {
   align-items: center;
   gap: var(--cdb-app-bar-brand-gap);
   min-width: 0;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
+}
+
+.cdb-app-bar .cdb-brand-mark {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 11px;
+  background: linear-gradient(135deg, var(--cdb-color-primary), var(--cdb-color-accent));
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 850;
+  box-shadow: 0 9px 24px color-mix(in srgb, var(--cdb-color-primary) 28%, transparent);
+}
+
+.cdb-app-bar__divider {
+  width: 1px;
+  height: 24px;
+  background: var(--cdb-color-border);
+  margin: 0 3px;
+  flex: none;
 }
 
 .cdb-app-bar__status {
   flex: 0 0 auto;
 }
 
+/* 保存态 chip — 主原型 .save-chip（tag + dot + 「 · rev N」） */
 .cdb-status-chip {
   display: inline-flex;
   align-items: center;
-  gap: var(--cdb-space-1);
-  padding: var(--cdb-space-1) var(--cdb-space-3);
+  gap: 5px;
+  height: 32px;
+  padding: 0 10px;
   border-radius: 999px;
-  background: var(--cdb-color-bg-subtle);
+  background: var(--cdb-color-surface-soft);
   border: 1px solid var(--cdb-color-border);
-  font-size: var(--cdb-text-xs);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--cdb-color-text-2);
   white-space: nowrap;
 }
 
@@ -1811,14 +1934,68 @@ textarea {
   opacity: 0.6;
 }
 
+/* 「 · rev N」— 主原型 .revision-text */
+.cdb-status-chip__revision {
+  color: var(--cdb-color-text-muted);
+  font-weight: 600;
+}
+
+.cdb-status-chip[data-state="dirty"] { color: var(--cdb-color-warning); }
+.cdb-status-chip[data-state="saving"] { color: var(--cdb-color-info); }
+.cdb-status-chip[data-state="error"] { color: var(--cdb-color-error); }
+
 .cdb-app-bar__spacer {
   flex: 1;
+}
+
+/* 在线头像组 — 主原型 .presence */
+.cdb-presence {
+  display: flex;
+  align-items: center;
+  padding-left: 8px;
+}
+
+.cdb-presence-person {
+  position: relative;
+  margin-left: -7px;
+}
+
+.cdb-presence-person:first-child {
+  margin-left: 0;
+}
+
+.cdb-avatar {
+  width: 31px;
+  height: 31px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 850;
+  background: linear-gradient(135deg, var(--cdb-color-primary), var(--cdb-color-accent));
+  color: #fff;
+  border: 2px solid color-mix(in srgb, var(--cdb-color-surface-solid) 70%, transparent);
+}
+
+[data-mode="dark"] .cdb-avatar {
+  color: rgba(20, 16, 40, 0.85);
+}
+
+.cdb-presence-dot {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cdb-color-success);
+  border: 2px solid var(--cdb-color-surface-solid);
 }
 
 .cdb-app-bar__actions {
   display: inline-flex;
   align-items: center;
-  gap: var(--cdb-app-bar-actions-gap);
+  gap: 5px;
   flex: 0 0 auto;
 }
 
@@ -1840,6 +2017,13 @@ textarea {
   gap: var(--cdb-space-2);
 }
 
+/* 菜单项右侧快捷键 — 主原型 .shortcut */
+.cdb-menu-shortcut {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--cdb-color-text-muted);
+}
+
 .cdb-app-bar__actions .cdb-btn {
   min-height: 32px;
   font-weight: 500;
@@ -1858,36 +2042,42 @@ textarea {
 
 .cdb-save-dot {
   display: inline-block;
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  margin-right: var(--cdb-space-1);
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 12%, transparent);
 }
 
-.cdb-save-dot--saved { background: var(--cdb-color-success); }
-.cdb-save-dot--dirty { background: var(--cdb-color-warning); }
-.cdb-save-dot--saving { background: var(--cdb-color-primary); animation: cdb-pulse-opacity 1s infinite; }
-.cdb-save-dot--error { background: var(--cdb-color-error); }
+.cdb-save-dot--saved { background: var(--cdb-color-success); color: var(--cdb-color-success); }
+.cdb-save-dot--dirty { background: var(--cdb-color-warning); color: var(--cdb-color-warning); }
+.cdb-save-dot--saving { background: var(--cdb-color-info); color: var(--cdb-color-info); animation: cdb-pulse-opacity 1s infinite; }
+.cdb-save-dot--error { background: var(--cdb-color-error); color: var(--cdb-color-error); }
 
 .cdb-rev-inline {
-  margin-left: var(--cdb-space-2);
-  font-size: var(--cdb-text-xs, 11px);
-  color: var(--cdb-color-text-muted);
+  font-size: 11px;
+  color: inherit;
+  opacity: 0.85;
 }
 
 .cdb-diagram-title {
-  font-weight: 600;
-  font-size: var(--cdb-text-base);
-  padding: var(--cdb-space-1) var(--cdb-space-2);
+  min-width: 80px;
+  width: min(220px, 18vw);
+  height: 38px;
   border: 1px solid transparent;
-  border-radius: var(--cdb-radius-sm);
   background: transparent;
+  border-radius: 10px;
+  padding: 0 10px;
+  font-weight: 750;
+  font-size: var(--cdb-text-base);
   color: var(--cdb-color-text);
-  min-width: 140px;
 }
 
-.cdb-diagram-title:hover { border-color: var(--cdb-color-border); }
-.cdb-diagram-title:focus { border-color: var(--cdb-color-primary); outline: none; }
+.cdb-diagram-title:hover,
+.cdb-diagram-title:focus {
+  background: var(--cdb-color-surface-soft);
+  border-color: var(--cdb-color-border);
+  outline: none;
+}
 
 .cdb-diagram-title-wrap {
   display: flex;
@@ -1905,42 +2095,54 @@ textarea {
 }
 
 /* ============================================================
- * Phase A: Tool Rail
+ * Phase A: Tool Rail — 主原型 .toolrail 移植（悬浮玻璃工具轨）
  * ============================================================ */
 .cdb-tool-rail {
-  background: var(--cdb-color-bg);
-  border-right: 1px solid var(--cdb-color-border);
+  border-radius: 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: var(--cdb-space-2) 0;
-  gap: var(--cdb-space-1);
-  width: 48px;
-  min-width: 48px;
+  padding: 9px 0;
+  gap: 7px;
+  width: var(--cdb-toolrail-w);
+  min-width: var(--cdb-toolrail-w);
   position: relative;
+  z-index: 25;
 }
 
 .cdb-tool-btn {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border: 1px solid transparent;
-  border-radius: var(--cdb-radius-sm);
+  border-radius: 12px;
   background: transparent;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--cdb-color-text);
+  display: grid;
+  place-items: center;
+  color: var(--cdb-color-text-2);
+  position: relative;
   transition: background var(--cdb-duration-fast) var(--cdb-easing-out),
               border-color var(--cdb-duration-fast) var(--cdb-easing-out),
               color var(--cdb-duration-fast) var(--cdb-easing-out);
 }
 
-.cdb-tool-btn:hover { background: var(--cdb-color-bg-subtle); }
+.cdb-tool-btn:hover:not(:disabled) {
+  color: var(--cdb-color-text);
+  background: var(--cdb-color-surface-hover);
+}
+
+.cdb-tool-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
 
 .cdb-tool-btn.cdb-is-active {
-  background: var(--cdb-color-primary-bg);
-  border-color: var(--cdb-color-primary);
+  background: var(--cdb-color-primary-soft);
+  border-color: color-mix(in srgb, var(--cdb-color-primary) 42%, transparent);
+  color: var(--cdb-color-primary-strong);
+}
+
+[data-mode="dark"] .cdb-tool-btn.cdb-is-active {
   color: var(--cdb-color-primary);
 }
 
@@ -1948,13 +2150,52 @@ textarea {
   width: 28px;
   height: 1px;
   background: var(--cdb-color-border);
-  margin: var(--cdb-space-1) 0;
+  margin: 3px 0;
+  flex: none;
+}
+
+.cdb-tool-rail__spacer {
+  flex: 1;
+}
+
+/* 工具 tooltip — 主原型 .tool-tip */
+.cdb-tool-tip {
+  position: absolute;
+  left: 52px;
+  top: 50%;
+  transform: translateY(-50%) translateX(-4px);
+  opacity: 0;
+  pointer-events: none;
+  padding: 7px 9px;
+  background: var(--cdb-color-surface-solid);
+  border: 1px solid var(--cdb-color-border);
+  box-shadow: var(--cdb-shadow-md);
+  border-radius: 8px;
+  color: var(--cdb-color-text);
+  font-size: 11px;
+  white-space: nowrap;
+  transition: opacity 0.15s, transform 0.15s;
+  z-index: 50;
+}
+
+.cdb-tool-tip kbd {
+  font-size: 9px;
+  color: var(--cdb-color-text-3);
+  border: 1px solid var(--cdb-color-border);
+  border-radius: 5px;
+  padding: 2px 5px;
+  margin-left: 4px;
+}
+
+.cdb-tool-btn:hover .cdb-tool-tip {
+  opacity: 1;
+  transform: translateY(-50%);
 }
 
 .cdb-issues-badge {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--cdb-radius-sm);
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
   background: var(--cdb-color-error-soft);
   color: var(--cdb-color-error);
   font-size: var(--cdb-text-xs);
@@ -1972,13 +2213,13 @@ textarea {
 
 .cdb-tool-menu {
   position: absolute;
-  left: 48px;
-  top: 48px;
-  background: var(--cdb-color-bg);
+  left: 56px;
+  top: 52px;
+  background: var(--cdb-color-surface-solid);
   border: 1px solid var(--cdb-color-border);
-  border-radius: var(--cdb-radius-md);
+  border-radius: 14px;
   box-shadow: var(--cdb-shadow-md);
-  padding: var(--cdb-space-1);
+  padding: 7px;
   z-index: 30;
   min-width: 140px;
 }
@@ -1992,52 +2233,195 @@ textarea {
   background: transparent;
   cursor: pointer;
   font-size: var(--cdb-text-sm);
-  border-radius: var(--cdb-radius-sm);
+  border-radius: 9px;
+  color: var(--cdb-color-text-2);
 }
 
 .cdb-tool-menu-item:hover {
-  background: var(--cdb-color-bg-subtle);
+  background: var(--cdb-color-surface-hover);
+  color: var(--cdb-color-text);
 }
 
 /* ============================================================
- * Phase A: Inspector drawer
+ * Phase A: Inspector — 主原型 .inspector 移植（玻璃检查器，330px）
  * ============================================================ */
 .cdb-inspector {
-  background: var(--cdb-color-bg);
-  border-left: 1px solid var(--cdb-color-border);
+  border-radius: 16px;
   display: flex;
   flex-direction: column;
-  width: 320px;
-  min-width: 320px;
+  width: var(--cdb-inspector-w);
+  min-width: 0;
   overflow: hidden;
-  box-shadow: -1px 0 0 var(--cdb-color-inspector-edge);
+  z-index: 30;
+  transition: opacity var(--cdb-duration-base) var(--cdb-easing-out),
+              transform var(--cdb-duration-base) var(--cdb-easing-out);
   animation: cdb-slide-in-right var(--cdb-duration-slow) var(--cdb-easing-spring);
 }
 
 .cdb-main.cdb-is-inspector-collapsed .cdb-inspector {
-  width: 0;
-  min-width: 0;
-  border-left: none;
-  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(12px);
   visibility: hidden;
 }
 
 .cdb-inspector__header {
-  padding: var(--cdb-space-3) var(--cdb-space-4);
+  height: 52px;
+  flex: none;
+  padding: 0 15px;
   border-bottom: 1px solid var(--cdb-color-border);
-  font-weight: 600;
-  font-size: var(--cdb-text-sm);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-shrink: 0;
+}
+
+.cdb-inspector__header h2,
+.cdb-inspector__header [data-testid="inspector-title"] {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--cdb-color-text);
 }
 
 .cdb-inspector__body {
   flex: 1;
   overflow-y: auto;
-  padding: var(--cdb-space-4);
+  padding: 15px;
+  display: grid;
+  align-content: start;
+  gap: 17px;
   min-height: 0;
+}
+
+/* 检查器分区 — 主原型 .panel-section/.panel-title */
+.cdb-panel-section {
+  display: grid;
+  gap: 10px;
+}
+
+.cdb-panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  font-weight: 850;
+  color: var(--cdb-color-text-3);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.cdb-panel-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--cdb-color-border);
+  border-radius: 999px;
+  background: var(--cdb-color-surface-soft);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--cdb-color-text-2);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+/* 字段卡 — 主原型 .field-card */
+.cdb-field-card-list {
+  display: grid;
+  gap: 7px;
+}
+
+.cdb-field-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid var(--cdb-color-border);
+  border-radius: 11px;
+  background: var(--cdb-color-surface-soft);
+}
+
+.cdb-field-card__main {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.cdb-field-card__delete {
+  align-self: start;
+  color: var(--cdb-color-text-muted);
+}
+
+.cdb-field-card__delete:hover:not(:disabled) {
+  color: var(--cdb-color-error);
+}
+
+/* 约束 chips — 主原型 .constraint */
+.cdb-constraint-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cdb-constraint {
+  padding: 5px 7px;
+  border-radius: 7px;
+  border: 1px solid var(--cdb-color-border);
+  background: transparent;
+  font-size: 10px;
+  color: var(--cdb-color-text-2);
+  cursor: pointer;
+}
+
+.cdb-constraint:hover:not(:disabled) {
+  border-color: var(--cdb-color-border-strong);
+}
+
+.cdb-constraint:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.cdb-constraint.cdb-is-on {
+  background: var(--cdb-color-primary-soft);
+  border-color: color-mix(in srgb, var(--cdb-color-primary) 30%, transparent);
+  color: var(--cdb-color-primary);
+}
+
+/* 空态 — 主原型 .empty-inspector */
+.cdb-empty-inspector {
+  text-align: center;
+  padding: 40px 10px;
+  color: var(--cdb-color-text-3);
+}
+
+.cdb-empty-inspector .cdb-brand-mark {
+  margin: 0 auto 13px;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  background: linear-gradient(135deg, var(--cdb-color-primary), var(--cdb-color-accent));
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+
+.cdb-empty-inspector strong {
+  display: block;
+  color: var(--cdb-color-text-2);
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.cdb-empty-inspector p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.cdb-empty-inspector__meta {
+  margin-top: 10px !important;
+  color: var(--cdb-color-text-muted);
 }
 
 .cdb-inspector > .cdb-side-panel {
@@ -2059,22 +2443,29 @@ textarea {
 }
 
 /* ============================================================
- * Phase C: IO Drawer (import / export)
+ * Phase C: IO Drawer — 主原型 .drawer 移植（右侧玻璃浮层抽屉）
  * ============================================================ */
 .cdb-io-drawer {
-  width: 400px;
-  min-width: 400px;
-  border-left: 1px solid var(--cdb-color-border);
-  background: var(--cdb-color-bg);
+  animation: cdb-slide-in-right var(--cdb-duration-slow) var(--cdb-easing-spring);
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(420px, calc(100% - 72px));
+  border: 1px solid var(--cdb-color-border);
+  border-radius: 16px 0 0 16px;
+  background: var(--cdb-color-surface);
+  backdrop-filter: var(--cdb-blur-glass);
+  -webkit-backdrop-filter: var(--cdb-blur-glass);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  z-index: 30;
+  z-index: 35;
   box-shadow: var(--cdb-shadow-lg);
 }
 
-.cdb-main.cdb-has-io-drawer .cdb-io-drawer {
-  animation: cdb-slide-in-right var(--cdb-duration-slow) var(--cdb-easing-spring);
+[data-mode="dark"] .cdb-io-drawer {
+  border-color: var(--cdb-color-border-strong);
 }
 
 .cdb-io-drawer__inner {
@@ -2085,15 +2476,15 @@ textarea {
 }
 
 .cdb-io-drawer__header {
-  padding: var(--cdb-space-3) var(--cdb-space-4);
+  height: 52px;
+  padding: 0 15px;
   border-bottom: 1px solid var(--cdb-color-border);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-weight: 600;
-  font-size: var(--cdb-text-sm);
+  font-weight: 700;
+  font-size: 13px;
   flex-shrink: 0;
-  background: linear-gradient(to bottom, var(--cdb-color-bg), var(--cdb-color-bg-subtle));
 }
 
 .cdb-io-drawer__title {
@@ -2264,20 +2655,124 @@ textarea {
 }
 
 .cdb-status-bar {
-  background: var(--cdb-color-bg);
-  border-top: 1px solid var(--cdb-color-border);
-  padding: 0 var(--cdb-space-4);
-  height: 28px;
+  border-radius: 11px;
+  padding: 0 12px;
+  height: var(--cdb-statusbar-h);
   display: flex;
   align-items: center;
-  gap: var(--cdb-space-4);
-  font-size: var(--cdb-text-xs);
-  color: var(--cdb-color-text-muted);
+  gap: 14px;
+  font-size: 10px;
+  color: var(--cdb-color-text-2);
   flex-shrink: 0;
+  z-index: 20;
+}
+
+.cdb-status-group {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.cdb-ws-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--cdb-color-success);
+  color: var(--cdb-color-success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 12%, transparent);
+  flex: none;
+}
+
+.cdb-ws-dot.cdb-is-warn {
+  background: var(--cdb-color-warning);
+  color: var(--cdb-color-warning);
+}
+
+.cdb-ws-dot.cdb-is-error {
+  background: var(--cdb-color-error);
+  color: var(--cdb-color-error);
+}
+
+.cdb-status-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--cdb-color-border);
+  border-radius: 999px;
+  background: var(--cdb-color-surface-soft);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--cdb-color-text-2);
+}
+
+.cdb-status-tag--brand {
+  background: var(--cdb-color-primary-soft);
+  color: var(--cdb-color-primary-strong);
+  border-color: color-mix(in srgb, var(--cdb-color-primary) 27%, transparent);
+}
+
+[data-mode="dark"] .cdb-status-tag--brand {
+  color: var(--cdb-color-primary);
+}
+
+.cdb-status-tag--warn {
+  color: var(--cdb-color-warning);
 }
 
 .cdb-status-bar__spacer {
   flex: 1;
+}
+
+/* zoom 组 — 主原型 statusbar 右侧 −/%/＋ */
+.cdb-status-zoom {
+  gap: 2px;
+}
+
+.cdb-status-zoom [data-testid="status-zoom"] {
+  min-width: 34px;
+  text-align: center;
+}
+
+/* AppBar 用户菜单紧凑化 — 主原型 appbar 仅头像（姓名/会话态收进下拉） */
+.cdb-app-bar .cdb-user-name,
+.cdb-app-bar .cdb-session__state {
+  display: none;
+}
+
+.cdb-app-bar .cdb-user-menu {
+  width: 31px;
+  height: 31px;
+  min-height: 31px;
+  padding: 0;
+  justify-content: center;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--cdb-color-primary), var(--cdb-color-accent));
+  color: #fff;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.cdb-app-bar .cdb-user-avatar {
+  width: auto;
+  height: auto;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+}
+
+/* 桌面-only 组（720px 以下隐藏，同主原型 .desktop-only） */
+@media (max-width: 760px) {
+  .cdb-desktop-only {
+    display: none;
+  }
+}
+
+.cdb-status-bar .cdb-btn {
+  min-height: 28px;
+  font-size: 11px;
 }
 
 /* ============================================================
@@ -2627,7 +3122,6 @@ textarea {
  * Canvas (B3: editor_render::Canvas wired in AppRoot)
  * ============================================================ */
 .cdb-canvas-container {
-  background: var(--cdb-color-bg-canvas);
   position: relative;
   overflow: hidden;
   min-height: 0;
@@ -2635,10 +3129,10 @@ textarea {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background-image:
-    linear-gradient(var(--cdb-color-canvas-grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--cdb-color-canvas-grid) 1px, transparent 1px);
-  background-size: 24px 24px;
+  border: 1px solid var(--cdb-color-border);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--cdb-color-bg-deep) 60%, transparent);
+  box-shadow: inset 0 0 70px color-mix(in srgb, var(--cdb-color-bg-page) 35%, transparent);
 }
 
 .cdb-canvas-stack {
@@ -2669,7 +3163,7 @@ textarea {
   display: block;
   touch-action: none;
   cursor: grab;
-  background: var(--cdb-color-bg);
+  background: transparent;
 }
 
 .cdb-canvas-element:active {

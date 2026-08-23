@@ -10,6 +10,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:spec-parity-a": "node scripts/test-spec-parity-a.mjs",
     "test:spec-parity-b": "node scripts/test-spec-parity-b.mjs",
+    "test:spec-parity-c": "node scripts/test-spec-parity-c.mjs",
     "test:unified-prototype": "node scripts/test-unified-prototype.mjs && node scripts/test-unified-prototype-render.mjs"
   },
   "keywords": [],

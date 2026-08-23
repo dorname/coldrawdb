@@ -234,6 +234,9 @@ pub struct CollabOtState {
     pub next_client_rev: i64,
     pub pending_ops: Vec<CollabPendingOp>,
     pub queued_while_offline: Vec<CollabPendingOp>,
+    /// ST-S05-UI-05：重连失败后用户显式选择「仅本地编辑」→ 持续提示 409 风险，
+    /// 本地可继续编辑（op 进入 queued_while_offline），但不得误报 OT 已同步。
+    pub local_only: bool,
 }
 
 impl Default for CollabOtState {
@@ -244,6 +247,7 @@ impl Default for CollabOtState {
             next_client_rev: 1,
             pending_ops: Vec::new(),
             queued_while_offline: Vec::new(),
+            local_only: false,
         }
     }
 }
@@ -290,7 +294,25 @@ impl CollabOtState {
     pub fn apply_sync(&mut self, server_rev: i64) {
         self.server_rev = self.server_rev.max(server_rev);
         self.connection = CollabConnectionState::Connected;
+        self.local_only = false;
         self.pending_ops.extend(self.queued_while_offline.drain(..));
+    }
+
+    /// 进入仅本地模式（ST-S05-UI-05）：保留排队 op，状态栏/横幅持续提示 409 风险。
+    pub fn enter_local_only(&mut self) {
+        self.local_only = true;
+    }
+
+    /// 仅本地模式下的 OT 入队与离线一致：op 进入 queued_while_offline 等待 sync。
+    pub fn is_local_only(&self) -> bool {
+        self.local_only
+    }
+
+    /// ST-S01-409-SCOPE / ST-S01-NO-409-OT：协作已连接且非「仅本地」时，
+    /// 快照 PUT 409 视为服务器合并——禁止弹 S01 冲突模态（改走 Activity 反馈 + 采纳服务器 rev）。
+    /// 仅本地（ST-S01-409-LOCAL-ONLY）与非协作路径返回 true，保留 modal-conflict。
+    pub fn snapshot_conflict_shows_modal(&self) -> bool {
+        !(matches!(self.connection, CollabConnectionState::Connected) && !self.local_only)
     }
 
     pub fn mark_read_only(&mut self) {

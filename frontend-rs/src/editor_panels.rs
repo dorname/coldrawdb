@@ -6,7 +6,7 @@
 //! Phase A (redesign-phase-a-layout): AppBar + ToolRail + Inspector + StatusBar + EmptyGuide
 //!
 //! data-testid 清单:
-//!   - app-bar / tool-rail / inspector-panel / status-bar / canvas-empty-guide
+//!   - app-bar / tool-rail / inspector / status-bar / canvas-empty-guide
 //!   - btn-create-table / guide-create-table / btn-inspector-toggle
 //!   - editor-canvas / floating-controls / revision-display (status chip)
 
@@ -30,9 +30,9 @@ use crate::editor_render::{remote_presence_slots, RemotePresence};
 use crate::editor_render::{zoom_in, zoom_out, zoom_reset, Transform};
 use crate::icons::{
     IconAdd, IconAddArea, IconAddNote, IconAddTable, IconBox, IconChevronLeft, IconChevronRight,
-    IconClose, IconEnum, IconExport, IconImport, IconKey, IconMinus, IconMoon, IconMore, IconPan,
+    IconClose, IconDelete, IconEnum, IconExport, IconImport, IconKey, IconMinus, IconMoon, IconMore,
     IconActivity, IconEye, IconEyeOff, IconLogo, IconRedo, IconRefresh, IconRelationship,
-    IconSelect, IconSettings, IconSun, IconType, IconUndo, IconUsers, IconWarning,
+    IconSearch, IconSettings, IconShare, IconSun, IconType, IconUndo, IconUsers, IconWarning,
 };
 use leptos::*;
 use std::cell::RefCell;
@@ -838,6 +838,9 @@ pub fn is_table_selected(selected: &Option<String>, table_id: &str) -> bool {
 /// 公共逻辑，避免雷同。闭包内 `spawn_local` 调 `DiagramClient::save` async 路径：
 /// - 成功 → `store.revision.set(r.revision)` + `store.dirty.set(false)`
 /// - 409 Conflict → `conflict.set(Some(ConflictInfo{...}))`（V1: 触发 ConflictDialog，handler 仍 stub）
+///   - 例外（ST-S01-409-SCOPE / ST-S01-NO-409-OT）：协作已连接且非「仅本地」时，
+///     快照 409 视为服务器已合并——禁止 modal-conflict，采纳服务器 rev 并写 Activity；
+///   - 仅本地 / 非协作路径仍走 S01 409 模态（ST-S01-409-LOCAL-ONLY / ST-FE-V2-02）
 /// - 其它错误 → `save_offline` + 「保存失败（离线）」+ 指数退避重试（3s/6s/12s）
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn schedule_save(
@@ -850,12 +853,15 @@ pub(crate) fn schedule_save(
     error: RwSignal<Option<String>>,
     is_saving: RwSignal<bool>,
     save_offline: RwSignal<bool>,
+    collab_state: RwSignal<CollabOtState>,
+    activity_feed: RwSignal<Vec<String>>,
 ) {
     let id = current_diagram_id.get();
     let rev = store.revision.get();
     let name = current_title.get();
     let snap = store.snapshot(id.clone(), name);
-    is_saving.set(true);
+    // ST-S01-SS-01：debounce 静默期应保持 dirty（有未保存更改），
+    // is_saving 只在 PUT 真正发出时置位（保存中…），与主原型 saveText 阶段一致。
     save_offline.set(false);
     debouncer.schedule(move || {
         let client = client.clone();
@@ -864,6 +870,7 @@ pub(crate) fn schedule_save(
         let error = error.clone();
         let is_saving = is_saving.clone();
         let save_offline = save_offline.clone();
+        is_saving.set(true);
         spawn_local(async move {
             match save_with_retry(&client, &id, rev, &snap).await {
                 Ok(resp) => {
@@ -875,7 +882,16 @@ pub(crate) fn schedule_save(
                 Err(SaveError::Conflict {
                     current_revision, ..
                 }) => {
-                    conflict.set(Some(ConflictInfo::new(current_revision, rev)));
+                    let collab = collab_state.get_untracked();
+                    if collab.snapshot_conflict_shows_modal() {
+                        conflict.set(Some(ConflictInfo::new(current_revision, rev)));
+                    } else {
+                        store.revision.set(current_revision);
+                        prepend_activity(
+                            activity_feed,
+                            format!("快照 409 已由协作合并 · 推进至 rev {current_revision}"),
+                        );
+                    }
                 }
                 Err(_) => {
                     save_offline.set(true);
@@ -1274,7 +1290,23 @@ pub fn FloatingControls(transform: RwSignal<Transform>) -> impl IntoView {
     }
 }
 
-/// R4：AppBar 状态 Chip（保存圆点 + 文案 + rev）
+/// 保存态 Chip 的纯派生逻辑（UT-S01-SS-01/02 可直接断言）：
+/// 返回 (data-state, 文案, dot 修饰类)。优先级 saving > error > dirty > saved。
+/// 文案严格对齐主原型 saveText 表：已保存/有未保存更改/保存中…/保存失败
+pub fn save_chip_state(is_saving: bool, save_error: bool, dirty: bool) -> (&'static str, &'static str, &'static str) {
+    if is_saving {
+        ("saving", "保存中…", "cdb-save-dot--saving")
+    } else if save_error {
+        ("error", "保存失败", "cdb-save-dot--error")
+    } else if dirty {
+        ("dirty", "有未保存更改", "cdb-save-dot--dirty")
+    } else {
+        ("saved", "已保存", "cdb-save-dot--saved")
+    }
+}
+
+/// R4：AppBar 保存态 Chip — 严格对齐主原型 .save-chip：
+/// `data-state` = saved/dirty/saving/error；文案 已保存/有未保存更改/保存中…/保存失败 + 「 · rev N」
 #[component]
 pub fn SaveStatusChip(
     store: EditorStore,
@@ -1284,59 +1316,32 @@ pub fn SaveStatusChip(
     view! {
         <div class="cdb-app-bar__status">
             {move || {
-                if is_saving.get() {
-                    view! {
-                        <span class="cdb-status-chip cdb-save-state cdb-is-saving" data-testid="save-state">
-                            <span class="cdb-save-dot cdb-save-dot--saving"></span>
-                            "保存中..."
-                            <span class="cdb-status-chip__sep">"·"</span>
-                            <span class="cdb-rev-inline" data-testid="revision-display">
-                                {format!("rev: {}", store.revision.get())}
-                            </span>
+                let (state, text, dot_mod) =
+                    save_chip_state(is_saving.get(), save_offline.get(), store.dirty.get());
+                view! {
+                    <span class="cdb-status-chip cdb-save-state" data-testid="save-state" data-state=state>
+                        <span class=format!("cdb-save-dot {dot_mod}")></span>
+                        {text}
+                        <span class="cdb-status-chip__revision" data-testid="revision-display">
+                            {format!(" · rev {}", store.revision.get())}
                         </span>
-                    }.into_view()
-                } else if save_offline.get() {
-                    view! {
-                        <span class="cdb-status-chip cdb-save-state cdb-is-error" data-testid="save-state">
-                            <span class="cdb-save-dot cdb-save-dot--error"></span>
-                            "保存失败（离线）"
-                        </span>
-                    }.into_view()
-                } else if store.dirty.get() {
-                    view! {
-                        <span class="cdb-status-chip cdb-save-state cdb-is-idle" data-testid="save-state">
-                            <span class="cdb-save-dot cdb-save-dot--dirty"></span>
-                            "未保存"
-                            <span class="cdb-status-chip__sep">"·"</span>
-                            <span class="cdb-rev-inline" data-testid="revision-display">
-                                {format!("rev: {}", store.revision.get())}
-                            </span>
-                        </span>
-                    }.into_view()
-                } else {
-                    view! {
-                        <span class="cdb-status-chip cdb-save-state" data-testid="save-state">
-                            <span class="cdb-save-dot cdb-save-dot--saved"></span>
-                            "已保存"
-                            <span class="cdb-status-chip__sep">"·"</span>
-                            <span class="cdb-rev-inline" data-testid="revision-display">
-                                {format!("rev: {}", store.revision.get())}
-                            </span>
-                        </span>
-                    }.into_view()
+                    </span>
                 }
             }}
         </div>
     }
 }
 
-/// R4：AppBar 溢出菜单（导入 / 导出 / 主题）
+/// R4：AppBar 溢出菜单（导入 / 导出 / 分享设置 / 设置 / 删除 / 主题 / 命令面板）
+/// 结构与主原型 renderMoreMenu 对齐：分享设置从 AppBar 一级按钮迁入此菜单
 #[component]
 pub fn AppBarOverflowMenu(
-    dark_mode: RwSignal<bool>,
+    theme_mode: RwSignal<String>,
     on_open_import: Rc<dyn Fn()>,
     on_open_export: Rc<dyn Fn()>,
+    on_open_share: Rc<dyn Fn()>,
     on_open_settings: Rc<dyn Fn()>,
+    on_open_palette: Rc<dyn Fn()>,
     on_delete_diagram: Rc<dyn Fn()>,
     read_only: bool,
 ) -> impl IntoView {
@@ -1394,6 +1399,22 @@ pub fn AppBarOverflowMenu(
                         </button>
                         <button
                             class="cdb-menu-dropdown-item cdb-menu-dropdown-item--icon"
+                            data-testid="btn-share"
+                            role="menuitem"
+                            disabled=read_only
+                            on:click={
+                                let handler = on_open_share.clone();
+                                move |_| {
+                                    handler();
+                                    overflow_open.set(false);
+                                }
+                            }
+                        >
+                            <IconBox size="sm"><IconShare /></IconBox>
+                            "分享设置"
+                        </button>
+                        <button
+                            class="cdb-menu-dropdown-item cdb-menu-dropdown-item--icon"
                             data-testid="btn-settings"
                             role="menuitem"
                             disabled=read_only
@@ -1436,13 +1457,13 @@ pub fn AppBarOverflowMenu(
                                             .unwrap_or_else(|| "light".into());
                                         let next = if cur == "dark" { "light" } else { "dark" };
                                         let _ = html.set_attribute("data-mode", next);
-                                        dark_mode.set(next == "dark");
+                                        theme_mode.set(next.to_string());
                                     }
                                 }
                                 overflow_open.set(false);
                             }
                         >
-                            {move || if dark_mode.get() {
+                            {move || if theme_mode.get() == "dark" {
                                 view! {
                                     <IconBox size="sm"><IconSun /></IconBox>
                                     "浅色模式"
@@ -1455,6 +1476,22 @@ pub fn AppBarOverflowMenu(
                             }
                             }
                         </button>
+                        <button
+                            class="cdb-menu-dropdown-item cdb-menu-dropdown-item--icon"
+                            data-testid="btn-command-palette"
+                            role="menuitem"
+                            on:click={
+                                let handler = on_open_palette.clone();
+                                move |_| {
+                                    handler();
+                                    overflow_open.set(false);
+                                }
+                            }
+                        >
+                            <IconBox size="sm"><IconSearch /></IconBox>
+                            "命令面板"
+                            <span class="cdb-menu-shortcut">"⌘K"</span>
+                        </button>
                     </div>
                 }.into_view()
             } else {
@@ -1464,7 +1501,9 @@ pub fn AppBarOverflowMenu(
     }
 }
 
-/// Phase A：单行 AppBar（合并 TopMenuBar + Toolbar）
+/// Phase A：单行 AppBar — 严格对齐主原型 core-01 renderEditor 的 appbar 构成：
+/// brand-mark → divider → undo/redo → diagram-title → divider → room-badge → save-chip
+/// → spacer → presence 头像组 → actions（邀请 / 成员 / 代码视图 / 更多 / 用户菜单）
 #[component]
 pub fn AppBar(
     modal_kind: RwSignal<Option<modals::ModalKind>>,
@@ -1483,95 +1522,144 @@ pub fn AppBar(
     on_open_import: Rc<dyn Fn()>,
     on_open_export: Rc<dyn Fn()>,
     on_open_settings: Rc<dyn Fn()>,
+    on_open_palette: Rc<dyn Fn()>,
     on_delete_diagram: Rc<dyn Fn()>,
     auth_session: RwSignal<Option<AuthSession>>,
     session_notice: RwSignal<Option<String>>,
     on_refresh_session: Rc<dyn Fn()>,
     on_logout: Rc<dyn Fn()>,
     current_room: RwSignal<Option<RoomDetail>>,
-    collab_state: RwSignal<CollabOtState>,
     remote_members: RwSignal<Vec<CollabMemberPresence>>,
     on_open_rooms: Rc<dyn Fn()>,
+    on_open_members: Rc<dyn Fn()>,
     read_only: bool,
+    theme_mode: RwSignal<String>,
 ) -> impl IntoView {
     let _ = (transform, inspector_open);
-    let dark_mode = create_rw_signal(read_html_data_mode() == "dark");
+    let on_open_share = {
+        let modal_kind = modal_kind.clone();
+        Rc::new(move || modal_kind.set(Some(modals::ModalKind::Share))) as Rc<dyn Fn()>
+    };
 
     view! {
         <header class="cdb-app-bar" data-testid="app-bar">
             <div class="cdb-app-bar__brand">
-                <span class="cdb-logo-mark" aria-hidden="true">"C"</span>
-                <UndoRedoButtons
-                    store=store.clone()
-                    stack=stack
-                    on_after_change=on_after_change.clone()
-                    error=error.clone()
-                    read_only=read_only
-                />
-                <input
-                    class="cdb-diagram-title"
-                    data-testid="diagram-title"
-                    prop:value=move || current_title.get()
-                    readonly=read_only
-                    on:input=move |ev| current_title.set(event_target_value(&ev))
-                    on:blur=move |ev| {
-                        if !read_only {
-                            on_title_blur(event_target_value(&ev));
-                        }
-                    }
-                />
+                <span class="cdb-brand-mark" aria-hidden="true"><IconBox size="md"><IconLogo /></IconBox></span>
             </div>
+            <div class="cdb-app-bar__divider"></div>
+            <UndoRedoButtons
+                store=store.clone()
+                stack=stack
+                on_after_change=on_after_change.clone()
+                error=error.clone()
+                read_only=read_only
+            />
+            <input
+                class="cdb-diagram-title"
+                data-testid="diagram-title"
+                aria-label="图表标题"
+                prop:value=move || current_title.get()
+                readonly=read_only
+                on:input=move |ev| current_title.set(event_target_value(&ev))
+                on:blur=move |ev| {
+                    if !read_only {
+                        on_title_blur(event_target_value(&ev));
+                    }
+                }
+            />
+            {move || current_room.get().map(|room| {
+                let on_open_rooms = on_open_rooms.clone();
+                view! {
+                    <div class="cdb-app-bar__divider"></div>
+                    <button
+                        class="cdb-btn cdb-btn--ghost cdb-room-badge"
+                        data-testid="room-badge"
+                        title="返回房间列表"
+                        on:click=move |_| on_open_rooms()
+                    >
+                        <IconBox size="sm"><IconUsers /></IconBox>
+                        <strong>{room.name}</strong>
+                    </button>
+                }
+            })}
             <SaveStatusChip
                 store=store.clone()
                 is_saving=is_saving
                 save_offline=save_offline
             />
-            {move || current_room.get().map(|room| view! {
-                <span class="cdb-room-badge" data-testid="room-badge">{room.name}</span>
-            })}
+            <span class="cdb-app-bar__spacer"></span>
             {move || current_room.get().map(|_| view! {
-                <div class="cdb-collab-pills">
-                    <span class="cdb-collab-pill" data-testid="ws-status">
-                        {move || collab_status_label(&collab_state.get()).to_string()}
-                    </span>
-                    <span class="cdb-collab-pill" data-testid="ot-rev">
-                        {move || format!("OT rev {}", collab_state.get().server_rev)}
-                    </span>
-                    <span class="cdb-collab-pill" data-testid="room-presence">
-                        {move || format!("在线 {}", remote_members.get().iter().filter(|m| m.online).count())}
-                    </span>
+                <div class="cdb-presence" data-testid="room-presence">
+                    <For
+                        each=move || {
+                            let mut members: Vec<CollabMemberPresence> = remote_members
+                                .get()
+                                .into_iter()
+                                .filter(|m| m.online)
+                                .collect();
+                            members.truncate(4);
+                            members
+                        }
+                        key=|m| m.user_id.clone()
+                        children=move |m: CollabMemberPresence| {
+                            let label = m
+                                .display_name
+                                .clone()
+                                .filter(|n| !n.is_empty())
+                                .unwrap_or_else(|| m.user_id.clone());
+                            let initial = label.chars().next().unwrap_or('U').to_string();
+                            let role = m.role.clone().unwrap_or_else(|| "member".to_string());
+                            view! {
+                                <span class="cdb-presence-person" title=format!("{label} · {role}")>
+                                    <span class="cdb-avatar">{initial}</span>
+                                    <span class="cdb-presence-dot" data-testid="presence-online"></span>
+                                </span>
+                            }
+                        }
+                    />
                 </div>
             })}
-            <span class="cdb-app-bar__spacer"></span>
             <div class="cdb-app-bar__actions">
-                <button
-                    class="cdb-btn cdb-btn--small"
-                    data-testid="btn-rooms"
-                    on:click=move |_| on_open_rooms()
-                >
-                    "房间"
-                </button>
-                <button
-                    class="cdb-btn cdb-btn--primary cdb-btn--small"
-                    data-testid="btn-share"
-                    on:click=move |_| modal_kind.set(Some(modals::ModalKind::Share))
-                >
-                    "分享"
-                </button>
+                {move || current_room.get().map(|_| {
+                    let on_open_members_invite = on_open_members.clone();
+                    let on_open_members_drawer = on_open_members.clone();
+                    view! {
+                        <button
+                            class="cdb-btn cdb-btn--primary"
+                            data-testid="btn-invite"
+                            disabled=move || read_only || room_is_viewer(current_room)
+                            on:click=move |_| on_open_members_invite()
+                        >
+                            <IconBox size="sm"><IconAdd /></IconBox>
+                            "邀请"
+                        </button>
+                        <button
+                            class="cdb-btn cdb-btn--icon"
+                            data-testid="btn-members"
+                            title="成员"
+                            aria-label="成员"
+                            on:click=move |_| on_open_members_drawer()
+                        >
+                            <IconBox size="sm"><IconUsers /></IconBox>
+                        </button>
+                    }
+                })}
+                <ViewModeToggle view_mode=view_mode code_visible=code_visible />
+                <AppBarOverflowMenu
+                    theme_mode=theme_mode
+                    on_open_import=on_open_import
+                    on_open_export=on_open_export
+                    on_open_share=on_open_share
+                    on_open_settings=on_open_settings
+                    on_open_palette=on_open_palette
+                    on_delete_diagram=on_delete_diagram
+                    read_only=read_only
+                />
                 <SessionIndicator
                     auth_session=auth_session
                     session_notice=session_notice
                     on_refresh_session=on_refresh_session
                     on_logout=on_logout
-                />
-                <ViewModeToggle view_mode=view_mode code_visible=code_visible />
-                <AppBarOverflowMenu
-                    dark_mode=dark_mode
-                    on_open_import=on_open_import
-                    on_open_export=on_open_export
-                    on_open_settings=on_open_settings
-                    on_delete_diagram=on_delete_diagram
-                    read_only=read_only
                 />
             </div>
         </header>
@@ -1640,13 +1728,31 @@ pub fn can_close_io_drawer(kind: IoDrawerKind) -> bool {
     !matches!(kind, IoDrawerKind::None)
 }
 
+/// 状态栏 ws 文案 — 严格对齐主原型 renderEditor 的 wsText 五态：
+/// 已连接 · OT 同步 / 正在同步… / 重连中 · 操作排队 / 仅本地 · 409 风险 / 协作离线
+/// （生产多一个 ReadOnly 态：只读）
 pub fn collab_status_label(state: &CollabOtState) -> &'static str {
+    if state.local_only {
+        return "仅本地 · 409 风险";
+    }
     match state.connection {
-        CollabConnectionState::Offline => "离线",
-        CollabConnectionState::Connecting => "连接中",
-        CollabConnectionState::Connected => "已连接",
-        CollabConnectionState::Reconnecting => "重连中",
+        CollabConnectionState::Offline => "协作离线",
+        CollabConnectionState::Connecting => "正在同步…",
+        CollabConnectionState::Connected => "已连接 · OT 同步",
+        CollabConnectionState::Reconnecting => "重连中 · 操作排队",
         CollabConnectionState::ReadOnly => "只读",
+    }
+}
+
+/// ws 圆点等级 — 主原型 wsClass：connected 绿 / reconnecting·syncing 黄 / 其余红
+pub fn collab_status_dot_class(state: &CollabOtState) -> &'static str {
+    if state.local_only {
+        return "cdb-is-error";
+    }
+    match state.connection {
+        CollabConnectionState::Connected | CollabConnectionState::ReadOnly => "",
+        CollabConnectionState::Connecting | CollabConnectionState::Reconnecting => "cdb-is-warn",
+        CollabConnectionState::Offline => "cdb-is-error",
     }
 }
 
@@ -1877,7 +1983,7 @@ pub fn RoomPanel(
                     <option value="viewer">"viewer"</option>
                     <option value="editor">"editor"</option>
                 </select>
-                <button class="cdb-btn cdb-btn--block" data-testid="btn-invite" on:click=move |_| create_invite()>"生成邀请"</button>
+                <button class="cdb-btn cdb-btn--block" data-testid="btn-generate-invite" on:click=move |_| create_invite()>"生成邀请"</button>
                 {move || invite_url.get().map(|url| view! {
                     <input class="cdb-form-input" data-testid="invite-url" readonly=true prop:value=url />
                 })}
@@ -1979,28 +2085,93 @@ pub fn InviteAcceptPanel(
     }
 }
 
+/// 连接横幅 — 严格对齐主原型 renderConnectionBanner 三态：
+/// syncing/reconnecting → 普通横幅（立即重连）；failed → danger 横幅（仅本地编辑 + 重新连接）；
+/// local_only → danger 横幅（409 风险提示）。无房间（分享只读等）时不显示。
 #[component]
-pub fn ReconnectBanner(collab_state: RwSignal<CollabOtState>) -> impl IntoView {
+pub fn ReconnectBanner(
+    collab_state: RwSignal<CollabOtState>,
+    current_room: RwSignal<Option<RoomDetail>>,
+    on_reconnect: Rc<dyn Fn()>,
+) -> impl IntoView {
     view! {
         {move || {
             let state = collab_state.get();
-            if matches!(state.connection, CollabConnectionState::Reconnecting) {
+            let in_room = current_room.get().is_some();
+            let queued = state.queued_while_offline.len() + state.pending_ops.len();
+            let on_retry = on_reconnect.clone();
+            let on_retry2 = on_reconnect.clone();
+            let on_retry3 = on_reconnect.clone();
+            if !in_room || matches!(state.connection, CollabConnectionState::Connected | CollabConnectionState::ReadOnly) {
+                view! { <div class="cdb-reconnect-banner cdb-reconnect-banner--hidden" data-testid="reconnect-banner"></div> }.into_view()
+            } else if state.local_only {
+                view! {
+                    <div class="cdb-reconnect-banner cdb-reconnect-banner--danger" data-testid="reconnect-banner">
+                        <span>"仅本地编辑中，更改可能产生 409 冲突"</span>
+                        <div class="cdb-reconnect-banner__actions">
+                            <button class="cdb-btn cdb-btn--small" data-testid="btn-reconnect" on:click=move |_| on_retry()>
+                                "重新连接"
+                            </button>
+                        </div>
+                    </div>
+                }.into_view()
+            } else if matches!(state.connection, CollabConnectionState::Reconnecting) {
                 view! {
                     <div class="cdb-reconnect-banner" data-testid="reconnect-banner">
-                        {format!("连接中断，{} 个本地变更等待同步", state.queued_while_offline.len())}
+                        <span>{format!("连接已断开，正在重连… · {queued} 项更改已排队")}</span>
+                        <div class="cdb-reconnect-banner__actions">
+                            <button class="cdb-btn cdb-btn--small" data-testid="btn-reconnect-now" on:click=move |_| on_retry2()>
+                                "立即重连"
+                            </button>
+                            <button
+                                class="cdb-btn cdb-btn--small"
+                                data-testid="btn-local-only"
+                                on:click=move |_| collab_state.update(|s| s.enter_local_only())
+                            >
+                                "仅本地编辑"
+                            </button>
+                        </div>
+                    </div>
+                }.into_view()
+            } else if matches!(state.connection, CollabConnectionState::Connecting) {
+                view! {
+                    <div class="cdb-reconnect-banner" data-testid="reconnect-banner">
+                        <span class="cdb-spinner" aria-hidden="true"></span>
+                        <span>"正在同步…"</span>
                     </div>
                 }.into_view()
             } else {
-                view! { <div class="cdb-reconnect-banner cdb-reconnect-banner--hidden" data-testid="reconnect-banner"></div> }.into_view()
+                // Offline + 在房间：连接失败终态（danger）
+                view! {
+                    <div class="cdb-reconnect-banner cdb-reconnect-banner--danger" data-testid="reconnect-banner">
+                        <span>"无法连接协作服务，写操作已暂停"</span>
+                        <div class="cdb-reconnect-banner__actions">
+                            <button
+                                class="cdb-btn cdb-btn--small"
+                                data-testid="btn-local-only"
+                                on:click=move |_| collab_state.update(|s| s.enter_local_only())
+                            >
+                                "仅本地编辑"
+                            </button>
+                            <button class="cdb-btn cdb-btn--small" data-testid="btn-reconnect" on:click=move |_| on_retry3()>
+                                "重新连接"
+                            </button>
+                        </div>
+                    </div>
+                }.into_view()
             }
         }}
     }
 }
 
 #[component]
-pub fn ActivityFeed(items: RwSignal<Vec<String>>) -> impl IntoView {
+pub fn ActivityFeed(items: RwSignal<Vec<String>>, visible: RwSignal<bool>) -> impl IntoView {
     view! {
-        <aside class="cdb-activity-feed" data-testid="activity-feed">
+        <aside
+            class="cdb-activity-feed"
+            data-testid="activity-feed"
+            style:display=move || if visible.get() { "flex" } else { "none" }
+        >
             <For each=move || items.get() key=|item| item.clone() children=move |item: String| {
                 view! { <div class="cdb-activity-feed__item">{item}</div> }
             } />
@@ -3018,76 +3189,33 @@ pub fn ToolRail(
     active_tool: RwSignal<ActiveTool>,
     rel_tool_state: RwSignal<RelToolState>,
     on_create_table: Rc<dyn Fn()>,
+    on_open_palette: Rc<dyn Fn()>,
+    on_open_settings: Rc<dyn Fn()>,
+    on_toggle_activity: Rc<dyn Fn()>,
     current_room: RwSignal<Option<RoomDetail>>,
     read_only: bool,
 ) -> impl IntoView {
-    let new_menu_open = create_rw_signal(false);
-    let issue_count = create_memo(move |_| compute_diagram_issues(&store).len());
+    let _ = (store, selection, inspector_open);
+    let rel_disabled = move || read_only || room_is_viewer(current_room);
 
     view! {
-        <nav class="cdb-tool-rail" data-testid="tool-rail">
+        <nav class="cdb-tool-rail" data-testid="tool-rail" aria-label="画布工具">
             <button
                 class="cdb-tool-btn"
-                class:cdb-is-active=move || active_tool.get() == ActiveTool::Select
-                data-testid="tool-select"
-                title="选择"
-                on:click=move |_| {
-                    active_tool.set(ActiveTool::Select);
-                    rel_tool_state.set(RelToolState::Idle);
-                }
+                data-testid="tool-add-table"
+                disabled=rel_disabled
+                on:click=move |_| on_create_table()
             >
-                <IconBox size="md"><IconSelect /></IconBox>
+                <IconBox size="md"><IconAddTable /></IconBox>
+                <span class="cdb-tool-tip">"新建表 "<kbd>"T"</kbd></span>
             </button>
-            <button
-                class="cdb-tool-btn"
-                data-testid="tool-new-menu"
-                title="新建"
-                disabled=move || read_only || room_is_viewer(current_room)
-                on:click=move |_| new_menu_open.update(|v| *v = !*v)
-            >
-                <IconBox size="md"><IconAdd /></IconBox>
-            </button>
-            {move || if new_menu_open.get() {
-                let on_create = on_create_table.clone();
-                view! {
-                    <div class="cdb-tool-menu" data-testid="tool-new-menu-dropdown">
-                        <button
-                            class="cdb-tool-menu-item"
-                            data-testid="btn-create-table"
-                            on:click=move |_| {
-                                on_create();
-                                new_menu_open.set(false);
-                            }
-                        >
-                            "新建表"
-                        </button>
-                        <button
-                            class="cdb-tool-menu-item"
-                            data-testid="tool-new-area"
-                            on:click=move |_| new_menu_open.set(false)
-                        >
-                            "新建区域"
-                        </button>
-                        <button
-                            class="cdb-tool-menu-item"
-                            data-testid="tool-new-note"
-                            on:click=move |_| new_menu_open.set(false)
-                        >
-                            "新建便签"
-                        </button>
-                    </div>
-                }.into_view()
-            } else {
-                view! { <></> }.into_view()
-            }}
             <button
                 class="cdb-tool-btn"
                 class:cdb-is-active=move || active_tool.get() == ActiveTool::Relationship
                 data-testid="tool-relationship"
-                title="关系工具 (R)"
-                disabled=move || read_only || room_is_viewer(current_room)
+                disabled=rel_disabled
                 on:click=move |_| {
-                    if read_only || room_is_viewer(current_room) {
+                    if rel_disabled() {
                         return;
                     }
                     active_tool.set(ActiveTool::Relationship);
@@ -3095,31 +3223,50 @@ pub fn ToolRail(
                 }
             >
                 <IconBox size="md"><IconRelationship /></IconBox>
+                <span class="cdb-tool-tip">"创建关系 "<kbd>"R"</kbd></span>
             </button>
             <button
                 class="cdb-tool-btn"
-                class:cdb-is-active=move || active_tool.get() == ActiveTool::Pan
-                data-testid="tool-pan"
-                title="平移（拖动画布空白）"
-                on:click=move |_| {
-                    active_tool.set(ActiveTool::Pan);
-                    rel_tool_state.set(RelToolState::Idle);
-                }
+                data-testid="tool-new-area"
+                disabled=rel_disabled
             >
-                <IconBox size="md"><IconPan /></IconBox>
+                <IconBox size="md"><IconAddArea /></IconBox>
+                <span class="cdb-tool-tip">"添加区域"</span>
+            </button>
+            <button
+                class="cdb-tool-btn"
+                data-testid="tool-new-note"
+                disabled=rel_disabled
+            >
+                <IconBox size="md"><IconAddNote /></IconBox>
+                <span class="cdb-tool-tip">"添加便签"</span>
             </button>
             <div class="cdb-tool-rail__divider"></div>
-            <div
-                class="cdb-issues-badge"
-                data-testid="tool-issues-badge"
-                title="问题列表"
-                on:click=move |_| {
-                    selection.set(SelectionKind::Issues);
-                    inspector_open.set(true);
-                }
+            <button
+                class="cdb-tool-btn"
+                data-testid="tool-search"
+                on:click=move |_| on_open_palette()
             >
-                {move || issue_count.get()}
-            </div>
+                <IconBox size="md"><IconSearch /></IconBox>
+                <span class="cdb-tool-tip">"搜索与命令 "<kbd>"⌘K"</kbd></span>
+            </button>
+            <div class="cdb-tool-rail__spacer"></div>
+            <button
+                class="cdb-tool-btn"
+                data-testid="tool-activity"
+                on:click=move |_| on_toggle_activity()
+            >
+                <IconBox size="md"><IconActivity /></IconBox>
+                <span class="cdb-tool-tip">"协作动态"</span>
+            </button>
+            <button
+                class="cdb-tool-btn"
+                data-testid="tool-settings"
+                on:click=move |_| on_open_settings()
+            >
+                <IconBox size="md"><IconSettings /></IconBox>
+                <span class="cdb-tool-tip">"画布设置"</span>
+            </button>
         </nav>
     }
 }
@@ -3697,6 +3844,10 @@ pub fn EmptyGuide(
 }
 
 /// Phase A：Inspector 抽屉
+/// 检查器 — 严格对齐主原型 renderInspector：
+/// header「检查器」+ close；body = 数据表 section（名称/强调色）+ 字段卡列表（名称/类型/约束 chips/删除）
+/// + 删除数据表；空态「选择一个对象」。Field/Reference/Issues 选择保留生产能力表单。
+/// spec 锚点：`data-testid="inspector"`（历史 `inspector-panel` 已移除为现行事实）。
 #[component]
 pub fn Inspector(
     store: EditorStore,
@@ -3706,10 +3857,17 @@ pub fn Inspector(
     on_change_type: Rc<dyn Fn(String, String)>,
     on_set_ref: Rc<dyn Fn(String)>,
     on_toggle_pk: Rc<dyn Fn(String, String, bool)>,
+    on_toggle_nn: Rc<dyn Fn(String, String, bool)>,
+    on_toggle_uq: Rc<dyn Fn(String, String, bool)>,
+    on_rename_table: Rc<dyn Fn(String, String)>,
+    on_rename_field: Rc<dyn Fn(String, String, String)>,
+    on_delete_field: Rc<dyn Fn(String, String)>,
+    on_delete_table: Rc<dyn Fn(String)>,
     on_update_ref_field: Rc<dyn Fn(String, &str, String)>,
     on_flip_ref: Rc<dyn Fn(String)>,
     on_delete_ref: Rc<dyn Fn(String)>,
     on_jump_to_table: Rc<dyn Fn(String)>,
+    read_only: Rc<dyn Fn() -> bool>,
 ) -> impl IntoView {
     let selected_table = create_memo(move |_| {
         let id = selection.get().table_id()?.to_string();
@@ -3719,47 +3877,33 @@ pub fn Inspector(
     let close_inspector = move |_| inspector_open.set(false);
 
     view! {
-        <aside class="cdb-inspector" data-testid="inspector-panel">
-            <div class="cdb-inspector__header">
-                <span data-testid="inspector-title">
-                    {move || match selection.get() {
-                        SelectionKind::None => "项目概览".into(),
-                        SelectionKind::Table(_) => {
-                            selected_table.get()
-                                .map(|t| format!("表：{}", t.name))
-                                .unwrap_or_else(|| "表".into())
-                        }
-                        SelectionKind::Field { .. } => {
-                            let tables = store.tables.get();
-                            if let SelectionKind::Field { table_id, field_id } = selection.get() {
-                                tables.iter()
-                                    .find(|t| t.id == table_id)
-                                    .and_then(|t| t.fields.iter().find(|f| f.id == field_id))
-                                    .map(|f| format!("字段：{}", f.name))
-                                    .unwrap_or_else(|| "字段".into())
-                            } else {
-                                "字段".into()
-                            }
-                        }
-                        SelectionKind::Reference(id) => format!("关系：{}", id),
-                        SelectionKind::Issues => "问题".into(),
-                    }}
-                </span>
+        <aside
+            class="cdb-inspector"
+            data-testid="inspector"
+            style:display=move || if inspector_open.get() { "flex" } else { "none" }
+        >
+            <header class="cdb-inspector__header">
+                <h2 data-testid="inspector-title">"检查器"</h2>
                 <button
-                    class="cdb-btn cdb-btn--icon"
+                    class="cdb-btn cdb-btn--ghost cdb-btn--icon"
                     data-testid="btn-inspector-close"
+                    aria-label="关闭检查器"
                     on:click=close_inspector
                 >
                     <IconBox size="sm"><IconClose /></IconBox>
                 </button>
-            </div>
+            </header>
             <div class="cdb-inspector__body">
                 {move || {
                     let on_jump = on_jump_to_table.clone();
                     let on_add = on_add_field.clone();
                     let on_change = on_change_type.clone();
                     let on_ref = on_set_ref.clone();
-                    let sel = selection.clone();
+                    let on_toggle_pk = on_toggle_pk.clone();
+                    let on_toggle_nn = on_toggle_nn.clone();
+                    let on_toggle_uq = on_toggle_uq.clone();
+                    let on_rename_field = on_rename_field.clone();
+                    let on_delete_field = on_delete_field.clone();
                     match selection.get() {
                     SelectionKind::Issues => {
                         let issues = compute_diagram_issues(&store);
@@ -3855,68 +3999,190 @@ pub fn Inspector(
                         }
                     }
                     SelectionKind::Table(_) => {
+                        let ro = read_only();
                         if let Some(t) = selected_table.get() {
                             let fields = t.fields.clone();
                             let table_name = t.name.clone();
                             let table_id = t.id.clone();
                             let table_id_for_add = table_id.clone();
+                            let table_id_for_rename = table_id.clone();
+                            let table_id_for_delete = table_id.clone();
+                            let field_count = fields.len();
+                            let on_rename = on_rename_table.clone();
+                            let on_del_table = on_delete_table.clone();
                             view! {
                                 <div data-testid="inspector-table-form">
-                                    <h3 data-testid="inspector-table-name">{table_name}</h3>
-                                    <button
-                                        class="cdb-btn cdb-btn--primary cdb-btn--block"
-                                        data-testid="btn-add-field"
-                                        on:click=move |_| on_add(table_id_for_add.clone())
-                                    >
-                                        "+ 添加字段"
-                                    </button>
+                                    <section class="cdb-panel-section">
+                                        <div class="cdb-panel-title">
+                                            <span>"数据表"</span>
+                                            <span class="cdb-panel-tag">{table_id.clone()}</span>
+                                        </div>
+                                        <div class="cdb-form-group">
+                                            <label>"名称"</label>
+                                            <input
+                                                class="cdb-form-input"
+                                                data-testid="inspector-table-name"
+                                                prop:value=table_name
+                                                disabled=ro
+                                                on:blur=move |ev| {
+                                                    if !ro {
+                                                        on_rename(table_id_for_rename.clone(), event_target_value(&ev));
+                                                    }
+                                                }
+                                            />
+                                        </div>
+                                    </section>
+                                    <section class="cdb-panel-section">
+                                        <div class="cdb-panel-title">
+                                            <span>{format!("字段 · {field_count}")}</span>
+                                            <button
+                                                class="cdb-btn cdb-btn--ghost cdb-btn--small"
+                                                data-testid="btn-add-field"
+                                                disabled=ro
+                                                on:click=move |_| on_add(table_id_for_add.clone())
+                                            >
+                                                <IconBox size="sm"><IconAdd /></IconBox>
+                                                "添加"
+                                            </button>
+                                        </div>
+                                        <div class="cdb-field-card-list">
                                     <For each=move || fields.clone() key=|f| f.id.clone() children=move |field: Field| {
                                         let fid = field.id.clone();
                                         let fid_type = fid.clone();
                                         let fid_ref = fid.clone();
                                         let fname = field.name.clone();
                                         let ftype = field.type_.clone();
+                                        let f_primary = field.primary;
+                                        let f_nn = field.not_null;
+                                        let f_uq = field.unique;
                                         let tid = table_id.clone();
-                                        let sel = sel.clone();
                                         let on_change = on_change.clone();
                                         let on_ref = on_ref.clone();
+                                        let on_pk2 = on_toggle_pk.clone();
+                                        let on_nn = on_toggle_nn.clone();
+                                        let on_uq = on_toggle_uq.clone();
+                                        let on_ren_f = on_rename_field.clone();
+                                        let on_del_f = on_delete_field.clone();
                                         view! {
-                                            <div
-                                                class="cdb-field-row"
+                                            <article
+                                                class="cdb-field-card"
                                                 data-testid={format!("field-row-{}", fid)}
-                                                on:click=move |_| {
-                                                    sel.set(SelectionKind::Field {
-                                                        table_id: tid.clone(),
-                                                        field_id: fid.clone(),
-                                                    });
-                                                }
                                             >
-                                                <span>{fname}</span>
-                                                <select
-                                                    data-testid={format!("type-{}", fid_type)}
-                                                    value=ftype
-                                                    on:click=|ev: web_sys::MouseEvent| ev.stop_propagation()
-                                                    on:change=move |ev| {
-                                                        on_change(fid_type.clone(), event_target_value(&ev));
-                                                    }
-                                                >
-                                                    <option value="INT">"INT"</option>
-                                                    <option value="VARCHAR(255)">"VARCHAR(255)"</option>
-                                                    <option value="TEXT">"TEXT"</option>
-                                                </select>
+                                                <div class="cdb-field-card__main">
+                                                    <input
+                                                        class="cdb-form-input"
+                                                        data-testid={format!("field-name-{}", fid)}
+                                                        prop:value=fname
+                                                        disabled=ro
+                                                        on:blur={
+                                                            let tid = tid.clone();
+                                                            let fid = fid.clone();
+                                                            move |ev| {
+                                                                if !ro {
+                                                                    on_ren_f(tid.clone(), fid.clone(), event_target_value(&ev));
+                                                                }
+                                                            }
+                                                        }
+                                                        on:click=move |ev: web_sys::MouseEvent| ev.stop_propagation()
+                                                    />
+                                                    <select
+                                                        class="cdb-form-select"
+                                                        data-testid={format!("type-{}", fid_type)}
+                                                        disabled=ro
+                                                        on:click=|ev: web_sys::MouseEvent| ev.stop_propagation()
+                                                        on:change=move |ev| {
+                                                            on_change(fid_type.clone(), event_target_value(&ev));
+                                                        }
+                                                    >
+                                                        // select 无 value 内容属性，初始选中须落在 option.selected 上
+                                                        <option value="INT" selected={ftype == "INT"}>"INT"</option>
+                                                        <option value="BIGINT" selected={ftype == "BIGINT"}>"BIGINT"</option>
+                                                        <option value="UUID" selected={ftype == "UUID"}>"UUID"</option>
+                                                        <option value="VARCHAR(255)" selected={ftype == "VARCHAR(255)"}>"VARCHAR(255)"</option>
+                                                        <option value="TEXT" selected={ftype == "TEXT"}>"TEXT"</option>
+                                                        <option value="BOOLEAN" selected={ftype == "BOOLEAN"}>"BOOLEAN"</option>
+                                                        <option value="TIMESTAMP" selected={ftype == "TIMESTAMP"}>"TIMESTAMP"</option>
+                                                    </select>
+                                                    <div class="cdb-constraint-row">
+                                                        <button
+                                                            class="cdb-constraint"
+                                                            class:cdb-is-on=f_primary
+                                                            data-testid={format!("constraint-pk-{}", fid)}
+                                                            disabled=ro
+                                                            on:click={
+                                                                let tid = tid.clone();
+                                                                let fid = fid.clone();
+                                                                move |_| on_pk2(tid.clone(), fid.clone(), !f_primary)
+                                                            }
+                                                        >
+                                                            "PK"
+                                                        </button>
+                                                        <button
+                                                            class="cdb-constraint"
+                                                            class:cdb-is-on=f_nn
+                                                            data-testid={format!("constraint-nn-{}", fid)}
+                                                            disabled=ro
+                                                            on:click={
+                                                                let tid = tid.clone();
+                                                                let fid = fid.clone();
+                                                                move |_| on_nn(tid.clone(), fid.clone(), !f_nn)
+                                                            }
+                                                        >
+                                                            "NOT NULL"
+                                                        </button>
+                                                        <button
+                                                            class="cdb-constraint"
+                                                            class:cdb-is-on=f_uq
+                                                            data-testid={format!("constraint-uq-{}", fid)}
+                                                            disabled=ro
+                                                            on:click={
+                                                                let tid = tid.clone();
+                                                                let fid = fid.clone();
+                                                                move |_| on_uq(tid.clone(), fid.clone(), !f_uq)
+                                                            }
+                                                        >
+                                                            "UNIQUE"
+                                                        </button>
+                                                    </div>
+                                                    <button
+                                                        class="cdb-btn cdb-btn--ghost cdb-btn--small"
+                                                        data-testid={format!("set-ref-{}", fid_ref)}
+                                                        disabled=ro
+                                                        on:click=move |ev: web_sys::MouseEvent| {
+                                                            ev.stop_propagation();
+                                                            on_ref(fid_ref.clone());
+                                                        }
+                                                    >
+                                                        "设关系"
+                                                    </button>
+                                                </div>
                                                 <button
-                                                    class="cdb-btn cdb-btn--icon"
-                                                    data-testid={format!("set-ref-{}", fid_ref)}
-                                                    on:click=move |ev: web_sys::MouseEvent| {
-                                                        ev.stop_propagation();
-                                                        on_ref(fid_ref.clone());
+                                                    class="cdb-btn cdb-btn--ghost cdb-btn--icon cdb-field-card__delete"
+                                                    data-testid={format!("btn-delete-field-{}", fid)}
+                                                    aria-label="删除字段"
+                                                    disabled=ro
+                                                    on:click={
+                                                        let tid = tid.clone();
+                                                        let fid = fid.clone();
+                                                        move |_| on_del_f(tid.clone(), fid.clone())
                                                     }
                                                 >
-                                                    "设关系"
+                                                    <IconBox size="sm"><IconDelete /></IconBox>
                                                 </button>
-                                            </div>
+                                            </article>
                                         }
                                     } />
+                                        </div>
+                                    </section>
+                                    <button
+                                        class="cdb-btn cdb-btn--danger cdb-btn--block"
+                                        data-testid="btn-delete-table"
+                                        disabled=ro
+                                        on:click=move |_| on_del_table(table_id_for_delete.clone())
+                                    >
+                                        <IconBox size="sm"><IconDelete /></IconBox>
+                                        "删除数据表"
+                                    </button>
                                 </div>
                             }.into_view()
                         } else {
@@ -4020,11 +4286,13 @@ pub fn Inspector(
                     }
                     SelectionKind::None => {
                         view! {
-                            <div data-testid="inspector-overview">
-                                <p>{move || format!("{} 张表", store.tables.get().len())}</p>
-                                <p>{move || format!("{} 条关系", store.references.get().len())}</p>
-                                <p>"db: generic"</p>
-                                <p>{move || format!("rev: {}", store.revision.get())}</p>
+                            <div class="cdb-empty-inspector" data-testid="inspector-empty">
+                                <span class="cdb-brand-mark"><IconBox size="md"><IconAddTable /></IconBox></span>
+                                <strong>"选择一个对象"</strong>
+                                <p>"在画布上选择表以编辑名称、字段与约束。"</p>
+                                <p class="cdb-empty-inspector__meta" data-testid="inspector-overview">
+                                    {move || format!("{} 张表 · {} 条关系", store.tables.get().len(), store.references.get().len())}
+                                </p>
                             </div>
                         }.into_view()
                     }
@@ -4035,7 +4303,9 @@ pub fn Inspector(
     }
 }
 
-/// Phase A：底部 StatusBar
+/// 状态栏 — 严格对齐主原型 statusbar：
+/// ws-status（圆点+五态文案）→ ot-rev（server_rev N）→ 表/关系计数 → 待同步 tag
+/// → spacer → 角色 tag → zoom −/%/＋ → btn-inspector-toggle
 #[component]
 pub fn StatusBar(
     store: EditorStore,
@@ -4043,34 +4313,66 @@ pub fn StatusBar(
     inspector_open: RwSignal<bool>,
     collab_state: RwSignal<CollabOtState>,
     remote_members: RwSignal<Vec<CollabMemberPresence>>,
+    current_room: RwSignal<Option<RoomDetail>>,
 ) -> impl IntoView {
+    let _ = remote_members;
     view! {
         <footer class="cdb-status-bar" data-testid="status-bar">
-            <span data-testid="status-zoom">
-                {move || format!("缩放 {}%", (transform.get().zoom * 100.0).round() as i32)}
+            <span class="cdb-status-group" data-testid="ws-status">
+                <span class=move || format!("cdb-ws-dot {}", collab_status_dot_class(&collab_state.get()))></span>
+                {move || collab_status_label(&collab_state.get()).to_string()}
             </span>
-            <span data-testid="status-counts">
+            <span class="cdb-status-group" data-testid="ot-rev">
+                {move || format!("server_rev {}", collab_state.get().server_rev)}
+            </span>
+            <span class="cdb-status-group cdb-desktop-only" data-testid="status-counts">
                 {move || format!(
-                    "{} 张表 / {} 条关系",
+                    "{} 张表 · {} 条关系",
                     store.tables.get().len(),
                     store.references.get().len(),
                 )}
             </span>
-            <span>"db: generic"</span>
-            <span data-testid="status-ws-status">{move || collab_status_label(&collab_state.get()).to_string()}</span>
-            <span data-testid="status-ot-rev">{move || format!("ot:{}", collab_state.get().server_rev)}</span>
-            <span data-testid="status-room-presence">
-                {move || format!(
-                    "在线 {}/{}",
-                    remote_members.get().iter().filter(|m| m.online).count(),
-                    remote_members.get().len()
-                )}
-            </span>
+            {move || {
+                let queued = collab_state.get().queued_while_offline.len()
+                    + collab_state.get().pending_ops.len();
+                (queued > 0).then(|| view! {
+                    <span class="cdb-status-tag cdb-status-tag--warn" data-testid="status-pending-ops">
+                        {format!("{queued} 项待同步")}
+                    </span>
+                })
+            }}
             <span class="cdb-status-bar__spacer"></span>
+            {move || current_room.get().map(|room| view! {
+                <span class="cdb-status-tag cdb-status-tag--brand" data-testid="status-role">
+                    {room.my_role}
+                </span>
+            })}
+            <span class="cdb-status-group cdb-status-zoom">
+                <button
+                    class="cdb-btn cdb-btn--ghost cdb-btn--small"
+                    data-testid="btn-zoom-out"
+                    aria-label="缩小"
+                    on:click=move |_| zoom_out(transform)
+                >
+                    "−"
+                </button>
+                <span data-testid="status-zoom">
+                    {move || format!("{}%", (transform.get().zoom * 100.0).round() as i32)}
+                </span>
+                <button
+                    class="cdb-btn cdb-btn--ghost cdb-btn--small"
+                    data-testid="btn-zoom-in"
+                    aria-label="放大"
+                    on:click=move |_| zoom_in(transform)
+                >
+                    "＋"
+                </button>
+            </span>
             <button
                 class="cdb-btn cdb-btn--icon"
                 data-testid="btn-inspector-toggle"
-                title="折叠 Inspector"
+                title="切换检查器"
+                aria-label="切换检查器"
                 on:click=move |_| inspector_open.update(|v| *v = !*v)
             >
                 {move || if inspector_open.get() {
@@ -4358,22 +4660,22 @@ pub fn FieldsTabContent(
                                     <span>{field_name}</span>
                                     <select
                                         data-testid={testid_type}
-                                        value=field_type
                                         on:change=move |ev| {
                                             let new_type = event_target_value(&ev);
                                             on_change(field_id_for_change.clone(), new_type);
                                         }
                                     >
-                                        <option value="INT">"INT"</option>
-                                        <option value="BIGINT">"BIGINT"</option>
-                                        <option value="VARCHAR(255)">"VARCHAR(255)"</option>
-                                        <option value="TEXT">"TEXT"</option>
-                                        <option value="BOOLEAN">"BOOLEAN"</option>
-                                        <option value="DATE">"DATE"</option>
-                                        <option value="TIMESTAMP">"TIMESTAMP"</option>
-                                        <option value="FLOAT">"FLOAT"</option>
-                                        <option value="DOUBLE">"DOUBLE"</option>
-                                        <option value="DECIMAL">"DECIMAL"</option>
+                                        <option value="INT" selected={field_type == "INT"}>"INT"</option>
+                                        <option value="BIGINT" selected={field_type == "BIGINT"}>"BIGINT"</option>
+                                        <option value="UUID" selected={field_type == "UUID"}>"UUID"</option>
+                                        <option value="VARCHAR(255)" selected={field_type == "VARCHAR(255)"}>"VARCHAR(255)"</option>
+                                        <option value="TEXT" selected={field_type == "TEXT"}>"TEXT"</option>
+                                        <option value="BOOLEAN" selected={field_type == "BOOLEAN"}>"BOOLEAN"</option>
+                                        <option value="DATE" selected={field_type == "DATE"}>"DATE"</option>
+                                        <option value="TIMESTAMP" selected={field_type == "TIMESTAMP"}>"TIMESTAMP"</option>
+                                        <option value="FLOAT" selected={field_type == "FLOAT"}>"FLOAT"</option>
+                                        <option value="DOUBLE" selected={field_type == "DOUBLE"}>"DOUBLE"</option>
+                                        <option value="DECIMAL" selected={field_type == "DECIMAL"}>"DECIMAL"</option>
                                     </select>
                                     <button
                                         class="cdb-btn cdb-btn--icon"
@@ -4892,6 +5194,8 @@ pub fn AppRoot(
     let palette_query: RwSignal<String> = create_rw_signal(String::new());
     let palette_highlight: RwSignal<usize> = create_rw_signal(0);
     let canvas_transform: RwSignal<Transform> = create_rw_signal(Transform::default());
+    // 主题信号提升到 AppRoot：Canvas 绘制 effect 需跟踪它以在主题切换时重绘调色板
+    let theme_mode: RwSignal<String> = create_rw_signal(read_html_data_mode());
     let auth_session: RwSignal<Option<AuthSession>> = create_rw_signal(None);
     let session_notice: RwSignal<Option<String>> = create_rw_signal(if share_mode {
         Some("匿名只读分享".to_string())
@@ -4926,10 +5230,13 @@ pub fn AppRoot(
     });
     let current_room: RwSignal<Option<RoomDetail>> = create_rw_signal(None);
     let room_panel_visible: RwSignal<bool> = create_rw_signal(false);
+    let activity_open: RwSignal<bool> = create_rw_signal(true);
     let room_members: RwSignal<Vec<RoomMember>> = create_rw_signal(Vec::new());
     let collab_state: RwSignal<CollabOtState> = create_rw_signal(CollabOtState::default());
     let remote_members: RwSignal<Vec<CollabMemberPresence>> = create_rw_signal(Vec::new());
     let activity_feed: RwSignal<Vec<String>> = create_rw_signal(Vec::new());
+    // 手动重连触发器：banner「立即重连 / 重新连接」递增后 effect 重跑
+    let collab_retry: RwSignal<u32> = create_rw_signal(0);
     let remote_presence: RwSignal<Vec<RemotePresence>> = create_rw_signal(Vec::new());
 
     // Phase B：关系工具
@@ -5033,6 +5340,8 @@ pub fn AppRoot(
         let activity_feed = activity_feed.clone();
         let error = error.clone();
         move |_| {
+            // collab_retry：banner 手动重连触发 effect 重跑
+            collab_retry.get();
             let Some(session) = auth_session.get() else {
                 collab_state.set(CollabOtState::default());
                 remote_members.set(Vec::new());
@@ -5082,8 +5391,11 @@ pub fn AppRoot(
                             .collect::<Vec<_>>();
                         room_members.set(items);
                         remote_members.set(presence);
+                        // ST-S05-UI-03：画布远端光斑排除当前用户本人，避免遮挡本地选中
                         remote_presence.set(remote_presence_slots(
-                            remote_members.get_untracked().into_iter().map(|m| {
+                            remote_members.get_untracked().into_iter().filter(|m| {
+                                user_id.as_deref() != Some(m.user_id.as_str())
+                            }).map(|m| {
                                 (m.user_id, m.display_name, m.online)
                             }),
                         ));
@@ -5233,6 +5545,8 @@ pub fn AppRoot(
                 error.clone(),
                 is_saving.clone(),
                 save_offline.clone(),
+                collab_state,
+                activity_feed,
             );
         })
     };
@@ -5381,6 +5695,12 @@ pub fn AppRoot(
     let client_for_update_ref = client.clone();
     let client_for_flip_ref = client.clone();
     let client_for_delete_ref = client.clone();
+    let client_for_nn = client.clone();
+    let client_for_uq = client.clone();
+    let client_for_rename_table = client.clone();
+    let client_for_rename_field = client.clone();
+    let client_for_delete_field = client.clone();
+    let client_for_delete_table = client.clone();
 
     let on_create_table = {
         let store = store.clone();
@@ -5400,34 +5720,29 @@ pub fn AppRoot(
             let id = next_id.get();
             next_id.set(id + 1);
             let table_id = format!("auto-{}", id);
-            let is_first = store.tables.get().is_empty();
+            // 主原型事实（core-01 addTable）：x=180+n*55, y=145+n*35 层叠落位；
+            // 命名 table_{n+1}；每张新表自带一个 id 字段（UUID, pk/nn/uq）
+            let table_count = store.tables.get().len();
             let field_id = format!("{}-field-id", table_id);
-            let default_fields = if is_first {
-                vec![Field {
-                    id: field_id,
-                    name: "id".into(),
-                    type_: "INT".into(),
-                    default: String::new(),
-                    check: String::new(),
-                    primary: true,
-                    unique: false,
-                    not_null: true,
-                    increment: true,
-                    comment: String::new(),
-                }]
-            } else {
-                Vec::new()
-            };
+            let default_fields = vec![Field {
+                id: field_id,
+                name: "id".into(),
+                type_: "UUID".into(),
+                default: String::new(),
+                check: String::new(),
+                primary: true,
+                unique: true,
+                not_null: true,
+                increment: false,
+                comment: String::new(),
+            }];
             let new_table = Table {
                 id: table_id.clone(),
-                name: if is_first {
-                    "Table_1".into()
-                } else {
-                    "新表".into()
-                },
-                x: 240.0,
-                y: 160.0,
-                color: "#175e7a".into(),
+                name: format!("table_{}", table_count + 1),
+                x: 180.0 + table_count as f64 * 55.0,
+                y: 145.0 + table_count as f64 * 35.0,
+                // 主原型事实：新表无自定义色，表头走 brand-soft 渐变（历史 Semi #175e7a 已移除）
+                color: String::new(),
                 comment: String::new(),
                 fields: default_fields,
                 indices: Vec::new(),
@@ -5475,6 +5790,8 @@ pub fn AppRoot(
                                 error,
                                 is_saving,
                                 save_offline,
+                                collab_state,
+                                activity_feed,
                             );
                         }
                         Err(e) => error.set(Some(e.to_string())),
@@ -5491,6 +5808,8 @@ pub fn AppRoot(
                     error_for_create.clone(),
                     is_saving.clone(),
                     save_offline.clone(),
+                    collab_state,
+                    activity_feed,
                 );
             }
         }) as Rc<dyn Fn()>
@@ -5513,6 +5832,8 @@ pub fn AppRoot(
                 error.clone(),
                 is_saving.clone(),
                 save_offline.clone(),
+                collab_state,
+                activity_feed,
             );
         }) as Rc<dyn Fn()>
     };
@@ -5536,6 +5857,8 @@ pub fn AppRoot(
                 error.clone(),
                 is_saving.clone(),
                 save_offline.clone(),
+                collab_state,
+                activity_feed,
             );
         }) as Rc<dyn Fn(String)>
     };
@@ -5578,6 +5901,8 @@ pub fn AppRoot(
                 error.clone(),
                 is_saving.clone(),
                 save_offline.clone(),
+                collab_state,
+                activity_feed,
             );
         })
     };
@@ -5608,6 +5933,8 @@ pub fn AppRoot(
                 error.clone(),
                 is_saving.clone(),
                 save_offline.clone(),
+                collab_state,
+                activity_feed,
             );
         })
     };
@@ -5670,6 +5997,8 @@ pub fn AppRoot(
                 error.clone(),
                 is_saving.clone(),
                 save_offline.clone(),
+                collab_state,
+                activity_feed,
             );
         })
     };
@@ -5758,6 +6087,226 @@ pub fn AppRoot(
                 error.clone(),
                 is_saving.clone(),
                 save_offline.clone(),
+                collab_state,
+                activity_feed,
+            );
+        })
+    };
+
+    // 主原型 Inspector 字段卡约束 chips：NOT NULL / UNIQUE 与 PK 同构
+    let on_toggle_nn = {
+        let store = store.clone();
+        let debouncer = debouncer.clone();
+        Rc::new(move |table_id: String, field_id: String, not_null: bool| {
+            if editor_is_read_only(share_mode, current_room) {
+                return;
+            }
+            let mut tables = store.tables.get();
+            if let Some(field) = tables
+                .iter_mut()
+                .find(|t| t.id == table_id)
+                .and_then(|t| t.fields.iter_mut().find(|f| f.id == field_id))
+            {
+                field.not_null = not_null;
+            }
+            store.tables.set(tables);
+            store.dirty.set(true);
+            schedule_save(
+                client_for_nn.clone(),
+                store.clone(),
+                current_diagram_id.clone(),
+                current_title.clone(),
+                debouncer.clone(),
+                conflict.clone(),
+                error.clone(),
+                is_saving.clone(),
+                save_offline.clone(),
+                collab_state,
+                activity_feed,
+            );
+        })
+    };
+
+    let on_toggle_uq = {
+        let store = store.clone();
+        let debouncer = debouncer.clone();
+        Rc::new(move |table_id: String, field_id: String, unique: bool| {
+            if editor_is_read_only(share_mode, current_room) {
+                return;
+            }
+            let mut tables = store.tables.get();
+            if let Some(field) = tables
+                .iter_mut()
+                .find(|t| t.id == table_id)
+                .and_then(|t| t.fields.iter_mut().find(|f| f.id == field_id))
+            {
+                field.unique = unique;
+            }
+            store.tables.set(tables);
+            store.dirty.set(true);
+            schedule_save(
+                client_for_uq.clone(),
+                store.clone(),
+                current_diagram_id.clone(),
+                current_title.clone(),
+                debouncer.clone(),
+                conflict.clone(),
+                error.clone(),
+                is_saving.clone(),
+                save_offline.clone(),
+                collab_state,
+                activity_feed,
+            );
+        })
+    };
+
+    let on_rename_table = {
+        let store = store.clone();
+        let debouncer = debouncer.clone();
+        Rc::new(move |table_id: String, name: String| {
+            if editor_is_read_only(share_mode, current_room) {
+                return;
+            }
+            let name = name.trim().to_string();
+            if name.is_empty() {
+                return;
+            }
+            let mut tables = store.tables.get();
+            if let Some(table) = tables.iter_mut().find(|t| t.id == table_id) {
+                if table.name == name {
+                    return;
+                }
+                table.name = name;
+            }
+            store.tables.set(tables);
+            store.dirty.set(true);
+            schedule_save(
+                client_for_rename_table.clone(),
+                store.clone(),
+                current_diagram_id.clone(),
+                current_title.clone(),
+                debouncer.clone(),
+                conflict.clone(),
+                error.clone(),
+                is_saving.clone(),
+                save_offline.clone(),
+                collab_state,
+                activity_feed,
+            );
+        })
+    };
+
+    let on_rename_field = {
+        let store = store.clone();
+        let debouncer = debouncer.clone();
+        Rc::new(move |table_id: String, field_id: String, name: String| {
+            if editor_is_read_only(share_mode, current_room) {
+                return;
+            }
+            let name = name.trim().to_string();
+            if name.is_empty() {
+                return;
+            }
+            let mut tables = store.tables.get();
+            if let Some(field) = tables
+                .iter_mut()
+                .find(|t| t.id == table_id)
+                .and_then(|t| t.fields.iter_mut().find(|f| f.id == field_id))
+            {
+                if field.name == name {
+                    return;
+                }
+                field.name = name;
+            }
+            store.tables.set(tables);
+            store.dirty.set(true);
+            schedule_save(
+                client_for_rename_field.clone(),
+                store.clone(),
+                current_diagram_id.clone(),
+                current_title.clone(),
+                debouncer.clone(),
+                conflict.clone(),
+                error.clone(),
+                is_saving.clone(),
+                save_offline.clone(),
+                collab_state,
+                activity_feed,
+            );
+        })
+    };
+
+    let on_delete_field = {
+        let store = store.clone();
+        let debouncer = debouncer.clone();
+        Rc::new(move |table_id: String, field_id: String| {
+            if editor_is_read_only(share_mode, current_room) {
+                return;
+            }
+            let mut tables = store.tables.get();
+            if let Some(table) = tables.iter_mut().find(|t| t.id == table_id) {
+                table.fields.retain(|f| f.id != field_id);
+            }
+            store.tables.set(tables);
+            // 级联清理：触及该字段的关系一并移除
+            let mut refs = store.references.get();
+            refs.retain(|r| {
+                !(r.start_table_id == table_id && r.start_field_id == field_id)
+                    && !(r.end_table_id == table_id && r.end_field_id == field_id)
+            });
+            store.references.set(refs);
+            let clear_to_table = matches!(
+                selection.get_untracked(),
+                SelectionKind::Field { field_id: ref fid, .. } if *fid == field_id
+            );
+            if clear_to_table {
+                selection.set(SelectionKind::Table(table_id.clone()));
+            }
+            store.dirty.set(true);
+            schedule_save(
+                client_for_delete_field.clone(),
+                store.clone(),
+                current_diagram_id.clone(),
+                current_title.clone(),
+                debouncer.clone(),
+                conflict.clone(),
+                error.clone(),
+                is_saving.clone(),
+                save_offline.clone(),
+                collab_state,
+                activity_feed,
+            );
+        })
+    };
+
+    let on_delete_table = {
+        let store = store.clone();
+        let debouncer = debouncer.clone();
+        Rc::new(move |table_id: String| {
+            if editor_is_read_only(share_mode, current_room) {
+                return;
+            }
+            let mut tables = store.tables.get();
+            tables.retain(|t| t.id != table_id);
+            store.tables.set(tables);
+            // 级联清理：该表参与的所有关系
+            let mut refs = store.references.get();
+            refs.retain(|r| r.start_table_id != table_id && r.end_table_id != table_id);
+            store.references.set(refs);
+            selection.set(SelectionKind::None);
+            store.dirty.set(true);
+            schedule_save(
+                client_for_delete_table.clone(),
+                store.clone(),
+                current_diagram_id.clone(),
+                current_title.clone(),
+                debouncer.clone(),
+                conflict.clone(),
+                error.clone(),
+                is_saving.clone(),
+                save_offline.clone(),
+                collab_state,
+                activity_feed,
             );
         })
     };
@@ -5790,6 +6339,8 @@ pub fn AppRoot(
                 error.clone(),
                 is_saving.clone(),
                 save_offline.clone(),
+                collab_state,
+                activity_feed,
             );
         })
     };
@@ -5817,6 +6368,8 @@ pub fn AppRoot(
                 error.clone(),
                 is_saving.clone(),
                 save_offline.clone(),
+                collab_state,
+                activity_feed,
             );
         })
     };
@@ -5844,6 +6397,8 @@ pub fn AppRoot(
                 error.clone(),
                 is_saving.clone(),
                 save_offline.clone(),
+                collab_state,
+                activity_feed,
             );
         })
     };
@@ -5911,10 +6466,28 @@ pub fn AppRoot(
         Rc::new(move || modal_kind.set(Some(modals::ModalKind::BridgeSettings)))
     };
 
-    let on_open_rooms = {
+    let on_toggle_members = {
         let room_panel_visible = room_panel_visible.clone();
         Rc::new(move || room_panel_visible.update(|v| *v = !*v)) as Rc<dyn Fn()>
     };
+
+    let on_open_palette = {
+        let palette_visible = palette_visible.clone();
+        Rc::new(move || palette_visible.set(true)) as Rc<dyn Fn()>
+    };
+
+    let on_toggle_activity = {
+        let activity_open = activity_open.clone();
+        Rc::new(move || activity_open.update(|v| *v = !*v)) as Rc<dyn Fn()>
+    };
+
+    let on_reconnect = {
+        let collab_retry = collab_retry.clone();
+        Rc::new(move || collab_retry.update(|v| *v += 1)) as Rc<dyn Fn()>
+    };
+
+    let inspector_read_only = Rc::new(move || editor_is_read_only(share_mode, current_room))
+        as Rc<dyn Fn() -> bool>;
 
     let on_delete_diagram = {
         let client = client.clone();
@@ -6031,6 +6604,7 @@ pub fn AppRoot(
             data-testid="editor-ready"
             data-read-only=share_mode
         >
+            <div class="cdb-aurora" aria-hidden="true"></div>
             {share_mode.then(|| view! {
                 <div class="cdb-share-readonly-banner" data-testid="share-readonly">
                     "匿名只读分享"
@@ -6053,16 +6627,18 @@ pub fn AppRoot(
                 on_open_import=open_import_drawer.clone()
                 on_open_export=open_export_drawer.clone()
                 on_open_settings=on_open_settings.clone()
+                on_open_palette=on_open_palette.clone()
                 on_delete_diagram=on_delete_diagram.clone()
                 auth_session=auth_session
                 session_notice=session_notice
                 on_refresh_session=on_refresh_session.clone()
                 on_logout=on_logout.clone()
                 current_room=current_room
-                collab_state=collab_state
                 remote_members=remote_members
                 on_open_rooms=on_back_to_rooms.clone()
+                on_open_members=on_toggle_members.clone()
                 read_only=share_mode
+                theme_mode=theme_mode
             />
             <div
                 class="cdb-main"
@@ -6079,6 +6655,9 @@ pub fn AppRoot(
                     active_tool=active_tool
                     rel_tool_state=rel_tool_state
                     on_create_table=on_create_table_rail.clone()
+                    on_open_palette=on_open_palette.clone()
+                    on_open_settings=on_open_settings.clone()
+                    on_toggle_activity=on_toggle_activity.clone()
                     current_room=current_room
                     read_only=share_mode
                 />
@@ -6095,7 +6674,11 @@ pub fn AppRoot(
                         view! { <></> }.into_view()
                     }}
                     <RelToolHint rel_state=rel_tool_state />
-                    <ReconnectBanner collab_state=collab_state />
+                    <ReconnectBanner
+                        collab_state=collab_state
+                        current_room=current_room
+                        on_reconnect=on_reconnect.clone()
+                    />
                     <Canvas
                         store=store.clone()
                         transform=canvas_transform
@@ -6109,6 +6692,7 @@ pub fn AppRoot(
                         on_relation_drag_start=on_relation_drag_start
                         on_relation_drop=on_relation_drop
                         on_relation_drag_cancel=on_relation_drag_cancel
+                        theme_mode=theme_mode
                     />
                     <RelationshipConfirmBar
                         store=store.clone()
@@ -6116,26 +6700,29 @@ pub fn AppRoot(
                         next_ref_id=next_ref_id.clone()
                         on_create=on_create_reference.clone()
                     />
-                    <ActivityFeed items=activity_feed />
+                    <ActivityFeed items=activity_feed visible=activity_open />
                     <FloatingControls transform=canvas_transform />
                 </div>
-                <aside
-                    class="cdb-inspector"
-                    data-testid="inspector-panel"
-                    style:display=move || if inspector_open.get() { "flex" } else { "none" }
-                >
-                    <LeftPanel
-                        store=store.clone()
-                        selected_table_id=selected_table_id
-                        on_select_table=on_select_table.clone()
-                        on_jump_to_table=Some(on_jump_to_table.clone())
-                        on_create_table=on_create_table_panel.clone()
-                        on_save=on_save.clone()
-                        on_add_field=on_add_field.clone()
-                        on_change_type=on_change_type.clone()
-                        on_set_ref=on_set_ref.clone()
-                    />
-                </aside>
+                <Inspector
+                    store=store.clone()
+                    selection=selection
+                    inspector_open=inspector_open
+                    on_add_field=on_add_field.clone()
+                    on_change_type=on_change_type.clone()
+                    on_set_ref=on_set_ref.clone()
+                    on_toggle_pk=on_toggle_pk.clone()
+                    on_toggle_nn=on_toggle_nn.clone()
+                    on_toggle_uq=on_toggle_uq.clone()
+                    on_rename_table=on_rename_table.clone()
+                    on_rename_field=on_rename_field.clone()
+                    on_delete_field=on_delete_field.clone()
+                    on_delete_table=on_delete_table.clone()
+                    on_update_ref_field=on_update_ref_field.clone()
+                    on_flip_ref=on_flip_ref.clone()
+                    on_delete_ref=on_delete_ref.clone()
+                    on_jump_to_table=on_jump_to_table.clone()
+                    read_only=inspector_read_only.clone()
+                />
                 <IoDrawer
                     kind=io_drawer
                     store=store.clone()
@@ -6161,6 +6748,7 @@ pub fn AppRoot(
                 inspector_open=inspector_open
                 collab_state=collab_state
                 remote_members=remote_members
+                current_room=current_room
             />
             <CodeView
                 visible=code_visible
@@ -7786,8 +8374,12 @@ mod tests {
             "UT-TR-01: Tool Rail 必须带 tool-rail testid",
         );
         assert!(
-            panels.contains("data-testid=\"inspector-panel\""),
-            "UT-IN-01: Inspector 必须带 inspector-panel testid",
+            panels.contains("data-testid=\"inspector\""),
+            "UT-IN-01: Inspector 必须带 inspector testid（主原型锚点，历史 inspector-panel 已移除）",
+        );
+        assert!(
+            !panels.contains("data-testid=\"inspector-panel\""),
+            "UT-IN-01: 历史 inspector-panel testid 不得回退（统一主原型事实）",
         );
         assert!(
             panels.contains("data-testid=\"canvas-empty-guide\""),
@@ -7821,12 +8413,12 @@ mod tests {
             "UT-AB-05: revision 应位于 StatusBar",
         );
         assert!(
-            css.contains("grid-template-rows: 48px 1fr 28px"),
-            "UT-PA-06: .cdb-app 栅格应为 48px 1fr 28px",
+            css.contains("grid-template-rows: var(--cdb-appbar-h) minmax(0, 1fr) var(--cdb-statusbar-h)"),
+            "UT-PA-06: .cdb-app 栅格应对齐主原型槽位 token（appbar 64 / 1fr / statusbar 34）",
         );
         assert!(
-            css.contains("grid-template-columns: 48px 1fr 320px 0"),
-            "UT-PA-06: .cdb-main 栅格应对齐原型 ToolRail + Canvas + Inspector + IO",
+            css.contains("grid-template-columns: var(--cdb-toolrail-w) minmax(0, 1fr) var(--cdb-inspector-w)"),
+            "UT-PA-06: .cdb-main 栅格应对齐主原型 ToolRail 64 + Canvas + Inspector 330（IO 抽屉为 overlay）",
         );
         assert!(
             panels.contains("cdb-tabs--icon-grid"),
@@ -7865,16 +8457,21 @@ mod tests {
 
     #[test]
     fn ut_fe_s05_11_collab_status_labels() {
+        // 主原型 wsText 五态文案（core-01 renderEditor）
         let mut state = CollabOtState::default();
-        assert_eq!(collab_status_label(&state), "离线");
+        assert_eq!(collab_status_label(&state), "协作离线");
         state.connection = CollabConnectionState::Connecting;
-        assert_eq!(collab_status_label(&state), "连接中");
+        assert_eq!(collab_status_label(&state), "正在同步…");
         state.connection = CollabConnectionState::Connected;
-        assert_eq!(collab_status_label(&state), "已连接");
+        assert_eq!(collab_status_label(&state), "已连接 · OT 同步");
         state.connection = CollabConnectionState::Reconnecting;
-        assert_eq!(collab_status_label(&state), "重连中");
+        assert_eq!(collab_status_label(&state), "重连中 · 操作排队");
         state.connection = CollabConnectionState::ReadOnly;
         assert_eq!(collab_status_label(&state), "只读");
+        // ST-S05-UI-05：仅本地模式覆盖一切连接态
+        state.connection = CollabConnectionState::Connected;
+        state.enter_local_only();
+        assert_eq!(collab_status_label(&state), "仅本地 · 409 风险");
     }
 
     // ─── align-frontend-to-prototype Batch D 全链路回归 ────
@@ -8122,12 +8719,12 @@ mod tests {
 
     #[test]
     fn ut_fe_proto_05_collab_state_machine_text_stability() {
-        // 五种 collab 连接状态 → 状态文案稳定（不可随语言抖动）
+        // 五种 collab 连接状态 → 状态文案与主原型 wsText 对齐（不可随语言抖动）
         let cases = [
-            (CollabConnectionState::Offline, "离线"),
-            (CollabConnectionState::Connecting, "连接中"),
-            (CollabConnectionState::Connected, "已连接"),
-            (CollabConnectionState::Reconnecting, "重连中"),
+            (CollabConnectionState::Offline, "协作离线"),
+            (CollabConnectionState::Connecting, "正在同步…"),
+            (CollabConnectionState::Connected, "已连接 · OT 同步"),
+            (CollabConnectionState::Reconnecting, "重连中 · 操作排队"),
             (CollabConnectionState::ReadOnly, "只读"),
         ];
         for (conn, expected) in cases {
@@ -8138,30 +8735,34 @@ mod tests {
             assert_eq!(
                 collab_status_label(&state),
                 expected,
-                "UT-FE-PROTO-05: collab status label must be stable"
+                "UT-FE-PROTO-05: collab status label must match prototype wsText"
             );
         }
 
-        // ot-rev 文本格式稳定
+        // ot-rev 文本格式稳定（主原型：server_rev N）
         let mut state = CollabOtState::default();
         state.server_rev = 7;
-        assert_eq!(format!("ot:{}", state.server_rev), "ot:7");
+        assert_eq!(format!("server_rev {}", state.server_rev), "server_rev 7");
 
-        // reconnect-banner 文案：连接中断且有排队变更
+        // reconnect-banner 文案：连接中断且有排队变更（主原型句式）
         state.connection = CollabConnectionState::Reconnecting;
         state.queued_while_offline = vec![CollabPendingOp {
             client_rev: 1,
             op_type: "table.create".into(),
         }];
         let banner = format!(
-            "连接中断，{} 个本地变更等待同步",
+            "连接已断开，正在重连… · {} 项更改已排队",
             state.queued_while_offline.len()
         );
-        assert_eq!(banner, "连接中断，1 个本地变更等待同步");
+        assert_eq!(banner, "连接已断开，正在重连… · 1 项更改已排队");
 
         // 只读提示文案：read_only 状态在 ot/header 同步
         state.connection = CollabConnectionState::ReadOnly;
         assert_eq!(collab_status_label(&state), "只读");
+
+        // ST-S05-UI-05：仅本地模式 → 409 风险文案覆盖连接态
+        state.enter_local_only();
+        assert_eq!(collab_status_label(&state), "仅本地 · 409 风险");
     }
 
     #[test]

@@ -14,25 +14,107 @@ use web_sys::{CanvasRenderingContext2d, MouseEvent, PointerEvent, WheelEvent};
 
 // ─── Canvas constants ────────────────────────────────────────────────────────
 
-const TABLE_WIDTH: f64 = 220.0;
-const TABLE_HEADER_HEIGHT: f64 = 32.0;
-const FIELD_ROW_HEIGHT: f64 = 24.0;
-const AREA_COLOR: &str = "rgba(59, 130, 246, 0.08)";
-const AREA_BORDER_COLOR: &str = "rgba(59, 130, 246, 0.4)";
-const NOTE_BG: &str = "#fef3c7";
-const NOTE_BORDER: &str = "#f59e0b";
-/// 生产端网格尺寸；仅在 pointerup 时对齐，拖动中不量化。
-pub const GRID_SIZE: f64 = 20.0;
+// 几何尺寸为主原型事实（core-01：表宽 230 / 表头 43 / 字段行 35 / 点阵 24px）
+const TABLE_WIDTH: f64 = 230.0;
+const TABLE_HEADER_HEIGHT: f64 = 43.0;
+const FIELD_ROW_HEIGHT: f64 = 35.0;
+/// 生产端网格尺寸（主原型点阵 24px）；仅在 pointerup 时对齐，拖动中不量化。
+pub const GRID_SIZE: f64 = 24.0;
 /// 关系工具：屏幕像素欧氏位移达到该阈值才视为拖线（UT-PB-06）。
 pub const DRAG_THRESHOLD: f64 = 4.0;
-const CANVAS_BG: &str = "#f8fafc";
-const TABLE_BG: &str = "#ffffff";
-const TABLE_BORDER: &str = "#dbe3ea";
-const TABLE_HEADER: &str = "#175e7a";
-const TABLE_HEADER_SELECTED: &str = "#0e7490";
-const TEXT_STRONG: &str = "#1e293b";
-const TEXT_MUTED: &str = "#64748b";
-const RELATION_COLOR: &str = "#5b7cfa";
+/// 画布字体族（与壳层一致，core-07 §字体配对）
+const CANVAS_FONT: &str = "\"Plus Jakarta Sans\", sans-serif";
+const CANVAS_FONT_MONO: &str = "ui-monospace, monospace";
+
+/// 画布调色板 — 主原型 core-01 画布对象事实值的亮/暗双份。
+/// Canvas 2D 为栅格渲染，无法直接消费 CSS var，故按 `data-mode` 逐帧取色。
+#[derive(Clone, Copy, Debug)]
+struct CanvasPalette {
+    /// 点阵颜色（text-3 @ 30%）
+    grid_dot: &'static str,
+    /// 表体背景（surface-solid 84%/94%）
+    table_bg: &'static str,
+    /// 表体描边（line-strong）
+    table_border: &'static str,
+    /// 表头默认渐变起点（brand-soft；表自带 color 时优先用表色）
+    header_tint: &'static str,
+    text_strong: &'static str,
+    text_muted: &'static str,
+    /// 字段行分隔线
+    row_separator: &'static str,
+    /// PK 标记（amber）
+    pk_color: &'static str,
+    /// 关系主线（brand 72% × text-2）
+    relation: &'static str,
+    /// 关系底层光晕（surface-solid 70%，7px）
+    relation_halo: &'static str,
+    /// 选中描边（brand）
+    selected: &'static str,
+    /// 选中外环（brand-soft，3px）
+    selected_soft: &'static str,
+    note_bg: &'static str,
+    note_border: &'static str,
+    note_text: &'static str,
+    area_bg: &'static str,
+    area_border: &'static str,
+    /// 远端光标点（accent）
+    presence: &'static str,
+}
+
+/// 亮色事实：core-01 :root（brand #1e8393 / text #142c34 / line rgba(49,78,88,.24)…）
+const PALETTE_LIGHT: CanvasPalette = CanvasPalette {
+    grid_dot: "rgba(123,141,147,.3)",
+    table_bg: "rgba(255,255,255,.84)",
+    table_border: "rgba(49,78,88,.24)",
+    header_tint: "rgba(30,131,147,.13)",
+    text_strong: "#142c34",
+    text_muted: "#7b8d93",
+    row_separator: "rgba(49,78,88,.09)",
+    pk_color: "#e59b24",
+    relation: "rgb(34,115,129)",
+    relation_halo: "rgba(255,255,255,.7)",
+    selected: "#1e8393",
+    selected_soft: "rgba(30,131,147,.13)",
+    note_bg: "rgba(229,155,36,.18)",
+    note_border: "rgba(229,155,36,.32)",
+    note_text: "#2c4a53",
+    area_bg: "rgba(124,92,231,.05)",
+    area_border: "rgba(124,92,231,.48)",
+    presence: "#7c5ce7",
+};
+
+/// 暗色事实：core-01 [data-mode="dark"]（brand #5ee9dc / text #f2fdfe / line rgba(194,232,238,.3)…）
+const PALETTE_DARK: CanvasPalette = CanvasPalette {
+    grid_dot: "rgba(134,163,171,.3)",
+    table_bg: "rgba(16,38,45,.94)",
+    table_border: "rgba(194,232,238,.3)",
+    header_tint: "rgba(79,209,197,.18)",
+    text_strong: "#f2fdfe",
+    text_muted: "#86a3ab",
+    row_separator: "rgba(194,232,238,.10)",
+    pk_color: "#f5c45c",
+    relation: "rgb(128,234,225)",
+    relation_halo: "rgba(16,38,45,.7)",
+    selected: "#5ee9dc",
+    selected_soft: "rgba(79,209,197,.18)",
+    note_bg: "rgba(242,184,75,.24)",
+    note_border: "rgba(242,184,75,.38)",
+    note_text: "#f2fdfe",
+    area_bg: "rgba(185,160,255,.08)",
+    area_border: "rgba(185,160,255,.55)",
+    presence: "#b9a0ff",
+};
+
+/// 逐帧取当前画布调色板；`data-mode` 缺失时默认暗色（同主原型与用户决策）。
+fn current_palette() -> &'static CanvasPalette {
+    let dark = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.document_element())
+        .and_then(|el| el.get_attribute("data-mode"))
+        .map(|m| m != "light")
+        .unwrap_or(true);
+    if dark { &PALETTE_DARK } else { &PALETTE_LIGHT }
+}
 
 // ─── Transform ───────────────────────────────────────────────────────────────
 
@@ -125,6 +207,8 @@ mod leptos_canvas {
         on_relation_drag_start: Option<Box<dyn Fn(String, String) + 'static>>,
         on_relation_drop: Option<Box<dyn Fn(String, String, String, String) + 'static>>,
         on_relation_drag_cancel: Option<Box<dyn Fn() + 'static>>,
+        // 主题模式（"dark"/"light"）：绘制 effect 需跟踪以在主题切换时重刷调色板
+        theme_mode: RwSignal<String>,
     ) -> impl IntoView {
         let canvas_ref = create_node_ref::<html::Canvas>();
         let selected_id = create_rw_signal(None::<String>);
@@ -219,6 +303,7 @@ mod leptos_canvas {
             let live = live.clone();
             create_effect(move |_| {
             frame_tick.get();
+            theme_mode.get();
             let Some(canvas) = canvas_ref.get() else {
                 return;
             };
@@ -799,42 +884,43 @@ pub fn draw_canvas(
     rubber_band: Option<(f64, f64, f64, f64)>,
 ) {
     ctx.clear_rect(0.0, 0.0, width, height);
-    let _ = ctx.set_fill_style_str(CANVAS_BG);
-    ctx.fill_rect(0.0, 0.0, width, height);
+    // 画布底色由 .cdb-canvas-container 壳层 CSS 提供（主原型 .canvas 透明 + 壳层 bg-deep 60%），
+    // 栅格层不再自填背景，仅绘制点阵与对象。
+    let palette = current_palette();
 
-    draw_grid(ctx, t, width, height);
+    draw_grid(ctx, t, width, height, palette);
 
     ctx.save();
     let _ = ctx.translate(t.pan_x, t.pan_y);
     let _ = ctx.scale(t.zoom, t.zoom);
 
     for area in areas {
-        draw_area(ctx, area);
+        draw_area(ctx, area, palette);
     }
 
     for r in refs {
         let from = tables.iter().find(|tbl| tbl.id == r.start_table_id);
         let to = tables.iter().find(|tbl| tbl.id == r.end_table_id);
         if let (Some(f), Some(tbl)) = (from, to) {
-            draw_bezier_fields(ctx, f, &r.start_field_id, tbl, &r.end_field_id);
+            draw_bezier_fields(ctx, f, &r.start_field_id, tbl, &r.end_field_id, palette);
         }
     }
 
     for table in tables {
         let is_sel = selected_id == Some(&table.id);
-        draw_table(ctx, table, is_sel);
+        draw_table(ctx, table, is_sel, palette);
     }
 
     for note in notes {
-        draw_note(ctx, note);
+        draw_note(ctx, note, palette);
     }
 
     for presence in remote_presence {
-        draw_remote_presence(ctx, presence);
+        draw_remote_presence(ctx, presence, palette);
     }
 
     if let Some((x1, y1, x2, y2)) = rubber_band {
-        draw_rubber_band(ctx, x1, y1, x2, y2);
+        draw_rubber_band(ctx, x1, y1, x2, y2, palette);
     }
 
     ctx.restore();
@@ -865,11 +951,11 @@ pub fn remote_presence_slots(
         .collect()
 }
 
-fn draw_remote_presence(ctx: &CanvasRenderingContext2d, presence: &RemotePresence) {
+fn draw_remote_presence(ctx: &CanvasRenderingContext2d, presence: &RemotePresence, palette: &CanvasPalette) {
     if !presence.online {
         return;
     }
-    let _ = ctx.set_fill_style_str("#ef4444");
+    let _ = ctx.set_fill_style_str(palette.presence);
     ctx.begin_path();
     let _ = ctx.arc(presence.x, presence.y, 5.0, 0.0, std::f64::consts::TAU);
     ctx.fill();
@@ -877,14 +963,14 @@ fn draw_remote_presence(ctx: &CanvasRenderingContext2d, presence: &RemotePresenc
         .display_name
         .as_deref()
         .unwrap_or(presence.user_id.as_str());
-    let _ = ctx.set_fill_style_str("#0f172a");
-    let _ = ctx.set_font("11px sans-serif");
+    let _ = ctx.set_fill_style_str(palette.text_muted);
+    let _ = ctx.set_font(&format!("11px {CANVAS_FONT}"));
     let _ = ctx.fill_text(label, presence.x + 8.0, presence.y + 4.0);
 }
 
-fn draw_grid(ctx: &CanvasRenderingContext2d, t: &Transform, width: f64, height: f64) {
-    let _ = ctx.set_fill_style_str("#cbd5e1");
-    let _ = ctx.set_global_alpha(0.55);
+fn draw_grid(ctx: &CanvasRenderingContext2d, t: &Transform, width: f64, height: f64, palette: &CanvasPalette) {
+    // 主原型点阵：radial-gradient(text-3 @ 30%) 1px / 24px —— 色值已带透明度，不再叠加 global_alpha
+    let _ = ctx.set_fill_style_str(palette.grid_dot);
 
     let start_x = (-(t.pan_x % (GRID_SIZE * t.zoom)) / t.zoom).floor() * GRID_SIZE;
     let start_y = (-(t.pan_y % (GRID_SIZE * t.zoom)) / t.zoom).floor() * GRID_SIZE;
@@ -897,14 +983,12 @@ fn draw_grid(ctx: &CanvasRenderingContext2d, t: &Transform, width: f64, height: 
         let mut x = start_x;
         while x < end_x {
             ctx.begin_path();
-            let _ = ctx.arc(x, y, 0.85, 0.0, std::f64::consts::TAU);
+            let _ = ctx.arc(x, y, 1.0, 0.0, std::f64::consts::TAU);
             ctx.fill();
             x += GRID_SIZE;
         }
         y += GRID_SIZE;
     }
-
-    let _ = ctx.set_global_alpha(1.0);
 }
 
 /// 画布缩放：放大（步进 1.25x，上限 5x）
@@ -926,81 +1010,100 @@ pub fn zoom_reset(transform: RwSignal<Transform>) {
     transform.set(Transform::default());
 }
 
-fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool) {
+fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool, palette: &CanvasPalette) {
     let field_count = table.fields.len().max(2);
     let total_height = TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT * field_count as f64;
     let x = table.x;
     let y = table.y;
 
+    // 表体：主原型 .db-table —— radius 14、surface-solid 底、line-strong 描边、柔和投影
     ctx.save();
-    let _ = ctx.set_shadow_color("rgba(15, 23, 42, 0.14)");
-    let _ = ctx.set_shadow_blur(12.0);
+    let _ = ctx.set_shadow_color("rgba(0, 0, 0, 0.18)");
+    let _ = ctx.set_shadow_blur(16.0);
     let _ = ctx.set_shadow_offset_x(0.0);
-    let _ = ctx.set_shadow_offset_y(4.0);
+    let _ = ctx.set_shadow_offset_y(6.0);
 
-    let _ = ctx.set_fill_style_str(TABLE_BG);
+    let _ = ctx.set_fill_style_str(palette.table_bg);
     ctx.begin_path();
-    round_rect(ctx, x, y, TABLE_WIDTH, total_height, 8.0);
+    round_rect(ctx, x, y, TABLE_WIDTH, total_height, 14.0);
     ctx.fill();
     ctx.restore();
 
-    let _ = ctx.set_stroke_style_str(TABLE_BORDER);
+    let _ = ctx.set_stroke_style_str(palette.table_border);
     ctx.set_line_width(1.0);
     ctx.begin_path();
-    round_rect(ctx, x, y, TABLE_WIDTH, total_height, 8.0);
+    round_rect(ctx, x, y, TABLE_WIDTH, total_height, 14.0);
     ctx.stroke();
 
-    let header_color = if selected {
-        TABLE_HEADER_SELECTED
-    } else if table.color.trim().is_empty() {
-        TABLE_HEADER
+    // 表头：主原型 .table-head —— 自左向右的 tint 渐变（表色或 brand-soft → 透明），非实心填充
+    let header_tint = if table.color.trim().is_empty() {
+        palette.header_tint
     } else {
         table.color.as_str()
     };
-    let _ = ctx.set_fill_style_str(header_color);
+    ctx.save();
     ctx.begin_path();
-    round_rect_top(ctx, x, y, TABLE_WIDTH, TABLE_HEADER_HEIGHT, 8.0);
-    ctx.fill();
+    round_rect_top(ctx, x, y, TABLE_WIDTH, TABLE_HEADER_HEIGHT, 14.0);
+    ctx.clip();
+    let gradient = ctx.create_linear_gradient(x, y, x + TABLE_WIDTH, y);
+    gradient.add_color_stop(0.0, header_tint).ok();
+    gradient.add_color_stop(1.0, "rgba(0,0,0,0)").ok();
+    let _ = ctx.set_fill_style_str("rgba(0,0,0,0)");
+    ctx.set_fill_style_canvas_gradient(&gradient);
+    ctx.fill_rect(x, y, TABLE_WIDTH, TABLE_HEADER_HEIGHT);
+    ctx.restore();
 
-    let _ = ctx.set_fill_style_str("#ffffff");
-    let _ = ctx.set_font("bold 13px sans-serif");
+    // 表名（750/13px 强色）+ 字段计数（text-3 10px 右对齐）
+    let _ = ctx.set_fill_style_str(palette.text_strong);
+    let _ = ctx.set_font(&format!("750 13px {CANVAS_FONT}"));
     let _ = ctx.set_text_baseline("middle");
-    let _ = ctx.fill_text(&table.name, x + 10.0, y + TABLE_HEADER_HEIGHT / 2.0);
+    let _ = ctx.set_text_align("left");
+    let _ = ctx.fill_text(&table.name, x + 11.0, y + TABLE_HEADER_HEIGHT / 2.0);
+    let _ = ctx.set_fill_style_str(palette.text_muted);
+    let _ = ctx.set_font(&format!("10px {CANVAS_FONT}"));
+    let _ = ctx.set_text_align("right");
+    let _ = ctx.fill_text(
+        &table.fields.len().to_string(),
+        x + TABLE_WIDTH - 11.0,
+        y + TABLE_HEADER_HEIGHT / 2.0,
+    );
+    let _ = ctx.set_text_align("left");
 
-    let _ = ctx.set_stroke_style_str(TABLE_BORDER);
+    // 表头分隔线（line）
+    let _ = ctx.set_stroke_style_str(palette.table_border);
     ctx.set_line_width(1.0);
     ctx.begin_path();
     ctx.move_to(x, y + TABLE_HEADER_HEIGHT);
     ctx.line_to(x + TABLE_WIDTH, y + TABLE_HEADER_HEIGHT);
     ctx.stroke();
 
-    let _ = ctx.set_font("12px sans-serif");
+    // 字段行：PK 纯文本琥珀标 + 名称 650/11px + 类型等宽 10px text-3（主原型 .table-field）
     for (i, field) in table.fields.iter().enumerate() {
         let fy = y + TABLE_HEADER_HEIGHT + i as f64 * FIELD_ROW_HEIGHT;
 
         if field.primary {
-            draw_pill(ctx, x + 8.0, fy + 5.0, 18.0, 12.0, "#f59e0b", "PK", "#ffffff");
+            let _ = ctx.set_fill_style_str(palette.pk_color);
+            let _ = ctx.set_font(&format!("900 9px {CANVAS_FONT}"));
+            let _ = ctx.fill_text("PK", x + 11.0, fy + FIELD_ROW_HEIGHT / 2.0);
         }
 
-        let name_x = if field.primary { x + 34.0 } else { x + 12.0 };
-        let _ = ctx.set_fill_style_str(TEXT_STRONG);
+        let name_x = if field.primary { x + 36.0 } else { x + 11.0 };
+        let _ = ctx.set_fill_style_str(palette.text_strong);
+        let _ = ctx.set_font(&format!("650 11px {CANVAS_FONT}"));
         let _ = ctx.fill_text(&field.name, name_x, fy + FIELD_ROW_HEIGHT / 2.0);
 
-        let type_text = field.type_.as_str();
-        let pill_w = (type_text.len() as f64 * 6.2 + 14.0).clamp(38.0, 92.0);
-        draw_pill(
-            ctx,
-            x + TABLE_WIDTH - pill_w - 10.0,
-            fy + 5.0,
-            pill_w,
-            14.0,
-            field_type_color(type_text),
-            type_text,
-            "#ffffff",
+        let _ = ctx.set_fill_style_str(palette.text_muted);
+        let _ = ctx.set_font(&format!("10px {CANVAS_FONT_MONO}"));
+        let _ = ctx.set_text_align("right");
+        let _ = ctx.fill_text(
+            &field.type_,
+            x + TABLE_WIDTH - 11.0,
+            fy + FIELD_ROW_HEIGHT / 2.0,
         );
+        let _ = ctx.set_text_align("left");
 
         if i + 1 < field_count {
-            let _ = ctx.set_stroke_style_str(TABLE_BORDER);
+            let _ = ctx.set_stroke_style_str(palette.row_separator);
             ctx.set_line_width(1.0);
             ctx.begin_path();
             ctx.move_to(x, fy + FIELD_ROW_HEIGHT);
@@ -1009,47 +1112,19 @@ fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool) {
         }
     }
 
+    // 选中态：主原型 .is-selected —— brand 描边 + 3px brand-soft 外环
     if selected {
-        let _ = ctx.set_stroke_style_str("#0ea5b7");
-        ctx.set_line_width(2.0);
+        let _ = ctx.set_stroke_style_str(palette.selected_soft);
+        ctx.set_line_width(3.0);
         ctx.begin_path();
-        round_rect(ctx, x - 3.0, y - 3.0, TABLE_WIDTH + 6.0, total_height + 6.0, 10.0);
+        round_rect(ctx, x - 2.5, y - 2.5, TABLE_WIDTH + 5.0, total_height + 5.0, 16.0);
         ctx.stroke();
-    }
-}
 
-fn draw_pill(
-    ctx: &CanvasRenderingContext2d,
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
-    bg: &str,
-    text: &str,
-    fg: &str,
-) {
-    let _ = ctx.set_fill_style_str(bg);
-    ctx.begin_path();
-    round_rect(ctx, x, y, width, height, 3.0);
-    ctx.fill();
-    let _ = ctx.set_fill_style_str(fg);
-    let _ = ctx.set_font("10px sans-serif");
-    let _ = ctx.set_text_baseline("middle");
-    let _ = ctx.fill_text(text, x + 6.0, y + height / 2.0);
-}
-
-fn field_type_color(type_name: &str) -> &'static str {
-    let upper = type_name.to_uppercase();
-    if upper.contains("INT") || upper.contains("SERIAL") {
-        "#3b82f6"
-    } else if upper.contains("CHAR") || upper.contains("TEXT") {
-        "#10b981"
-    } else if upper.contains("BOOL") {
-        "#8b5cf6"
-    } else if upper.contains("DATE") || upper.contains("TIME") {
-        "#f59e0b"
-    } else {
-        TEXT_MUTED
+        let _ = ctx.set_stroke_style_str(palette.selected);
+        ctx.set_line_width(1.0);
+        ctx.begin_path();
+        round_rect(ctx, x, y, TABLE_WIDTH, total_height, 14.0);
+        ctx.stroke();
     }
 }
 
@@ -1068,25 +1143,34 @@ fn draw_bezier_fields(
     from_field_id: &str,
     to: &Table,
     to_field_id: &str,
+    palette: &CanvasPalette,
 ) {
     let path = calc_path(from, from_field_id, to, to_field_id);
 
-    let _ = ctx.set_stroke_style_str(RELATION_COLOR);
-    ctx.set_line_width(1.5);
+    // 主原型 .relation-path-bg：7px surface 光晕垫底，主线 2px brand
+    let _ = ctx.set_stroke_style_str(palette.relation_halo);
+    ctx.set_line_width(7.0);
     ctx.begin_path();
     ctx.move_to(path.x1, path.y1);
     ctx.bezier_curve_to(path.cx1, path.cy1, path.cx2, path.cy2, path.x2, path.y2);
     ctx.stroke();
 
-    draw_arrow_head(ctx, path.cx2, path.cy2, path.x2, path.y2);
+    let _ = ctx.set_stroke_style_str(palette.relation);
+    ctx.set_line_width(2.0);
+    ctx.begin_path();
+    ctx.move_to(path.x1, path.y1);
+    ctx.bezier_curve_to(path.cx1, path.cy1, path.cx2, path.cy2, path.x2, path.y2);
+    ctx.stroke();
 
-    let _ = ctx.set_fill_style_str(RELATION_COLOR);
+    draw_arrow_head(ctx, path.cx2, path.cy2, path.x2, path.y2, palette);
+
+    let _ = ctx.set_fill_style_str(palette.relation);
     ctx.begin_path();
     ctx.arc(path.x1, path.y1, 4.0, 0.0, std::f64::consts::TAU).ok();
     ctx.fill();
 }
 
-fn draw_rubber_band(ctx: &CanvasRenderingContext2d, x1: f64, y1: f64, x2: f64, y2: f64) {
+fn draw_rubber_band(ctx: &CanvasRenderingContext2d, x1: f64, y1: f64, x2: f64, y2: f64, palette: &CanvasPalette) {
     let (cx1, cy1, cx2, cy2) = bezier_controls(x1, y1, x2, y2);
     let dash_arr = {
         let a = js_sys::Array::new();
@@ -1095,8 +1179,8 @@ fn draw_rubber_band(ctx: &CanvasRenderingContext2d, x1: f64, y1: f64, x2: f64, y
         a
     };
     let _ = ctx.set_line_dash(&dash_arr);
-    let _ = ctx.set_stroke_style_str(RELATION_COLOR);
-    ctx.set_line_width(1.5);
+    let _ = ctx.set_stroke_style_str(palette.relation);
+    ctx.set_line_width(2.0);
     ctx.begin_path();
     ctx.move_to(x1, y1);
     ctx.bezier_curve_to(cx1, cy1, cx2, cy2, x2, y2);
@@ -1104,30 +1188,7 @@ fn draw_rubber_band(ctx: &CanvasRenderingContext2d, x1: f64, y1: f64, x2: f64, y
     let _ = ctx.set_line_dash(&js_sys::Array::new());
 }
 
-fn draw_bezier(ctx: &CanvasRenderingContext2d, from: &Table, to: &Table) {
-    let x1 = from.x + TABLE_WIDTH;
-    let y1 = from.y + TABLE_HEADER_HEIGHT / 2.0;
-    let x2 = to.x;
-    let y2 = to.y + TABLE_HEADER_HEIGHT / 2.0;
-    let cx1 = x1 + (x2 - x1) * 0.5;
-    let cx2 = x1 + (x2 - x1) * 0.5;
-
-    let _ = ctx.set_stroke_style_str(RELATION_COLOR);
-    ctx.set_line_width(1.5);
-    ctx.begin_path();
-    ctx.move_to(x1, y1);
-    ctx.bezier_curve_to(cx1, y1, cx2, y2, x2, y2);
-    ctx.stroke();
-
-    draw_arrow_head(ctx, cx2, y2, x2, y2);
-
-    let _ = ctx.set_fill_style_str(RELATION_COLOR);
-    ctx.begin_path();
-    ctx.arc(x1, y1, 4.0, 0.0, std::f64::consts::TAU).ok();
-    ctx.fill();
-}
-
-fn draw_arrow_head(ctx: &CanvasRenderingContext2d, fromx: f64, fromy: f64, tox: f64, toy: f64) {
+fn draw_arrow_head(ctx: &CanvasRenderingContext2d, fromx: f64, fromy: f64, tox: f64, toy: f64, palette: &CanvasPalette) {
     let angle = (toy - fromy).atan2(tox - fromx);
     let arrow_len = 10.0;
     let arrow_angle = std::f64::consts::TAU / 6.0;
@@ -1137,7 +1198,7 @@ fn draw_arrow_head(ctx: &CanvasRenderingContext2d, fromx: f64, fromy: f64, tox: 
     let ax2 = tox - arrow_len * (angle + arrow_angle).cos();
     let ay2 = toy - arrow_len * (angle + arrow_angle).sin();
 
-    let _ = ctx.set_fill_style_str(RELATION_COLOR);
+    let _ = ctx.set_fill_style_str(palette.relation);
     ctx.begin_path();
     ctx.move_to(tox, toy);
     ctx.line_to(ax1, ay1);
@@ -1146,11 +1207,11 @@ fn draw_arrow_head(ctx: &CanvasRenderingContext2d, fromx: f64, fromy: f64, tox: 
     ctx.fill();
 }
 
-fn draw_area(ctx: &CanvasRenderingContext2d, area: &Area) {
-    let _ = ctx.set_fill_style_str(AREA_COLOR);
+fn draw_area(ctx: &CanvasRenderingContext2d, area: &Area, palette: &CanvasPalette) {
+    let _ = ctx.set_fill_style_str(palette.area_bg);
     ctx.fill_rect(area.x, area.y, area.width, area.height);
 
-    let _ = ctx.set_stroke_style_str(AREA_BORDER_COLOR);
+    let _ = ctx.set_stroke_style_str(palette.area_border);
     ctx.set_line_width(1.0);
     let dash_arr = {
         let a = js_sys::Array::new();
@@ -1162,24 +1223,24 @@ fn draw_area(ctx: &CanvasRenderingContext2d, area: &Area) {
     ctx.stroke_rect(area.x, area.y, area.width, area.height);
     let _ = ctx.set_line_dash(&js_sys::Array::new());
 
-    let _ = ctx.set_fill_style_str(AREA_BORDER_COLOR);
-    let _ = ctx.set_font("bold 11px sans-serif");
+    let _ = ctx.set_fill_style_str(palette.area_border);
+    let _ = ctx.set_font(&format!("750 11px {CANVAS_FONT}"));
     let _ = ctx.set_text_baseline("top");
-    let _ = ctx.fill_text(&area.name, area.x + 6.0, area.y + 6.0);
+    let _ = ctx.fill_text(&area.name, area.x + 10.0, area.y + 10.0);
 }
 
-fn draw_note(ctx: &CanvasRenderingContext2d, note: &Note) {
+fn draw_note(ctx: &CanvasRenderingContext2d, note: &Note, palette: &CanvasPalette) {
     let note_w = 180.0;
     let note_h = 100.0;
-    let _ = ctx.set_fill_style_str(NOTE_BG);
+    let _ = ctx.set_fill_style_str(palette.note_bg);
     ctx.fill_rect(note.x, note.y, note_w, note_h);
 
-    let _ = ctx.set_stroke_style_str(NOTE_BORDER);
+    let _ = ctx.set_stroke_style_str(palette.note_border);
     ctx.set_line_width(1.0);
     ctx.stroke_rect(note.x, note.y, note_w, note_h);
 
-    let _ = ctx.set_fill_style_str("#78350f");
-    let _ = ctx.set_font("12px sans-serif");
+    let _ = ctx.set_fill_style_str(palette.note_text);
+    let _ = ctx.set_font(&format!("11px {CANVAS_FONT}"));
     let _ = ctx.set_text_baseline("top");
 
     let words: Vec<&str> = note.content.split_whitespace().collect();

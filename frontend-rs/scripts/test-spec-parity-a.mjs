@@ -282,7 +282,7 @@ try {
     await page.goto(`${FRONTEND_URL}/editor/private-id?share=public-diagram`);
     await page.locator('[data-testid="share-readonly"]').waitFor();
     assert.equal(await page.locator('[data-testid="auth-gate"]:visible').count(), 0);
-    assert.equal(await page.locator('[data-testid="tool-new-menu"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-testid="tool-add-table"]').isDisabled(), true);
     assert.equal(await page.locator('[data-testid="tool-relationship"]').isDisabled(), true);
     assert.equal(await page.locator('[data-testid="diagram-title"]').isEditable(), false);
     assert.equal(state.requests.some(item => /POST|PUT|PATCH|DELETE/.test(item) && item.includes("/diagrams")), false);
@@ -295,7 +295,7 @@ try {
     await page.locator('[data-testid="rooms-list-page"]:visible').waitFor();
     await page.goto(`${FRONTEND_URL}/?share=public-diagram`);
     await page.locator('[data-testid="share-readonly"]').waitFor();
-    assert.equal(await page.locator('[data-testid="tool-new-menu"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-testid="tool-add-table"]').isDisabled(), true);
   });
 
   await run(["ST-S02-404"], "失效分享显示公开 404 页面", async page => {

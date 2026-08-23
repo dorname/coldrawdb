@@ -118,6 +118,9 @@ const UT_PASS_IDS: &[&str] = &[
     // implement-unified-prototype-spec-parity A 批
     "UT-S02-ROUTE-01",
     "UT-S03-ERR-01",
+    // implement-unified-prototype-spec-parity C 批（cargo 侧，见 tests/spec_parity_c.rs）
+    "UT-S01-SS-01",
+    "UT-S01-SS-02",
 ];
 
 const ST_SKIP_IDS: &[&str] = &[
@@ -173,26 +176,14 @@ const SPEC_PARITY_SKIP_IDS: &[&str] = &[
     "ST-PC-FMT-01",
     "ST-PC-INSPECTOR",
     "ST-PU-23",
-    "ST-PU-24",
     "ST-PU-25",
     "ST-PU-26",
-    "UT-S01-SS-01",
-    "UT-S01-SS-02",
-    "ST-S01-SS-01",
-    "ST-S01-409-SCOPE",
-    "ST-S01-NO-409-OT",
-    "ST-S01-409-LOCAL-ONLY",
     "ST-S04-UI-03",
     "ST-S04-UI-04",
     "ST-S04-UI-05",
     "ST-S04-UI-06",
     "ST-S04-UI-07",
-    "ST-S05-UI-01",
-    "ST-S05-UI-02",
-    "ST-S05-UI-03",
-    "ST-S05-UI-04",
-    "ST-S05-UI-05",
-    "ST-S05-UI-06",
-    "ST-FE-ALIGN-03",
-    "ST-FE-ALIGN-04",
+    // C 批已落地（e2e: scripts/test-spec-parity-c.mjs + cargo: tests/spec_parity_c.rs）：
+    // UT-S01-SS-01/02、ST-S01-SS-01、ST-S01-409-SCOPE、ST-S01-NO-409-OT、ST-S01-409-LOCAL-ONLY、
+    // ST-S05-UI-01～06、ST-FE-ALIGN-03/04、ST-PU-24
 ];

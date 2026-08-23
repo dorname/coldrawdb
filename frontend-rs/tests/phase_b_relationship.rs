@@ -63,13 +63,13 @@ fn fixture_table_two_fields() -> Table {
 #[test]
 fn ut_pb_01_hit_test_field_returns_table_and_field_id() {
     // Given: 1 张表在 (100, 100)，含 2 字段
-    // FIELD_ROW_HEIGHT = 22, TABLE_HEADER_HEIGHT = 30
-    // f0 中心 y = 100 + 30 + 22*0.5 = 141
-    // f1 中心 y = 100 + 30 + 22*1.5 = 163
+    // 主原型几何事实：TABLE_HEADER_HEIGHT = 43, FIELD_ROW_HEIGHT = 35
+    // f0 中心 y = 100 + 43 + 35*0.5 = 160.5
+    // f1 中心 y = 100 + 43 + 35*1.5 = 195.5
     let tables = vec![fixture_table_two_fields()];
 
-    // When: 点击第二个字段中心 (y=163)
-    let hit = hit_test_field(&tables, 150.0, 163.0);
+    // When: 点击第二个字段中心 (y=195)
+    let hit = hit_test_field(&tables, 150.0, 195.0);
 
     // Then: 返回 (table_id, field_id) = ("t1", "f2")
     assert_eq!(hit, Some(("t1".to_string(), "f2".to_string())));
@@ -77,24 +77,24 @@ fn ut_pb_01_hit_test_field_returns_table_and_field_id() {
 
 #[test]
 fn ut_pb_01b_hit_test_field_returns_first_field() {
-    // 回归：第一个字段中心 (y=141)
+    // 回归：第一个字段中心 (y=160)
     let tables = vec![fixture_table_two_fields()];
-    let hit = hit_test_field(&tables, 150.0, 141.0);
+    let hit = hit_test_field(&tables, 150.0, 160.0);
     assert_eq!(hit, Some(("t1".to_string(), "f1".to_string())));
 }
 
 #[test]
 fn ut_pb_01c_hit_test_field_misses_when_outside_table() {
     let tables = vec![fixture_table_two_fields()];
-    // 点在 table 右侧外面（x=400 > 100+200）
-    let hit = hit_test_field(&tables, 400.0, 163.0);
+    // 点在 table 右侧外面（x=400 > 100+230；主原型表宽 230）
+    let hit = hit_test_field(&tables, 400.0, 195.0);
     assert_eq!(hit, None);
 }
 
 #[test]
 fn ut_pb_01d_hit_test_field_misses_header_area() {
     let tables = vec![fixture_table_two_fields()];
-    // 点在 header 区（y=110 < 100+30=130）
+    // 点在 header 区（y=110 < 100+43=143）
     let hit = hit_test_field(&tables, 150.0, 110.0);
     assert_eq!(hit, None);
 }

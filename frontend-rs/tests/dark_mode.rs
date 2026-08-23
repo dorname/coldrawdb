@@ -32,8 +32,9 @@ fn ut_e5_01_dark_token_block_complete() {
         assert!(block.contains(token), "UT-E5-01 FAIL: dark block missing `{}`", token);
     }
 
-    // darkBgTheme 引用
-    assert!(block.contains("#16161a"), "UT-E5-01 FAIL: darkBgTheme #16161a missing");
+    // 统一主原型 dark 事实值（core-0b §2：历史 Semi darkBgTheme #16161a 已移除为现行事实）
+    assert!(block.contains("#050f13"), "UT-E5-01 FAIL: 主原型 dark --bg #050f13 missing");
+    assert!(!block.contains("#16161a"), "UT-E5-01 FAIL: 历史 Semi darkBgTheme #16161a 不得回退");
 }
 
 #[test]
@@ -153,10 +154,12 @@ fn ut_r6_02_button_focus_and_active() {
 #[test]
 fn ut_r6_03_panel_spring_entrance() {
     let css = load_css();
+    // 锚定主规则（带 `{`），避免命中共享玻璃态/暗色覆盖等前置选择器；
+    // IO 抽屉在主原型中为 overlay（.cdb-io-drawer 主规则即弹簧入场），不再以 .cdb-has-io-drawer 限定。
     for (sel, label) in [
-        (".cdb-inspector", "inspector"),
-        (".cdb-has-io-drawer .cdb-io-drawer", "io drawer"),
-        (".cdb-app-bar__overflow-menu", "overflow menu"),
+        (".cdb-inspector {", "inspector"),
+        (".cdb-io-drawer {", "io drawer"),
+        (".cdb-app-bar__overflow-menu {", "overflow menu"),
     ] {
         let idx = css.find(sel).unwrap_or_else(|| panic!("UT-R6-03 FAIL: selector `{}` missing", sel));
         let chunk = &css[idx..idx.saturating_add(400)];

@@ -60,6 +60,9 @@ echo "[verify-pre-run] A 批生产前端 Playwright 回归 ..."
 echo "[verify-pre-run] B 批房间创建 Playwright 回归 ..."
 (cd "$ROOT/frontend-rs" && "$NPM_BIN" run test:spec-parity-b)
 
+echo "[verify-pre-run] C 批 room-editor 壳层/保存态/协作 Playwright 回归 ..."
+(cd "$ROOT/frontend-rs" && "$NPM_BIN" run test:spec-parity-c)
+
 echo "[verify-pre-run] 校验 reporter ID 与覆盖度 ..."
 "$NODE_BIN" "$ROOT/scripts/validate-openlogos-ledger.mjs" --report ST-PU-20
 

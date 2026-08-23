@@ -88,10 +88,10 @@
 - [ ] 接受后进入同一 room
 
 ### 7.4 room-editor · 壳层（C/D 批）
-- [ ] `app-bar` / `tool-rail` / `editor-canvas` / `inspector` / `status-bar`
-- [ ] 保存态 `save-state` + revision（S01）
-- [ ] 协作 `ws-status` / `ot-rev` / `room-presence` / `reconnect-banner` / Activity
-- [ ] Viewer 只读
+- [x] `app-bar` / `tool-rail` / `editor-canvas` / `inspector` / `status-bar`（C 批：ST-S05-UI-01 等锚点断言）
+- [x] 保存态 `save-state` + revision（S01）（C 批：UT-S01-SS-01/02 + ST-S01-SS-01）
+- [x] 协作 `ws-status` / `ot-rev` / `room-presence` / `reconnect-banner` / Activity（C 批：ST-S05-UI-01～05、ST-FE-ALIGN-03；REST head 明确降级）
+- [x] Viewer 只读（C 批：ST-S05-UI-06）
 - [ ] 更多菜单 → IO；⌘K 命令面板；代码视图
 - [ ] 主题切换；720px 关键操作可达
 

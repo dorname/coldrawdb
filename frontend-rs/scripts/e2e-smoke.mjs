@@ -137,18 +137,16 @@ async function hp02_createTableAndAutoSave(page) {
 async function hp03_fieldAndShareModal(page) {
   const t0 = Date.now();
   try {
-    // 第二张表：Tool Rail 新建菜单
-    await page.click('[data-testid="tool-new-menu"]');
-    await page.locator('[data-testid="tool-new-menu-dropdown"]').waitFor({ state: "visible" });
-    await page.click('[data-testid="btn-create-table"]');
+    // 第二张表：Tool Rail 新建表按钮（主原型对齐后 tool-new-menu 下拉已移除）
+    await page.click('[data-testid="tool-add-table"]');
     await page.waitForTimeout(500);
 
-    // 新建表自动选中，Inspector 应显示表名
+    // 新建表自动选中，Inspector 名称输入框应为表名
     const inspectorName = page.locator('[data-testid="inspector-table-name"]').first();
     await inspectorName.waitFor({ state: "visible", timeout: 5_000 });
-    const tableNameText = (await inspectorName.textContent()) ?? "";
-    if (!tableNameText.includes("新表")) {
-      throw new Error(`expected inspector-table-name to contain 新表, got "${tableNameText}"`);
+    const tableNameText = (await inspectorName.inputValue()) ?? "";
+    if (!/^table_\d+$/.test(tableNameText.trim())) {
+      throw new Error(`expected inspector-table-name to match table_N, got "${tableNameText}"`);
     }
 
     // 加字段
