@@ -60,6 +60,7 @@
   - `scripts/run-verify-tests.sh`：解析可用 Playwright 浏览器后再跑单文件原型回归
   - `frontend-rs/scripts/resolve-playwright-browsers.mjs`：忽略不完整的 `PLAYWRIGHT_BROWSERS_PATH`，回退到 `~/.cache/ms-playwright` 或可写临时目录；仅有完整 Chromium 时关闭 headless shell
   - `frontend-rs/scripts/test-unified-prototype.mjs` / `test-unified-prototype-render.mjs`：启动前应用同一解析策略；工作区只读时截图落到临时目录
+  - `frontend-rs/tests/openlogos_reporter.rs`：本提案新增、待 `implement-unified-prototype-spec-parity` 实现的用例写入 skip
 
 ## 部署影响
 

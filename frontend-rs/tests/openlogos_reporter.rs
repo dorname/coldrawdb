@@ -6,6 +6,7 @@
 mod verify_reporter;
 
 const ST_SKIP: &str = "requires wasm-pack or Playwright e2e harness";
+const SPEC_PARITY_SKIP: &str = "deferred to implement-unified-prototype-spec-parity";
 
 /// 在所有 frontend 测试通过后，批量写入 OpenLogos JSONL。
 #[test]
@@ -15,6 +16,9 @@ fn emit_frontend_openlogos_coverage() {
     }
     for id in ST_SKIP_IDS {
         verify_reporter::report_skip(id, ST_SKIP);
+    }
+    for id in SPEC_PARITY_SKIP_IDS {
+        verify_reporter::report_skip(id, SPEC_PARITY_SKIP);
     }
 }
 
@@ -155,4 +159,53 @@ const ST_SKIP_IDS: &[&str] = &[
     "ST-FE-PROTO-06",
     "ST-FE-PROTO-07",
     "ST-FE-PROTO-08",
+];
+
+const SPEC_PARITY_SKIP_IDS: &[&str] = &[
+    "ST-KB-CMD-01",
+    "ST-KB-ESC-01",
+    "ST-KB-T-01",
+    "ST-KB-R-01",
+    "ST-PC-MENU-01",
+    "ST-PC-FMT-01",
+    "ST-PC-INSPECTOR",
+    "ST-PU-22",
+    "ST-PU-23",
+    "ST-PU-24",
+    "ST-PU-25",
+    "ST-PU-26",
+    "UT-S01-SS-01",
+    "UT-S01-SS-02",
+    "ST-S01-SS-01",
+    "ST-S01-409-SCOPE",
+    "ST-S01-NO-409-OT",
+    "ST-S01-409-LOCAL-ONLY",
+    "ST-S02-SHARE-RO",
+    "ST-S02-404",
+    "ST-S02-NO-SHARE",
+    "ST-S02-SHARE-VS-AUTH",
+    "UT-S02-ROUTE-01",
+    "ST-S03-UI-01",
+    "ST-S03-UI-02",
+    "ST-S03-UI-03",
+    "ST-S03-UI-04",
+    "ST-S03-UI-05",
+    "UT-S03-ERR-01",
+    "ST-S04-UI-01",
+    "ST-S04-UI-02",
+    "ST-S04-UI-03",
+    "ST-S04-UI-04",
+    "ST-S04-UI-05",
+    "ST-S04-UI-06",
+    "ST-S04-UI-07",
+    "ST-S05-UI-01",
+    "ST-S05-UI-02",
+    "ST-S05-UI-03",
+    "ST-S05-UI-04",
+    "ST-S05-UI-05",
+    "ST-S05-UI-06",
+    "ST-FE-ALIGN-01",
+    "ST-FE-ALIGN-02",
+    "ST-FE-ALIGN-03",
+    "ST-FE-ALIGN-04",
 ];
