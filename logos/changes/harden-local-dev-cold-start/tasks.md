@@ -19,3 +19,4 @@
 - [x] 审查并确认 `scripts/common.sh`（`COLDRAWDB_HEALTH_TIMEOUT` 默认 120）
 - [x] 审查并确认 `scripts/tests/test-local-scripts.sh`（端口对齐 config.toml、断言 `#app`；审查中将断言收紧为 `id="app"` 与 smoke 文档一致）
 - [x] 运行 `bash scripts/tests/test-local-scripts.sh` 自测启停链路并修复发现的问题（全部通过）
+- [x] 补齐 smoke 追溯链：新增 `scripts/smoke-local-scripts.sh`（SMOKE-core-06 真实 runner，结果写入 smoke-results.jsonl）并在 `logos.config.json` 配置 `smoke.command`（修复 verify Gate 3.6 smoke_runner_missing）

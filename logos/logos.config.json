@@ -85,6 +85,7 @@
     "sandbox_deny_workspace_write": true
   },
   "smoke": {
+    "command": "bash scripts/smoke-local-scripts.sh",
     "result_path": "logos/resources/verify/smoke-results.jsonl",
     "report_path": "logos/resources/verify/smoke-report.md",
     "sandbox_mode": "auto",
