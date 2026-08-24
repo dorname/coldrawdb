@@ -8,9 +8,10 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 START_SCRIPT="${REPO_ROOT}/scripts/start-local.sh"
 STOP_SCRIPT="${REPO_ROOT}/scripts/stop-local.sh"
 
-TEST_BACKEND_PORT=13000
+# Backend port is fixed in backend/config.toml (COLDRAWDB_BACKEND_PORT only affects health checks).
+TEST_BACKEND_PORT=3000
 TEST_FRONTEND_PORT=18080
-export COLDRAWDB_BACKEND_PORT=$TEST_BACKEND_PORT
+unset COLDRAWDB_BACKEND_PORT
 export COLDRAWDB_FRONTEND_PORT=$TEST_FRONTEND_PORT
 export COLDRAWDB_BACKEND_LOG="logs/test-backend.log"
 export COLDRAWDB_FRONTEND_LOG="logs/test-frontend.log"
@@ -97,8 +98,8 @@ main() {
     if [[ -z "$frontend_body" ]]; then
         fail "Frontend endpoint is not reachable."
     fi
-    if [[ "$frontend_body" != *"root"* ]]; then
-        fail "Frontend response does not contain expected 'root' element."
+    if [[ "$frontend_body" != *'id="app"'* ]]; then
+        fail "Frontend response does not contain expected 'app' mount element."
     fi
 
     # Run stop script

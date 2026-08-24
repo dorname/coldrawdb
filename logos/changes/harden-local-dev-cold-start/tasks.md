@@ -15,4 +15,7 @@
 
 ## [code] 代码实现
 
-- [ ] 实现代码变更
+- [x] 审查并确认 `scripts/start-local.sh` 加固（预编译后端、直接执行二进制、超时诊断提示）
+- [x] 审查并确认 `scripts/common.sh`（`COLDRAWDB_HEALTH_TIMEOUT` 默认 120）
+- [x] 审查并确认 `scripts/tests/test-local-scripts.sh`（端口对齐 config.toml、断言 `#app`；审查中将断言收紧为 `id="app"` 与 smoke 文档一致）
+- [x] 运行 `bash scripts/tests/test-local-scripts.sh` 自测启停链路并修复发现的问题（全部通过）

@@ -43,11 +43,19 @@ main() {
     # Clean up stale PID files
     rm -f "$backend_pid" "$frontend_pid"
 
+    # Build backend before starting (avoids health-check timeout during cold compile)
+    log_info "Building backend (cargo build --release) ..."
+    if ! (cd backend && cargo build --release) >> "$backend_log" 2>&1; then
+        log_error "Backend build failed."
+        log_error "Check logs: $backend_log"
+        exit 1
+    fi
+
     # Start backend
-    log_info "Starting backend (cargo run --release) ..."
+    log_info "Starting backend (target/release/backend) ..."
     (
         cd backend
-        exec cargo run --release
+        exec ./target/release/backend
     ) >> "$backend_log" 2>&1 &
     local backend_pid_value=$!
     echo "$backend_pid_value" > "$backend_pid"
@@ -58,6 +66,10 @@ main() {
     if ! wait_for_http "http://127.0.0.1:${COLDRAWDB_BACKEND_PORT}/" "$COLDRAWDB_HEALTH_TIMEOUT"; then
         log_error "Backend failed to start within ${COLDRAWDB_HEALTH_TIMEOUT}s."
         log_error "Check logs: $backend_log"
+        if grep -q "Compiling " "$backend_log" && ! grep -q "listening on:" "$backend_log"; then
+            log_error "Backend may still be compiling. Try: cd backend && cargo build --release"
+            log_error "Or increase timeout: COLDRAWDB_HEALTH_TIMEOUT=300 ./scripts/start-local.sh"
+        fi
         stop_process "$backend_pid_value" "backend" || true
         rm -f "$backend_pid"
         exit 1
