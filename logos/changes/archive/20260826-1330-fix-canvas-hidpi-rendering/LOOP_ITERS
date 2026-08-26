@@ -1,0 +1,9 @@
+{"iter":1,"node":"verify","result":"fail","module":"core","timestamp":"2026-08-26T13:40:26Z","reason":"brace mismatch — 重复粘入 matchMedia 闭合"}
+{"iter":2,"node":"verify","result":"fail","module":"core","timestamp":"2026-08-26T13:46:51Z","reason":"leptos HtmlElement::style 误用 + doc.fonts() Result 包装 + w.device_pixel_ratio() Option"}
+{"iter":3,"node":"verify","result":"fail","module":"core","timestamp":"2026-08-26T13:56:01Z","reason":"binaryen wasm-opt-version_123 缺 bulk-memory 校验"}
+{"iter":4,"node":"verify","result":"pass","module":"core","timestamp":"2026-08-26T14:17:04Z"}
+{"iter":1,"node":"smoke","result":"fail","module":"core","timestamp":"2026-08-26T15:35:18Z","reason":"sandbox_root /private/tmp 在 WSL2/Linux 不存在 (EACCES)"}
+{"iter":2,"node":"smoke","result":"fail","module":"core","timestamp":"2026-08-26T15:50:01Z","reason":"trunk serve 冷启动 30s 超时"}
+{"iter":3,"node":"smoke","result":"fail","module":"core","timestamp":"2026-08-26T16:15:42Z","reason":"5 个 SMOKE-core-* uncovered；runner 仅覆盖 SMOKE-core-06"}
+{"iter":4,"node":"smoke","result":"fail","module":"core","timestamp":"2026-08-26T16:26:17Z","reason":"SMOKE-core-02/03 body schema 不匹配；SMOKE-core-04 端口错配 8080/18080"}
+{"iter":5,"node":"smoke","result":"pass","module":"core","timestamp":"2026-08-26T16:30:00Z"}
