@@ -87,9 +87,9 @@ main() {
     log_info "Frontend started with pid $frontend_pid_value. Logs: $frontend_log"
 
     # Wait briefly for frontend to bind
-    log_info "Waiting for frontend to be ready (timeout: 30s) ..."
-    if ! wait_for_http "http://127.0.0.1:${COLDRAWDB_FRONTEND_PORT}/" 30; then
-        log_error "Frontend failed to start within 30s."
+    log_info "Waiting for frontend to be ready (timeout: ${COLDRAWDB_FRONTEND_TIMEOUT}s) ..."
+    if ! wait_for_http "http://127.0.0.1:${COLDRAWDB_FRONTEND_PORT}/" "$COLDRAWDB_FRONTEND_TIMEOUT"; then
+        log_error "Frontend failed to start within ${COLDRAWDB_FRONTEND_TIMEOUT}s."
         log_error "Check logs: $frontend_log"
         stop_process "$frontend_pid_value" "frontend" || true
         rm -f "$frontend_pid"

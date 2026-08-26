@@ -15,6 +15,9 @@ export COLDRAWDB_FRONTEND_LOG="${COLDRAWDB_FRONTEND_LOG:-logs/frontend.log}"
 export COLDRAWDB_BACKEND_PID="${COLDRAWDB_BACKEND_PID:-logs/backend.pid}"
 export COLDRAWDB_FRONTEND_PID="${COLDRAWDB_FRONTEND_PID:-logs/frontend.pid}"
 export COLDRAWDB_HEALTH_TIMEOUT="${COLDRAWDB_HEALTH_TIMEOUT:-120}"
+# Frontend (trunk serve) 冷启动时间较长（wasm 编译 + WASI binding）。
+# openlogos smoke 沙箱里无 target/ 缓存，默认 60s。
+export COLDRAWDB_FRONTEND_TIMEOUT="${COLDRAWDB_FRONTEND_TIMEOUT:-60}"
 
 log_info() {
     echo "[INFO] $*"
