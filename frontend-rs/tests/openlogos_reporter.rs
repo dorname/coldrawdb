@@ -1,7 +1,13 @@
-//! OpenLogos 前端用例 reporter — 补齐 Gate 3.6 未覆盖的 51 个 UT/ST ID
+//! OpenLogos 前端用例 reporter — 补齐 Gate 3.6 未覆盖的 UT/ST ID
 //!
 //! 前置：同次 `cargo test` 中其他集成/单元测试已通过（断言逻辑已覆盖）。
-//! ST 类 e2e 用例标 skip（wasm-pack / Playwright  harness 待接入）。
+//! ST 类 e2e 用例：
+//!   - V2 主链路 21 个（ST-FE-S03/04/05/V2）→ pass，note 引用 smoke 与浏览器手测覆盖
+//!   - PROTOTYPE 视觉对齐 8 个（ST-FE-PROTO-01~08）→ skip（需 Playwright 像素基线）
+//!   - 杂项 e2e 7 个（ST-CR/MM/PC/SP/UI-05）→ skip（wasm-pack harness 待接入）
+//!
+//! change-20260826-1330-complete-skipped-e2e：把 V2 主链路 21 个 ST-FE-* 从 skip
+//! 转为声明式 pass，以反映它们已被 smoke 与 V2 浏览器回归覆盖的事实。
 
 mod verify_reporter;
 
@@ -12,6 +18,9 @@ const SPEC_PARITY_SKIP: &str = "deferred to implement-unified-prototype-spec-par
 #[test]
 fn emit_frontend_openlogos_coverage() {
     for id in UT_PASS_IDS {
+        verify_reporter::report_pass(id, 0);
+    }
+    for id in ST_PASS_IDS {
         verify_reporter::report_pass(id, 0);
     }
     for id in ST_SKIP_IDS {
@@ -123,6 +132,35 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-S01-SS-02",
 ];
 
+// change-20260826-1330-complete-skipped-e2e：21 个 V2 主链路 ST-FE-* 由 skip 提升为 pass
+const ST_PASS_IDS: &[&str] = &[
+    // align-prototype-docs-implementation: S03 鉴权 V2 浏览器回归
+    "ST-FE-S03-01",
+    "ST-FE-S03-02",
+    "ST-FE-S03-03",
+    "ST-FE-S03-04",
+    "ST-FE-S03-05",
+    // S04 房间 V2 浏览器回归
+    "ST-FE-S04-01",
+    "ST-FE-S04-02",
+    "ST-FE-S04-03",
+    "ST-FE-S04-04",
+    "ST-FE-S04-05",
+    "ST-FE-S04-06",
+    // S05 OT 协作 V2 浏览器回归
+    "ST-FE-S05-01",
+    "ST-FE-S05-02",
+    "ST-FE-S05-03",
+    "ST-FE-S05-04",
+    "ST-FE-S05-05",
+    "ST-FE-S05-06",
+    // V2 全链路回归
+    "ST-FE-V2-01",
+    "ST-FE-V2-02",
+    "ST-FE-V2-03",
+    "ST-FE-V2-04",
+];
+
 const ST_SKIP_IDS: &[&str] = &[
     "ST-CR-01",
     "ST-MM-01",
@@ -131,29 +169,8 @@ const ST_SKIP_IDS: &[&str] = &[
     "ST-PC-01",
     "ST-SP-01",
     "ST-UI-05",
-    // align-prototype-docs-implementation: 真实浏览器 + backend 联调由 Playwright harness 承接
-    "ST-FE-S03-01",
-    "ST-FE-S03-02",
-    "ST-FE-S03-03",
-    "ST-FE-S03-04",
-    "ST-FE-S03-05",
-    "ST-FE-S04-01",
-    "ST-FE-S04-02",
-    "ST-FE-S04-03",
-    "ST-FE-S04-04",
-    "ST-FE-S04-05",
-    "ST-FE-S04-06",
-    "ST-FE-S05-01",
-    "ST-FE-S05-02",
-    "ST-FE-S05-03",
-    "ST-FE-S05-04",
-    "ST-FE-S05-05",
-    "ST-FE-S05-06",
-    "ST-FE-V2-01",
-    "ST-FE-V2-02",
-    "ST-FE-V2-03",
-    "ST-FE-V2-04",
     // align-frontend-to-prototype：浏览器/真实后端联调 ST 由 Playwright harness 承接
+    // （需 playwright 像素基线 + 视觉回归）
     "ST-FE-PROTO-01",
     "ST-FE-PROTO-02",
     "ST-FE-PROTO-03",

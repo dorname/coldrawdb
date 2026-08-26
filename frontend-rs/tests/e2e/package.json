@@ -1,0 +1,19 @@
+{
+  "name": "coldrawdb-e2e",
+  "version": "0.1.0",
+  "description": "Playwright e2e harness for coldrawdb V2 main paths (change-20260826-1330-complete-skipped-e2e)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:s03": "playwright test specs/s03-auth.spec.ts",
+    "test:s04": "playwright test specs/s04-rooms.spec.ts",
+    "test:s05": "playwright test specs/s05-collab.spec.ts",
+    "test:v2": "playwright test specs/v2-regression.spec.ts",
+    "install-browsers": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.45.0"
+  }
+}
