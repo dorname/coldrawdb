@@ -23,6 +23,14 @@ E6 为 drawdb-web 引入动效与微交互，对齐 main `framer-motion` + Semi 
 
 生产可将 `--cdb-duration-*` / `--cdb-easing-*` 映射到上述时长；冲突时以主原型观感为准。
 
+### 2.1 渲染稳定期约束（R3 — fix-canvas-hidpi-rendering 增量）
+
+| ID | 约束 |
+|---|---|
+| M-STAB-01 | web font 加载期（FOIT 期间）禁止触发 `cdb-fade-in` / `cdb-scale` / `cdb-pulse` 等过渡动效，避免降级字体 + 动画产生视觉撕裂 |
+| M-STAB-02 | DPR 切换（`matchMedia change`）时所有画布对象瞬时定位（无补间），仅 opacity 渐隐 80ms 即可 |
+| M-STAB-03 | `prefers-reduced-motion: reduce` 用户在 web font 加载期也不得启用过渡 |
+
 ## 3. @keyframes 清单
 
 ```css

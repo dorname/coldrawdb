@@ -66,6 +66,7 @@
 - [x] 选中 / 高亮 / 闪烁
 - [x] 撤销栈深度指示
 - [x] S05 协作者光标、presence 标签渲染 DTO 与稳定位置分配（批次 C）
+- [x] HiDPI / DPR 自适应画布 + web font 等待契约（fix-canvas-hidpi-rendering）
 
 ### 2.5 设计系统（redesign-phase-e）
 

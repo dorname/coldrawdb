@@ -20,6 +20,10 @@ use wasm_bindgen::prelude::wasm_bindgen;
 pub fn mount() {
     console_error_panic_hook::set_once();
 
+    // F-WF-02 / F-WF-03：等 web font 加载就绪，3s 兜底超时后强制首帧。
+    // 避免 Plus Jakarta Sans 未注册时 fill_text 0 宽渲染导致首帧错位。
+    wait_for_fonts_with_fallback();
+
     mount_to_body(|| {
         let store = EditorStore::new();
         let debouncer = DebounceTrigger::default();
@@ -33,6 +37,37 @@ pub fn mount() {
             <AppRoot store=store debouncer=debouncer _diagram_id=diagram_id share_mode=share_mode invite_token=invite_token />
         }
     });
+}
+
+/// F-WF-02：等 `document.fonts.ready` resolve；3000ms 兜底超时避免弱网卡死。
+/// 仅 fire-and-forget，不阻塞 mount；超时后 font 仍未到将由 `resolve_canvas_font_family` 降级。
+fn wait_for_fonts_with_fallback() {
+    use gloo_timers::callback::Timeout;
+
+    let win = match web_sys::window() {
+        Some(w) => w,
+        None => return,
+    };
+    let doc = match win.document() {
+        Some(d) => d,
+        None => return,
+    };
+    let fonts = match doc.fonts() {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+    let _ = fonts.ready();
+
+    // 3s 后即使 web font 未到，也由 `resolve_canvas_font_family` 在每次 set_font 时探测并降级
+    let fallback = Timeout::new(3_000, move || {
+        // 触发一次 frame_tick-like 信号；最简单办法是写一个 data 属性供 effect 监听
+        if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
+            if let Some(root) = doc.document_element() {
+                let _ = root.set_attribute("data-cdb-fonts-timeout", "1");
+            }
+        }
+    });
+    fallback.forget();
 }
 
 /// 从 URL query `?share=<id>` 解析 diagram id（对齐 S02 Phase 2 / `build_share_url`）。

@@ -27,6 +27,57 @@ pub const DRAG_THRESHOLD: f64 = 4.0;
 const CANVAS_FONT: &str = "\"Plus Jakarta Sans\", sans-serif";
 const CANVAS_FONT_MONO: &str = "ui-monospace, monospace";
 
+/// 返回当前 `window.devicePixelRatio`（fallback 1）。封装于一处便于单测 mock。
+pub fn current_device_pixel_ratio() -> f64 {
+    web_sys::window()
+        .and_then(|w| w.device_pixel_ratio())
+        .unwrap_or(1.0) as f64
+}
+
+/// R-DPR-06：dpr ≥ 1.5 时画布小字上浮 1px，避免 HiDPI 下密度过低。仅作用于 Canvas 文字，
+/// DOM 字号走 `--cdb-font-size-*` token 不变（core-07 §10.2）。
+fn dpr_font_boost(base: f64) -> f64 {
+    if current_device_pixel_ratio() >= 1.5 {
+        base + 1.0
+    } else {
+        base
+    }
+}
+
+/// 组装 dpr 缩放后的画布字号字符串（`"750 {px} {font_family}"`）。
+fn dpr_font(weight: u32, px: f64, family: &str) -> String {
+    format!("{} {}px {}", weight, dpr_font_boost(px), family)
+}
+
+/// F-WF-03：探测 Plus Jakarta Sans 是否真正可用，不可用则降级 ui-monospace。
+/// 仅作为 set_font 时的 family 段使用；返回的字符串可直接拼到 `format!("...{}")`。
+fn resolve_canvas_font_family(primary: &str, mono: &str) -> String {
+    let win = match web_sys::window() {
+        Some(w) => w,
+        None => return mono.to_string(),
+    };
+    let doc = match win.document() {
+        Some(d) => d,
+        None => return mono.to_string(),
+    };
+    let fonts = match doc.fonts() {
+        Ok(f) => f,
+        Err(_) => return mono.to_string(),
+    };
+    // primary 是 "Plus Jakarta Sans"（无 weight / size），只检测 family 是否已加载
+    if fonts.check(&format!("1em \"{}\"", primary)).unwrap_or(false) {
+        primary.to_string()
+    } else {
+        mono.to_string()
+    }
+}
+
+/// 把 ctx 当前矩阵复位为 `dpr × zoom`，避免 zoom 累乘（UT-RP-03）。
+pub fn apply_dpr_zoom_transform(ctx: &CanvasRenderingContext2d, zoom: f64) {
+    let dpr = current_device_pixel_ratio();
+    let _ = ctx.set_transform(dpr * zoom, 0.0, 0.0, dpr * zoom, 0.0, 0.0);
+}
+
 /// 画布调色板 — 主原型 core-01 画布对象事实值的亮/暗双份。
 /// Canvas 2D 为栅格渲染，无法直接消费 CSS var，故按 `data-mode` 逐帧取色。
 #[derive(Clone, Copy, Debug)]
@@ -320,12 +371,21 @@ mod leptos_canvas {
             };
 
             if let Some(parent) = canvas.parent_element() {
-                let w = parent.client_width().max(1) as u32;
-                let h = parent.client_height().max(1) as u32;
+                // R-DPR-01：backing store 像素 = CSS × devicePixelRatio
+                let css_w = parent.client_width().max(1) as f64;
+                let css_h = parent.client_height().max(1) as f64;
+                let dpr = super::current_device_pixel_ratio();
+                let w = (css_w * dpr).round() as u32;
+                let h = (css_h * dpr).round() as u32;
                 if canvas.width() != w || canvas.height() != h {
                     canvas.set_width(w);
                     canvas.set_height(h);
                 }
+                // CSS 尺寸保持 CSS 像素，让布局按 CSS 计算；backing store 已放大
+                let style_w = format!("{}px", css_w);
+                let style_h = format!("{}px", css_h);
+                let _ = canvas.style().set_property("width", &style_w);
+                let _ = canvas.style().set_property("height", &style_h);
             }
 
             let t = transform.get();
@@ -377,6 +437,21 @@ mod leptos_canvas {
                 let _ = canvas.set_attribute("data-follow-path", "");
             }
         });
+        }
+
+        // ── R-DPR-04：matchMedia DPR 变化触发 redraw（UT-RP-04）─────────────
+        let frame_tick_for_dpr = frame_tick;
+        if let Some(win) = web_sys::window() {
+            if let Ok(Some(mq)) =
+                win.match_media("(resolution: 1dppx), (resolution: 2dppx), (resolution: 3dppx)")
+            {
+                let cb = Closure::wrap(Box::new(move |_ev: web_sys::Event| {
+                    frame_tick_for_dpr.update(|n| *n += 1);
+                }) as Box<dyn FnMut(_)>);
+                let _ = mq.add_event_listener_with_callback("change", cb.as_ref().unchecked_ref());
+                cb.forget();
+            }
+        }
         }
 
         let capture_pointer = move |canvas: &web_sys::HtmlCanvasElement, pointer_id: i32| {
@@ -897,6 +972,8 @@ pub fn draw_canvas(
     selected_id: Option<&str>,
     rubber_band: Option<(f64, f64, f64, f64)>,
 ) {
+    let dpr = current_device_pixel_ratio();
+    // width/height 是 backing store 像素，clear_rect 必须按 backing store 清空
     ctx.clear_rect(0.0, 0.0, width, height);
     // 画布底色由 .cdb-canvas-container 壳层 CSS 提供（主原型 .canvas 透明 + 壳层 bg-deep 60%），
     // 栅格层不再自填背景，仅绘制点阵与对象。
@@ -905,8 +982,10 @@ pub fn draw_canvas(
     draw_grid(ctx, t, width, height, palette);
 
     ctx.save();
-    let _ = ctx.translate(t.pan_x, t.pan_y);
-    let _ = ctx.scale(t.zoom, t.zoom);
+    // R-DPR-02：每帧 set_transform(dpr*zoom, ...) 复位，避免 zoom 累乘（UT-RP-03）
+    let _ = ctx.set_transform(dpr * t.zoom, 0.0, 0.0, dpr * t.zoom, t.pan_x * dpr, t.pan_y * dpr);
+    // R-DPR-05：开启图像平滑，让反走样后的栅格过渡更柔和；线条级 1px 通过 set_line_width 对齐即可
+    let _ = ctx.set_image_smoothing_enabled(true);
 
     for area in areas {
         draw_area(ctx, area, palette);
@@ -978,7 +1057,7 @@ fn draw_remote_presence(ctx: &CanvasRenderingContext2d, presence: &RemotePresenc
         .as_deref()
         .unwrap_or(presence.user_id.as_str());
     let _ = ctx.set_fill_style_str(palette.text_muted);
-    let _ = ctx.set_font(&format!("11px {CANVAS_FONT}"));
+    let _ = ctx.set_font(&dpr_font(400, 11.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
     let _ = ctx.fill_text(label, presence.x + 8.0, presence.y + 4.0);
 }
 
@@ -986,11 +1065,13 @@ fn draw_grid(ctx: &CanvasRenderingContext2d, t: &Transform, width: f64, height: 
     // 主原型点阵：radial-gradient(text-3 @ 30%) 1px / 24px —— 色值已带透明度，不再叠加 global_alpha
     let _ = ctx.set_fill_style_str(palette.grid_dot);
 
+    let dpr = current_device_pixel_ratio();
     let start_x = (-(t.pan_x % (GRID_SIZE * t.zoom)) / t.zoom).floor() * GRID_SIZE;
     let start_y = (-(t.pan_y % (GRID_SIZE * t.zoom)) / t.zoom).floor() * GRID_SIZE;
 
-    let end_x = width / t.zoom + GRID_SIZE;
-    let end_y = height / t.zoom + GRID_SIZE;
+    // width/height 是 backing store 像素（CSS × dpr），转回 CSS 空间再算栅格边界
+    let end_x = (width / dpr) / t.zoom + GRID_SIZE;
+    let end_y = (height / dpr) / t.zoom + GRID_SIZE;
 
     let mut y = start_y;
     while y < end_y {
@@ -1069,12 +1150,12 @@ fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool, pal
 
     // 表名（750/13px 强色）+ 字段计数（text-3 10px 右对齐）
     let _ = ctx.set_fill_style_str(palette.text_strong);
-    let _ = ctx.set_font(&format!("750 13px {CANVAS_FONT}"));
+    let _ = ctx.set_font(&dpr_font(750, 13.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
     let _ = ctx.set_text_baseline("middle");
     let _ = ctx.set_text_align("left");
     let _ = ctx.fill_text(&table.name, x + 11.0, y + TABLE_HEADER_HEIGHT / 2.0);
     let _ = ctx.set_fill_style_str(palette.text_muted);
-    let _ = ctx.set_font(&format!("10px {CANVAS_FONT}"));
+    let _ = ctx.set_font(&dpr_font(500, 10.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
     let _ = ctx.set_text_align("right");
     let _ = ctx.fill_text(
         &table.fields.len().to_string(),
@@ -1097,17 +1178,17 @@ fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool, pal
 
         if field.primary {
             let _ = ctx.set_fill_style_str(palette.pk_color);
-            let _ = ctx.set_font(&format!("900 9px {CANVAS_FONT}"));
+            let _ = ctx.set_font(&dpr_font(900, 9.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
             let _ = ctx.fill_text("PK", x + 11.0, fy + FIELD_ROW_HEIGHT / 2.0);
         }
 
         let name_x = if field.primary { x + 36.0 } else { x + 11.0 };
         let _ = ctx.set_fill_style_str(palette.text_strong);
-        let _ = ctx.set_font(&format!("650 11px {CANVAS_FONT}"));
+        let _ = ctx.set_font(&dpr_font(650, 11.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
         let _ = ctx.fill_text(&field.name, name_x, fy + FIELD_ROW_HEIGHT / 2.0);
 
         let _ = ctx.set_fill_style_str(palette.text_muted);
-        let _ = ctx.set_font(&format!("10px {CANVAS_FONT_MONO}"));
+        let _ = ctx.set_font(&dpr_font(500, 10.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
         let _ = ctx.set_text_align("right");
         let _ = ctx.fill_text(
             &field.type_,
@@ -1238,7 +1319,7 @@ fn draw_area(ctx: &CanvasRenderingContext2d, area: &Area, palette: &CanvasPalett
     let _ = ctx.set_line_dash(&js_sys::Array::new());
 
     let _ = ctx.set_fill_style_str(palette.area_border);
-    let _ = ctx.set_font(&format!("750 11px {CANVAS_FONT}"));
+    let _ = ctx.set_font(&dpr_font(750, 11.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
     let _ = ctx.set_text_baseline("top");
     let _ = ctx.fill_text(&area.name, area.x + 10.0, area.y + 10.0);
 }
@@ -1254,7 +1335,7 @@ fn draw_note(ctx: &CanvasRenderingContext2d, note: &Note, palette: &CanvasPalett
     ctx.stroke_rect(note.x, note.y, note_w, note_h);
 
     let _ = ctx.set_fill_style_str(palette.note_text);
-    let _ = ctx.set_font(&format!("11px {CANVAS_FONT}"));
+    let _ = ctx.set_font(&dpr_font(400, 11.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
     let _ = ctx.set_text_baseline("top");
 
     let words: Vec<&str> = note.content.split_whitespace().collect();

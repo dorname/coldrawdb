@@ -183,6 +183,27 @@
 
 > **R2 实现要求**：`index.html` 通过 Google Fonts 加载 Plus Jakarta Sans（400/500/600/700）；`body` 与表单控件必须使用 `var(--cdb-font-family-base)`。
 
+### 10.1 Web Font 加载契约（R3 — fix-canvas-hidpi-rendering 增量）
+
+| ID | 约束 |
+|---|---|
+| F-WF-01 | Google Fonts URL 必须包含 `&display=optional`，避免 swap 期间降级闪烁影响画布栅格 |
+| F-WF-02 | 首帧渲染（Canvas + DOM）必须在 `document.fonts.ready` resolve 后入队；超时 3000s 兜底后强制首帧 |
+| F-WF-03 | `document.fonts.check("1em \"Plus Jakarta Sans\"")` 返回 false 时，画布 `CANVAS_FONT` 临时降级为 `ui-monospace, monospace`，避免 fill_text 期间字体未注册导致 0 宽渲染 |
+| F-WF-04 | Canvas 字号按 DPR 上浮：`dpr ≥ 1.5` 时 13→14、11→12、10→11、9→10（仅画布文字，DOM 字号不变） |
+
+### 10.2 字号 DPR 系数表
+
+| Token | dpr=1 | dpr=1.5 | dpr=2 |
+|---|---|---|---|
+| `--cdb-font-size-base`（14） | 14 | 14 | 14 |
+| `--cdb-font-size-md`（16） | 16 | 16 | 16 |
+| `--cdb-font-size-lg`（18） | 18 | 18 | 18 |
+| 画布表头（13） | 13 | 14 | 14 |
+| 画布字段名（11） | 11 | 12 | 12 |
+| 画布 type 标签（10） | 10 | 11 | 11 |
+| 画布 PK 标记（9） | 9 | 10 | 10 |
+
 ## 11. 圆角（4 档）
 
 | Token | 值 | 用途 |

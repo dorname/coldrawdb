@@ -256,6 +256,52 @@
 - coldrawdb `frontend-rs/src/editor_render.rs`
 - `docs/drawdb-capability-checklist.md` §1.1 / §2.3
 
+## 11. HiDPI 渲染基线（R-DPR）
+
+> 模块：core | 提案：fix-canvas-hidpi-rendering
+> 涉及代码：`frontend-rs/src/editor_render.rs`、`frontend-rs/index.html`、`frontend-rs/src/styles.css`
+
+### 11.1 问题陈述
+
+| 项 | 现状（V1 launched） | 期望 |
+|---|---|---|
+| Canvas backing store 像素 | `parent.client_width()`（CSS 像素） | `CSS × devicePixelRatio` |
+| `ctx.scale` 输入 | `t.zoom` | `dpr × t.zoom` |
+| Web font 等待 | 立即首帧（FOIT 期间降级到 `sans-serif`） | `document.fonts.ready` + 3s 兜底 |
+| Canvas 文字抗锯齿 | 浏览器默认（不一致） | `image_smoothing_enabled=true` + 字号按 DPR 微调 |
+| `matchMedia` DPR 变化 | 不监听 | 触发 redraw |
+
+### 11.2 实现要求
+
+| ID | 约束 |
+|---|---|
+| R-DPR-01 | canvas backing store `width = parent.client_width() × dpr`，`height` 同理 |
+| R-DPR-02 | `set_transform(dpr × zoom, 0, 0, dpr × zoom, 0, 0)` 替代 `scale(zoom, zoom)` |
+| R-DPR-03 | 首帧 `draw_canvas` 入队须在 `document.fonts.ready` resolve 之后；超时 3s 兜底 |
+| R-DPR-04 | `matchMedia('(resolution: ${dpr}dppx)')` 变化时主动触发 redraw |
+| R-DPR-05 | `ctx.set_image_smoothing_enabled(true)`；线条阈值 `≥ 0.5px` 时关闭以避免双线性插值模糊 |
+| R-DPR-06 | 字号表（13/11/10/9）在 dpr < 1.5 时保持原值；dpr ≥ 1.5 时上浮 1px（避免小字在 HiDPI 下密度过低） |
+
+### 11.3 测试用例
+
+| TC ID | 描述 |
+|---|---|
+| UT-RP-01 | dpr=1：canvas backing 像素 = CSS 像素 |
+| UT-RP-02 | dpr=2：canvas backing 像素 = 2 × CSS 像素 |
+| UT-RP-03 | zoom 100% → 200% 不重复累乘 |
+| UT-RP-04 | `matchMedia` DPR 变化触发 redraw |
+| UT-RP-05 | font-ready 超时（3s）后仍可首帧 |
+| ST-RP-01 | playwright 在 dpr=1、dpr=2 截图相似度 ≥ 95% |
+| ST-RP-02 | playwright 模拟 web font 失败不阻塞首帧 |
+
+### 11.4 验证方式
+
+- `npm run trunk build` 后 `playwright test` 跑 `core-RP-canvas-hidpi-test-cases.md` 对应 spec
+- HP-01~HP-05 smoke 不回归
+- 视觉回归基线：`frontend-rs/test-results/canvas-baseline-dpr{1,2}.png`
+
+---
+
 ## 6 空白画布引导（EmptyGuide / Phase C）
 
 > 模块：core | 提案：redesign-phase-c-import-export

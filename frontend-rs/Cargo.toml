@@ -40,6 +40,10 @@ web-sys = { version = "0.3", features = [
   "KeyboardEvent",
   "Event",
   "EventTarget",
+  "FontFace",
+  "FontFaceSet",
+  "MediaQueryList",
+  "MediaQueryListEvent",
 ] }
 
 # E4 Monaco 依赖（V1 占位：需 wasm-pack + 浏览器环境激活）

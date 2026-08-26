@@ -365,6 +365,12 @@ body {
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+html {
+  image-rendering: auto;
+  -webkit-text-size-adjust: 100%;
 }
 
 .cdb-share-state-page {
