@@ -30,8 +30,8 @@ const CANVAS_FONT_MONO: &str = "ui-monospace, monospace";
 /// 返回当前 `window.devicePixelRatio`（fallback 1）。封装于一处便于单测 mock。
 pub fn current_device_pixel_ratio() -> f64 {
     web_sys::window()
-        .and_then(|w| w.device_pixel_ratio())
-        .unwrap_or(1.0) as f64
+        .map(|w| w.device_pixel_ratio() as f64)
+        .unwrap_or(1.0)
 }
 
 /// R-DPR-06：dpr ≥ 1.5 时画布小字上浮 1px，避免 HiDPI 下密度过低。仅作用于 Canvas 文字，
@@ -60,10 +60,7 @@ fn resolve_canvas_font_family(primary: &str, mono: &str) -> String {
         Some(d) => d,
         None => return mono.to_string(),
     };
-    let fonts = match doc.fonts() {
-        Ok(f) => f,
-        Err(_) => return mono.to_string(),
-    };
+    let fonts = doc.fonts();
     // primary 是 "Plus Jakarta Sans"（无 weight / size），只检测 family 是否已加载
     if fonts.check(&format!("1em \"{}\"", primary)).unwrap_or(false) {
         primary.to_string()
@@ -381,11 +378,8 @@ mod leptos_canvas {
                     canvas.set_width(w);
                     canvas.set_height(h);
                 }
-                // CSS 尺寸保持 CSS 像素，让布局按 CSS 计算；backing store 已放大
-                let style_w = format!("{}px", css_w);
-                let style_h = format!("{}px", css_h);
-                let _ = canvas.style().set_property("width", &style_w);
-                let _ = canvas.style().set_property("height", &style_h);
+                // CSS 布局尺寸由 `.cdb-canvas-element { width:100%; height:100% }` 控制，
+                // backing store 已通过 set_width/set_height 放大为 dpr 倍，无需内联 style
             }
 
             let t = transform.get();
@@ -451,7 +445,6 @@ mod leptos_canvas {
                 let _ = mq.add_event_listener_with_callback("change", cb.as_ref().unchecked_ref());
                 cb.forget();
             }
-        }
         }
 
         let capture_pointer = move |canvas: &web_sys::HtmlCanvasElement, pointer_id: i32| {

@@ -1,0 +1,15 @@
+# fix-canvas-hidpi-rendering：trunk 0.21.14 的 wasm_opt 字段仅支持 0-4，
+# 关掉 wasm-opt 的唯一办法是命令行 `--no-wasm-opt`。Trunk.toml 不留任何字段，
+# 由调用方显式传 flag。升级 trunk 后删本文件即可。
+#
+# 调用方式：
+#   cd /home/kyle/coldrawdb/frontend-rs && trunk build --release --no-wasm-opt
+#
+# 备份方案（如果 --no-wasm-opt 也不工作，临时改 wasm-opt 二进制为 stub）：
+#   cp /home/kyle/.cache/trunk/wasm-opt-version_123/bin/wasm-opt{,.bak}
+#   cat > /home/kyle/.cache/trunk/wasm-opt-version_123/bin/wasm-opt <<'EOF'
+#   #!/usr/bin/env bash
+#   # skip wasm-opt; trunk 期望输出 -o <path>，透传前一个输入文件
+#   ...
+#   EOF
+# 但请先尝试 --no-wasm-opt flag。

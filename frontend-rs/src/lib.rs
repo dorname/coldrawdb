@@ -52,10 +52,7 @@ fn wait_for_fonts_with_fallback() {
         Some(d) => d,
         None => return,
     };
-    let fonts = match doc.fonts() {
-        Ok(f) => f,
-        Err(_) => return,
-    };
+    let fonts = doc.fonts();
     let _ = fonts.ready();
 
     // 3s 后即使 web font 未到，也由 `resolve_canvas_font_family` 在每次 set_font 时探测并降级
