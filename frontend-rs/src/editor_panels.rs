@@ -5584,7 +5584,7 @@ pub fn AppRoot(
     let error: RwSignal<Option<String>> = create_rw_signal(None);
     let share_loading = create_rw_signal(share_mode);
     let share_load_error = create_rw_signal(Option::<String>::None);
-    let next_id = create_rw_signal(0i64);
+    let next_id = create_rw_signal(crate::editor_core::next_id_from_store(&store) + 1);
 
     // B4: 模态状态 (4 核心模态)
     let modal_kind: RwSignal<Option<modals::ModalKind>> = create_rw_signal(None);
@@ -5949,6 +5949,7 @@ pub fn AppRoot(
         let current_diagram_id = current_diagram_id.clone();
         let current_title = current_title.clone();
         let error = error.clone();
+        let next_id = next_id.clone();
         Rc::new(move || {
             current_page.set(PageState::RoomEditor);
             // B 批：与 on_enter_room 一致，接受邀请后加载房间绑定的图表内容
@@ -5960,6 +5961,9 @@ pub fn AppRoot(
                     Ok(diagram) => {
                         current_title.set(diagram.name.clone());
                         store.load(diagram);
+                        // store.load 后用现有 ids 重新计算 next_id，避免与 DB 已保存的 id 冲突
+                        let max_id = crate::editor_core::next_id_from_store(&store);
+                        next_id.set(max_id + 1);
                         error.set(None);
                     }
                     Err(_) => error.set(Some("图表加载失败，请返回房间列表后重试".to_string())),

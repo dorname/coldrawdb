@@ -129,6 +129,44 @@ pub struct EditorStore {
     pub database: RwSignal<Database>,
 }
 
+/// 从现有 tables/fields/references/areas/notes 中解析最大数字 id，
+/// 用于把 next_id 初始化为 max+1，避免与已保存的 id 冲突
+/// （e.g. 已存在 ref-0 时前端再生成 ref-0 → UNIQUE constraint failed）。
+pub fn next_id_from_store(store: &EditorStore) -> i64 {
+    fn parse_num_suffix(id: &str) -> Option<i64> {
+        // 接受 "ref-12" / "auto-7" / "auto-7-field-id" / "auto-9-field-id"
+        let last = id.rsplit('-').next()?;
+        last.parse::<i64>().ok()
+    }
+    let mut max_id = 0i64;
+    for t in store.tables.get() {
+        if let Some(n) = parse_num_suffix(&t.id) {
+            max_id = max_id.max(n);
+        }
+        for f in &t.fields {
+            if let Some(n) = parse_num_suffix(&f.id) {
+                max_id = max_id.max(n);
+            }
+        }
+    }
+    for r in store.references.get() {
+        if let Some(n) = parse_num_suffix(&r.id) {
+            max_id = max_id.max(n);
+        }
+    }
+    for a in store.areas.get() {
+        if let Some(n) = parse_num_suffix(&a.id) {
+            max_id = max_id.max(n);
+        }
+    }
+    for n in store.notes.get() {
+        if let Some(n) = parse_num_suffix(&n.id) {
+            max_id = max_id.max(n);
+        }
+    }
+    max_id
+}
+
 impl EditorStore {
     /// Create a fresh empty store. Intended to be called once at app boot from `lib.rs`
     /// (`create_store` factory); panels / render / data-access must NOT call this themselves
