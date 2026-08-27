@@ -130,6 +130,9 @@ const UT_PASS_IDS: &[&str] = &[
     // implement-unified-prototype-spec-parity C 批（cargo 侧，见 tests/spec_parity_c.rs）
     "UT-S01-SS-01",
     "UT-S01-SS-02",
+    // fix-global-entity-id-uniqueness：断言在 src/editor_panels.rs 测试模块
+    // （UT-ID-GLOBAL-01 由 tests/entity_id_uniqueness.rs 自行上报）
+    "UT-ID-GLOBAL-02",
 ];
 
 // change-20260826-1330-complete-skipped-e2e：21 个 V2 主链路 ST-FE-* 由 skip 提升为 pass

@@ -901,9 +901,13 @@ impl Named for Note {
 }
 
 /// 新建区域默认值（AreasTab + UT-ALIGN-A01）
+///
+/// fix-global-entity-id-uniqueness：id 改全局唯一随机 id（原 `area-{seq}` 会在
+/// 新 diagram 上与其他 diagram 已占用的全局主键冲突 → 保存 500）；
+/// `seq` 仅保留用于命名与层叠落位。
 pub fn new_default_area(seq: i64) -> Area {
     Area {
-        id: format!("area-{}", seq),
+        id: crate::editor_core::new_entity_id("area"),
         x: 100.0 + (seq as f64) * 24.0,
         y: 100.0 + (seq as f64) * 24.0,
         width: 400.0,
@@ -914,9 +918,11 @@ pub fn new_default_area(seq: i64) -> Area {
 }
 
 /// 新建便签默认值（NotesTab + UT-ALIGN-A01）
+///
+/// fix-global-entity-id-uniqueness：id 改全局唯一随机 id，原因同 `new_default_area`。
 pub fn new_default_note(seq: i64) -> Note {
     Note {
-        id: format!("note-{}", seq),
+        id: crate::editor_core::new_entity_id("note"),
         x: 200.0 + (seq as f64) * 24.0,
         y: 200.0 + (seq as f64) * 24.0,
         content: format!("新便签 {}", seq + 1),
@@ -6170,7 +6176,6 @@ pub fn AppRoot(
         let debouncer = debouncer.clone();
         let selection = selection.clone();
         let inspector_open = inspector_open.clone();
-        let next_id = next_id.clone();
         let error_for_create = error.clone();
         let current_room = current_room.clone();
         let collab_state_for_create = collab_state.clone();
@@ -6180,9 +6185,9 @@ pub fn AppRoot(
                 error_for_create.set(Some("只读角色不能编辑图表".to_string()));
                 return;
             }
-            let id = next_id.get();
-            next_id.set(id + 1);
-            let table_id = format!("auto-{}", id);
+            // fix-global-entity-id-uniqueness：实体 id 改全局唯一随机 id，
+            // 杜绝新 diagram 从 auto-1 重新计数撞后端全局主键（保存 500）
+            let table_id = crate::editor_core::new_entity_id("auto");
             // 主原型事实（core-01 addTable）：x=180+n*55, y=145+n*35 层叠落位；
             // 命名 table_{n+1}；每张新表自带一个 id 字段（UUID, pk/nn/uq）
             let table_count = store.tables.get().len();
@@ -6329,15 +6334,13 @@ pub fn AppRoot(
     let on_add_field = {
         let store = store.clone();
         let debouncer = debouncer.clone();
-        let next_id = next_id.clone();
         Rc::new(move |table_id: String| {
             if editor_is_read_only(share_mode, current_room) {
                 return;
             }
-            let id = next_id.get();
-            next_id.set(id + 1);
+            // fix-global-entity-id-uniqueness：全局唯一 id，避免跨 diagram 撞全局主键
             let new_field = Field {
-                id: format!("auto-{}", id),
+                id: crate::editor_core::new_entity_id("auto"),
                 name: "新字段".into(),
                 type_: "VARCHAR(255)".into(),
                 default: String::new(),
@@ -6426,13 +6429,10 @@ pub fn AppRoot(
         })
     };
 
+    // fix-global-entity-id-uniqueness：关系 id 改全局唯一随机 id（原 ref-{计数器}
+    // 会与其他 diagram 已占用的全局主键冲突）
     let next_ref_id = {
-        let next_id = next_id.clone();
-        Rc::new(move || {
-            let id = next_id.get();
-            next_id.set(id + 1);
-            format!("ref-{}", id)
-        }) as Rc<dyn Fn() -> String>
+        Rc::new(move || crate::editor_core::new_entity_id("ref")) as Rc<dyn Fn() -> String>
     };
 
     let on_create_reference = {
@@ -8560,6 +8560,39 @@ mod tests {
         );
         assert_eq!(snap.notes[0].content, "新便签 1");
         assert!(store.dirty.get(), "UT-ALIGN-A01: 变更后 dirty 应为 true");
+    }
+
+    /// UT-ID-GLOBAL-02（fix-global-entity-id-uniqueness 回归）：
+    /// 1) new_default_area/new_default_note 产出 `{prefix}-{16位hex}` 全局唯一 id，两次调用互异；
+    /// 2) 新格式 id（含字母的 hex 后缀）不被 next_id_from_store 的 max+1 解析捕获，
+    ///    存量加载语义不变（返回 0 起始，仅供 enum/type stub 计数）。
+    #[test]
+    fn ut_id_global_02_new_format_ids_bypass_next_id_parsing() {
+        let a0 = new_default_area(0);
+        let a1 = new_default_area(1);
+        assert!(a0.id.starts_with("area-"), "UT-ID-GLOBAL-02: area id 前缀");
+        assert_ne!(a0.id, a1.id, "UT-ID-GLOBAL-02: 两次生成区域 id 应互异");
+        assert_eq!(a0.name, "新区域 1", "UT-ID-GLOBAL-02: seq 命名语义保留");
+        let n0 = new_default_note(0);
+        let n1 = new_default_note(1);
+        assert!(n0.id.starts_with("note-"), "UT-ID-GLOBAL-02: note id 前缀");
+        assert_ne!(n0.id, n1.id, "UT-ID-GLOBAL-02: 两次生成便签 id 应互异");
+
+        let store = EditorStore::new();
+        store.areas.set(vec![Area {
+            id: "area-abcdef0123456789".into(),
+            x: 0.0,
+            y: 0.0,
+            width: 100.0,
+            height: 100.0,
+            color: String::new(),
+            name: "a".into(),
+        }]);
+        assert_eq!(
+            crate::editor_core::next_id_from_store(&store),
+            0,
+            "UT-ID-GLOBAL-02: 新格式 id（hex 后缀）不应参与 max+1 解析"
+        );
     }
 
     /// UT-ALIGN-B03: 删除与导入日志重试 UI 规则

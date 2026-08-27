@@ -167,6 +167,59 @@ pub fn next_id_from_store(store: &EditorStore) -> i64 {
     max_id
 }
 
+/// 全局唯一实体 id 生成器（fix-global-entity-id-uniqueness）。
+///
+/// 背景：后端 DB 中 table/field/reference/area/note 的 id 是**全局单列主键**，
+/// 旧的「图内 max+1 计数器」（`auto-1` / `ref-0` …）在任何新 diagram 上都会从
+/// `auto-1` 重新计数，与其他 diagram 已占用的全局 id 冲突 → 保存 500
+/// （新账户建表保存失败的根因）。
+///
+/// 产出格式 `{prefix}-{16位hex}`，如 `auto-3f9a2c8e1b7d40f6`：
+/// - 保留原前缀（auto/ref/area/note），兼容 data-testid、OT op 与既有字符串断言；
+/// - 后缀为 splitmix64 混合后的 64bit 值：会话内由原子计数器保证**确定不重复**，
+///   跨会话由时间+随机种子保证唯一（碰撞概率可忽略）；
+/// - 非数字后缀使 `next_id_from_store` 的 parse_num_suffix 返回 None，
+///   不影响存量 `auto-N` 数据加载后的 max+1 解析。
+///
+/// 随机源：wasm 侧 `js_sys`（Date.now + Math.random）；host 侧（`cargo test --lib`）
+/// 走 `std::time`，保证单测可在非 wasm 环境直接调用。
+pub fn new_entity_id(prefix: &str) -> String {
+    format!("{}-{:016x}", prefix, next_unique_u64())
+}
+
+fn next_unique_u64() -> u64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::OnceLock;
+
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    static SEED: OnceLock<u64> = OnceLock::new();
+
+    let seed = *SEED.get_or_init(rand_seed);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    // splitmix64 finalizer 是双射：每个不同的 counter 输入必得不同输出
+    let mut z = seed.wrapping_add(n).wrapping_add(0x9e37_79b9_7f4a_7c15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    z ^ (z >> 31)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn rand_seed() -> u64 {
+    let t = js_sys::Date::now() as u64;
+    let r = (js_sys::Math::random() * (u32::MAX as f64)) as u64;
+    (t << 32) ^ r ^ 0x9e37_79b9_7f4a_7c15
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn rand_seed() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    nanos ^ 0x9e37_79b9_7f4a_7c15
+}
+
 impl EditorStore {
     /// Create a fresh empty store. Intended to be called once at app boot from `lib.rs`
     /// (`create_store` factory); panels / render / data-access must NOT call this themselves
