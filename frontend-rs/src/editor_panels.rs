@@ -2624,6 +2624,7 @@ pub fn AuthGate(
                 .await;
                 match result {
                     Ok(session) => {
+                        crate::editor_data_access::persist_auth_session(&session);
                         auth_session.set(Some(session));
                         session_notice.set(Some("会话有效".to_string()));
                         if let Some(cb) = on_login_success {
@@ -2963,10 +2964,12 @@ pub fn RoomsListPage(
                         Ok(next_session) => {
                             let next_token = next_session.access_token.clone();
                             last_loaded_token.set(Some(next_token.clone()));
+                            crate::editor_data_access::persist_auth_session(&next_session);
                             auth_session.set(Some(next_session));
                             session_notice.set(Some("会话已续期".to_string()));
                             result = room_client.list_rooms(&next_token).await;
                             if matches!(result, Err(ApiError::Server(401, _))) {
+                                crate::editor_data_access::clear_auth_session();
                                 auth_session.set(None);
                                 session_notice.set(Some("登录已过期，请重新登录".to_string()));
                                 loading.set(false);
@@ -2974,6 +2977,7 @@ pub fn RoomsListPage(
                             }
                         }
                         Err(_) => {
+                            crate::editor_data_access::clear_auth_session();
                             auth_session.set(None);
                             session_notice.set(Some("登录已过期，请重新登录".to_string()));
                             loading.set(false);
@@ -5600,6 +5604,7 @@ pub fn AppRoot(
             current_page.set(PageState::Auth);
         }
     });
+
     // 防止 session_notice 被注入 token 原文：写入前过滤。
     create_effect(move |_| {
         let raw = session_notice.get();
@@ -5712,6 +5717,29 @@ pub fn AppRoot(
     let room_client = RoomClient::new("http://127.0.0.1:3000");
     let collab_client = CollabClient::new("http://127.0.0.1:3000");
 
+    // S03 登录持久化：刷新页面从 localStorage 恢复 AuthSession，跳过 /login。
+    // 异步验证 token 仍有效（me()），无效则清掉 storage 让用户重新登录。
+    {
+        let auth_session = auth_session.clone();
+        let current_page = current_page.clone();
+        let auth_client = auth_client.clone();
+        spawn_local(async move {
+            if let Some(stored) = crate::editor_data_access::restore_auth_session() {
+                match auth_client.me(&stored.access_token).await {
+                    Ok(user) => {
+                        let mut s = stored;
+                        s.user = Some(user);
+                        auth_session.set(Some(s));
+                        current_page.set(PageState::Rooms);
+                    }
+                    Err(_) => {
+                        crate::editor_data_access::clear_auth_session();
+                    }
+                }
+            }
+        });
+    }
+
     create_effect({
         let room_client = room_client.clone();
         let collab_client = collab_client.clone();
@@ -5805,10 +5833,12 @@ pub fn AppRoot(
             spawn_local(async move {
                 match auth_client.refresh_session(&current).await {
                     Ok(next) => {
+                        crate::editor_data_access::persist_auth_session(&next);
                         auth_session.set(Some(next));
                         session_notice.set(Some("会话已续期".to_string()));
                     }
                     Err(_) => {
+                        crate::editor_data_access::clear_auth_session();
                         auth_session.set(None);
                         session_notice.set(Some("登录已过期，请重新登录".to_string()));
                     }
@@ -5827,6 +5857,7 @@ pub fn AppRoot(
                 .get_untracked()
                 .map(|s| s.access_token)
                 .unwrap_or_default();
+            crate::editor_data_access::clear_auth_session();
             auth_session.set(None);
             session_notice.set(Some("已退出登录".to_string()));
             // 退出登录后回到 auth 入口（除非是 share/edit 只读或 invite）

@@ -64,12 +64,41 @@ pub struct TokenResponse {
     pub token_type: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AuthSession {
     pub access_token: String,
     pub expires_in: i64,
     pub token_type: String,
     pub user: Option<UserProfile>,
+}
+
+const AUTH_STORAGE_KEY: &str = "coldrawdb.auth_session.v1";
+
+/// Persist AuthSession to localStorage so refreshing the page keeps the user logged in.
+/// No-op in non-browser targets (wasm32-unknown-unknown unit tests under native cargo).
+pub fn persist_auth_session(session: &AuthSession) {
+    let Some(win) = web_sys::window() else { return };
+    let Ok(json) = serde_json::to_string(session) else { return };
+    if let Ok(Some(local)) = win.local_storage() {
+        let _ = local.set_item(AUTH_STORAGE_KEY, &json);
+    }
+}
+
+/// Restore AuthSession from localStorage on page load. Returns None if missing or expired.
+pub fn restore_auth_session() -> Option<AuthSession> {
+    let win = web_sys::window()?;
+    let local = win.local_storage().ok()??;
+    let json = local.get_item(AUTH_STORAGE_KEY).ok()??;
+    let session: AuthSession = serde_json::from_str(&json).ok()?;
+    let _ = session.expires_in;
+    Some(session)
+}
+
+pub fn clear_auth_session() {
+    let Some(win) = web_sys::window() else { return };
+    if let Ok(Some(local)) = win.local_storage() {
+        let _ = local.remove_item(AUTH_STORAGE_KEY);
+    }
 }
 
 impl AuthSession {

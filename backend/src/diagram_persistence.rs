@@ -34,6 +34,16 @@ fn row_str(row: &sea_orm::QueryResult, col: &str) -> Option<String> {
 }
 
 fn row_f64(row: &sea_orm::QueryResult, col: &str) -> f64 {
+    // SQLite 列 x/y 是 NUMERIC affinity，整数值（60.0 / 140 等）存为 INTEGER 而非 REAL。
+    // sea_orm 的 try_get::<String> 对 INTEGER 列返回 Err，导致 row_str 给 None，进而
+    // 解析失败 fallback 0.0，最终前端拿到的全是 (0.0, 0.0) → 4 张表重叠在原点。
+    // 修复：依次尝试 f64 / i64 / String 三种类型，覆盖 INTEGER / REAL / TEXT 三种存储。
+    if let Ok(v) = row.try_get::<f64>("", col) {
+        return v;
+    }
+    if let Ok(v) = row.try_get::<i64>("", col) {
+        return v as f64;
+    }
     row_str(row, col)
         .and_then(|s| s.parse().ok())
         .unwrap_or(0.0)
