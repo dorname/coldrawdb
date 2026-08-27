@@ -1055,7 +1055,7 @@ pub(crate) fn schedule_save(
                         store.revision.set(current_revision);
                         prepend_activity(
                             activity_feed,
-                            format!("快照 409 由协作合并 · 推进至 rev {current_revision} · 自动重试保存"),
+                            format!("快照 409 已由协作合并 · 推进至 rev {current_revision}"),
                         );
                         if store.dirty.get() {
                             retry_save_after_conflict(
