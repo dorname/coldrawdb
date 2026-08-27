@@ -455,7 +455,20 @@ mod leptos_canvas {
             let live = live.clone();
             let on_select = on_select.clone();
             let on_deselect = on_deselect.clone();
+            let schedule_paint = schedule_paint.clone();
             move |ev: PointerEvent| {
+                // 防御：清掉任何 stale drag_state（pointercancel 未触发的情况下，
+                // 比如浏览器在 React 树外丢失 pointer capture 的极端场景）。
+                // 不清的话上一次 endpoint/table drag 残留会让本次 pointerdown
+                // 被 on_pointermove 当作"延续"误更新 store。
+                if drag_state.get_untracked().is_some() {
+                    drag_state.set(None);
+                    live.borrow_mut().rubber = None;
+                    live.borrow_mut().tables = None;
+                    rubber_d.set(None);
+                    schedule_paint();
+                }
+
                 let canvas = match canvas_ref.get() {
                     Some(c) => c,
                     None => return,
@@ -506,6 +519,22 @@ mod leptos_canvas {
                         }));
                         return;
                     }
+                    // 关系工具下未命中字段：回落到 pan 模式而不是吞掉 pointerdown
+                    // （之前 return 会导致选择连线/点空白后画布无法拖动）
+                    let t = transform.get_untracked();
+                    capture_pointer(&canvas, ev.pointer_id());
+                    drag_state.set(Some(DragState {
+                        table_id: None,
+                        endpoint_drag: None,
+                        rel_drag: None,
+                        pointer_id: ev.pointer_id(),
+                        start_mouse_x: ev.client_x() as f64,
+                        start_mouse_y: ev.client_y() as f64,
+                        start_pan_x: t.pan_x,
+                        start_pan_y: t.pan_y,
+                        start_table_x: 0.0,
+                        start_table_y: 0.0,
+                    }));
                     return;
                 }
                 if let Some((ref_id, end)) = super::hit_test_endpoint(&tables, &refs, dx, dy) {
@@ -739,6 +768,17 @@ mod leptos_canvas {
                     return;
                 }
 
+                if drag.endpoint_drag.is_some() {
+                    // 关系 endpoint 拖动：on_pointermove 已实时写回 store.references，
+                    // 这里只需清理 drag_state 并触发一次重绘（让实时预览复位）。
+                    // 显式 return 避免走到 fallthrough 误触其他清理路径。
+                    live.borrow_mut().rubber = None;
+                    rubber_d.set(None);
+                    drag_state.set(None);
+                    schedule_paint();
+                    return;
+                }
+
                 if let Some(table_id) = drag.table_id {
                     let dx = ev.client_x() as f64 - drag.start_mouse_x;
                     let dy = ev.client_y() as f64 - drag.start_mouse_y;
@@ -767,6 +807,24 @@ mod leptos_canvas {
 
                 live.borrow_mut().tables = None;
                 drag_state.set(None);
+            }
+        };
+
+        // pointercancel：浏览器/系统打断 pointer capture 时触发（Alt+Tab 切窗口、
+        // 拖出 viewport、OS 强制收走输入等）。区别于 pointerup：没有 ev.client_x/y 可信，
+        // 所以只做防御性清理，不写 store。
+        let on_pointercancel = {
+            let live = live.clone();
+            let schedule_paint = schedule_paint.clone();
+            move |_ev: PointerEvent| {
+                if drag_state.get_untracked().is_none() {
+                    return;
+                }
+                live.borrow_mut().rubber = None;
+                live.borrow_mut().tables = None;
+                rubber_d.set(None);
+                drag_state.set(None);
+                schedule_paint();
             }
         };
 
@@ -821,6 +879,7 @@ mod leptos_canvas {
                     on:pointerdown=on_pointerdown
                     on:pointermove=on_pointermove
                     on:pointerup=on_pointerup
+                    on:pointercancel=on_pointercancel
                     on:wheel=on_wheel
                     on:dblclick=on_dblclick
                 ></canvas>
