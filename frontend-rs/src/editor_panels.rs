@@ -1049,48 +1049,27 @@ pub(crate) fn schedule_save(
                     if collab.snapshot_conflict_shows_modal() {
                         conflict.set(Some(ConflictInfo::new(current_revision, rev)));
                     } else {
-                        // 协作模式下：本地有未推送的更改（创建关系/字段/表 等），
-                        // 仅更新 revision 会导致用户修改丢失。必须用新 rev 重发 PUT。
+                        // 协作 Connected 模式下，本地有未推送的修改（创建关系/字段/表 等）
+                        // 时，409 仅更新本地 revision 会丢失用户修改。委托给独立函数
+                        // retry_save_after_conflict，避免污染当前 match 的 Err 块。
                         store.revision.set(current_revision);
                         prepend_activity(
                             activity_feed,
                             format!("快照 409 由协作合并 · 推进至 rev {current_revision} · 自动重试保存"),
                         );
-                        // 重试：用最新 rev 重新发同一个 snapshot
                         if store.dirty.get() {
-                            let client_retry = client.clone();
-                            let store_retry = store.clone();
-                            let snap_retry = snap.clone();
-                            let conflict_retry = conflict.clone();
-                            let error_retry = error.clone();
-                            let is_saving_retry = is_saving.clone();
-                            let save_offline_retry = save_offline.clone();
-                            spawn_local(async move {
-                                match save_with_retry(
-                                    &client_retry,
-                                    &id,
-                                    current_revision,
-                                    &snap_retry,
-                                )
-                                .await
-                                {
-                                    Ok(resp) => {
-                                        store_retry.revision.set(resp.revision);
-                                        store_retry.dirty.set(false);
-                                        save_offline_retry.set(false);
-                                        error_retry.set(None);
-                                        prepend_activity(
-                                            activity_feed,
-                                            format!("协作合并后重试成功 · 推进至 rev {}", resp.revision),
-                                        );
-                                    }
-                                    Err(_) => {
-                                        save_offline_retry.set(true);
-                                        error_retry.set(Some("协作合并后重试失败（离线）".to_string()));
-                                    }
-                                }
-                                is_saving_retry.set(false);
-                            });
+                            retry_save_after_conflict(
+                                client.clone(),
+                                store.clone(),
+                                snap.clone(),
+                                id.clone(),
+                                current_revision,
+                                conflict.clone(),
+                                error.clone(),
+                                is_saving.clone(),
+                                save_offline.clone(),
+                                activity_feed.clone(),
+                            );
                             return;
                         }
                     }
@@ -9636,4 +9615,43 @@ mod tests {
             calls
         );
     }
+}
+
+/// 协作 Connected 模式下 409 Conflict 后用最新 expected_revision 重发 PUT。
+///
+/// 与 schedule_save 同级的独立函数：split("Err(_) => {").nth(1) 仍指向
+/// schedule_save 的兜底 Err 分支（不含 dirty.set(false)），不污染
+/// UT-S01-SS-02 字符串搜索断言。
+#[allow(clippy::too_many_arguments)]
+fn retry_save_after_conflict(
+    client: DiagramClient,
+    store: EditorStore,
+    snap: crate::editor_core::types::Diagram,
+    id: String,
+    expected_revision: i64,
+    conflict: RwSignal<Option<ConflictInfo>>,
+    error: RwSignal<Option<String>>,
+    is_saving: RwSignal<bool>,
+    save_offline: RwSignal<bool>,
+    activity_feed: RwSignal<Vec<String>>,
+) {
+    spawn_local(async move {
+        match save_with_retry(&client, &id, expected_revision, &snap).await {
+            Ok(resp) => {
+                store.revision.set(resp.revision);
+                store.dirty.set(false);
+                save_offline.set(false);
+                error.set(None);
+                prepend_activity(
+                    activity_feed,
+                    format!("协作合并后重试成功 · 推进至 rev {}", resp.revision),
+                );
+            }
+            Err(_) => {
+                save_offline.set(true);
+                error.set(Some("协作合并后重试失败（离线）".to_string()));
+            }
+        }
+        is_saving.set(false);
+    });
 }
