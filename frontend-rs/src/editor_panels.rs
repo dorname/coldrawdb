@@ -5718,8 +5718,9 @@ pub fn AppRoot(
     let collab_client = CollabClient::new("http://127.0.0.1:3000");
 
     // S03 登录持久化：刷新页面从 localStorage 恢复 AuthSession，跳过 /login。
-    // 异步验证 token 仍有效（me()），无效则清掉 storage 让用户重新登录。
-    {
+    // 仅在非 share / 非 invite 路径恢复：share 与 invite 的页面状态由 URL 决定，
+    // 不能被恢复 session 覆盖（避免 ST-S02-SHARE-VS-AUTH 等 e2e 回归）。
+    if !share_mode && invite_token.is_none() {
         let auth_session = auth_session.clone();
         let current_page = current_page.clone();
         let auth_client = auth_client.clone();
