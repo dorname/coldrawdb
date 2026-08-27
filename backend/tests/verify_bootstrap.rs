@@ -18,6 +18,9 @@ fn project_root() -> PathBuf {
 }
 
 fn result_path() -> PathBuf {
+    if let Ok(p) = std::env::var("COLDRAWDB_JSONL_PATH") {
+        return PathBuf::from(p);
+    }
     project_root().join("logos/resources/verify/test-results.jsonl")
 }
 

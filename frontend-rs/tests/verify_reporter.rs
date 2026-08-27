@@ -25,6 +25,12 @@ fn project_root() -> PathBuf {
 }
 
 fn result_path() -> PathBuf {
+    // 沙箱 (bwrap --ro-bind workspace) 让 CARGO_MANIFEST_DIR 指向沙箱副本，
+    // reporter 用它解析 jsonl 路径 → 沙箱销毁后丢失。
+    // 允许通过环境变量 COLDRAWDB_JSONL_PATH 覆盖为绝对路径。
+    if let Ok(p) = std::env::var("COLDRAWDB_JSONL_PATH") {
+        return PathBuf::from(p);
+    }
     project_root().join(RELATIVE_PATH)
 }
 

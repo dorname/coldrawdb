@@ -42,6 +42,9 @@ if [[ -z "${OPENLOGOS_APPEND:-}" ]]; then
     : > "$JSONL" 2>/dev/null || true
 fi
 export OPENLOGOS_APPEND=1
+# OpenLogos 沙箱 (bwrap --ro-bind workspace) 让 reporter 用 CARGO_MANIFEST_DIR 解析的
+# 相对路径指向沙箱副本，沙箱销毁后丢失。让 reporter 走绝对路径。
+export COLDRAWDB_JSONL_PATH="$JSONL"
 
 echo "[verify-pre-run] backend cargo test ..."
 (cd "$ROOT/backend" && "$CARGO_BIN" test)
