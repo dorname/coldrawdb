@@ -1,0 +1,3 @@
+{"iter":1,"node":"verify","result":"fail","module":"core","timestamp":"2026-08-26T15:17:36Z","reason":"13 UT + 28 ST-FE spec-defined, no impl"}
+{"iter":2,"node":"verify","result":"pass","module":"core","timestamp":"2026-08-26T15:30:00Z","note":"Pass 244/266, Skip 22, Gate 3.6 PASS"}
+{"iter":1,"node":"smoke","result":"pass","module":"core","timestamp":"2026-08-26T15:40:00Z","note":"6/6 PASS, Gate 3.8 PASS"}
