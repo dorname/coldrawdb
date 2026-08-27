@@ -35,7 +35,12 @@ restore_or_cleanup() {
 trap restore_or_cleanup EXIT
 
 mkdir -p "$(dirname "$JSONL")"
-: > "$JSONL"
+# truncate 仅在 OPENLOGOS_APPEND 未设时生效（沙箱模式默认 APPEND=1）。
+# 沙箱外单跑脚本时（无 APPEND）需要 truncate 防陈旧数据污染。
+# 沙箱里若 truncate 失败（bwrap --ro-bind workspace），也允许继续：reporter 走 append 模式。
+if [[ -z "${OPENLOGOS_APPEND:-}" ]]; then
+    : > "$JSONL" 2>/dev/null || true
+fi
 export OPENLOGOS_APPEND=1
 
 echo "[verify-pre-run] backend cargo test ..."

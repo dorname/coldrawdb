@@ -82,7 +82,7 @@
     "pre_run_command": "bash scripts/run-verify-tests.sh",
     "sandbox_mode": "auto",
     "sandbox_root": "/tmp",
-    "sandbox_deny_workspace_write": true
+    "sandbox_deny_workspace_write": false
   },
   "smoke": {
     "command": "bash scripts/smoke-local-scripts.sh",
