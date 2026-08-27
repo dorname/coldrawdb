@@ -836,13 +836,19 @@ mod leptos_canvas {
             };
             let mouse_x = ev.client_x() as f64;
             let mouse_y = ev.client_y() as f64;
+            // screen_to_diagram 内部用 `mouse - rect.left` 减去 canvas 偏移，
+            // 这里反向计算 new_pan 也必须减去 rect.left，否则缩放会累积 rect.left
+            // 导致画布"漂"出 viewport。
+            let rect = canvas.get_bounding_client_rect();
             let (dx, dy) = screen_to_diagram(mouse_x, mouse_y, &canvas, &transform.get_untracked());
+            let anchor_x = mouse_x - rect.left();
+            let anchor_y = mouse_y - rect.top();
 
             let zoom_factor = if ev.delta_y() < 0.0 { 1.1 } else { 1.0 / 1.1 };
             transform.update(|t| {
                 let new_zoom = (t.zoom * zoom_factor).clamp(0.1, 5.0);
-                t.pan_x = mouse_x - dx * new_zoom;
-                t.pan_y = mouse_y - dy * new_zoom;
+                t.pan_x = anchor_x - dx * new_zoom;
+                t.pan_y = anchor_y - dy * new_zoom;
                 t.zoom = new_zoom;
             });
         };
