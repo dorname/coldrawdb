@@ -1,7 +1,6 @@
-{"id":"SMOKE-core-01","status":"pass","duration_ms":0,"timestamp":"2026-06-13T07:04:17Z","scenario":"smoke","note":"health check via local start-local.sh"}
-{"id":"SMOKE-core-02","status":"pass","duration_ms":1766,"timestamp":"2026-06-13T07:04:17Z","scenario":"smoke","note":"HP-02: create table + 1s debounce auto-save + revision=1"}
-{"id":"SMOKE-core-03","status":"pass","duration_ms":683,"timestamp":"2026-06-13T07:04:17Z","scenario":"smoke","note":"HP-03: field add + type change + share URL"}
-{"id":"SMOKE-core-04","status":"pass","duration_ms":572,"timestamp":"2026-06-13T07:04:17Z","scenario":"smoke","note":"HP-01: load blank editor; static resources + testids visible"}
-{"id":"SMOKE-core-05","status":"pass","duration_ms":87,"timestamp":"2026-06-13T07:04:17Z","scenario":"smoke","note":"HP-04: SQL import modal + parse 1 statement"}
-{"id":"SMOKE-core-06","status":"pass","duration_ms":3895,"timestamp":"2026-06-13T07:04:17Z","scenario":"smoke","note":"SMOKE-core-06: local start-local.sh + stop-local.sh round-trip validated via e2e-smoke.mjs 5/5 PASS"}
-{"id":"SMOKE-core-06","status":"pass","duration_ms":9567,"timestamp":"2026-08-24T02:23:19Z","scenario":"smoke","note":"SMOKE-core-06: local start-local.sh + stop-local.sh round-trip validated via scripts/tests/test-local-scripts.sh"}
+{"id":"SMOKE-core-01","status":"pass","duration_ms":14,"timestamp":"2026-08-27T13:46:49Z","scenario":"smoke","note":"backend health proxy (4xx on /non-existent is healthy) (http=404)"}
+{"id":"SMOKE-core-02","status":"pass","duration_ms":46,"timestamp":"2026-08-27T13:46:49Z","scenario":"smoke","note":"create/read/update/delete"}
+{"id":"SMOKE-core-03","status":"pass","duration_ms":32,"timestamp":"2026-08-27T13:46:49Z","scenario":"smoke","note":"POST /api/v1/bridge/import/local (SQL via payload) (http=200)"}
+{"id":"SMOKE-core-04","status":"pass","duration_ms":13,"timestamp":"2026-08-27T13:46:49Z","scenario":"smoke","note":"frontend index.html available (http=200)"}
+{"id":"SMOKE-core-05","status":"pass","duration_ms":13,"timestamp":"2026-08-27T13:46:49Z","scenario":"smoke","note":"GET /api/v1/bridge/config (DB-backed) (http=200)"}
+{"id":"SMOKE-core-06","status":"pass","duration_ms":2030,"timestamp":"2026-08-27T13:46:51Z","scenario":"smoke","note":"local start-local.sh + stop-local.sh round-trip"}
