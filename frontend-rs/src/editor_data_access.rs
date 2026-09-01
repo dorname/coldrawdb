@@ -172,9 +172,24 @@ pub fn auth_error_message(status: u16, body: &str) -> String {
     }
 }
 
+/// 仅按 HTTP status 推断的脱敏映射：用于 `auth_error_display` 的二次防御，
+/// 兜底掉任何绕过 `auth_error_message` 的 `AuthError::Server` 调用方。
+pub fn redact_auth_error_by_status(status: u16) -> String {
+    match status {
+        401 => "邮箱或密码错误".to_string(),
+        409 => "无法创建账户，请检查输入后重试".to_string(),
+        429 => "请求过于频繁，请稍后重试".to_string(),
+        500..=599 => "服务暂时不可用，请稍后重试".to_string(),
+        _ => "认证请求失败，请稍后重试".to_string(),
+    }
+}
+
 pub fn auth_error_display(error: &AuthError) -> String {
     match error {
-        AuthError::Server(_, message) => message.clone(),
+        // 不再透传原始 message —— 一律按 status 走脱敏映射，与
+        // auth_error_message 的语义对齐。任何绕过 auth_error_message 直接
+        // 构造 AuthError::Server 的上游调用都被此兜底。
+        AuthError::Server(status, _) => redact_auth_error_by_status(*status),
         AuthError::Network(_) => "网络连接失败，请检查网络后重试".to_string(),
         AuthError::Parse(_) => "认证响应无效，请稍后重试".to_string(),
     }
@@ -1717,6 +1732,33 @@ mod auth_error_tests {
             assert!(!message.to_ascii_lowercase().contains("token"));
             assert!(!message.contains("secret"));
         }
+    }
+
+    /// 防御性兜底：即便上游绕过 auth_error_message 直接传带邮箱/token 字面量
+    /// 的 message,auth_error_display 也必须按 status 返回脱敏串。
+    #[test]
+    fn ut_s03_err_02_auth_error_display_redacts_server_message() {
+        let leaked = AuthError::Server(
+            409,
+            "alice@example.com is registered; token=secret".to_string(),
+        );
+        let display = auth_error_display(&leaked);
+        assert_eq!(display, "无法创建账户，请检查输入后重试");
+        assert!(!display.contains("alice@example.com"));
+        assert!(!display.to_ascii_lowercase().contains("token"));
+        assert!(!display.contains("secret"));
+    }
+
+    #[test]
+    fn ut_s03_err_03_auth_error_display_redacts_5xx() {
+        let leaked = AuthError::Server(
+            503,
+            "internal error db-url=postgres://user:pwd@host".to_string(),
+        );
+        let display = auth_error_display(&leaked);
+        assert_eq!(display, "服务暂时不可用，请稍后重试");
+        assert!(!display.contains("postgres"));
+        assert!(!display.contains("pwd"));
     }
 }
 

@@ -241,6 +241,18 @@ try {
     await page.locator('[data-testid="auth-password"]').fill("Pass1234!");
     await page.locator('[data-testid="auth-confirm-password"]').fill("Pass1234!");
     await page.locator('[data-testid="register-submit"]').click();
+    // 同步等待 signal 推送 + DOM 提交完成,避免 race condition 拿到空串。
+    await page.locator('[data-testid="auth-email-error"]').evaluate(
+      (element) => new Promise((resolve, reject) => {
+        const deadline = Date.now() + 5000;
+        const tick = () => {
+          if (element.textContent && element.textContent.length > 0) resolve(null);
+          else if (Date.now() > deadline) reject(new Error("auth-email-error 等待超时(5000ms)"));
+          else requestAnimationFrame(tick);
+        };
+        tick();
+      }),
+    );
     const message = await page.locator('[data-testid="auth-email-error"]').textContent();
     assert.match(message, /无法创建账户/);
     assert.doesNotMatch(message, /reviewer@example\.com|token|secret/i);

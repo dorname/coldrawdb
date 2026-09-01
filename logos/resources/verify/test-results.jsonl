@@ -191,3 +191,14 @@
 {"duration_ms":9,"id":"ST-MCP-07","module":"core","scenario":"S06","status":"pass","timestamp":"2026-09-01T15:45:11.733740367+00:00"}
 {"duration_ms":9,"id":"ST-MCP-08","module":"core","scenario":"S06","status":"pass","timestamp":"2026-09-01T15:45:11.743661112+00:00"}
 {"duration_ms":9,"id":"ST-MCP-09","module":"core","scenario":"S06","status":"pass","timestamp":"2026-09-01T15:45:11.753509626+00:00"}
+{"id":"ST-S03-UI-01","status":"pass","duration_ms":928,"timestamp":"2026-09-01T15:48:48.397Z"}
+{"id":"ST-S02-NO-SHARE","status":"pass","duration_ms":928,"timestamp":"2026-09-01T15:48:48.398Z"}
+{"id":"ST-FE-ALIGN-01","status":"pass","duration_ms":928,"timestamp":"2026-09-01T15:48:48.398Z"}
+{"id":"ST-S03-UI-02","status":"pass","duration_ms":868,"timestamp":"2026-09-01T15:48:49.334Z"}
+{"id":"ST-S03-UI-03","status":"pass","duration_ms":936,"timestamp":"2026-09-01T15:48:50.288Z"}
+{"id":"ST-S03-UI-04","status":"pass","duration_ms":898,"timestamp":"2026-09-01T15:48:51.205Z"}
+{"id":"ST-FE-ALIGN-02","status":"pass","duration_ms":898,"timestamp":"2026-09-01T15:48:51.205Z"}
+{"id":"ST-S03-UI-05","status":"pass","duration_ms":1783,"timestamp":"2026-09-01T15:48:53.008Z"}
+{"id":"ST-S02-SHARE-RO","status":"pass","duration_ms":793,"timestamp":"2026-09-01T15:48:53.819Z"}
+{"id":"ST-S02-SHARE-VS-AUTH","status":"pass","duration_ms":1113,"timestamp":"2026-09-01T15:48:54.950Z"}
+{"id":"ST-S02-404","status":"pass","duration_ms":811,"timestamp":"2026-09-01T15:48:55.780Z"}
