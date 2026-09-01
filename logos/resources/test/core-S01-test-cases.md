@@ -296,6 +296,8 @@ pub fn make_diagram() -> DiagramCreateRequest {
 | UT-S01-08 | revision 单调递增 | `backend/src/diagrams/v1/service.rs` |
 | UT-S01-09 | 并发 PUT 冲突 | `backend/src/diagrams/v1/service.rs` |
 | UT-S01-10 | JSON 字段类型校验 | `backend/src/diagrams_v1.rs` |
+| UT-ID-GLOBAL-01 | 前端实体 id 全局唯一(1000 个 id 互不重复) | `frontend-rs/tests/entity_id_uniqueness.rs` |
+| UT-ID-GLOBAL-02 | 新格式 id 绕过 max+1 解析(兼容存量加载) | `frontend-rs/src/editor_panels.rs` |
 | ST-S01-01 | 编辑保存端到端 | `backend/src/diagrams_v1.rs::tests` |
 | ST-S01-02 | 导入端到端 | `backend/src/diagrams_v1.rs::tests` |
 | ST-S01-03 | 浏览器 wasm 渲染 | `frontend-rs/tests/wasm/` |

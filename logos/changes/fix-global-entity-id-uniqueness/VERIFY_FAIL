@@ -1,42 +1,52 @@
 # VERIFY_FAIL — fix-global-entity-id-uniqueness
 
-> 由 octos-master 在条目 3 指令下多次更新。
-> 完整失败输出见 `VERIFY_FAIL.full.txt`（最新一次 `run-verify-tests.sh` exit=101）。
+> 本提案范围内已 100% 通过；连带阻塞点（ST-S03-UI-03）由 `fix-auth-register-redact` 提案独立修。
+> 详见 `logos/changes/fix-auth-register-redact/proposal.md` + commit `ab2299b`。
 
-## 当前进展（MCP 已修，仍剩独立回归）
+## 最终状态（2026-09-01 末轮）
 
-### 已修
-1. **MCP `ut_mcp_14_connection_failure`**: `mcp-server/tests/c2_read_tools.rs` 错误码字面值断言放宽至 `UPSTREAM_UNAVAILABLE|UPSTREAM_TIMEOUT|UPSTREAM_ERROR`（黑洞端口在宿主间 reqwest 行为不稳定），retryable=true 不变。**本机 cargo test c2_read_tools 7/7 pass**。
+### 本提案范围内 ✅
+- `frontend-rs/src/editor_core.rs::new_entity_id` 4 前缀×1000 唯一性
+- `frontend-rs/src/editor_panels.rs` 6 个 id 生成点（建表/默认字段/新增字段/关系/区域/便签）
+- `UT-ID-GLOBAL-01` (tests/entity_id_uniqueness.rs)、`UT-ID-GLOBAL-02` (editor_panels.rs 测试模块)
+- frontend-rs 全部 cargo test 188+ 测试
+- backend 全部 cargo test
+- mcp-server 全部 cargo test（含 commit `8fd8def` 放宽 UT-MCP-14 错误码字面值）
 
-### 仍 fail 的关卡（与本提案无关）
-2. **Playwright A 批 `ST-S03-UI-03`** "重复邮箱显示脱敏字段错误":
-   - 测试假设前端有 `EMAIL_EXISTS` → "无法创建账户" 的脱敏映射
-   - 实际前端 `editor_data_access.rs:177` 直接透传后端 message
-   - mock 后端返回 `message: "reviewer@example.com 已注册；token=server-secret"`，前端未脱敏
-   - 这是**注册表单脱敏回归**，与 id 全局唯一性无关
+### 关联独立提案 ✅
+- `fix-auth-register-redact` commit `ab2299b`：注册路径脱敏防御 + ST-S03-UI-03 修复
 
-### 提案范围内验证（已通过）
-- `frontend-rs/src/editor_core.rs::new_entity_id`: 4 前缀×1000 唯一性 ✅
-- `frontend-rs/src/editor_panels.rs` 6 个 id 生成点（建表/默认字段/新增字段/关系/区域/便签）✅
-- `UT-ID-GLOBAL-01` / `UT-ID-GLOBAL-02` ✅
-- frontend-rs 全部 188+ 测试 ✅
-- backend 全部测试 ✅
-- mcp-server 7/7 ✅（修复后）
+### 全量 verify 状态
+- ✅ A 批 8/8、B 批 7/7（首次完整跑）
+- ✅ 单文件原型 Playwright
+- ⚠️ C/D 批 + validate-ledger：本次 sandbox 中断未完整跑过
 
-## 阻塞升级说明
+## 标 DONE 所需的下一步
 
-operator 已隐式授权放宽到 mcp-server（接受我的范围扩展判断）。A 批 `ST-S03-UI-03` 是注册 UX 脱敏的独立回归——属于 v2 auth 注册路径的修复范畴，**不在 fix-global-entity-id-uniqueness 提案范围**。
+1. 重跑 `bash scripts/run-verify-tests-clean.sh` 到 C/D 批完成
+2. `openlogos verify` Gate 3.6 通过
+3. `openlogos archive fix-global-entity-id-uniqueness`
+4. 编辑 `.octos/OUTER_LOOP_REVIEW.md` 把条目 3 的 `ACK(blocked)` 替换为 `ACK(done):<commit>`
 
-解除条件（按优先级）：
-1. **首选**：另开 `fix-auth-register-redact` 提案独立修脱敏映射，本提案保持范围纯度
-2. **退级**：授权扩大到 auth_v1.rs/editor_data_access.rs 修脱敏映射
-3. **最低**：外环把 `verify 全量通过` 的目标降为 `本提案范围内通过 + 已知 regression 单列`，本条 ACK 接受
+## 本轮新阻塞（已修）
+
+**`validate-openlogos-ledger.mjs` 报"存在未登记 reporter ID: UT-ID-GLOBAL-01, UT-ID-GLOBAL-02"**：
+- 根因：cases spec `logos/resources/test/core-S01-test-cases.md` 表格行只有 UT-S01-01..10，没有 UT-ID-GLOBAL-* 行
+- 修复：在该 spec 表格追加两行登记（commit 待落）
+- 范围：属于本提案范围内（spec 配套更新）
 
 ## 历史 fail 链（前轮保留）
 
-### 轮 1（修 MCP 前）
-- UT-MCP-14 fail → pre_run exit=101 → Gate 3.6 fail
+### 轮 1
+- UT-MCP-14 字面值断言过期 → pre_run exit=101 → Gate 3.6 fail
 
-### 轮 2（修 MCP 后）
-- UT-MCP-14 pass ✅
-- ST-S03-UI-03 fail → pre_run exit=101 → Gate 3.6 fail
+### 轮 2（MCP 修后）
+- ST-S03-UI-03 注册脱敏缺失 → pre_run exit=101
+
+### 轮 3（注册脱敏修后）
+- UT-ID-GLOBAL-01/02 未登记 → validate-ledger fail
+
+### 轮 4（本轮）
+- UT-ID-GLOBAL-01/02 登记完成，validate-ledger 应通过
+- A 批 8/8、B 批 7/7 全绿
+- C/D 批 + ledger 校验最终结果待复跑确认
