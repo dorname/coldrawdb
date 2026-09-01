@@ -1,0 +1,40 @@
+# VERIFY_FAIL — fix-global-entity-id-uniqueness
+
+> 由 octos-master 在条目 3 指令下写入（2026-09-01）。
+> 完整失败输出见 `scripts/run-verify-tests.sh` 的 exit=101 终态。
+
+## 失败的根因（已定位）
+
+`bash scripts/run-verify-tests.sh` 在 `mcp-server` 阶段单测失败：
+- 测试：`mcp-server/tests/c2_read_tools.rs:186` `ut_mcp_14_connection_failure`
+- 期望：`error.code == "UPSTREAM_UNAVAILABLE"`（对应 `mcp-server/src/error.rs:78` `transport()` else 分支）
+- 实际：`error.code == "UPSTREAM_ERROR"`（对应 `mcp-server/src/error.rs:42-43` `upstream()` 5xx 分支）
+- 行为：`ApiClient` 故意连 `127.0.0.1:9`（黑洞端口），期望走 `transport()` 路径，但实际走到了 `upstream()` 路径。
+
+## 与 fix-global-entity-id-uniqueness 的关系
+
+**无关**。`fix-global-entity-id-uniqueness` 的代码改动（`editor_core.rs::new_entity_id`、`editor_panels.rs` 6 个 id 生成点、UT-ID-GLOBAL-01/02 回归用例）在 frontend-rs 测试中全部通过：
+
+```
+test ut_id_global_01_entity_id_uniqueness ... ok
+test ut_id_global_02_new_format_ids_bypass_next_id_parsing ... ok
+```
+（以及 188 个 frontend-rs 测试 + 全部 backend 测试 0 failed）
+
+`openlogos verify` 的 pre-run 阶段一票否决：MCP 单测挂一个 → 整个 pre-run exit=101 → Gate 3.6 覆盖检查 fail。
+
+## 阻塞原因
+
+黑板条目 3 第 3 步明令 **"修复范围严格限于 `fix-global-entity-id-uniqueness` 提案范围（前端实体 id 全局唯一化）"**。
+但本轮 verify 失败的根因是 `mcp-server` crate 的 `ut_mcp_14_connection_failure` 测试断言过期（断言期望 `UPSTREAM_UNAVAILABLE`，本机 reqwest 走5xx 响应路径拿到 `UPSTREAM_ERROR`）。这超出提案范围。
+
+解除条件：operator 授权放宽范围到 mcp-server，或外环同意把本条标 `wontdo` / `blocked`，或单独开变更修 MCP 错误码字面值（疑似测试断言与 `transport()` 语义不一致的真实 bug，独立 PR 处理）。
+
+## 失败前因保留（openlogos verify 末尾 + run-verify-tests.sh 末尾）
+
+```
+[verify-pre-run] 失败，已恢复运行前测试账本。
+exit=101, duration=58805ms
+❌ Gate 3.6：FAIL（覆盖不完整）
+📄 报告：logos/resources/verify/acceptance-report.md
+```
