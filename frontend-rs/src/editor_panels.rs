@@ -7325,6 +7325,7 @@ pub fn AppRoot(
                 error=error.clone()
                 on_new=on_new_diagram
                 on_rename=on_rename_diagram
+                store=store.clone()
             />
             <modals::KeyboardShortcuts
                 enabled=!share_mode
@@ -7579,6 +7580,8 @@ pub mod modals {
     /// - UT-MM-04: 背景点击关闭 (B4 实现)
     /// - UT-MM-05: ESC 键关闭 (B5 wasm-pack test 接入)
     /// - 模态体点击不冒泡到遮罩
+    /// - feat-table-resize 批次3: 加 store prop 让 SetTableWidth/SetTableSize
+    ///   模态 Apply 可真实写入 table.width/min_height
     #[component]
     pub fn ModalRoot(
         kind: RwSignal<Option<ModalKind>>,
@@ -7588,6 +7591,7 @@ pub mod modals {
         error: RwSignal<Option<String>>,
         on_new: Rc<dyn Fn(String)>,
         on_rename: Rc<dyn Fn(String)>,
+        store: EditorStore,
     ) -> impl IntoView {
         let on_action_new = on_new.clone();
         let on_action_rename = on_rename.clone();
@@ -7647,12 +7651,12 @@ pub mod modals {
                     }.into_view(),
                     Some(ModalKind::SetTableWidth) => view! {
                         <div class="cdb-modal" data-testid="modal-set-width" on:click=|ev| ev.stop_propagation()>
-                            <SetTableWidthModal kind=kind />
+                            <SetTableWidthModal kind=kind store=store.clone() />
                         </div>
                     }.into_view(),
                     Some(ModalKind::SetTableSize) => view! {
                         <div class="cdb-modal" data-testid="modal-set-size" on:click=|ev| ev.stop_propagation()>
-                            <SetTableSizeModal kind=kind />
+                            <SetTableSizeModal kind=kind store=store.clone() />
                         </div>
                     }.into_view(),
                     Some(ModalKind::ConfigureCustomTypes) => view! {
@@ -8161,16 +8165,16 @@ pub mod modals {
 
     /// SetTableWidth 模态: 批量设置表宽
     /// - UT-MM-11: parse_table_width 纯函数测试
-    /// - feat-table-resize: Apply on:click 闭环 (TODO: 实际 store 写入需
-    ///   ModalRoot 加 store prop,本批范围仅保证 handler 存在 + 关闭模态)
+    /// - feat-table-resize 批次3: Apply on:click 真实写入 store.tables[*].width
     #[component]
-    pub fn SetTableWidthModal(kind: RwSignal<Option<ModalKind>>) -> impl IntoView {
+    pub fn SetTableWidthModal(kind: RwSignal<Option<ModalKind>>, store: EditorStore) -> impl IntoView {
         let width_input = create_rw_signal(String::from("200"));
         let validation = move || parse_table_width(&width_input.get());
         let is_valid = move || validation().is_ok();
         let kind_close = kind;
         let kind_close_apply = kind;
         let apply_value = width_input;
+        let store_apply = store;
 
         view! {
             <div class="cdb-modal-header">
@@ -8209,11 +8213,16 @@ pub mod modals {
                     data-testid="modal-submit-set-width"
                     disabled=move || !is_valid()
                     on:click=move |_| {
-                        // feat-table-resize (批次2 步骤3): Apply handler 闭环 —
-                        // 解析 input,通过 parse_table_width 校验,关闭模态。
-                        // 实际 store 写入需 ModalRoot 加 store prop(本批范围外),
-                        // 留作后续批次 TODO;但 Apply on:click 存在即非空壳。
-                        let _ = parse_table_width(&apply_value.get());
+                        // feat-table-resize 批次3: 真实写入 store.tables[*].width。
+                        // 批量模式作用于所有 table;target_ids 留待 UI 入口具体化。
+                        if let Ok(w) = parse_table_width(&apply_value.get()) {
+                            store_apply.tables.update(|tables| {
+                                for t in tables.iter_mut() {
+                                    t.width = Some(w);
+                                }
+                            });
+                            store_apply.dirty.set(true);
+                        }
                         kind_close_apply.set(None);
                     }
                 >"Apply"</button>
@@ -8224,8 +8233,9 @@ pub mod modals {
     /// SetTableSize 模态: 单模态扩展（feat-table-resize 批次2 步骤4）
     /// 含 width + min_height 两个字段；复用 parse_table_width / parse_table_height 纯函数
     /// 对称 UT-MM-11 / UT-MM-17 语义（"0 = auto"）。
+    /// - feat-table-resize 批次3: Apply on:click 真实写入 store.tables[*].width/min_height
     #[component]
-    pub fn SetTableSizeModal(kind: RwSignal<Option<ModalKind>>) -> impl IntoView {
+    pub fn SetTableSizeModal(kind: RwSignal<Option<ModalKind>>, store: EditorStore) -> impl IntoView {
         let width_input = create_rw_signal(String::from("200"));
         let height_input = create_rw_signal(String::from("0"));
         let width_validation = move || parse_table_width(&width_input.get());
@@ -8235,6 +8245,7 @@ pub mod modals {
         let kind_close_apply = kind;
         let apply_width = width_input;
         let apply_height = height_input;
+        let store_apply = store;
 
         view! {
             <div class="cdb-modal-header">
@@ -8288,10 +8299,18 @@ pub mod modals {
                     data-testid="modal-submit-set-size"
                     disabled=move || !is_valid()
                     on:click=move |_| {
-                        // 与 SetTableWidthModal 一致：handler 存在 + 解析 + 关闭模态。
-                        // store 写入留给后续批次(需 ModalRoot 加 store prop)。
-                        let _ = parse_table_width(&apply_width.get());
-                        let _ = parse_table_height(&apply_height.get());
+                        // feat-table-resize 批次3: 真实写入 width + min_height
+                        let w = parse_table_width(&apply_width.get()).ok();
+                        let h = parse_table_height(&apply_height.get()).ok();
+                        if let (Some(w), Some(h)) = (w, h) {
+                            store_apply.tables.update(|tables| {
+                                for t in tables.iter_mut() {
+                                    t.width = Some(w);
+                                    t.min_height = Some(h);
+                                }
+                            });
+                            store_apply.dirty.set(true);
+                        }
                         kind_close_apply.set(None);
                     }
                 >"Apply"</button>
