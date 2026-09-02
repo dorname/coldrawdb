@@ -7406,6 +7406,7 @@ pub mod modals {
         ImportSource,
         Language,
         SetTableWidth,
+        SetTableSize, // feat-table-resize: 单模态扩展（width + min_height）
         ConfigureCustomTypes,
         BridgeSettings,
     }
@@ -7647,6 +7648,11 @@ pub mod modals {
                     Some(ModalKind::SetTableWidth) => view! {
                         <div class="cdb-modal" data-testid="modal-set-width" on:click=|ev| ev.stop_propagation()>
                             <SetTableWidthModal kind=kind />
+                        </div>
+                    }.into_view(),
+                    Some(ModalKind::SetTableSize) => view! {
+                        <div class="cdb-modal" data-testid="modal-set-size" on:click=|ev| ev.stop_propagation()>
+                            <SetTableSizeModal kind=kind />
                         </div>
                     }.into_view(),
                     Some(ModalKind::ConfigureCustomTypes) => view! {
@@ -8208,6 +8214,84 @@ pub mod modals {
                         // 实际 store 写入需 ModalRoot 加 store prop(本批范围外),
                         // 留作后续批次 TODO;但 Apply on:click 存在即非空壳。
                         let _ = parse_table_width(&apply_value.get());
+                        kind_close_apply.set(None);
+                    }
+                >"Apply"</button>
+            </div>
+        }
+    }
+
+    /// SetTableSize 模态: 单模态扩展（feat-table-resize 批次2 步骤4）
+    /// 含 width + min_height 两个字段；复用 parse_table_width / parse_table_height 纯函数
+    /// 对称 UT-MM-11 / UT-MM-17 语义（"0 = auto"）。
+    #[component]
+    pub fn SetTableSizeModal(kind: RwSignal<Option<ModalKind>>) -> impl IntoView {
+        let width_input = create_rw_signal(String::from("200"));
+        let height_input = create_rw_signal(String::from("0"));
+        let width_validation = move || parse_table_width(&width_input.get());
+        let height_validation = move || parse_table_height(&height_input.get());
+        let is_valid = move || width_validation().is_ok() && height_validation().is_ok();
+        let kind_close = kind;
+        let kind_close_apply = kind;
+        let apply_width = width_input;
+        let apply_height = height_input;
+
+        view! {
+            <div class="cdb-modal-header">
+                <h3 class="cdb-modal-title" data-testid="modal-title-set-size">"Set Table Size"</h3>
+                <button
+                    class="cdb-modal-close"
+                    data-testid="modal-cancel-set-size"
+                    on:click=move |_| kind_close.set(None)
+                > <IconBox size="sm"><IconClose /></IconBox> </button>
+            </div>
+            <div class="cdb-modal-body">
+                <label class="cdb-form-label">"Width (0 = auto)"</label>
+                <input
+                    class="cdb-form-input"
+                    class:cdb-is-invalid=move || width_validation().is_err()
+                    data-testid="modal-input-size-width"
+                    prop:value=move || width_input.get()
+                    on:input=move |ev| {
+                        use wasm_bindgen::JsCast;
+                        let v = ev.target().unwrap().unchecked_into::<web_sys::HtmlInputElement>().value();
+                        width_input.set(v);
+                    }
+                />
+                {move || width_validation().err().map(|e| view! {
+                    <span class="cdb-form-error">{e}</span>
+                })}
+                <label class="cdb-form-label">"Min Height (0 = auto)"</label>
+                <input
+                    class="cdb-form-input"
+                    class:cdb-is-invalid=move || height_validation().is_err()
+                    data-testid="modal-input-size-min-height"
+                    prop:value=move || height_input.get()
+                    on:input=move |ev| {
+                        use wasm_bindgen::JsCast;
+                        let v = ev.target().unwrap().unchecked_into::<web_sys::HtmlInputElement>().value();
+                        height_input.set(v);
+                    }
+                />
+                {move || height_validation().err().map(|e| view! {
+                    <span class="cdb-form-error">{e}</span>
+                })}
+            </div>
+            <div class="cdb-modal-footer">
+                <button
+                    class="cdb-btn"
+                    data-testid="modal-cancel-set-size-btn"
+                    on:click=move |_| kind_close.set(None)
+                >"Cancel"</button>
+                <button
+                    class="cdb-btn cdb-btn--primary"
+                    data-testid="modal-submit-set-size"
+                    disabled=move || !is_valid()
+                    on:click=move |_| {
+                        // 与 SetTableWidthModal 一致：handler 存在 + 解析 + 关闭模态。
+                        // store 写入留给后续批次(需 ModalRoot 加 store prop)。
+                        let _ = parse_table_width(&apply_width.get());
+                        let _ = parse_table_height(&apply_height.get());
                         kind_close_apply.set(None);
                     }
                 >"Apply"</button>
