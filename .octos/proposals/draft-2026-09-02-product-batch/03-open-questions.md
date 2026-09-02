@@ -1,131 +1,145 @@
-# 产品优化批次 · 开放问题清单（条目6 切片 3/3）
+# 产品优化批次 · 开放问题清单（条目6 切片 3/3，已回写 operator 裁决）
 
 > 草稿，**未创建** `logos/changes/` 目录，未运行 `openlogos change`。
-> 等待 operator 裁决后，外环下一条 steer 可派发"首个提案的 proposal.md + tasks.md 草案"。
+> 裁决来源：黑板 `.octos/OUTER_LOOP_REVIEW.md` 条目6 尾部 operator 批注（2026-09-02）。
 
-## Q1 · 需求 1 列表视图的功能边界
+## Q1 · 需求 1 列表视图的功能边界 — ✅ **operator 已裁决**
 
-**问题**：参考 pdmaner 的列表视图具体包括哪些能力？
+**裁决结论**：**全部 9 项候选**都做（全量列表视图能力）。
 
-**候选能力**（请 operator 圈定）：
-- [ ] 表名/字段名/类型 表格化展示
-- [ ] 排序（按任意列）
-- [ ] 过滤（按名称模糊匹配 / 按类型 / 按是否有索引）
-- [ ] 批量重命名（多表或多字段一次性改名）
-- [ ] 批量改类型（多字段一次性改类型）
-- [ ] 双击跳到画布对应表
-- [ ] 导出 CSV / Excel
-- [ ] 列宽可调
-- [ ] 表/字段分组（按 schema / 按 tag）
+**采纳的子项**（operator 圈定 ALL）：
+- [x] 表名/字段名/类型 表格化展示
+- [x] 排序（按任意列）
+- [x] 过滤（按名称模糊匹配 / 按类型 / 按是否有索引）
+- [x] 批量重命名（多表或多字段一次性改名）
+- [x] 批量改类型（多字段一次性改类型）
+- [x] 双击跳到画布对应表
+- [x] 导出 CSV / Excel
+- [x] 列宽可调
+- [x] 表/字段分组（按 schema / 按 tag）
 
-**影响**：圈定的子项决定 `ux-canvas-batch` 提案的工作量（3 天 vs 8 天差距）。
+**对 `ux-canvas-batch` 提案的影响**：工作量按 **8 天档位** 估（从原 5-8 天上调）。
 
-## Q2 · 需求 2 关系推导的覆盖规则
+---
 
-**问题**：连接多个字段，"自然推导"的具体规则是？
+## Q2 · 关系推导的覆盖规则 — ✅ **operator 已裁决**
 
-**候选规则**：
-- 端 A 字段数 + 端 B 字段数 → cardinality 映射：
-  - 1 + 1 → one_to_one
-  - 1 + N → one_to_many（或 many_to_one，取决于从哪端看）
-  - N + N → many_to_many
-- 字段顺序：连接时按用户点击顺序还是表 schema 顺序？
-- 是否允许用户**手动覆盖**推导结果？
-- DB schema：`reference` 表是 `end_field_id` 单字段（现状）还是数组？
+**裁决结论**：
+- **推导规则**：1+1→1:1、1+N→1:N、N+N→N:N（与内环建议一致）
+- **字段顺序**：**按用户点击顺序**（operator 明确）
+- **是否允许手动覆盖**：**允许**（operator 明确"允许手动覆盖"）
 
-**影响**：决定 relation 创建流 UX 改动幅度 + 数据 schema 是否需变。
+**对 `feat-relation-inference` 提案的影响**：
+- Inspector reference 面板需保留 cardinality 编辑器（用户可改）
+- 字段在 relation 创建时记录顺序（`reference.field_order: Vec<String>` 或追加元数据）
+- 老数据 backward-compat：现有 `reference.cardinality` 字段保留，新规则只影响新建
 
-## Q3 · 需求 3 PG/MySQL 支持的"程度"
+---
 
-**问题**：operator 说的"开始支持 PG/MySQL"是指？
+## Q3 · PG/MySQL 支持的"程度" — ✅ **operator 已裁决**
 
-**候选程度**（请 operator 圈定）：
-- **程度 A（最小）**：导出 SQL 时支持 PG/MySQL 方言（当前导出 SQL 是 dialect-agnostic，可声明 target dialect 输出引号/类型映射）—— 工作量 1-2 天
-- **程度 B（中）**：A + datasource 连接配置（用户保存 PG/MySQL 连接串，前端展示但不执行）—— 工作量 3-5 天
-- **程度 C（完整）**：B + 在线 introspect（连接到真实 PG/MySQL 实例，读 schema 回来生成 diagram）—— 工作量 5-10 天
-- **程度 D（+MCP）**：C + MCP `mcp__datasource__*` 工具族（让 AI 客户端能 introspect/执行 DDL）—— 工作量 +2-3 天
+**裁决结论**：**程度 D**（最完整）
 
-**强烈推荐程度 C 或 D**：因为仅程度 A 等于把活推给用户手动复制粘贴 SQL，价值有限；程度 C/D 才是真正"开始支持"。
+**采纳的子能力**：
+- ✅ A：导出 SQL 时支持 PG/MySQL 方言
+- ✅ B：datasource 连接配置（保存 PG/MySQL 连接串）
+- ✅ C：在线 introspect（连接到真实实例，读 schema 回来生成 diagram）
+- ✅ D + MCP：`mcp__datasource__*` 工具族（让 AI 客户端能 introspect/执行 DDL）
 
-## Q4 · 需求 4 表宽高的"高度"语义
+**对 `feat-multiple-datasources` 提案的影响**：
+- 工作量上调至 **1.5-2 sprint**（D 比 C 多 +2-3 天 MCP）
+- 必须包含：datasource CRUD + 加密 secret + 连接池 + introspect + MCP 工具族 + docker-compose 测试设施
 
-**问题**：表的高度调整是？
+---
 
-**候选语义**：
-- **绝对高度**：用户输入数值（如 `height: 200`），表按该高度渲染，超出部分滚动
-- **最小高度**：用户设最小值，字段多时自动撑高（**推荐**）
-- **自动高度**：完全由字段数决定，不允许手动调（与当前一致，不算新功能）
+## Q4 · 表宽高的"高度"语义 — ✅ **operator 已裁决**
 
-**推荐最小高度**：用户控制"默认紧凑/宽松"，但具体像素高度由字段数 + 行高算出。
+**裁决结论**：**最小高度语义**（与内环推荐一致）
 
-## Q5 · 需求 5 样式优化的具体维度
+- 用户控制"最小高度"（数值输入）
+- 字段多时按字段数 + 行高**自动撑高**
+- 渲染时实际高度 = max(最小高度, 字段数 × 行高)
 
-**问题**：operator 说的"字体清晰度、交互流畅性"具体期望？
+**对 `feat-table-resize` 提案的影响**：
+- Inspector 暴露"min height"字段（输入框，仿 `parse_table_width`）
+- Canvas 渲染：实际高度 = max(min_height, fields × row_height)
+- 新增 `parse_table_height` 纯函数 + UT-MM-12 测试
 
-**候选维度**：
-- **字体**：
-  - 全局回退栈：`system-ui, -apple-system, "Segoe UI", ...`
-  - 子像素抗锯齿：`-webkit-font-smoothing: antialiased`
-  - Canvas 文本走离屏 cache
-  - 中文字体支持（思源黑体 / 苹方）
-- **流畅性**：
-  - 关键交互帧率 < 16ms（拖拽/连线/Inspector 切换）
-  - reduced-motion 媒体查询支持（已有 UT-MM 覆盖）
-  - requestAnimationFrame 统一调度
-  - 大图（>200 表）虚拟化
+---
 
-**请 operator 圈定子集**。
+## Q5 · 样式优化的具体维度 — ✅ **外环代决**
 
-## Q6 · 需求 6"用户方便性"的具象化
+**裁决结论**（外环代决，明确子集）：
+- ✅ 字体回退栈（`system-ui, -apple-system, "Segoe UI", ...`）
+- ✅ 子像素抗锯齿（`-webkit-font-smoothing: antialiased`）
+- ✅ 中文字体支持（思源黑体 / 苹方）
+- ✅ Canvas 文本离屏缓存
+- ✅ 关键交互 < 16ms/帧（拖拽/连线/Inspector 切换）
+- ✅ requestAnimationFrame 统一调度
+- ❌ 大图（>200 表）虚拟化 — **暂缓**（性能专项另立提案）
 
-**问题**：operator 没说具体子项，请圈定：
+**对 `ux-canvas-batch` 提案的影响**：性能子项排除后，工作量从 5-8 天下调到 **4-6 天**（视觉为主，性能子项保留最小 rAF + 16ms 目标）。
 
-**候选子项**（按工作量排序）：
-| 子项 | 工作量 | UX 影响 |
-|---|---|---|
-| 快捷键可发现性（⌘K + ? 帮助） | 小 | 高 |
-| 错误码 → 中文文案映射 | 小 | 中 |
-| 撤销栈 History 面板 | 中 | 高 |
-| 表/字段批量重命名 | 中 | 中 |
-| 自动保存可关闭 | 小 | 中 |
-| 移动端 480px 降级 | 中 | 中 |
-| 首次进入引导 + 模板库 | 中 | 高 |
-| 字段拖拽排序 | 小 | 中 |
+---
 
-**请 operator 圈定 2-4 个优先做**。
+## Q6 · 方便性子项圈定 — ✅ **外环代决**
 
-## Q7 · 串行 5 案的总工作量是否接受
+**裁决结论**（外环代决，圈定 4 项）：
+- ✅ 快捷键可发现性（`?` 弹帮助，与现有 ST-KB-CMD-01 ⌘K 命令面板配套）
+- ✅ 错误码 → 中文文案映射
+- ✅ 撤销栈 History 面板
+- ✅ 字段拖拽排序
 
-**问题**：5 案串行总工作量约 15-20 工作日（1.5-2 sprint）。operator 是否接受？
+**未采纳**（operator 已说明理由）：
+- 批量重命名：Q1 全选覆盖，归 C 案不重复
+- 自动保存可关闭、移动端 480px、首次引导+模板库：暂缓（待后续批次）
 
-**备选**：
-- **接受**：5 案按推荐顺序串行（推荐）
-- **拒绝**：合并某些案（如 D 合并到 C）减到 3-4 案
-- **加速**：增加并发人手（需 operator 决定）
+**对 `ux-ergonomics-subset` 提案的影响**：工作量约 **3-4 天**（4 子项各 0.5-1 天）。
 
-## Q8 · guard 切换的 metadata 规范
+---
 
-**问题**：openlogos 流程中，guard 从提案 A 切到 B 的 metadata 记录约定？
+## Q7 · 串行 5 案总工作量是否接受 — ✅ **operator 已裁决**
 
-**当前观察**：`logos/.openlogos-guard` 是单 JSON，切换时直接覆盖。需要 operator 确认：
-- 是否要在 commit message 里引用旧 guard 名？
-- 是否要在黑板记录 guard 切换事件？
+**裁决结论**：**接受 5 案串行 15-20 工作日**（含 operator 调档后的工作量）
 
-## Q9 · 首案提案草案的"模板"
+---
 
-**问题**：外环下一条 steer 派发"首案 proposal.md + tasks.md 草案"，operator 期望的详细程度？
+## Q8 · guard 切换 metadata 规范 — ✅ **外环已裁决**
 
-**候选模板**：
-- **精简**：Why/What/范围/影响分析（4 段） + tasks checklist（5-8 项）
-- **标准**：精简 + 数据契约变更 + 验收门槛 + 风险点（详尽）
-- **完整**：标准 + 替代方案否决理由 + 部署影响 + UI 声明 + 关联场景编号
+**裁决结论**：**无需新增规范**。guard 切换由 `openlogos archive` + `openlogos change` 两个 CLI 动作天然留痕（commit + 黑板批注），维持现状。
 
-**推荐完整模板**（与既有 proposal.md 风格一致，如 fix-auth-register-redact）。
+---
 
-## Q10 · 时间线预期
+## Q9 · 首案 proposal.md 模板 — ✅ **外环已裁决**
 
-**问题**：operator 对 5 案的时间线预期？
+**裁决结论**：采用**完整模板**（与 `fix-auth-register-redact/proposal.md` 风格一致）：
+- Why / What / 范围 / 数据契约变更 / 验收门槛 / 风险 / 替代方案否决理由 / 部署影响 / UI 声明 / 关联场景
 
-**默认假设**：1.5-2 sprint 完成 A→D→C→B，E 待子项圈定。
+**本切片已应用**：见 `04-feat-table-resize-proposal.md` 与 `05-feat-table-resize-tasks.md`。
 
-**是否接受**：请 operator 明确（用于决定是否拆分批次到多个 sprint）。
+---
+
+## Q10 · 时间线预期 — ✅ **operator 已裁决**
+
+**裁决结论**：**接受 5 案串行 15-20 工作日**（与 Q7 一致）。
+
+**更新后的工作量矩阵**（应用 Q1/Q3/Q5/Q6 裁决）：
+
+| 序 | 提案 | 工作量（裁决后） | 原估 |
+|---|---|---|---|
+| A | `feat-table-resize` | 0.5-1 天 | 0.5-1 天 |
+| D | `feat-relation-inference` | 1-3 天 | 1-3 天 |
+| C | `ux-canvas-batch` | 7-10 天 | 5-8 天（Q1 上调）+（Q5 下调）= 净上调 |
+| B | `feat-multiple-datasources` | 1.5-2 sprint | ≥ 1 sprint（Q3 上调）|
+| E | `ux-ergonomics-subset` | 3-4 天 | 待定（Q6 圈 4 子项）|
+| **总计** | — | **约 20-25 工作日** | 15-20 工作日 |
+
+**说明**：总盘上调 5 天，主要因 Q1 列表视图全量能力 + Q3 PG/MySQL 升至 D 档。operator 接受。
+
+---
+
+## 待执行（切片 2 任务）
+
+- ✅ Q1-Q10 已逐题标注裁决
+- ⏳ 起草首案 A `feat-table-resize` proposal.md + tasks.md（Q4 最小高度语义）
+- ⏳ 修正切片 1 三处文档问题（§5 active guard + 切分原则4 + 工作量统一）

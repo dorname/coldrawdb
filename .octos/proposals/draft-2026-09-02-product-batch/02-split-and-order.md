@@ -8,7 +8,7 @@
 1. **guard 是全局单活跃**（来自 openlogos 工具设计）—— 6 项任何时刻只能 1 个提案 in-flight
 2. **影响面相近的合并**：纯前端呈现层（1/4/5）的代码同区域（`editor_panels.rs` + `styles.css` + `editor_core.rs`），可合并以减少 guard 切换
 3. **跨后端/DB/MCP 的独立**：3 影响 schema+后端+前端+MCP，必须独立成案
-4. **依赖序**：后端基础（3）→ 前端 UX 层（1/4/5）→ 关系推导（2）→ 方便性（6 拆子项）
+4. **按风险与耦合度排序**：从低风险低耦合（小切片、可独立验证）开始，向高风险高耦合（跨模块、需要 schema migration）推进；不按"前后端依赖"硬排序，因为前端 store/canvas 抽象已稳
 5. **可独立交付的最小切片优先**：4（表宽高）最小、可独立、可作"热身"提案先做
 
 ## 2. 推荐切分（5 个提案 + 1 个待拆分）
@@ -96,8 +96,9 @@ Step 5: E (ux-ergonomics-subset)     ← 待 operator 圈定子项
 
 ## 5. 与既有 active guard 的关系
 
-- 当前 active guard：`fix-auth-register-redact`（已在 9b89af4 验证 PASS，待 archive）
-- operator 排序：5 个提案应**串行**——前一个 archive 后再开下一个
+- 当前**无活跃 guard**（`fix-auth-register-redact` 已于 `cc9919c` 归档，`fix-global-entity-id-uniqueness` 已于 `01e406f` 归档）
+- 5 个提案可从任意一案直接启动，无前置等待
+- operator 排序：5 个提案应**串行**——前一个 archive 后再开下一个（避免 guard 冲突）
 - 不允许 6 项并行提案（openlogos 工具设计）
 
 ## 6. 同步约束
