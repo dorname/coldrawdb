@@ -1358,6 +1358,8 @@ impl From<TableOut> for Table {
             comment: t.comment,
             fields: t.fields.into_iter().map(Into::into).collect(),
             indices: t.indices.into_iter().map(Into::into).collect(),
+            width: None,
+            min_height: None,
         }
     }
 }

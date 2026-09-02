@@ -242,6 +242,8 @@ mod tests {
                 comment: String::new(),
             }],
             indices: vec![],
+            width: None,
+            min_height: None,
         }];
         let items = build_palette_items(&tables, &[]);
         assert_eq!(items.len(), 1);

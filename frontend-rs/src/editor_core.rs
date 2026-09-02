@@ -49,6 +49,15 @@ pub mod types {
         pub comment: String,
         pub fields: Vec<Field>,
         pub indices: Vec<Index>,
+        // feat-table-resize: 表宽度。`None` 表示用渲染层硬编码默认 (`TABLE_WIDTH = 230.0`)。
+        // serde 默认 `None` —— 老 JSON 无此字段时反序列化为 None，向后兼容。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub width: Option<u32>,
+        // feat-table-resize: 表最小高度（最小高度语义，operator Q4 裁决）。
+        // 渲染 `render_height = max(min_height, TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT × field_count)`。
+        // `None` 表示不强制最小高度，按字段数自动撑高（与改造前视觉一致）。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub min_height: Option<u32>,
     }
 
     #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -715,6 +724,8 @@ mod tests {
                 comment: String::new(),
                 fields: Vec::new(),
                 indices: Vec::new(),
+                width: None,
+                min_height: None,
             };
             let cmd = Command::AddTable(t);
             CommandStack::apply(&store, &mut stack, cmd)
@@ -739,6 +750,8 @@ mod tests {
             name: "T".into(),
             x: 0.0, y: 0.0, color: "#000".into(),
             comment: String::new(), fields: Vec::new(), indices: Vec::new(),
+            width: None,
+            min_height: None,
         };
         CommandStack::apply(&store, &mut stack, Command::AddTable(t.clone())).unwrap();
         let result = CommandStack::apply(&store, &mut stack, Command::AddTable(t));
@@ -761,6 +774,8 @@ mod tests {
                 comment: String::new(),
             }],
             indices: Vec::new(),
+            width: None,
+            min_height: None,
         };
         CommandStack::apply(&store, &mut stack, Command::AddTable(t)).unwrap();
         // 正常删除
@@ -923,6 +938,8 @@ mod tests {
             comment: "".into(),
             fields: Vec::new(),
             indices: Vec::new(),
+            width: None,
+            min_height: None,
         });
         // 手动 push（避免 store 依赖）
         stack.undo.push(cmd.clone());

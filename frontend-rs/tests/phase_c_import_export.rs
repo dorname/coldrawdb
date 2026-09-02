@@ -41,6 +41,8 @@ fn fixture_minimal_table() -> Table {
             comment: String::new(),
         }],
         indices: vec![],
+        width: None,
+        min_height: None,
     }
 }
 

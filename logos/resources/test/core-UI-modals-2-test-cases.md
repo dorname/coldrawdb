@@ -121,5 +121,6 @@
 | UT-MM-12 | Language 模态验证 | `editor_panels.rs::modals::validate_language` |
 | UT-MM-13 | ConfigureCustomTypes 增删 | `editor_panels.rs::modals::{add_custom_type,remove_custom_type}` |
 | UT-MM-14 | ImportSource 模态选择解析 | `editor_panels.rs::modals::resolve_import_source` |
+| UT-MM-17 | SetTableMinHeight 模态最小高度解析（feat-table-resize，对称 width "0=auto"）| `editor_panels.rs::modals::parse_table_height` |
 | ST-MM-02 | 端到端 Import 模态 SQL 解析 | `frontend-rs/tests/wasm/ui.rs`（B5） |
 | ST-MM-03 | ConfigureCustomTypes 关闭后跨刷新保留 | `frontend-rs/tests/wasm/ui.rs`（B5） |

@@ -587,6 +587,8 @@ pub fn parse_sql_import_tables(content: &str) -> Result<Vec<Table>, String> {
                 comment: String::new(),
             }],
             indices: vec![],
+            width: None,
+            min_height: None,
         });
     }
     Ok(tables)
@@ -677,6 +679,8 @@ pub fn parse_dbml_import_tables(content: &str) -> Result<Vec<Table>, String> {
             comment: String::new(),
             fields,
             indices: vec![],
+            width: None,
+            min_height: None,
         });
         table_index += 1;
         line_idx += 1;
@@ -6214,6 +6218,8 @@ pub fn AppRoot(
                 comment: String::new(),
                 fields: default_fields,
                 indices: Vec::new(),
+                width: None,
+                min_height: None,
             };
             let mut tables = store.tables.get();
             tables.push(new_table.clone());
@@ -7480,6 +7486,21 @@ pub mod modals {
             .map_err(|e| format!("宽度必须是非负整数: {}", e))
     }
 
+    /// 解析表最小高度输入（feat-table-resize；UT-MM-17）
+    /// 严格对称 `parse_table_width` 的语义：
+    /// - UT-MM-17: "200" / "100" → Ok(u32)
+    /// - UT-MM-17: "0" → Ok(0)（"0 = auto"，与 width 一致）
+    /// - UT-MM-17: "abc" / "" / "-5" → Err
+    pub fn parse_table_height(input: &str) -> Result<u32, String> {
+        let trimmed = input.trim();
+        if trimmed.is_empty() {
+            return Err("高度不能为空".to_string());
+        }
+        trimmed
+            .parse::<u32>()
+            .map_err(|e| format!("高度必须是非负整数: {}", e))
+    }
+
     /// 校验语言代码
     /// - UT-MM-12: "en" / "zh" → Ok(()); 其他 → Err
     pub fn validate_language(lang: &str) -> Result<(), String> {
@@ -8345,6 +8366,8 @@ mod tests {
             comment: String::new(),
             fields: Vec::new(),
             indices: Vec::new(),
+            width: None,
+            min_height: None,
         }
     }
 
@@ -8796,6 +8819,49 @@ mod tests {
             "UT-MM-11: 'abc' → Err"
         );
         assert!(modals::parse_table_width("").is_err(), "UT-MM-11: '' → Err");
+    }
+
+    // ─── UT-MM-17: parse_table_height (feat-table-resize) ────────────────
+    // 严格对称 parse_table_width 的 "0 = auto" 语义；operator Q4 裁决最小高度语义。
+
+    #[test]
+    fn test_parse_table_height_happy_ut_mm_17() {
+        assert_eq!(
+            modals::parse_table_height("200").unwrap(),
+            200,
+            "UT-MM-17: '200' → 200"
+        );
+        assert_eq!(
+            modals::parse_table_height("100").unwrap(),
+            100,
+            "UT-MM-17: '100' → 100"
+        );
+    }
+
+    #[test]
+    fn test_parse_table_height_zero_is_auto_ut_mm_17() {
+        // "0" 必须 Ok(0)（"0 = auto"，对称 parse_table_width 的 UT-MM-11 语义）
+        assert_eq!(
+            modals::parse_table_height("0").unwrap(),
+            0,
+            "UT-MM-17: '0' → 0 (auto)"
+        );
+    }
+
+    #[test]
+    fn test_parse_table_height_invalid_ut_mm_17() {
+        assert!(
+            modals::parse_table_height("abc").is_err(),
+            "UT-MM-17: 'abc' → Err"
+        );
+        assert!(
+            modals::parse_table_height("").is_err(),
+            "UT-MM-17: '' → Err"
+        );
+        assert!(
+            modals::parse_table_height("-5").is_err(),
+            "UT-MM-17: '-5' → Err (负数被拒绝)"
+        );
     }
 
     #[test]
@@ -9458,6 +9524,8 @@ mod tests {
                 comment: String::new(),
             }],
             indices: Vec::new(),
+            width: None,
+            min_height: None,
         }];
         let out = export_diagram_sql(&tables, &[], "generic");
         assert!(

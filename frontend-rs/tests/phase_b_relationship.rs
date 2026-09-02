@@ -55,6 +55,8 @@ fn fixture_table_two_fields() -> Table {
             },
         ],
         indices: vec![],
+        width: None,
+        min_height: None,
     }
 }
 

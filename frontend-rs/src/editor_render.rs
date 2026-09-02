@@ -1627,6 +1627,8 @@ mod tests {
                 comment: String::new(),
             }],
             indices: Vec::new(),
+            width: None,
+            min_height: None,
         };
         let tables = vec![table];
         let hit_y = 130.0 + TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT / 2.0;
@@ -1673,6 +1675,8 @@ mod tests {
                 comment: String::new(),
             }],
             indices: Vec::new(),
+            width: None,
+            min_height: None,
         }
     }
 
