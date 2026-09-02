@@ -214,6 +214,8 @@ pub fn setup_escape_layer_handler(
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SidePanelTab {
     Tables,
+    // ux-canvas-batch 批次1: 表结构列表视图（参考 pdmaner 全量能力）
+    ListView,
     Areas,
     Enums,
     Notes,
@@ -227,6 +229,7 @@ impl SidePanelTab {
     pub fn testid(self) -> &'static str {
         match self {
             SidePanelTab::Tables => "tab-tables",
+            SidePanelTab::ListView => "tab-list-view",
             SidePanelTab::Areas => "tab-areas",
             SidePanelTab::Enums => "tab-enums",
             SidePanelTab::Notes => "tab-notes",
@@ -240,6 +243,7 @@ impl SidePanelTab {
     pub fn label(self) -> &'static str {
         match self {
             SidePanelTab::Tables => "表",
+            SidePanelTab::ListView => "列表视图",
             SidePanelTab::Areas => "区域",
             SidePanelTab::Enums => "枚举",
             SidePanelTab::Notes => "注释",
@@ -256,6 +260,7 @@ impl SidePanelTab {
 fn InspectorTabIcon(tab: SidePanelTab) -> impl IntoView {
     match tab {
         SidePanelTab::Tables => view! { <IconBox size="sm"><IconAddTable /></IconBox> }.into_view(),
+        SidePanelTab::ListView => view! { <IconBox size="sm"><IconAddTable /></IconBox> }.into_view(),
         SidePanelTab::Areas => view! { <IconBox size="sm"><IconAddArea /></IconBox> }.into_view(),
         SidePanelTab::Enums => view! { <IconBox size="sm"><IconEnum /></IconBox> }.into_view(),
         SidePanelTab::Notes => view! { <IconBox size="sm"><IconAddNote /></IconBox> }.into_view(),
@@ -4989,6 +4994,13 @@ pub fn LeftPanel(
                             on_save=on_save.clone()
                         />
                     }.into_view(),
+                    // ux-canvas-batch 批次1: ListView tab 激活时显示列表视图
+                    SidePanelTab::ListView => view! {
+                        <ListView
+                            store=store.clone()
+                            on_select_table=on_select_table.clone()
+                        />
+                    }.into_view(),
                     SidePanelTab::Areas => view! {
                         <AreasTab
                             store=store.clone()
@@ -5268,6 +5280,198 @@ pub fn TablesTab(
                     </div>
                 }.into_view()
             }}
+        </div>
+    }
+}
+
+// ─── ux-canvas-batch 批次1: ListView 组件 + sort_tables 纯函数 ────────────────
+
+/// 排序列枚举（按表维度属性排序——外环判词记一笔修正措辞，避免实现期误解为仅展示列可排序）
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SortColumn {
+    TableName,
+    FieldCount,
+    Type,
+    HasIndex,
+}
+
+/// 排序方向枚举
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SortDirection {
+    Ascending,
+    Descending,
+}
+
+/// ListViewState（C-4：落点统一为 editor_panels.rs，以纯函数可测性为准）
+#[derive(Clone)]
+pub struct ListViewState {
+    pub sort_column: RwSignal<SortColumn>,
+    pub sort_direction: RwSignal<SortDirection>,
+}
+
+/// ux-canvas-batch 批次1：列表视图排序纯函数（UT-MM-21）
+/// 真值表（D 案教训：涉及推导/状态机必须给真值表+实例推演）：
+///   表名：字典序升序/降序
+///   字段数：少→多 / 多→少
+///   类型：字典序升序/降序（如 INT < VARCHAR）
+///   是否有索引：无→有 / 有→无
+/// 实例推演：
+///   表 A（5 字段，有索引）、表 B（3 字段，无索引）、表 C（10 字段，有索引）
+///   按字段数升序：B(3) → A(5) → C(10)
+///   按字段数降序：C(10) → A(5) → B(3)
+///   按是否有索引降序：A(有) → C(有) → B(无)
+pub fn sort_tables(
+    tables: &[Table],
+    sort_column: SortColumn,
+    sort_direction: SortDirection,
+) -> Vec<Table> {
+    let mut sorted = tables.to_vec();
+    sorted.sort_by(|a, b| {
+        let cmp = match sort_column {
+            SortColumn::TableName => a.name.cmp(&b.name),
+            SortColumn::FieldCount => a.fields.len().cmp(&b.fields.len()),
+            SortColumn::Type => {
+                // 按首个字段类型字典序（如 INT < VARCHAR）
+                let a_type = a.fields.first().map(|f| f.type_.as_str()).unwrap_or("");
+                let b_type = b.fields.first().map(|f| f.type_.as_str()).unwrap_or("");
+                a_type.cmp(b_type)
+            }
+            SortColumn::HasIndex => {
+                // 无索引 → 有索引（升序）：无索引 = true，有索引 = false
+                // true.cmp(&false) = Greater（升序时无索引在后）——反了
+                // 修：无索引 = false，有索引 = true → false.cmp(&true) = Less（升序时无索引在前）
+                let a_has = !a.indices.is_empty();
+                let b_has = !b.indices.is_empty();
+                a_has.cmp(&b_has)
+            }
+        };
+        match sort_direction {
+            SortDirection::Ascending => cmp,
+            SortDirection::Descending => cmp.reverse(),
+        }
+    });
+    sorted
+}
+
+/// ux-canvas-batch 批次1：ListView 组件（表结构列表视图，参考 pdmaner 全量能力）
+/// 表名/字段名/类型表格化展示 + 按表维度属性排序
+#[component]
+pub fn ListView(
+    store: EditorStore,
+    on_select_table: Rc<dyn Fn(Option<String>)>,
+) -> impl IntoView {
+    let list_view_state = ListViewState {
+        sort_column: create_rw_signal(SortColumn::TableName),
+        sort_direction: create_rw_signal(SortDirection::Ascending),
+    };
+    let list_view_state_for_name = list_view_state.clone();
+    let list_view_state_for_field_count = list_view_state.clone();
+    let list_view_state_for_type = list_view_state.clone();
+    let list_view_state_for_has_index = list_view_state.clone();
+
+    view! {
+        <div class="cdb-tab-pane" data-testid="tab-pane-list-view">
+            <div class="cdb-tab-pane__scroll">
+                <table class="cdb-list-view-table" data-testid="list-view-table">
+                    <thead>
+                        <tr>
+                            <th
+                                data-testid="list-view-sort-table-name"
+                                on:click=move |_| {
+                                    if list_view_state_for_name.sort_column.get() == SortColumn::TableName {
+                                        list_view_state_for_name.sort_direction.set(match list_view_state_for_name.sort_direction.get() {
+                                            SortDirection::Ascending => SortDirection::Descending,
+                                            SortDirection::Descending => SortDirection::Ascending,
+                                        });
+                                    } else {
+                                        list_view_state_for_name.sort_column.set(SortColumn::TableName);
+                                        list_view_state_for_name.sort_direction.set(SortDirection::Ascending);
+                                    }
+                                }
+                            >
+                                "表名"
+                            </th>
+                            <th
+                                data-testid="list-view-sort-field-count"
+                                on:click=move |_| {
+                                    if list_view_state_for_field_count.sort_column.get() == SortColumn::FieldCount {
+                                        list_view_state_for_field_count.sort_direction.set(match list_view_state_for_field_count.sort_direction.get() {
+                                            SortDirection::Ascending => SortDirection::Descending,
+                                            SortDirection::Descending => SortDirection::Ascending,
+                                        });
+                                    } else {
+                                        list_view_state_for_field_count.sort_column.set(SortColumn::FieldCount);
+                                        list_view_state_for_field_count.sort_direction.set(SortDirection::Ascending);
+                                    }
+                                }
+                            >
+                                "字段数"
+                            </th>
+                            <th
+                                data-testid="list-view-sort-type"
+                                on:click=move |_| {
+                                    if list_view_state_for_type.sort_column.get() == SortColumn::Type {
+                                        list_view_state_for_type.sort_direction.set(match list_view_state_for_type.sort_direction.get() {
+                                            SortDirection::Ascending => SortDirection::Descending,
+                                            SortDirection::Descending => SortDirection::Ascending,
+                                        });
+                                    } else {
+                                        list_view_state_for_type.sort_column.set(SortColumn::Type);
+                                        list_view_state_for_type.sort_direction.set(SortDirection::Ascending);
+                                    }
+                                }
+                            >
+                                "类型"
+                            </th>
+                            <th
+                                data-testid="list-view-sort-has-index"
+                                on:click=move |_| {
+                                    if list_view_state_for_has_index.sort_column.get() == SortColumn::HasIndex {
+                                        list_view_state_for_has_index.sort_direction.set(match list_view_state_for_has_index.sort_direction.get() {
+                                            SortDirection::Ascending => SortDirection::Descending,
+                                            SortDirection::Descending => SortDirection::Ascending,
+                                        });
+                                    } else {
+                                        list_view_state_for_has_index.sort_column.set(SortColumn::HasIndex);
+                                        list_view_state_for_has_index.sort_direction.set(SortDirection::Ascending);
+                                    }
+                                }
+                            >
+                                "索引"
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {move || {
+                            let tables = store.tables.get();
+                            let sorted = sort_tables(
+                                &tables,
+                                list_view_state.sort_column.get(),
+                                list_view_state.sort_direction.get(),
+                            );
+                            sorted.into_iter().map(|table| {
+                                let table_id = table.id.clone();
+                                let table_name = table.name.clone();
+                                let field_count = table.fields.len();
+                                let first_type = table.fields.first().map(|f| f.type_.clone()).unwrap_or_default();
+                                let has_index = !table.indices.is_empty();
+                                let on_select = on_select_table.clone();
+                                view! {
+                                    <tr
+                                        data-testid={format!("list-view-row-{}", table_id)}
+                                        on:click=move |_| on_select(Some(table_id.clone()))
+                                    >
+                                        <td>{table_name}</td>
+                                        <td>{field_count}</td>
+                                        <td>{first_type}</td>
+                                        <td>{if has_index { "有" } else { "无" }}</td>
+                                    </tr>
+                                }
+                            }).collect_view()
+                        }}
+                    </tbody>
+                </table>
+            </div>
         </div>
     }
 }
@@ -9220,6 +9424,114 @@ mod tests {
         let flipped = flip_reference_endpoints(&r, &store);
         // 翻转后：s/e 互换 → s=1, e=2 → many_to_one
         assert_eq!(flipped.type_, "many_to_one", "UT-MM-19: 翻转后 s/e 互换，many_to_one");
+    }
+
+    // ─── UT-MM-21: 列表视图排序纯函数测试（按表维度属性排序） ────────────────
+
+    #[test]
+    fn test_sort_tables_by_table_name_ascending_ut_mm_21() {
+        use crate::editor_core::types::{Field, Table};
+        let tables = vec![
+            Table { id: "t1".into(), name: "Zoo".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![], width: None, min_height: None },
+            Table { id: "t2".into(), name: "alpha".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![], width: None, min_height: None },
+        ];
+        let sorted = sort_tables(&tables, SortColumn::TableName, SortDirection::Ascending);
+        // Rust String::cmp 是字节序：'Z'(90) < 'a'(97) → Zoo 在前
+        assert_eq!(sorted[0].name, "Zoo", "UT-MM-21: 表名升序 → Zoo 在前（字节序 'Z'<'a'）");
+        assert_eq!(sorted[1].name, "alpha", "UT-MM-21: 表名升序 → alpha 在后");
+    }
+
+    #[test]
+    fn test_sort_tables_by_table_name_descending_ut_mm_21() {
+        use crate::editor_core::types::{Field, Table};
+        let tables = vec![
+            Table { id: "t1".into(), name: "Zoo".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![], width: None, min_height: None },
+            Table { id: "t2".into(), name: "alpha".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![], width: None, min_height: None },
+        ];
+        let sorted = sort_tables(&tables, SortColumn::TableName, SortDirection::Descending);
+        assert_eq!(sorted[0].name, "alpha", "UT-MM-21: 表名降序 → alpha 在前");
+        assert_eq!(sorted[1].name, "Zoo", "UT-MM-21: 表名降序 → Zoo 在后");
+    }
+
+    #[test]
+    fn test_sort_tables_by_field_count_ascending_ut_mm_21() {
+        use crate::editor_core::types::{Field, Table};
+        let tables = vec![
+            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
+            Table { id: "t2".into(), name: "B".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }, Field { id: "f2".into(), name: "name".into(), type_: "VARCHAR".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
+            Table { id: "t3".into(), name: "C".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![], width: None, min_height: None },
+        ];
+        let sorted = sort_tables(&tables, SortColumn::FieldCount, SortDirection::Ascending);
+        assert_eq!(sorted[0].fields.len(), 0, "UT-MM-21: 字段数升序 → 0 字段在前");
+        assert_eq!(sorted[1].fields.len(), 1, "UT-MM-21: 字段数升序 → 1 字段在中");
+        assert_eq!(sorted[2].fields.len(), 2, "UT-MM-21: 字段数升序 → 2 字段在后");
+    }
+
+    #[test]
+    fn test_sort_tables_by_field_count_descending_ut_mm_21() {
+        use crate::editor_core::types::{Field, Table};
+        let tables = vec![
+            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
+            Table { id: "t2".into(), name: "B".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }, Field { id: "f2".into(), name: "name".into(), type_: "VARCHAR".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
+            Table { id: "t3".into(), name: "C".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![], width: None, min_height: None },
+        ];
+        let sorted = sort_tables(&tables, SortColumn::FieldCount, SortDirection::Descending);
+        assert_eq!(sorted[0].fields.len(), 2, "UT-MM-21: 字段数降序 → 2 字段在前");
+        assert_eq!(sorted[1].fields.len(), 1, "UT-MM-21: 字段数降序 → 1 字段在中");
+        assert_eq!(sorted[2].fields.len(), 0, "UT-MM-21: 字段数降序 → 0 字段在后");
+    }
+
+    #[test]
+    fn test_sort_tables_by_type_ascending_ut_mm_21() {
+        use crate::editor_core::types::{Field, Table};
+        let tables = vec![
+            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "VARCHAR".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
+            Table { id: "t2".into(), name: "B".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
+        ];
+        let sorted = sort_tables(&tables, SortColumn::Type, SortDirection::Ascending);
+        assert_eq!(sorted[0].fields[0].type_, "INT", "UT-MM-21: 类型升序 → INT 在前");
+        assert_eq!(sorted[1].fields[0].type_, "VARCHAR", "UT-MM-21: 类型升序 → VARCHAR 在后");
+    }
+
+    #[test]
+    fn test_sort_tables_by_has_index_ascending_ut_mm_21() {
+        use crate::editor_core::types::{Field, Table, Index};
+        let tables = vec![
+            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![], width: None, min_height: None },
+            Table { id: "t2".into(), name: "B".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![Index { id: "i1".into(), name: "idx".into(), fields: vec![], unique: false }], width: None, min_height: None },
+        ];
+        let sorted = sort_tables(&tables, SortColumn::HasIndex, SortDirection::Ascending);
+        assert_eq!(sorted[0].indices.len(), 0, "UT-MM-21: 无索引 → 有索引（升序）→ 无索引在前");
+        assert_eq!(sorted[1].indices.len(), 1, "UT-MM-21: 无索引 → 有索引（升序）→ 有索引在后");
+    }
+
+    #[test]
+    fn test_sort_tables_by_has_index_descending_ut_mm_21() {
+        use crate::editor_core::types::{Field, Table, Index};
+        let tables = vec![
+            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![], width: None, min_height: None },
+            Table { id: "t2".into(), name: "B".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![Index { id: "i1".into(), name: "idx".into(), fields: vec![], unique: false }], width: None, min_height: None },
+        ];
+        let sorted = sort_tables(&tables, SortColumn::HasIndex, SortDirection::Descending);
+        assert_eq!(sorted[0].indices.len(), 1, "UT-MM-21: 有索引 → 无索引（降序）→ 有索引在前");
+        assert_eq!(sorted[1].indices.len(), 0, "UT-MM-21: 有索引 → 无索引（降序）→ 无索引在后");
+    }
+
+    #[test]
+    fn test_sort_tables_empty_ut_mm_21() {
+        use crate::editor_core::types::Table;
+        let tables: Vec<Table> = vec![];
+        let sorted = sort_tables(&tables, SortColumn::TableName, SortDirection::Ascending);
+        assert_eq!(sorted.len(), 0, "UT-MM-21: 空 tables → 空结果");
+    }
+
+    // ─── UT-MM-22: 列表视图 tab 切换测试 ────────────────
+
+    #[test]
+    fn test_list_view_tab_switch_ut_mm_22() {
+        // 验证 ListView tab 的 testid 和 label 正确
+        assert_eq!(SidePanelTab::ListView.testid(), "tab-list-view", "UT-MM-22: ListView tab testid 应为 tab-list-view");
+        assert_eq!(SidePanelTab::ListView.label(), "列表视图", "UT-MM-22: ListView tab label 应为 列表视图");
     }
 
     // ─── UT-MM-20: build_reference 使用推导值而非用户必选下拉值 ────────────────
