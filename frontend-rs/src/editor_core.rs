@@ -1023,4 +1023,36 @@ mod tests {
         assert!(state.pending_ops.is_empty());
         assert!(state.queued_while_offline.is_empty());
     }
+
+    /// feat-table-resize 批次3 步骤3 验证项:
+    /// OT op 应用器(CommandStack::apply)对 Table.width/min_height 字段
+    /// 是 silently ignore(不报错)还是崩溃 —— 验证 silently ignore 成立。
+    #[test]
+    fn feat_table_resize_ot_add_table_accepts_width_and_min_height() {
+        use crate::editor_core::types::{Field, Table};
+        let store = EditorStore::new();
+        let mut stack = CommandStack::new();
+        let t = Table {
+            id: "t-ot-width".into(),
+            name: "OT-Width".into(),
+            x: 0.0, y: 0.0,
+            color: "#000".into(),
+            comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "id".into(), type_: "INT".into(),
+                default: String::new(), check: String::new(),
+                primary: true, unique: false, not_null: true, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(),
+            width: Some(400),
+            min_height: Some(250),
+        };
+        // 应用 op:width=Some(400),min_height=Some(250) 应正常写入(不 silently drop)
+        CommandStack::apply(&store, &mut stack, Command::AddTable(t))
+            .expect("AddTable with width/min_height 应成功(OT op 应用器 silently ignore 未知字段)");
+        let stored = &store.tables.get()[0];
+        assert_eq!(stored.width, Some(400), "width 随 Table struct 序列化,OT 无需改动");
+        assert_eq!(stored.min_height, Some(250), "min_height 随 Table struct 序列化,OT 无需改动");
+    }
 }
