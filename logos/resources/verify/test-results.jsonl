@@ -37,3 +37,16 @@
 {"id":"ST-PB-01","status":"pass","duration_ms":3683,"timestamp":"2026-09-02T00:25:50.501Z"}
 {"id":"ST-PB-02","status":"pass","duration_ms":3869,"timestamp":"2026-09-02T00:25:54.388Z"}
 {"id":"ST-CR-02","status":"pass","duration_ms":5215,"timestamp":"2026-09-02T00:25:59.621Z"}
+{"id":"ST-KB-CMD-01","status":"pass","duration_ms":1322,"timestamp":"2026-09-02T00:26:31.284Z"}
+{"id":"ST-KB-ESC-01","status":"pass","duration_ms":1707,"timestamp":"2026-09-02T00:26:33.010Z"}
+{"id":"ST-KB-T-01","status":"pass","duration_ms":2210,"timestamp":"2026-09-02T00:26:35.239Z"}
+{"id":"ST-KB-R-01","status":"pass","duration_ms":837,"timestamp":"2026-09-02T00:26:36.093Z"}
+{"id":"ST-KB-VIEWER","status":"pass","duration_ms":2361,"timestamp":"2026-09-02T00:26:38.471Z"}
+{"id":"ST-PC-MENU-01","status":"pass","duration_ms":1829,"timestamp":"2026-09-02T00:26:40.317Z"}
+{"id":"ST-PC-FMT-01","status":"pass","duration_ms":1501,"timestamp":"2026-09-02T00:26:41.837Z"}
+{"id":"ST-PC-INSPECTOR","status":"pass","duration_ms":1452,"timestamp":"2026-09-02T00:26:43.307Z"}
+{"id":"ST-PU-25","status":"pass","duration_ms":3401,"timestamp":"2026-09-02T00:26:46.726Z"}
+{"id":"ST-PU-26","status":"pass","duration_ms":1571,"timestamp":"2026-09-02T00:26:48.315Z"}
+{"id":"ST-PB-01","status":"pass","duration_ms":3668,"timestamp":"2026-09-02T00:26:52.000Z"}
+{"id":"ST-PB-02","status":"pass","duration_ms":3898,"timestamp":"2026-09-02T00:26:55.916Z"}
+{"id":"ST-CR-02","status":"pass","duration_ms":5194,"timestamp":"2026-09-02T00:27:01.130Z"}
