@@ -3739,32 +3739,39 @@ pub fn RelationshipConfirmBar(
                 let et_create = et.clone();
                 let ef_create = ef.clone();
                 let card_create = card.clone();
+                let inferred_cardinality = modals::infer_cardinality(&sf, &ef, &store);
+                let display_cardinality = inferred_cardinality.clone();
+                let display_cardinality_for_click = display_cardinality.clone();
                 view! {
                     <div class="cdb-rel-confirm-bar" data-testid="rel-confirm-bar">
                         <span class="cdb-rel-confirm-bar__label">{label}</span>
-                        <select
+                        // feat-relation-inference 批次2: 去掉 cardinality 必选下拉，
+                        // 改为显示推导结果 + 可点击切换为其它 cardinality（手动覆盖）
+                        <span
                             class="cdb-form-select cdb-rel-confirm-bar__select"
-                            data-testid="rel-confirm-cardinality"
-                            on:change=move |ev| {
-                                let v = event_target_value(&ev);
+                            data-testid="rel-confirm-inferred-cardinality"
+                            title={format!("推导结果（点击可手动覆盖）")}
+                            on:click=move |_| {
+                                // 手动覆盖：点击后循环切换 cardinality（one_to_one → one_to_many → many_to_one → many_to_many → one_to_one）
+                                let current = display_cardinality_for_click.clone();
+                                let next = match current.as_str() {
+                                    "one_to_one" => "one_to_many",
+                                    "one_to_many" => "many_to_one",
+                                    "many_to_one" => "many_to_many",
+                                    "many_to_many" => "one_to_one",
+                                    _ => "one_to_many",
+                                };
                                 rel_state.set(RelToolState::Confirm {
                                     start_table_id: st_change.clone(),
                                     start_field_id: sf_change.clone(),
                                     end_table_id: et_change.clone(),
                                     end_field_id: ef_change.clone(),
-                                    cardinality: v,
+                                    cardinality: next.to_string(),
                                 });
                             }
                         >
-                            <For
-                                each=|| CARDINALITY_OPTIONS.to_vec()
-                                key=|c| *c
-                                children=move |c: &'static str| {
-                                    let selected = card_for_options == c;
-                                    view! { <option value=c selected=selected>{c}</option> }
-                                }
-                            />
-                        </select>
+                            {display_cardinality}
+                        </span>
                         <button
                             class="cdb-btn cdb-btn--primary"
                             data-testid="rel-confirm-create"
@@ -6486,12 +6493,14 @@ pub fn AppRoot(
                     start_table_id,
                     start_field_id,
                 } => {
+                    // feat-relation-inference 批次2: cardinality 改推导值（非必选下拉值）
+                    let inferred = modals::infer_cardinality(&start_field_id, &field_id, &store);
                     rel_tool_state.set(RelToolState::Confirm {
                         start_table_id,
                         start_field_id,
                         end_table_id: table_id,
                         end_field_id: field_id,
-                        cardinality: "one_to_many".into(),
+                        cardinality: inferred,
                     });
                 }
                 RelToolState::Dragging { .. } => {}
@@ -6517,12 +6526,14 @@ pub fn AppRoot(
                   start_field_id: String,
                   end_table_id: String,
                   end_field_id: String| {
+                // feat-relation-inference 批次2: cardinality 改推导值（非必选下拉值）
+                let inferred = modals::infer_cardinality(&start_field_id, &end_field_id, &store);
                 rel_tool_state.set(RelToolState::Confirm {
                     start_table_id,
                     start_field_id,
                     end_table_id,
                     end_field_id,
-                    cardinality: "one_to_many".into(),
+                    cardinality: inferred,
                 });
             },
         ))
@@ -9163,6 +9174,41 @@ mod tests {
         // 字段计数为 0（空 store）→ s=1, e=1 → one_to_one（含本条）
         let result = modals::infer_cardinality("f1", "f2", &store);
         assert_eq!(result, "one_to_one", "UT-MM-18: 字段计数为 0（空 store）→ s=1, e=1 → one_to_one（含本条）");
+    }
+
+    // ─── UT-MM-20: build_reference 使用推导值而非用户必选下拉值 ────────────────
+
+    #[test]
+    fn test_build_reference_uses_inferred_cardinality_ut_mm_20() {
+        use crate::editor_core::types::{Reference, Table, Field};
+        use crate::editor_core::EditorStore;
+        let store = EditorStore::new();
+        // 先建一条 reference：f1 → f0（f1 是 start，参与 1 条既有关系）
+        let existing = Reference {
+            id: "r1".into(),
+            name: String::new(),
+            start_table_id: "t1".into(),
+            end_table_id: "t2".into(),
+            start_field_id: "f1".into(),
+            end_field_id: "f0".into(),
+            type_: "one_to_many".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+        };
+        store.references.set(vec![existing]);
+        // 现在连 f1 → f2：f1 已参与 1 条（s=2）、f2 已参与 0 条（e=1）→ one_to_many
+        let inferred = modals::infer_cardinality("f1", "f2", &store);
+        assert_eq!(inferred, "one_to_many", "UT-MM-20: 推导值应为 one_to_many");
+        // build_reference 使用推导值（非用户必选下拉值）
+        let reference = crate::editor_panels::build_reference(
+            "r2".into(),
+            "t1".into(),
+            "f1".into(),
+            "t2".into(),
+            "f2".into(),
+            &inferred,
+        );
+        assert_eq!(reference.type_, "one_to_many", "UT-MM-20: build_reference 使用推导值 one_to_many");
     }
 
     #[test]
