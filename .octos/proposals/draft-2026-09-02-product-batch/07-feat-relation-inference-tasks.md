@@ -14,10 +14,10 @@
     - **推导依据（外环判词修正）**：**字段已参与关系计数（含本次新建）**，不是表总字段数 `fields.len()`
     - s = start_field 已参与的关系数（含本条），e = end_field 已参与的关系数（含本条）
     - 从 `store.references.get()` 统计 `start_field_id`/`end_field_id` 出现的次数（作为 start 或 end 端均可）
-    - 推导规则（operator Q2 裁决 + 外环判词修正）：
+    - 推导规则（operator Q2 裁决 + 外环判词修正 v2 + v3 方向颠倒修正）：
       - s==1 && e==1 → `"one_to_one"`
-      - s==1 && e>1 → `"one_to_many"`（start 端为"一"侧）
-      - s>1 && e==1 → `"many_to_one"`（end 端为"一"侧）
+      - s>1 && e==1 → `"one_to_many"`（start 被多处引用，start 为"一"侧）
+      - s==1 && e>1 → `"many_to_one"`（end 被多处引用，end 为"一"侧）
       - s>1 && e>1 → `"many_to_many"`
     - **向后兼容**：如字段不存在或计数为 0，fallback 到 `"one_to_many"`（与现有默认一致）
   - `RelToolState::Confirm` 状态机构造时调用 `infer_cardinality` 填充 `cardinality` 字段（替代用户必选下拉）
@@ -45,14 +45,14 @@
 - [ ] `frontend-rs/src/editor_panels.rs` 单元测试模块（新增 UT-MM-18）：
   - **推导依据**：字段已参与关系计数（含本次新建），不是表总字段数
   - happy: `infer_cardinality("f1", "f2", store)` 两端字段均参与 0 条既有关系 → `"one_to_one"`（s=1, e=1）
-  - happy: `infer_cardinality("f1", "f2", store)` start 字段参与 0 条既有关系 + end 字段参与 1 条既有关系 → `"one_to_many"`（s=1, e=2）
-  - happy: `infer_cardinality("f1", "f2", store)` start 字段参与 1 条既有关系 + end 字段参与 0 条既有关系 → `"many_to_one"`（s=2, e=1）
+  - happy: `infer_cardinality("f1", "f2", store)` start 字段参与 0 条既有关系 + end 字段参与 1 条既有关系 → `"many_to_one"`（s=1, e=2；end 被多处引用，end 为"一"侧）
+  - happy: `infer_cardinality("f1", "f2", store)` start 字段参与 1 条既有关系 + end 字段参与 0 条既有关系 → `"one_to_many"`（s=2, e=1；start 被多处引用，start 为"一"侧）
   - happy: `infer_cardinality("f1", "f2", store)` start 字段参与 1 条既有关系 + end 字段参与 1 条既有关系 → `"many_to_many"`（s=2, e=2）
-  - happy: `infer_cardinality("f1", "f2", store)` start 字段参与 2 条既有关系 + end 字段参与 0 条既有关系 → `"many_to_one"`（s=3, e=1）
+  - happy: `infer_cardinality("f1", "f2", store)` start 字段参与 2 条既有关系 + end 字段参与 0 条既有关系 → `"one_to_many"`（s=3, e=1；start 被多处引用，start 为"一"侧）
   - edge: `infer_cardinality("f1", "f2", store)` 字段不存在 → fallback `"one_to_many"`
   - edge: `infer_cardinality("f1", "f2", store)` 字段计数为 0 → fallback `"one_to_many"`
 - [ ] `frontend-rs/src/editor_panels.rs` 单元测试模块（新增 UT-MM-19）：
-  - `test_flip_reference_endpoints_re_infers_cardinality`：翻转后重新推导 cardinality（如翻转前 s=1 && e=2（one_to_many）→ 翻转后 s=2 && e=1（many_to_one））
+  - `test_flip_reference_endpoints_re_infers_cardinality`：翻转后重新推导 cardinality（如翻转前 s=1 && e=2（many_to_one）→ 翻转后 s=2 && e=1（one_to_many））
 - [ ] `frontend-rs/src/editor_panels.rs` 单元测试模块（新增 UT-MM-20）：
   - `test_build_reference_uses_inferred_cardinality`：`build_reference` 使用推导值而非用户必选下拉值
 
@@ -89,12 +89,12 @@
 
 ## v1 → v2 修订点速查（外环判词反馈）
 
-| v1 错误 | v2 修正 |
-|---|---|
-| `infer_cardinality(start_table_id, end_table_id, store)` 以**两端表的总字段数**（`fields.len()`）作为推导依据 | `infer_cardinality(start_field_id, end_field_id, store)` 以**该字段已参与的关系计数（含本次新建）**作为推导依据 |
-| 推导规则：1+1→1:1、1+N→1:N、N+N→N:N（N = 表总字段数） | 推导规则：s==1&&e==1→1:1, s==1&&e>1→1:N, s>1&&e==1→N:1, s>1&&e>1→N:N（s/e = 字段已参与关系计数） |
-| 反例：20 字段表与 3 字段表之间连一条单字段关系 → 推导出 many_to_many | 反例修正：20 字段表与 3 字段表之间连一条单字段关系 → s==1 && e==1 → one_to_one（字段已参与关系计数为 1） |
-| `flip_reference_endpoints` 翻转后重新推导（基于翻转后的两端字段数） | `flip_reference_endpoints` 翻转后重新推导（基于翻转后的两端字段已参与关系计数，s/e 互换） |
-| UT-MM-18 六子用例（表总字段数语义） | UT-MM-18 七子用例（字段已参与关系计数语义） |
-| 真值表未给出 | 真值表给出（s/e 与 one_to_many 方向对应关系：start 端为"一"侧时 one_to_many） |
-| 多字段契约扩展待定 | 多字段契约扩展外环代决否决（复合外键另立案），范围外排除保留 |
+| v1 错误 | v2 修正 | v3 修正 |
+|---|---|---|
+| `infer_cardinality(start_table_id, end_table_id, store)` 以**两端表的总字段数**（`fields.len()`）作为推导依据 | `infer_cardinality(start_field_id, end_field_id, store)` 以**该字段已参与的关系计数（含本次新建）**作为推导依据 | — |
+| 推导规则：1+1→1:1、1+N→1:N、N+N→N:N（N = 表总字段数） | 推导规则：s==1&&e==1→1:1, s==1&&e>1→1:N, s>1&&e==1→N:1, s>1&&e>1→N:N（s/e = 字段已参与关系计数） | **方向颠倒修正**：s>1&&e==1→one_to_many（start 被多处引用，start 为"一"侧）；s==1&&e>1→many_to_one（end 被多处引用，end 为"一"侧） |
+| 反例：20 字段表与 3 字段表之间连一条单字段关系 → 推导出 many_to_many | 反例修正：20 字段表与 3 字段表之间连一条单字段关系 → s==1 && e==1 → one_to_one（字段已参与关系计数为 1） | — |
+| `flip_reference_endpoints` 翻转后重新推导（基于翻转后的两端字段数） | `flip_reference_endpoints` 翻转后重新推导（基于翻转后的两端字段已参与关系计数，s/e 互换） | 描述不变（翻转后 s/e 互换即方向互换，语义自然正确） |
+| UT-MM-18 六子用例（表总字段数语义） | UT-MM-18 七子用例（字段已参与关系计数语义） | UT-MM-18 七子用例期望映射同步翻转（start 字段 1 条既有 + end 字段 0 条既有 → one_to_many） |
+| 真值表未给出 | 真值表给出（s/e 与 one_to_many 方向对应关系：start 端为"一"侧时 one_to_many） | 真值表 one_to_many/many_to_one 两行互换（方向颠倒修正） |
+| 多字段契约扩展待定 | 多字段契约扩展外环代决否决（复合外键另立案），范围外排除保留 | 描述不变 |

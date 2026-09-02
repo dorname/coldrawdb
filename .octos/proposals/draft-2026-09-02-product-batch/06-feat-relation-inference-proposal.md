@@ -26,9 +26,9 @@
 
 **Q2 正确语义（外环裁定）**：「1+1→1:1、1+N→1:N、N+N→N:N」中的 1/N 指**该字段已参与的关系计数**（含本次新建），不是表总字段数。推导函数应改为 `infer_cardinality(start_field_id, end_field_id, store)`：
 - s = start_field 已参与的关系数（含本条），e = end_field 已参与的关系数（含本条）
-- s==1 && e==1 → `one_to_one`；s==1 && e>1 → `one_to_many`；s>1 && e==1 → `many_to_one`；s>1 && e>1 → `many_to_many`
+- s==1 && e==1 → `one_to_one`；s>1 && e==1 → `one_to_many`（start 被多处引用，start 为"一"侧）；s==1 && e>1 → `many_to_one`（end 被多处引用，end 为"一"侧）；s>1 && e>1 → `many_to_many`
 - 「字段按用户点击顺序」落实为先点者为 start（方向由此决定）
-- 例：用户先连 A.a→B.x，再连 A.a→B.y——第二条创建时 A.a 参与 2 条（s=2）、B.y 参与 1 条（e=1）→ many_to_one……注意方向：A 端一个字段对 B 端多个字段，语义是 A:B=1:N，即 start=A 时应得 one_to_many。实现时注意 s/e 的计数语义与 start 端为"一"侧的对应关系。
+- 例：用户先连 A.a→B.x，再连 A.a→B.y——第二条创建时 A.a 参与 2 条（s=2）、B.y 参与 1 条（e=1）→ one_to_many（A 端一个字段对 B 端多个字段，语义是 A:B=1:N，start=A 时应得 one_to_many）。实现时注意 s/e 的计数语义与 start 端为"一"侧的对应关系（v2 真值表方向颠倒已修正，v3 见真值表段）。
 
 **数据契约**（外环代决）：**不扩展 Reference 数据契约**（不加 `start_field_ids`/`end_field_ids` 数组，复合外键另立案）。operator 需求 2「连接多个字段自然推导」在上述语义下已完整覆盖——多条单字段关系在同一字段上累计即自然形成 1:N/N:N，无需改契约。
 
@@ -97,16 +97,20 @@
 | 确认条 UI | 显示推导结果 + 可点击切换 | 去掉确认条直接创建 | 保留确认条可减少误操作（现有 ST-PB-01/02 测试覆盖确认条交互）|
 | 数据结构 | `type_: String` 保持 | 改为 Enum / 加 `auto_inferred: bool` / 加 `start_field_ids`/`end_field_ids` 数组 | 向后兼容 + 最小改动 + 外环代决否决（复合外键另立案） |
 
-## 真值表（外环判词要求）
+## 真值表（外环判词要求；v3 修正方向颠倒）
 
 | start_field 已参与关系数（s，含本条） | end_field 已参与关系数（e，含本条） | 推导结果 | 语义 |
 |---|---|---|---|
 | 1 | 1 | `one_to_one` | start:end = 1:1 |
-| 1 | N (N>1) | `one_to_many` | start:end = 1:N（start 端为"一"侧） |
-| N (N>1) | 1 | `many_to_one` | start:end = N:1（end 端为"一"侧） |
-| N (N>1) | N (N>1) | `many_to_many` | start:end = N:N |
+| >1 | 1 | `one_to_many` | start:end = 1:N（start 被多处引用，start 为"一"侧） |
+| 1 | >1 | `many_to_one` | start:end = N:1（end 被多处引用，end 为"一"侧） |
+| >1 | >1 | `many_to_many` | start:end = N:N |
 
-**方向对应关系**：start 端为"一"侧时 `one_to_many`（start 是 1，end 是 N）；end 端为"一"侧时 `many_to_one`（start 是 N，end 是 1）。
+**方向对应关系**：start_field 被多条关系引用（s>1）= start 端记录被多处引用 → start 是"一"侧 → `one_to_many`；end_field 被多条关系引用（e>1）= 多个 start 字段指向同一 end → end 是"一"侧 → `many_to_one`。
+
+**实例推演**（users.id 双侧场景）：
+- 先连 `users.id→orders.user_id`，再连 `users.id→order_items.user_id`：创建第二条时 s(users.id)=2、e(order_items.user_id)=1，语义 users:order_items = 1:N → **one_to_many**（v2 真值表给 many_to_one 错）
+- 反向：`orders.user_id→users.id`、`order_items.user_id→users.id`，创建第二条时 s=1、e=2 → **many_to_one**（v2 给 one_to_many 错）
 
 ## 范围外（明确排除）
 
