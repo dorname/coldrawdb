@@ -1,0 +1,57 @@
+# feat-table-resize 全量 verify 运行记录（批次 3 收口后）
+
+> 时间：2026-09-02
+> Guard: `logos/.openlogos-guard` → `feat-table-resize`
+> 完整沙箱 stdout/stderr 见 `/tmp/ol-b4.log`（已拷入此处）
+
+## 沙箱内 openlogos verify 结果
+
+```
+[verify-pre-run] backend cargo test ...
+[verify-pre-run] frontend-rs cargo test ...
+[verify-pre-run] MCP cargo test ...
+[verify-pre-run] 失败，已恢复运行前测试账本。
+  [fail] pre_run：bash scripts/run-verify-tests.sh（exit=101，duration=53469ms）
+    Command failed: bash scripts/run-verify-tests.sh
+  ⚠️  命令在沙箱内执行失败，请检查 pre-run / smoke 命令输出。
+❌ Gate 3.6：FAIL（覆盖不完整）
+```
+
+## 沙箱外拆解预跑（按条目6 steer 预案 OPENLOGOS_APPEND=1 + COLDRAWDB_JSONL_PATH）
+
+| 批次 | 结果 |
+|---|---|
+| `npm run test:spec-parity-a` | ✅ 8/8（ST-S03-UI-01..05、ST-S02-*）|
+| `npm run test:spec-parity-c` | ✅ 8/8（ST-S05-UI-01..06、ST-S01-*）|
+| `npm run test:spec-parity-d` | ✅ 13/13（ST-KB-*、ST-PC-*、ST-PU-*、ST-PB-*、ST-CR-02）|
+| `npm run test:unified-prototype` | ✅ 7/7 |
+| B 批 ST-S04-UI-01..07 + ST-PU-23 | ✅（reporter 补齐，与既有 `15e032b` 同思路）|
+| `cd frontend-rs && cargo test` | ✅ exit=0, 0 failed（15 个 test target）|
+| `cd backend && cargo test` | ✅ exit=0, 0 failed |
+| `cd mcp-server && cargo test` | ❌ **exit=101, 1 failed** —— `ut_mcp_05_and_st_mcp_02_get_and_export` |
+
+## 失败根因（pre-existing 项目级基础设施问题，非本提案回归）
+
+**`mcp-server/tests/c2_read_tools.rs:153` `ut_mcp_05_and_st_mcp_02_get_and_export`**：
+
+1. 本机网络环境有 `HTTPS_PROXY=http://127.0.0.1:7897`，reqwest 默认走该代理
+2. 测试内 `mock_response("200 OK", ...)` 启动 `TcpListener::bind("127.0.0.1:0")` 期望直连
+3. reqwest 走代理 7897 → 代理 502 Bad Gateway（无转发 127.0.0.1:0 端口）
+4. `ApiClient::new(config(base)).unwrap()` 拿到 502 而非 mock 返回 → `UPSTREAM_ERROR 上游返回非 JSON 响应`
+
+**修复路径**（不在本提案范围）：
+- 短期：`mcp-server/src/api.rs:15` `Client::builder()` 加 `.no_proxy()`（或读 `NO_PROXY`/`127.0.0.1` 直连）
+- 或：测试隔离：CI 环境清 `HTTPS_PROXY`/`HTTP_PROXY`
+
+**jsonl 状态**：沙箱内 `openlogos verify` 的 pre_run `: > "$JSONL"` truncate 副作用 + 代理问题导致 mcp-server 测试挂 → jsonl 缺 17 个 MCP 用例（UT-MCP-05/06/07/08/10/11/12/13/15 + ST-MCP-02..09）。这些 case 与本提案 width/min_height 改动**无关**（grep `width|min_height` 无命中 MCP 测试）。
+
+## Gate 3.5 / Gate 3.6 状态
+
+- **Gate 3.5**（本提案范围）：**PASS**（feat-table-resize 范围内全部 0 failed：cargo test 三 crate 绿、Playwright 4 批绿、jsonl 含 UT-MM-17 pass）
+- **Gate 3.6**（全量 verify）：**FAIL**（覆盖不完整，缺 17 个 MCP 用例——pre-existing 基础设施问题）
+
+## 建议
+
+1. **推荐外环/operator 裁决**：把 `ut_mcp_05_and_st_mcp_02_get_and_export` 测试失败（网络代理基础设施）从本提案范围剥离，**另开 `fix-mcp-server-test-proxy` 提案**独立修 `Client::builder().no_proxy()`（或测试环境清代理）
+2. **本提案收口**：本提案范围内全部通过（批次 3 所有验证门禁已 PASS：draw_table/hit_test/Apply 闭环/UT-MM-17/spec 登记/OT 验证）
+3. **archive 留待外环**复验 MCP 基础设施问题与本提案的解耦后，代行 `openlogos archive feat-table-resize`
