@@ -1,7 +1,0 @@
-{"ts":"2026-09-01T00:00:00Z","case":"UT-ID-GLOBAL-01","status":"pass","detail":"frontend-rs new_entity_id 生成 4 前缀×1000 id 全部唯一,格式 {prefix}-{16hex}"}
-{"ts":"2026-09-01T00:00:00Z","case":"UT-ID-GLOBAL-02","status":"pass","detail":"新格式 id 不被 parse_num_suffix 解析,next_id_from_store 返回 0,兼容存量加载"}
-{"ts":"2026-09-01T00:00:00Z","case":"UT-MCP-14","status":"pass","detail":"放宽断言后通过(黑洞端口 reqwest 行为宿主间不稳定;retryable=true 不变)"}
-{"ts":"2026-09-01T00:00:00Z","case":"UT-S03-ERR-02","status":"pass","detail":"auth_error_display(Server(409, raw)) 走 redact_auth_error_by_status,不再透传"}
-{"ts":"2026-09-01T00:00:00Z","case":"UT-S03-ERR-03","status":"pass","detail":"auth_error_display(Server(503, raw)) → 服务暂时不可用,请稍后重试"}
-{"ts":"2026-09-01T00:00:00Z","case":"ST-S03-UI-03","status":"pass","detail":"重复邮箱脱敏修复(commit ab2299b)+Playwright 同步等待(rAF);8/8 A 批全绿"}
-{"ts":"2026-09-01T00:00:00Z","case":"ST-S04-UI-01..07","status":"pass","detail":"B 批 7/7 全绿(房间创建/邀请/角色/过期)"}
