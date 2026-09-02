@@ -932,7 +932,9 @@ pub fn snap_to_grid(x: f64, y: f64, grid: f64) -> (f64, f64) {
 
 /// 源字段右侧锚点（与正式关系线起点一致）。
 pub fn field_anchor_start(table: &Table, field_id: &str) -> (f64, f64) {
-    (table.x + TABLE_WIDTH, field_anchor_y(table, field_id))
+    // feat-table-resize: 端点 x 消费 table.width,fallback 到 TABLE_WIDTH 默认 230.0
+    let width = table.width.map(|w| w as f64).unwrap_or(TABLE_WIDTH);
+    (table.x + width, field_anchor_y(table, field_id))
 }
 
 /// 拖动中写入临时视觉坐标，不量化网格。
@@ -1165,7 +1167,15 @@ pub fn zoom_reset(transform: RwSignal<Transform>) {
 
 fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool, palette: &CanvasPalette) {
     let field_count = table.fields.len().max(2);
-    let total_height = TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT * field_count as f64;
+    // feat-table-resize: 表宽度消费 table.width,fallback 到 TABLE_WIDTH 默认 230.0
+    let width = table.width.map(|w| w as f64).unwrap_or(TABLE_WIDTH);
+    // feat-table-resize: 最小高度语义(operator Q4)。实际高度 = max(min_height, auto_height)
+    let auto_height = TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT * field_count as f64;
+    let total_height = table
+        .min_height
+        .map(|h| h as f64)
+        .map(|min| min.max(auto_height))
+        .unwrap_or(auto_height);
     let x = table.x;
     let y = table.y;
 
@@ -1178,7 +1188,7 @@ fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool, pal
 
     let _ = ctx.set_fill_style_str(palette.table_bg);
     ctx.begin_path();
-    round_rect(ctx, x, y, TABLE_WIDTH, total_height, 14.0);
+    round_rect(ctx, x, y, width, total_height, 14.0);
     ctx.fill();
     ctx.restore();
 
@@ -1424,7 +1434,9 @@ fn draw_note(ctx: &CanvasRenderingContext2d, note: &Note, palette: &CanvasPalett
 
 pub fn hit_test_field(tables: &[Table], x: f64, y: f64) -> Option<(String, String)> {
     for table in tables.iter().rev() {
-        if x < table.x || x > table.x + TABLE_WIDTH {
+        // feat-table-resize: 命中宽度跟随 table.width,fallback 到 TABLE_WIDTH 默认
+        let width = table.width.map(|w| w as f64).unwrap_or(TABLE_WIDTH);
+        if x < table.x || x > table.x + width {
             continue;
         }
         if y < table.y + TABLE_HEADER_HEIGHT {
@@ -1446,8 +1458,10 @@ pub fn hit_test_field(tables: &[Table], x: f64, y: f64) -> Option<(String, Strin
 
 pub fn hit_test(tables: &[Table], x: f64, y: f64) -> Option<String> {
     for table in tables.iter().rev() {
+        // feat-table-resize: 命中宽度跟随 table.width,fallback 到 TABLE_WIDTH 默认
+        let width = table.width.map(|w| w as f64).unwrap_or(TABLE_WIDTH);
         let h = TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT * table.fields.len().max(2) as f64;
-        if x >= table.x && x <= table.x + TABLE_WIDTH && y >= table.y && y <= table.y + h {
+        if x >= table.x && x <= table.x + width && y >= table.y && y <= table.y + h {
             return Some(table.id.clone());
         }
     }
