@@ -97,6 +97,7 @@ WHITELIST_PREFIXES=(
   "logos/.openlogos-guard"
   "logos/logos-project.yaml"
   ".claude/"
+  ".octos/"
   ".opencode/"
   ".codex-plugin/"
   ".cursor/"
