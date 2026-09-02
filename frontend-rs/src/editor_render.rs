@@ -930,6 +930,21 @@ pub fn snap_to_grid(x: f64, y: f64, grid: f64) -> (f64, f64) {
     ((x / grid).round() * grid, (y / grid).round() * grid)
 }
 
+/// feat-table-resize 批次3: draw_table 渲染尺寸纯函数化,
+/// 供单测独立验证 width/min_height 消费逻辑(免依赖 CanvasRenderingContext2d)。
+/// 返回 (render_width, render_height)。
+pub fn compute_table_render_size(table: &Table) -> (f64, f64) {
+    let field_count = table.fields.len().max(2);
+    let width = table.width.map(|w| w as f64).unwrap_or(TABLE_WIDTH);
+    let auto_height = TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT * field_count as f64;
+    let total_height = table
+        .min_height
+        .map(|h| h as f64)
+        .map(|min| min.max(auto_height))
+        .unwrap_or(auto_height);
+    (width, total_height)
+}
+
 /// 源字段右侧锚点（与正式关系线起点一致）。
 pub fn field_anchor_start(table: &Table, field_id: &str) -> (f64, f64) {
     // feat-table-resize: 端点 x 消费 table.width,fallback 到 TABLE_WIDTH 默认 230.0
@@ -1167,15 +1182,7 @@ pub fn zoom_reset(transform: RwSignal<Transform>) {
 
 fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool, palette: &CanvasPalette) {
     let field_count = table.fields.len().max(2);
-    // feat-table-resize: 表宽度消费 table.width,fallback 到 TABLE_WIDTH 默认 230.0
-    let width = table.width.map(|w| w as f64).unwrap_or(TABLE_WIDTH);
-    // feat-table-resize: 最小高度语义(operator Q4)。实际高度 = max(min_height, auto_height)
-    let auto_height = TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT * field_count as f64;
-    let total_height = table
-        .min_height
-        .map(|h| h as f64)
-        .map(|min| min.max(auto_height))
-        .unwrap_or(auto_height);
+    let (width, total_height) = compute_table_render_size(table);
     let x = table.x;
     let y = table.y;
 
@@ -1722,5 +1729,155 @@ mod tests {
         assert_ne!(before.x1, during.x1, "UT-CR-07: 不得仍使用 100/100");
         assert_eq!(during.x1, 160.0 + TABLE_WIDTH);
         assert_eq!(during.y1, field_anchor_y(&moved, "fa"));
+    }
+
+    // ─── feat-table-resize 批次3 步骤2：draw_table + hit_test 消费 table.width/min_height ───
+
+    /// draw_table.width 跟随 table.width,None 走 TABLE_WIDTH 默认。
+    /// 通过检测 round_rect 入参验证（公开 helper: `compute_table_render_size`）
+    #[test]
+    fn feat_table_resize_draw_table_width_uses_table_width_some() {
+        use crate::editor_core::types::{Field, Table};
+        let mut t = Table {
+            id: "t".into(),
+            name: "T".into(),
+            x: 0.0, y: 0.0,
+            color: "#000".into(),
+            comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "f".into(), type_: "INT".into(),
+                default: String::new(), check: String::new(),
+                primary: false, unique: false, not_null: false, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(),
+            width: Some(400),
+            min_height: None,
+        };
+        let (w, h) = compute_table_render_size(&t);
+        assert_eq!(w, 400.0, "feat-table-resize: width=Some(400) → 400");
+        // height = TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT × max(2, fields.len())
+        assert_eq!(h, TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT * 2.0);
+    }
+
+    #[test]
+    fn feat_table_resize_draw_table_width_uses_default_when_none() {
+        use crate::editor_core::types::{Field, Table};
+        let t = Table {
+            id: "t".into(), name: "T".into(),
+            x: 0.0, y: 0.0,
+            color: "#000".into(), comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "f".into(), type_: "INT".into(),
+                default: String::new(), check: String::new(),
+                primary: false, unique: false, not_null: false, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(),
+            width: None,
+            min_height: None,
+        };
+        let (w, _) = compute_table_render_size(&t);
+        assert_eq!(w, TABLE_WIDTH, "feat-table-resize: width=None → TABLE_WIDTH 默认");
+    }
+
+    #[test]
+    fn feat_table_resize_draw_table_min_height_overrides_auto() {
+        use crate::editor_core::types::{Field, Table};
+        // 1 字段 → auto = TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT × max(2,1) = 43 + 35*2 = 113
+        // min_height=300 应胜出
+        let t = Table {
+            id: "t".into(), name: "T".into(),
+            x: 0.0, y: 0.0,
+            color: "#000".into(), comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "f".into(), type_: "INT".into(),
+                default: String::new(), check: String::new(),
+                primary: false, unique: false, not_null: false, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(),
+            width: None,
+            min_height: Some(300),
+        };
+        let (_, h) = compute_table_render_size(&t);
+        assert_eq!(h, 300.0, "feat-table-resize: min_height=Some(300) 胜出 auto=113");
+    }
+
+    #[test]
+    fn feat_table_resize_draw_table_min_height_none_uses_auto() {
+        use crate::editor_core::types::{Field, Table};
+        // 5 字段 → auto = 43 + 35*5 = 218;min_height=None 走 auto
+        let fields: Vec<Field> = (0..5).map(|i| Field {
+            id: format!("f{i}"), name: format!("f{i}"), type_: "INT".into(),
+            default: String::new(), check: String::new(),
+            primary: false, unique: false, not_null: false, increment: false,
+            comment: String::new(),
+        }).collect();
+        let t = Table {
+            id: "t".into(), name: "T".into(),
+            x: 0.0, y: 0.0,
+            color: "#000".into(), comment: String::new(),
+            fields,
+            indices: Vec::new(),
+            width: None,
+            min_height: None,
+        };
+        let (_, h) = compute_table_render_size(&t);
+        assert_eq!(h, TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT * 5.0);
+    }
+
+    #[test]
+    fn feat_table_resize_hit_test_field_uses_table_width() {
+        let mut t = fixture_table("t", "f1", 100.0, 100.0);
+        t.width = Some(400);
+        // 字段 y 起点 ≈ 165;x=350 在 width=400 内,x=600 严格超出(边界 500)
+        assert!(hit_test_field(&[t.clone()], 350.0, 165.0).is_some(),
+            "feat-table-resize: x=350 在 width=400 内 → 命中");
+        assert!(hit_test_field(&[t.clone()], 600.0, 165.0).is_none(),
+            "feat-table-resize: x=600 严格超出 width=400(边界 500) → 不命中");
+    }
+
+    #[test]
+    fn feat_table_resize_hit_test_uses_table_width() {
+        let mut t = fixture_table("t", "f1", 100.0, 100.0);
+        t.width = Some(400);
+        // 表范围 x ∈ [100, 500];y ∈ [100, 100+auto_height]
+        assert!(hit_test(&[t.clone()], 450.0, 110.0).is_some(),
+            "feat-table-resize: 表级命中 x=450 在 width=400 内");
+        assert!(hit_test(&[t.clone()], 600.0, 110.0).is_none(),
+            "feat-table-resize: 表级未命中 x=600 超出 width=400(边界 500)");
+    }
+
+    /// Apply 闭环的纯函数级单元测试：
+    /// 模拟 SetTableWidthModal.Apply 的写入语义,验证 store.tables[*].width 被更新。
+    #[test]
+    fn feat_table_resize_apply_writes_width_to_all_tables() {
+        use crate::editor_core::types::{Field, Table};
+        use crate::editor_core::EditorStore;
+        let store = EditorStore::new();
+        let t1 = Table {
+            id: "t1".into(), name: "A".into(),
+            x: 0.0, y: 0.0, color: "#000".into(), comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "f".into(), type_: "INT".into(),
+                default: String::new(), check: String::new(),
+                primary: false, unique: false, not_null: false, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(),
+            width: None, min_height: None,
+        };
+        let t2 = t1.clone();
+        let mut t2 = t2; t2.id = "t2".into(); t2.name = "B".into();
+        store.tables.set(vec![t1, t2]);
+        // 模拟 Apply 写入
+        store.tables.update(|tables| {
+            for t in tables.iter_mut() { t.width = Some(350); }
+        });
+        store.dirty.set(true);
+        let widths: Vec<u32> = store.tables.get().iter().map(|t| t.width.unwrap_or(0)).collect();
+        assert_eq!(widths, vec![350, 350], "feat-table-resize: Apply 后所有 table.width=350");
+        assert!(store.dirty.get(), "feat-table-resize: Apply 后 dirty=true");
     }
 }
