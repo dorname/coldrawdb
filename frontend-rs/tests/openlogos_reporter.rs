@@ -72,6 +72,8 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-MM-20", // feat-relation-inference: build_reference 使用推导值
     "UT-MM-21", // ux-canvas-batch: 列表视图排序纯函数测试（按表维度属性排序）
     "UT-MM-22", // ux-canvas-batch: 列表视图 tab 切换测试
+    "UT-MM-23", // ux-canvas-batch: 列表视图过滤纯函数测试（按名称模糊匹配/按类型/按是否有索引）
+    "UT-MM-24", // ux-canvas-batch: 列表视图批量重命名纯函数测试（重名冲突处理：B2-S1 补充规则）
     // core-PB-relationship
     "UT-PB-01",
     "UT-PB-02",

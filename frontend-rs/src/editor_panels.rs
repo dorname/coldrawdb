@@ -5307,6 +5307,10 @@ pub enum SortDirection {
 pub struct ListViewState {
     pub sort_column: RwSignal<SortColumn>,
     pub sort_direction: RwSignal<SortDirection>,
+    // ux-canvas-batch 批次2: 过滤字段
+    pub filter_query: RwSignal<String>,      // 按名称模糊匹配（表名/字段名/类型）
+    pub filter_type: RwSignal<String>,        // 按类型过滤（与 SortColumn::Type 首字段类型口径对齐）
+    pub filter_has_index: RwSignal<Option<bool>>, // 按是否有索引过滤（Some(true)=仅有索引，Some(false)=仅无索引，None=不过滤）
 }
 
 /// ux-canvas-batch 批次1：列表视图排序纯函数（UT-MM-21）
@@ -5353,6 +5357,101 @@ pub fn sort_tables(
     sorted
 }
 
+/// ux-canvas-batch 批次2：列表视图过滤纯函数（UT-MM-23）
+/// 按名称模糊匹配（表名/字段名/类型含 filter_query 子串，大小写不敏感）
+/// 按类型过滤（与 SortColumn::Type 首字段类型口径对齐——外环判词语义记一笔：
+/// 取首个字段类型做表级过滤键，空表回退 ""）
+/// 按是否有索引过滤（Some(true)=仅有索引，Some(false)=仅无索引，None=不过滤）
+/// 组合过滤：三条件 AND（同时满足）
+pub fn filter_tables(
+    tables: &[Table],
+    filter_query: &str,
+    filter_type: &str,
+    filter_has_index: Option<bool>,
+) -> Vec<Table> {
+    tables
+        .iter()
+        .filter(|t| {
+            // 按名称模糊匹配（表名/字段名/类型含 filter_query 子串，大小写不敏感）
+            if !filter_query.is_empty() {
+                let query = filter_query.to_lowercase();
+                let name_match = t.name.to_lowercase().contains(&query);
+                let field_match = t.fields.iter().any(|f| f.name.to_lowercase().contains(&query));
+                let type_match = t.fields.first().map(|f| f.type_.to_lowercase().contains(&query)).unwrap_or(false);
+                if !name_match && !field_match && !type_match {
+                    return false;
+                }
+            }
+            // 按类型过滤（与 SortColumn::Type 首字段类型口径对齐）
+            if !filter_type.is_empty() {
+                let table_type = t.fields.first().map(|f| f.type_.as_str()).unwrap_or("");
+                if table_type != filter_type {
+                    return false;
+                }
+            }
+            // 按是否有索引过滤
+            if let Some(has_index) = filter_has_index {
+                let table_has_index = !t.indices.is_empty();
+                if table_has_index != has_index {
+                    return false;
+                }
+            }
+            true
+        })
+        .cloned()
+        .collect()
+}
+
+/// ux-canvas-batch 批次2：列表视图批量重命名纯函数（UT-MM-24）
+/// 规则（重名冲突处理真值表，外环判词 C-1 强制 + B2-S1 补充规则）：
+///   - 冲突判定以改名前快照为准（{A→B,B→C} 全跳过——B→C 时 B 仍存在于改名前快照，C 冲突）
+///   - 处理顺序按旧名字典序（{B→D, A→D} → A 先处理，A→D 成功，B→D 跳过）
+///   - 同一新名多旧名映射（{A→C, B→C}）→ 字典序靠前者得名（A→C 成功），其余跳过（B→C 跳过）
+///   - 新名 = 原名 → 跳过（不改名，保持原名）
+///   - 新名为空 → 跳过（不改名，保持原名）
+///   - 新名含非法字符 → 跳过（不改名，保持原名）
+///   - 新名已存在（改名前快照）→ 跳过（不改名，保持原名）
+/// 批量改名后 store.dirty.set(true)（标记脏，触发自动保存）
+pub fn batch_rename_tables(
+    tables: &mut Vec<Table>,
+    rename_map: std::collections::HashMap<String, String>,
+) {
+    // B2-S1 ①：冲突判定以改名前快照为准
+    let snapshot_names: std::collections::HashSet<String> = tables.iter().map(|t| t.name.clone()).collect();
+    // B2-S1 ②：处理顺序按旧名字典序
+    let mut sorted_renames: Vec<(String, String)> = rename_map.into_iter().collect();
+    sorted_renames.sort_by(|a, b| a.0.cmp(&b.0));
+    // B2-S1 ③：同一新名多旧名映射，字典序靠前者得名其余跳过
+    let mut used_new_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for (old_name, new_name) in sorted_renames {
+        // 新名 = 原名 → 跳过
+        if old_name == new_name {
+            continue;
+        }
+        // 新名为空 → 跳过
+        if new_name.is_empty() {
+            continue;
+        }
+        // 新名含非法字符 → 跳过（简单规则：不允许空格）
+        if new_name.contains(' ') {
+            continue;
+        }
+        // 新名已存在（改名前快照）→ 跳过
+        if snapshot_names.contains(&new_name) {
+            continue;
+        }
+        // 同一新名多旧名映射，字典序靠前者得名其余跳过
+        if used_new_names.contains(&new_name) {
+            continue;
+        }
+        // 改名成功
+        if let Some(table) = tables.iter_mut().find(|t| t.name == old_name) {
+            table.name = new_name.clone();
+            used_new_names.insert(new_name);
+        }
+    }
+}
+
 /// ux-canvas-batch 批次1：ListView 组件（表结构列表视图，参考 pdmaner 全量能力）
 /// 表名/字段名/类型表格化展示 + 按表维度属性排序
 #[component]
@@ -5363,6 +5462,9 @@ pub fn ListView(
     let list_view_state = ListViewState {
         sort_column: create_rw_signal(SortColumn::TableName),
         sort_direction: create_rw_signal(SortDirection::Ascending),
+        filter_query: create_rw_signal(String::new()),
+        filter_type: create_rw_signal(String::new()),
+        filter_has_index: create_rw_signal(None),
     };
     let list_view_state_for_name = list_view_state.clone();
     let list_view_state_for_field_count = list_view_state.clone();
@@ -9532,6 +9634,192 @@ mod tests {
         // 验证 ListView tab 的 testid 和 label 正确
         assert_eq!(SidePanelTab::ListView.testid(), "tab-list-view", "UT-MM-22: ListView tab testid 应为 tab-list-view");
         assert_eq!(SidePanelTab::ListView.label(), "列表视图", "UT-MM-22: ListView tab label 应为 列表视图");
+    }
+
+    // ─── UT-MM-23: 列表视图过滤纯函数测试 ────────────────
+
+    #[test]
+    fn test_filter_tables_by_name_ut_mm_23() {
+        use crate::editor_core::types::{Field, Table};
+        let tables = vec![
+            Table { id: "t1".into(), name: "users".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
+            Table { id: "t2".into(), name: "orders".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
+        ];
+        let filtered = filter_tables(&tables, "users", "", None);
+        assert_eq!(filtered.len(), 1, "UT-MM-23: 按名称模糊匹配 users → 1 个表");
+        assert_eq!(filtered[0].name, "users", "UT-MM-23: 过滤结果应为 users");
+    }
+
+    #[test]
+    fn test_filter_tables_by_type_ut_mm_23() {
+        use crate::editor_core::types::{Field, Table};
+        let tables = vec![
+            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
+            Table { id: "t2".into(), name: "B".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "name".into(), type_: "VARCHAR".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
+        ];
+        let filtered = filter_tables(&tables, "", "INT", None);
+        assert_eq!(filtered.len(), 1, "UT-MM-23: 按类型过滤 INT → 1 个表");
+        assert_eq!(filtered[0].name, "A", "UT-MM-23: 过滤结果应为 A（首个字段类型 INT）");
+    }
+
+    #[test]
+    fn test_filter_tables_by_has_index_ut_mm_23() {
+        use crate::editor_core::types::{Field, Table, Index};
+        let tables = vec![
+            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![], width: None, min_height: None },
+            Table { id: "t2".into(), name: "B".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![Index { id: "i1".into(), name: "idx".into(), fields: vec![], unique: false }], width: None, min_height: None },
+        ];
+        let filtered = filter_tables(&tables, "", "", Some(true));
+        assert_eq!(filtered.len(), 1, "UT-MM-23: 仅有索引 → 1 个表");
+        assert_eq!(filtered[0].name, "B", "UT-MM-23: 过滤结果应为 B（有索引）");
+    }
+
+    #[test]
+    fn test_filter_tables_by_no_index_ut_mm_23() {
+        use crate::editor_core::types::{Field, Table, Index};
+        let tables = vec![
+            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![], width: None, min_height: None },
+            Table { id: "t2".into(), name: "B".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![Index { id: "i1".into(), name: "idx".into(), fields: vec![], unique: false }], width: None, min_height: None },
+        ];
+        let filtered = filter_tables(&tables, "", "", Some(false));
+        assert_eq!(filtered.len(), 1, "UT-MM-23: 仅无索引 → 1 个表");
+        assert_eq!(filtered[0].name, "A", "UT-MM-23: 过滤结果应为 A（无索引）");
+    }
+
+    #[test]
+    fn test_filter_tables_combined_ut_mm_23() {
+        use crate::editor_core::types::{Field, Table, Index};
+        let tables = vec![
+            Table { id: "t1".into(), name: "users".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![Index { id: "i1".into(), name: "idx".into(), fields: vec![], unique: false }], width: None, min_height: None },
+            Table { id: "t2".into(), name: "orders".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
+        ];
+        let filtered = filter_tables(&tables, "users", "INT", Some(true));
+        assert_eq!(filtered.len(), 1, "UT-MM-23: 三条件 AND → 1 个表");
+        assert_eq!(filtered[0].name, "users", "UT-MM-23: 过滤结果应为 users（含 users 子串 + INT + 有索引）");
+    }
+
+    #[test]
+    fn test_filter_tables_empty_ut_mm_23() {
+        use crate::editor_core::types::Table;
+        let tables: Vec<Table> = vec![];
+        let filtered = filter_tables(&tables, "nonexistent", "", None);
+        assert_eq!(filtered.len(), 0, "UT-MM-23: 空 tables → 空结果");
+    }
+
+    #[test]
+    fn test_filter_tables_no_filter_ut_mm_23() {
+        use crate::editor_core::types::{Field, Table};
+        let tables = vec![
+            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
+            Table { id: "t2".into(), name: "B".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "name".into(), type_: "VARCHAR".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
+        ];
+        let filtered = filter_tables(&tables, "", "", None);
+        assert_eq!(filtered.len(), 2, "UT-MM-23: 不过滤 → 全部表");
+    }
+
+    // ─── UT-MM-24: 列表视图批量重命名纯函数测试 ────────────────
+
+    #[test]
+    fn test_batch_rename_tables_success_ut_mm_24() {
+        use crate::editor_core::types::{Field, Table};
+        let mut tables = vec![
+            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![], width: None, min_height: None },
+            Table { id: "t2".into(), name: "B".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![], width: None, min_height: None },
+        ];
+        let mut rename_map = std::collections::HashMap::new();
+        rename_map.insert("A".to_string(), "D".to_string());
+        batch_rename_tables(&mut tables, rename_map);
+        assert_eq!(tables[0].name, "D", "UT-MM-24: A→D 改名成功");
+        assert_eq!(tables[1].name, "B", "UT-MM-24: B 不变");
+    }
+
+    #[test]
+    fn test_batch_rename_tables_skip_existing_ut_mm_24() {
+        use crate::editor_core::types::{Field, Table};
+        let mut tables = vec![
+            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![], width: None, min_height: None },
+            Table { id: "t2".into(), name: "B".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![], width: None, min_height: None },
+        ];
+        let mut rename_map = std::collections::HashMap::new();
+        rename_map.insert("A".to_string(), "B".to_string());
+        batch_rename_tables(&mut tables, rename_map);
+        assert_eq!(tables[0].name, "A", "UT-MM-24: A→B 跳过（新名 B 已存在，保持原名 A）");
+        assert_eq!(tables[1].name, "B", "UT-MM-24: B 不变");
+    }
+
+    #[test]
+    fn test_batch_rename_tables_skip_same_name_ut_mm_24() {
+        use crate::editor_core::types::{Field, Table};
+        let mut tables = vec![
+            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![], width: None, min_height: None },
+        ];
+        let mut rename_map = std::collections::HashMap::new();
+        rename_map.insert("A".to_string(), "A".to_string());
+        batch_rename_tables(&mut tables, rename_map);
+        assert_eq!(tables[0].name, "A", "UT-MM-24: A→A 跳过（新名 = 原名，保持原名 A）");
+    }
+
+    #[test]
+    fn test_batch_rename_tables_skip_empty_ut_mm_24() {
+        use crate::editor_core::types::{Field, Table};
+        let mut tables = vec![
+            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![], width: None, min_height: None },
+        ];
+        let mut rename_map = std::collections::HashMap::new();
+        rename_map.insert("A".to_string(), "".to_string());
+        batch_rename_tables(&mut tables, rename_map);
+        assert_eq!(tables[0].name, "A", "UT-MM-24: A→\"\" 跳过（新名为空，保持原名 A）");
+    }
+
+    #[test]
+    fn test_batch_rename_tables_skip_invalid_ut_mm_24() {
+        use crate::editor_core::types::{Field, Table};
+        let mut tables = vec![
+            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![], width: None, min_height: None },
+        ];
+        let mut rename_map = std::collections::HashMap::new();
+        rename_map.insert("A".to_string(), "A B".to_string());
+        batch_rename_tables(&mut tables, rename_map);
+        assert_eq!(tables[0].name, "A", "UT-MM-24: A→\"A B\" 跳过（含非法字符，保持原名 A）");
+    }
+
+    #[test]
+    fn test_batch_rename_tables_empty_map_ut_mm_24() {
+        use crate::editor_core::types::{Field, Table};
+        let mut tables = vec![
+            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![], width: None, min_height: None },
+        ];
+        batch_rename_tables(&mut tables, std::collections::HashMap::new());
+        assert_eq!(tables[0].name, "A", "UT-MM-24: 空 rename_map → 全部不变");
+    }
+
+    #[test]
+    fn test_batch_rename_tables_nonexistent_ut_mm_24() {
+        use crate::editor_core::types::{Field, Table};
+        let mut tables = vec![
+            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![], width: None, min_height: None },
+        ];
+        let mut rename_map = std::collections::HashMap::new();
+        rename_map.insert("D".to_string(), "E".to_string());
+        batch_rename_tables(&mut tables, rename_map);
+        assert_eq!(tables[0].name, "A", "UT-MM-24: 旧名 D 不存在 → 全部不变");
+    }
+
+    // ─── B2-S1 ③: 同一新名多旧名映射，字典序靠前者得名其余跳过 ────────────────
+
+    #[test]
+    fn test_batch_rename_tables_same_new_name_ut_mm_24() {
+        use crate::editor_core::types::{Field, Table};
+        let mut tables = vec![
+            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![], width: None, min_height: None },
+            Table { id: "t2".into(), name: "B".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![], width: None, min_height: None },
+        ];
+        let mut rename_map = std::collections::HashMap::new();
+        rename_map.insert("A".to_string(), "C".to_string());
+        rename_map.insert("B".to_string(), "C".to_string());
+        batch_rename_tables(&mut tables, rename_map);
+        assert_eq!(tables[0].name, "C", "UT-MM-24 B2-S1 ③: A→C 字典序靠前，改名成功");
+        assert_eq!(tables[1].name, "B", "UT-MM-24 B2-S1 ③: B→C 跳过（新名 C 已被 A 占用）");
     }
 
     // ─── UT-MM-20: build_reference 使用推导值而非用户必选下拉值 ────────────────
