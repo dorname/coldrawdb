@@ -66,6 +66,7 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-MM-14",
     "UT-MM-15",
     "UT-MM-16",
+    "UT-MM-17", // feat-table-resize: parse_table_height 纯函数
     // core-PB-relationship
     "UT-PB-01",
     "UT-PB-02",
