@@ -1,0 +1,12 @@
+
+> frontend-rs@1.0.0 test:spec-parity-c
+> node scripts/test-spec-parity-c.mjs
+
+PASS ST-S05-UI-01, ST-PU-24, ST-FE-ALIGN-03 进房后协作锚点来自真实 REST head
+PASS ST-S01-SS-01 保存态 dirty→saving→saved 与 rev 推进
+PASS ST-S01-409-SCOPE, ST-FE-ALIGN-04 协作连接态快照 409 不弹 S01 模态
+PASS ST-S01-NO-409-OT, ST-S05-UI-02 双端连接态编辑无 409 模态且 ot-rev 一致
+PASS ST-S01-409-LOCAL-ONLY, ST-S05-UI-05 仅本地编辑后 409 允许模态且风险文案常驻
+PASS ST-S05-UI-04 断连排队编辑，重连后队列清零
+PASS ST-S05-UI-03 room-presence 可见且不影响本地选中
+PASS ST-S05-UI-06 Viewer 写入口禁用且 ot-rev 不递增
