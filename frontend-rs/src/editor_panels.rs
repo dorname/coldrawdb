@@ -7503,6 +7503,40 @@ pub mod modals {
             .map_err(|e| format!("高度必须是非负整数: {}", e))
     }
 
+    /// feat-relation-inference 批次1：cardinality 推导纯函数（UT-MM-18）
+    /// 推导依据（外环判词修正 v2 + v3 方向颠倒修正）：
+    /// 字段已参与关系计数（含本次新建），不是表总字段数 fields.len()
+    /// s = start_field 已参与的关系数（含本条），e = end_field 已参与的关系数（含本条）
+    /// 从 store.references.get() 统计 start_field_id/end_field_id 出现的次数
+    /// （作为 start 或 end 端均可）
+    /// 推导规则（operator Q2 裁决 + 外环判词修正 v2 + v3 方向颠倒修正）：
+    ///   s==1 && e==1 → "one_to_one"
+    ///   s>1 && e==1 → "one_to_many"（start 被多处引用，start 为"一"侧）
+    ///   s==1 && e>1 → "many_to_one"（end 被多处引用，end 为"一"侧）
+    ///   s>1 && e>1 → "many_to_many"
+    /// 向后兼容：如字段不存在或计数为 0，fallback 到 "one_to_many"（与现有默认一致）
+    pub fn infer_cardinality(start_field_id: &str, end_field_id: &str, store: &crate::editor_core::EditorStore) -> String {
+        let references = store.references.get();
+        let count_field_participation = |field_id: &str| -> usize {
+            references
+                .iter()
+                .filter(|r| r.start_field_id == field_id || r.end_field_id == field_id)
+                .count()
+        };
+        let s_count = count_field_participation(start_field_id);
+        let e_count = count_field_participation(end_field_id);
+        let s = s_count + 1; // 含本条
+        let e = e_count + 1; // 含本条
+        match (s, e) {
+            (1, 1) => "one_to_one",
+            (s_val, 1) if s_val > 1 => "one_to_many",
+            (1, e_val) if e_val > 1 => "many_to_one",
+            (s_val, e_val) if s_val > 1 && e_val > 1 => "many_to_many",
+            _ => "one_to_many", // fallback（向后兼容）
+        }
+        .to_string()
+    }
+
     /// 校验语言代码
     /// - UT-MM-12: "en" / "zh" → Ok(()); 其他 → Err
     pub fn validate_language(lang: &str) -> Result<(), String> {
@@ -8977,6 +9011,158 @@ mod tests {
             modals::parse_table_height("-5").is_err(),
             "UT-MM-17: '-5' → Err (负数被拒绝)"
         );
+    }
+
+    // ─── UT-MM-18: infer_cardinality (feat-relation-inference 批次1) ────────────────
+    // 推导依据（外环判词修正 v2 + v3 方向颠倒修正）：字段已参与关系计数（含本次新建），
+    // 不是表总字段数 fields.len()。s/e = start_field/end_field 已参与的关系数（含本条）。
+    // 真值表（外环判词要求；v3 修正方向颠倒）：
+    //   s==1 && e==1 → one_to_one
+    //   s>1 && e==1 → one_to_many（start 被多处引用，start 为"一"侧）
+    //   s==1 && e>1 → many_to_one（end 被多处引用，end 为"一"侧）
+    //   s>1 && e>1 → many_to_many
+
+    #[test]
+    fn test_infer_cardinality_one_to_one_ut_mm_18() {
+        use crate::editor_core::EditorStore;
+        let store = EditorStore::new();
+        // 两端字段均参与 0 条既有关系 → s=1, e=1 → one_to_one
+        let result = modals::infer_cardinality("f1", "f2", &store);
+        assert_eq!(result, "one_to_one", "UT-MM-18: s=1, e=1 → one_to_one");
+    }
+
+    #[test]
+    fn test_infer_cardinality_many_to_one_ut_mm_18() {
+        use crate::editor_core::types::{Reference, Table, Field};
+        use crate::editor_core::EditorStore;
+        let store = EditorStore::new();
+        // end 字段参与 1 条既有关系 → e=2（含本条）；start 字段参与 0 条 → s=1
+        // 先建一条 reference：f1 → f2（f2 是 end）
+        let existing = Reference {
+            id: "r1".into(),
+            name: String::new(),
+            start_table_id: "t1".into(),
+            end_table_id: "t2".into(),
+            start_field_id: "f0".into(),
+            end_field_id: "f2".into(),
+            type_: "one_to_many".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+        };
+        store.references.set(vec![existing]);
+        // 现在连 f1 → f2：f2 已参与 1 条（s=1, e=2）→ many_to_one
+        let result = modals::infer_cardinality("f1", "f2", &store);
+        assert_eq!(result, "many_to_one", "UT-MM-18: s=1, e=2 → many_to_one（end 被多处引用，end 为\"一\"侧）");
+    }
+
+    #[test]
+    fn test_infer_cardinality_one_to_many_ut_mm_18() {
+        use crate::editor_core::types::{Reference, Table, Field};
+        use crate::editor_core::EditorStore;
+        let store = EditorStore::new();
+        // start 字段参与 1 条既有关系 → s=2（含本条）；end 字段参与 0 条 → e=1
+        // 先建一条 reference：f1 → f0（f1 是 start）
+        let existing = Reference {
+            id: "r1".into(),
+            name: String::new(),
+            start_table_id: "t1".into(),
+            end_table_id: "t2".into(),
+            start_field_id: "f1".into(),
+            end_field_id: "f0".into(),
+            type_: "one_to_many".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+        };
+        store.references.set(vec![existing]);
+        // 现在连 f1 → f2：f1 已参与 1 条（s=2, e=1）→ one_to_many
+        let result = modals::infer_cardinality("f1", "f2", &store);
+        assert_eq!(result, "one_to_many", "UT-MM-18: s=2, e=1 → one_to_many（start 被多处引用，start 为\"一\"侧）");
+    }
+
+    #[test]
+    fn test_infer_cardinality_many_to_many_ut_mm_18() {
+        use crate::editor_core::types::{Reference, Table, Field};
+        use crate::editor_core::EditorStore;
+        let store = EditorStore::new();
+        // start 字段参与 1 条既有关系 → s=2；end 字段参与 1 条既有关系 → e=2
+        let existing1 = Reference {
+            id: "r1".into(),
+            name: String::new(),
+            start_table_id: "t1".into(),
+            end_table_id: "t2".into(),
+            start_field_id: "f1".into(),
+            end_field_id: "f0".into(),
+            type_: "one_to_many".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+        };
+        let existing2 = Reference {
+            id: "r2".into(),
+            name: String::new(),
+            start_table_id: "t3".into(),
+            end_table_id: "t4".into(),
+            start_field_id: "f0".into(),
+            end_field_id: "f2".into(),
+            type_: "one_to_many".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+        };
+        store.references.set(vec![existing1, existing2]);
+        // 现在连 f1 → f2：f1 已参与 1 条（s=2）、f2 已参与 1 条（e=2）→ many_to_many
+        let result = modals::infer_cardinality("f1", "f2", &store);
+        assert_eq!(result, "many_to_many", "UT-MM-18: s=2, e=2 → many_to_many");
+    }
+
+    #[test]
+    fn test_infer_cardinality_one_to_many_s3_ut_mm_18() {
+        use crate::editor_core::types::{Reference, Table, Field};
+        use crate::editor_core::EditorStore;
+        let store = EditorStore::new();
+        // start 字段参与 2 条既有关系 → s=3；end 字段参与 0 条 → e=1
+        let existing1 = Reference {
+            id: "r1".into(),
+            name: String::new(),
+            start_table_id: "t1".into(),
+            end_table_id: "t2".into(),
+            start_field_id: "f1".into(),
+            end_field_id: "f0".into(),
+            type_: "one_to_many".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+        };
+        let existing2 = Reference {
+            id: "r2".into(),
+            name: String::new(),
+            start_table_id: "t1".into(),
+            end_table_id: "t3".into(),
+            start_field_id: "f1".into(),
+            end_field_id: "f0".into(),
+            type_: "one_to_many".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+        };
+        store.references.set(vec![existing1, existing2]);
+        // 现在连 f1 → f2：f1 已参与 2 条（s=3）、f2 已参与 0 条（e=1）→ one_to_many
+        let result = modals::infer_cardinality("f1", "f2", &store);
+        assert_eq!(result, "one_to_many", "UT-MM-18: s=3, e=1 → one_to_many（start 被多处引用，start 为\"一\"侧）");
+    }
+
+    #[test]
+    fn test_infer_cardinality_fallback_field_not_exist_ut_mm_18() {
+        use crate::editor_core::EditorStore;
+        let store = EditorStore::new();
+        // 字段不存在（空 store）→ s=1, e=1 → one_to_one（含本条）
+        let result = modals::infer_cardinality("nonexistent", "f2", &store);
+        assert_eq!(result, "one_to_one", "UT-MM-18: 字段不存在（空 store）→ s=1, e=1 → one_to_one（含本条）");
+    }
+
+    #[test]
+    fn test_infer_cardinality_fallback_zero_count_ut_mm_18() {
+        use crate::editor_core::EditorStore;
+        let store = EditorStore::new();
+        // 字段计数为 0（空 store）→ s=1, e=1 → one_to_one（含本条）
+        let result = modals::infer_cardinality("f1", "f2", &store);
+        assert_eq!(result, "one_to_one", "UT-MM-18: 字段计数为 0（空 store）→ s=1, e=1 → one_to_one（含本条）");
     }
 
     #[test]
