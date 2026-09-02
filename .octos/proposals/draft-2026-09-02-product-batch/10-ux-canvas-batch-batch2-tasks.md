@@ -28,22 +28,31 @@
 
 - [ ] `frontend-rs/src/editor_panels.rs`: 新增 `batch_rename_tables` 纯函数（UT-MM-24）：
   - 输入：`tables: &mut Vec<Table>`、`rename_map: HashMap<String, String>`（旧名 → 新名）
-  - 规则（**重名冲突处理真值表**，外环判词 C-1 强制）：
+  - 规则（**重名冲突处理真值表**，外环判词 C-1 强制 + B2-S1 补充规则）：
 
-    | 旧名 | 新名 | 新名是否已存在 | 结果 |
+    | 旧名 | 新名 | 新名是否已存在（改名前快照） | 结果 |
     |---|---|---|---|
     | A | B | 否 | A → B（改名成功） |
     | A | B | 是（另一表已用 B） | A 跳过（不改名，保持原名 A） |
     | A | A | 是（自身） | A 跳过（不改名，保持原名 A） |
     | A | "" | — | A 跳过（不改名，保持原名 A） |
     | A | B（含非法字符） | — | A 跳过（不改名，保持原名 A） |
+    | A | B | 否（但另一旧名也映射到 B） | 字典序靠前者得名，其余跳过（B2-S1 ③） |
 
-  - **实例推演**（外环判词 C-1 强制）：
+  - **B2-S1 补充规则**（外环 steer 强制）：
+    - ①冲突判定以**改名前快照**为准（`{A→B, B→C}` 全跳过——B→C 时 B 仍存在于改名前快照，C 冲突）
+    - ②处理顺序按**旧名字典序**（`{B→D, A→D}` → A 先处理，A→D 成功，B→D 跳过）
+    - ③同一新名多旧名映射（`{A→C, B→C}`）→ 字典序靠前者得名（A→C 成功），其余跳过（B→C 跳过）
+
+  - **实例推演**（外环判词 C-1 强制 + B2-S1 补充）：
     - 场景 1：tables = [A, B, C]，rename_map = {A→D} → A→D（改名成功），B/C 不变
     - 场景 2：tables = [A, B, C]，rename_map = {A→B} → A 跳过（新名 B 已存在，保持原名 A）
     - 场景 3：tables = [A, B, C]，rename_map = {A→A} → A 跳过（新名 = 原名，保持原名 A）
     - 场景 4：tables = [A, B, C]，rename_map = {A→""} → A 跳过（新名为空，保持原名 A）
     - 场景 5：tables = [A, B, C]，rename_map = {A→"A-B"} → A→A-B（合法字符，改名成功）
+    - 场景 6（B2-S1 ①）：tables = [A, B, C]，rename_map = {A→B, B→C} → A 跳过（新名 B 已存在），B 跳过（新名 C 已存在）——**冲突判定以改名前快照为准**
+    - 场景 7（B2-S1 ②）：tables = [A, B, C]，rename_map = {B→D, A→D} → A→D（字典序靠前，改名成功），B 跳过（新名 D 已被 A 占用）——**处理顺序按旧名字典序**
+    - 场景 8（B2-S1 ③）：tables = [A, B, C]，rename_map = {A→C, B→C} → A→C（字典序靠前，改名成功），B 跳过（新名 C 已被 A 占用）——**同一新名多旧名映射，字典序靠前者得名其余跳过**
   - 批量改名后 `store.dirty.set(true)`（标记脏，触发自动保存）
 - [ ] `frontend-rs/src/editor_panels.rs`: 批量重命名 UI（ListView 组件内）：
   - 复选框（多选表）：data-testid `list-view-select-{table_id}`
@@ -63,7 +72,7 @@
   - happy: `filter_tables(tables, "users", "INT", Some(true))` → 表名/字段名/类型含 "users" 子串 + 首个字段类型为 INT + 有索引的表（三条件 AND）
   - edge: `filter_tables(tables, "nonexistent", "", None)` → 空结果
   - edge: `filter_tables(tables, "", "", None)` → 全部表（不过滤）
-- [ ] `frontend-rs/src/editor_panels.rs` 单元测试模块（新增 UT-MM-24）：
+- [ ] `frontend-rs/src/editor_panels.rs` 单元测试模块（新增 UT-MM-24，**8 子用例**——B2-S1 ③ 同一新名多旧名映射补第 8 子用例）：
   - happy: `batch_rename_tables(tables, {A→D})` → A→D（改名成功），B/C 不变
   - happy: `batch_rename_tables(tables, {A→B})` → A 跳过（新名 B 已存在，保持原名 A）
   - happy: `batch_rename_tables(tables, {A→A})` → A 跳过（新名 = 原名，保持原名 A）
@@ -71,6 +80,7 @@
   - happy: `batch_rename_tables(tables, {A→"A-B"})` → A→A-B（合法字符，改名成功）
   - edge: `batch_rename_tables(tables, {})` → 全部不变（空 rename_map）
   - edge: `batch_rename_tables(tables, {D→E})` → 全部不变（旧名 D 不存在）
+  - **B2-S1 ③**: `batch_rename_tables(tables, {A→C, B→C})` → A→C（字典序靠前，改名成功），B 跳过（新名 C 已被 A 占用）——**同一新名多旧名映射，字典序靠前者得名其余跳过**
 
 ## [spec] 规格登记（代码实现同步，非独立 delta 任务）
 
