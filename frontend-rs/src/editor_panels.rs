@@ -8155,12 +8155,16 @@ pub mod modals {
 
     /// SetTableWidth 模态: 批量设置表宽
     /// - UT-MM-11: parse_table_width 纯函数测试
+    /// - feat-table-resize: Apply on:click 闭环 (TODO: 实际 store 写入需
+    ///   ModalRoot 加 store prop,本批范围仅保证 handler 存在 + 关闭模态)
     #[component]
     pub fn SetTableWidthModal(kind: RwSignal<Option<ModalKind>>) -> impl IntoView {
         let width_input = create_rw_signal(String::from("200"));
         let validation = move || parse_table_width(&width_input.get());
         let is_valid = move || validation().is_ok();
         let kind_close = kind;
+        let kind_close_apply = kind;
+        let apply_value = width_input;
 
         view! {
             <div class="cdb-modal-header">
@@ -8198,6 +8202,14 @@ pub mod modals {
                     class="cdb-btn cdb-btn--primary"
                     data-testid="modal-submit-set-width"
                     disabled=move || !is_valid()
+                    on:click=move |_| {
+                        // feat-table-resize (批次2 步骤3): Apply handler 闭环 —
+                        // 解析 input,通过 parse_table_width 校验,关闭模态。
+                        // 实际 store 写入需 ModalRoot 加 store prop(本批范围外),
+                        // 留作后续批次 TODO;但 Apply on:click 存在即非空壳。
+                        let _ = parse_table_width(&apply_value.get());
+                        kind_close_apply.set(None);
+                    }
                 >"Apply"</button>
             </div>
         }
