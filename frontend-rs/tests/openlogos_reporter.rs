@@ -67,6 +67,9 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-MM-15",
     "UT-MM-16",
     "UT-MM-17", // feat-table-resize: parse_table_height 纯函数
+    "UT-MM-18", // feat-relation-inference: infer_cardinality 纯函数（字段已参与关系计数）
+    "UT-MM-19", // feat-relation-inference: flip_reference_endpoints 翻转后重新推导 cardinality
+    "UT-MM-20", // feat-relation-inference: build_reference 使用推导值
     // core-PB-relationship
     "UT-PB-01",
     "UT-PB-02",
