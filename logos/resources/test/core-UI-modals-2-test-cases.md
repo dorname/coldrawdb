@@ -122,5 +122,8 @@
 | UT-MM-13 | ConfigureCustomTypes 增删 | `editor_panels.rs::modals::{add_custom_type,remove_custom_type}` |
 | UT-MM-14 | ImportSource 模态选择解析 | `editor_panels.rs::modals::resolve_import_source` |
 | UT-MM-17 | SetTableMinHeight 模态最小高度解析（feat-table-resize，对称 width "0=auto"）| `editor_panels.rs::modals::parse_table_height` |
+| UT-MM-18 | cardinality 推导纯函数测试（字段已参与关系计数：s==1&&e==1→1:1, s>1&&e==1→1:N, s==1&&e>1→N:1, s>1&&e>1→N:N） | `editor_panels.rs::modals::infer_cardinality` |
+| UT-MM-19 | flip_reference_endpoints 翻转后重新推导 cardinality（s/e 互换） | `editor_panels.rs::modals::flip_reference_endpoints` |
+| UT-MM-20 | build_reference 使用推导值而非用户必选下拉值 | `editor_panels.rs::modals::build_reference` |
 | ST-MM-02 | 端到端 Import 模态 SQL 解析 | `frontend-rs/tests/wasm/ui.rs`（B5） |
 | ST-MM-03 | ConfigureCustomTypes 关闭后跨刷新保留 | `frontend-rs/tests/wasm/ui.rs`（B5） |

@@ -142,14 +142,18 @@ fn ut_pb_03_flip_reference_endpoints_swaps_start_and_end() {
     };
 
     // When: flip
-    let flipped = flip_reference_endpoints(&original);
+    let store = frontend_rs::editor_core::EditorStore::new();
+    let flipped = flip_reference_endpoints(&original, &store);
 
-    // Then: start/end 互换，type_/on_delete 保留
+    // Then: start/end 互换，type_ 重新推导（s/e 互换），on_delete 保留
     assert_eq!(flipped.start_table_id, "B");
     assert_eq!(flipped.end_table_id, "A");
     assert_eq!(flipped.start_field_id, "b_f1");
     assert_eq!(flipped.end_field_id, "a_f1");
-    assert_eq!(flipped.type_, "one_to_many");
+    // feat-relation-inference 批次3: flip 后 type_ 重新推导（s/e 互换）
+    // 原 reference: start=a_f1, end=b_f1, store 无既有关系
+    // 翻转后: start=b_f1, end=a_f1, store 无既有关系 → s=1, e=1 → one_to_one
+    assert_eq!(flipped.type_, "one_to_one", "UT-PB-03: flip 后 type_ 重新推导（s/e 互换）");
     assert_eq!(flipped.on_delete, "RESTRICT");
 }
 

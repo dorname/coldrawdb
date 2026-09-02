@@ -433,13 +433,21 @@ pub fn build_reference(
 }
 
 /// 翻转 reference 起止端点
-pub fn flip_reference_endpoints(r: &Reference) -> Reference {
-    Reference {
+/// feat-relation-inference 批次3: 翻转后重新推导 cardinality（基于翻转后的
+/// 两端字段已参与关系计数，s/e 互换）
+pub fn flip_reference_endpoints(r: &Reference, store: &crate::editor_core::EditorStore) -> Reference {
+    let flipped = Reference {
         start_table_id: r.end_table_id.clone(),
         start_field_id: r.end_field_id.clone(),
         end_table_id: r.start_table_id.clone(),
         end_field_id: r.start_field_id.clone(),
         ..r.clone()
+    };
+    // feat-relation-inference 批次3: 翻转后重新推导 cardinality（s/e 互换）
+    let inferred = modals::infer_cardinality(&flipped.start_field_id, &flipped.end_field_id, store);
+    Reference {
+        type_: inferred,
+        ..flipped
     }
 }
 
@@ -6857,7 +6865,7 @@ pub fn AppRoot(
             }
             let mut refs = store.references.get();
             if let Some(idx) = refs.iter().position(|r| r.id == ref_id) {
-                refs[idx] = flip_reference_endpoints(&refs[idx]);
+                refs[idx] = flip_reference_endpoints(&refs[idx], &store);
             }
             store.references.set(refs);
             store.dirty.set(true);
@@ -9176,6 +9184,44 @@ mod tests {
         assert_eq!(result, "one_to_one", "UT-MM-18: 字段计数为 0（空 store）→ s=1, e=1 → one_to_one（含本条）");
     }
 
+    // ─── UT-MM-19: flip_reference_endpoints 翻转后重新推导 cardinality ────────────────
+
+    #[test]
+    fn test_flip_reference_endpoints_re_infers_cardinality_ut_mm_19() {
+        use crate::editor_core::types::{Reference, Table, Field};
+        use crate::editor_core::EditorStore;
+        let store = EditorStore::new();
+        // 先建一条 reference：f1 → f0（f1 是 start，参与 1 条既有关系）
+        let existing = Reference {
+            id: "r1".into(),
+            name: String::new(),
+            start_table_id: "t1".into(),
+            end_table_id: "t2".into(),
+            start_field_id: "f1".into(),
+            end_field_id: "f0".into(),
+            type_: "one_to_many".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+        };
+        store.references.set(vec![existing]);
+        // 现在连 f1 → f2：f1 已参与 1 条（s=2）、f2 已参与 0 条（e=1）→ one_to_many
+        let r = Reference {
+            id: "r2".into(),
+            name: String::new(),
+            start_table_id: "t1".into(),
+            end_table_id: "t2".into(),
+            start_field_id: "f1".into(),
+            end_field_id: "f2".into(),
+            type_: "one_to_many".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+        };
+        // 翻转前：s=2, e=1 → one_to_many
+        let flipped = flip_reference_endpoints(&r, &store);
+        // 翻转后：s/e 互换 → s=1, e=2 → many_to_one
+        assert_eq!(flipped.type_, "many_to_one", "UT-MM-19: 翻转后 s/e 互换，many_to_one");
+    }
+
     // ─── UT-MM-20: build_reference 使用推导值而非用户必选下拉值 ────────────────
 
     #[test]
@@ -9968,6 +10014,8 @@ mod tests {
     /// UT-PB-03: flip_reference_endpoints 互换起止
     #[test]
     fn test_flip_reference_endpoints_ut_pb_03() {
+        use crate::editor_core::EditorStore;
+        let store = EditorStore::new();
         let r = Reference {
             id: "r1".into(),
             name: String::new(),
@@ -9979,7 +10027,7 @@ mod tests {
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
         };
-        let flipped = flip_reference_endpoints(&r);
+        let flipped = flip_reference_endpoints(&r, &store);
         assert_eq!(flipped.start_table_id, "t2", "UT-PB-03: start_table 应互换");
         assert_eq!(flipped.end_table_id, "t1", "UT-PB-03: end_table 应互换");
         assert_eq!(flipped.start_field_id, "f2", "UT-PB-03: start_field 应互换");
