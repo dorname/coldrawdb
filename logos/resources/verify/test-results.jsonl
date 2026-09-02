@@ -11,3 +11,16 @@
 {"id":"ST-S05-UI-04","status":"pass","duration_ms":990,"timestamp":"2026-09-02T00:01:41.176Z"}
 {"id":"ST-S05-UI-03","status":"pass","duration_ms":2231,"timestamp":"2026-09-02T00:01:43.430Z"}
 {"id":"ST-S05-UI-06","status":"pass","duration_ms":2374,"timestamp":"2026-09-02T00:01:45.824Z"}
+{"id":"ST-S05-UI-01","status":"pass","duration_ms":1046,"timestamp":"2026-09-02T00:24:43.599Z"}
+{"id":"ST-PU-24","status":"pass","duration_ms":1046,"timestamp":"2026-09-02T00:24:43.600Z"}
+{"id":"ST-FE-ALIGN-03","status":"pass","duration_ms":1046,"timestamp":"2026-09-02T00:24:43.600Z"}
+{"id":"ST-S01-SS-01","status":"pass","duration_ms":3004,"timestamp":"2026-09-02T00:24:46.625Z"}
+{"id":"ST-S01-409-SCOPE","status":"pass","duration_ms":2613,"timestamp":"2026-09-02T00:24:49.256Z"}
+{"id":"ST-FE-ALIGN-04","status":"pass","duration_ms":2613,"timestamp":"2026-09-02T00:24:49.256Z"}
+{"id":"ST-S01-NO-409-OT","status":"pass","duration_ms":3597,"timestamp":"2026-09-02T00:24:52.872Z"}
+{"id":"ST-S05-UI-02","status":"pass","duration_ms":3597,"timestamp":"2026-09-02T00:24:52.872Z"}
+{"id":"ST-S01-409-LOCAL-ONLY","status":"pass","duration_ms":2287,"timestamp":"2026-09-02T00:24:55.178Z"}
+{"id":"ST-S05-UI-05","status":"pass","duration_ms":2287,"timestamp":"2026-09-02T00:24:55.178Z"}
+{"id":"ST-S05-UI-04","status":"pass","duration_ms":983,"timestamp":"2026-09-02T00:24:56.178Z"}
+{"id":"ST-S05-UI-03","status":"pass","duration_ms":2248,"timestamp":"2026-09-02T00:24:58.444Z"}
+{"id":"ST-S05-UI-06","status":"pass","duration_ms":2354,"timestamp":"2026-09-02T00:25:00.816Z"}
