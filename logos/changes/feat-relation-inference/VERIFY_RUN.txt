@@ -1,0 +1,1325 @@
+
+⚙️  Running verify.pre_run_command: bash scripts/run-verify-tests.sh
+[verify-pre-run] backend cargo test ...
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.45
+   Compiling libc v0.2.186
+   Compiling serde_core v1.0.228
+   Compiling serde v1.0.228
+   Compiling futures-channel v0.3.32
+   Compiling num-traits v0.2.19
+   Compiling zerocopy v0.8.50
+   Compiling generic-array v0.14.7
+   Compiling time-macros v0.2.27
+   Compiling serde_json v1.0.150
+   Compiling crossbeam-utils v0.8.21
+   Compiling http v0.2.12
+   Compiling convert_case v0.10.0
+   Compiling crypto-common v0.2.2
+   Compiling actix-utils v3.0.1
+   Compiling ahash v0.8.12
+   Compiling actix-service v2.0.3
+   Compiling aho-corasick v1.1.4
+   Compiling crc32fast v1.5.0
+   Compiling miniz_oxide v0.8.9
+   Compiling syn v1.0.109
+   Compiling brotli-decompressor v5.0.1
+   Compiling chacha20 v0.10.0
+   Compiling cookie v0.16.2
+   Compiling local-channel v0.1.5
+   Compiling rust_decimal v1.42.0
+   Compiling nom v7.1.3
+   Compiling paste v1.0.15
+   Compiling proc-macro-error-attr v1.0.4
+   Compiling spin v0.9.8
+   Compiling proc-macro-error v1.0.4
+   Compiling http v1.4.2
+   Compiling thiserror v2.0.18
+   Compiling tracing-log v0.2.0
+   Compiling flume v0.11.1
+   Compiling flate2 v1.1.9
+   Compiling crossbeam-queue v0.3.12
+   Compiling crossbeam-channel v0.5.15
+   Compiling actix-router v0.5.4
+   Compiling syn v2.0.117
+   Compiling proc-macro-error-attr2 v2.0.0
+   Compiling digest v0.11.3
+   Compiling brotli v8.0.3
+   Compiling sha1 v0.11.0
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling jobserver v0.1.34
+   Compiling parking_lot_core v0.9.12
+   Compiling errno v0.3.14
+   Compiling socket2 v0.6.4
+   Compiling mio v1.2.1
+   Compiling getrandom v0.2.17
+   Compiling getrandom v0.4.2
+   Compiling getrandom v0.3.4
+   Compiling socket2 v0.5.10
+   Compiling regex-automata v0.4.14
+   Compiling digest v0.10.7
+   Compiling signal-hook-registry v1.4.8
+   Compiling rand_core v0.9.5
+   Compiling rand_core v0.6.4
+   Compiling rand v0.10.1
+   Compiling parking_lot v0.12.5
+   Compiling cc v1.2.63
+   Compiling sha2 v0.10.9
+   Compiling blake2 v0.10.6
+   Compiling num-integer v0.1.46
+   Compiling atoi v2.0.0
+   Compiling ordered-float v3.9.2
+   Compiling password-hash v0.5.0
+   Compiling futures-intrusive v0.5.0
+   Compiling num-bigint v0.4.6
+   Compiling sqlformat v0.2.6
+   Compiling argon2 v0.5.3
+   Compiling deranged v0.5.8
+   Compiling uuid v1.23.2
+   Compiling ring v0.17.14
+   Compiling zstd-sys v2.0.16+zstd.1.5.7
+   Compiling libsqlite3-sys v0.27.0
+   Compiling bigdecimal v0.3.1
+   Compiling derivative v2.2.0
+   Compiling time v0.3.47
+   Compiling ppv-lite86 v0.2.21
+   Compiling hashbrown v0.14.5
+   Compiling rand_chacha v0.9.0
+   Compiling rand_chacha v0.3.1
+   Compiling regex v1.12.3
+   Compiling matchers v0.2.0
+   Compiling rand v0.9.4
+   Compiling rand v0.8.6
+   Compiling hashlink v0.8.4
+   Compiling synstructure v0.13.2
+   Compiling proc-macro-error2 v2.0.1
+   Compiling rustls v0.21.12
+   Compiling serde_derive v1.0.228
+   Compiling zerofrom-derive v0.1.7
+   Compiling yoke-derive v0.8.2
+   Compiling tokio-macros v2.7.0
+   Compiling zerovec-derive v0.11.3
+   Compiling tracing-attributes v0.1.31
+   Compiling displaydoc v0.2.6
+   Compiling futures-macro v0.3.32
+   Compiling actix-macros v0.2.4
+   Compiling derive_more-impl v2.1.1
+   Compiling thiserror-impl v1.0.69
+   Compiling actix-web-codegen v4.3.0
+   Compiling inherent v1.0.13
+   Compiling thiserror-impl v2.0.18
+   Compiling actix_derive v0.6.2
+   Compiling sea-bae v0.2.1
+   Compiling async-stream-impl v0.3.6
+   Compiling ouroboros_macro v0.17.2
+   Compiling async-trait v0.1.89
+   Compiling zstd-safe v7.2.4
+   Compiling async-stream v0.3.6
+   Compiling sea-orm-macros v0.12.15
+   Compiling tokio v1.52.3
+   Compiling zstd v0.13.3
+   Compiling futures-util v0.3.32
+   Compiling thiserror v1.0.69
+   Compiling zerofrom v0.1.8
+   Compiling yoke v0.8.3
+   Compiling sct v0.7.1
+   Compiling rustls-webpki v0.101.7
+   Compiling simple_asn1 v0.6.4
+   Compiling tracing v0.1.44
+   Compiling zerovec v0.11.6
+   Compiling zerotrie v0.2.4
+   Compiling ouroboros v0.17.2
+   Compiling tracing-subscriber v0.3.23
+   Compiling tinystr v0.8.3
+   Compiling potential_utf v0.1.5
+   Compiling icu_collections v2.2.0
+   Compiling icu_locale_core v2.2.0
+   Compiling derive_more v2.1.1
+   Compiling icu_provider v2.2.0
+   Compiling icu_properties v2.2.0
+   Compiling icu_normalizer v2.2.0
+   Compiling either v1.16.0
+   Compiling serde_urlencoded v0.7.1
+   Compiling chrono v0.4.45
+   Compiling toml_datetime v0.6.11
+   Compiling serde_spanned v0.6.9
+   Compiling jsonwebtoken v9.3.1
+   Compiling toml_edit v0.22.27
+   Compiling itertools v0.14.0
+   Compiling futures-executor v0.3.32
+   Compiling futures v0.3.32
+   Compiling idna_adapter v1.2.2
+   Compiling idna v1.1.0
+   Compiling url v2.5.8
+   Compiling sea-query v0.30.7
+   Compiling toml v0.8.23
+   Compiling tokio-util v0.7.18
+   Compiling actix-rt v2.11.0
+   Compiling tokio-stream v0.1.18
+   Compiling actix-server v2.6.0
+   Compiling sqlx-core v0.7.4
+   Compiling actix-codec v0.5.2
+   Compiling h2 v0.3.27
+   Compiling actix-tls v3.5.0
+   Compiling actix v0.13.5
+   Compiling sqlx-sqlite v0.7.4
+   Compiling sqlx v0.7.4
+   Compiling sea-query-binder v0.5.0
+   Compiling sea-orm v0.12.15
+   Compiling actix-http v3.12.1
+   Compiling actix-web v4.13.0
+   Compiling awc v3.8.2
+   Compiling actix-http-test v3.2.0
+   Compiling actix-cors v0.7.1
+   Compiling actix-web-actors v4.3.1+deprecated
+   Compiling actix-test v0.1.5
+   Compiling backend v0.1.0 (/tmp/openlogos-cli-sandbox-bzHg0T/workspace/backend)
+warning: unused import: `diagram`
+ --> src/entity/vo/task_vo.rs:1:21
+  |
+1 | use crate::entity::{diagram, task::{ActiveModel as Task, Model as TaskModel}};
+  |                     ^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `crate::entity::diagram`
+ --> src/entity/vo/table_vo.rs:3:5
+  |
+3 | use crate::entity::diagram;
+  |     ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `area_vo::*`
+  --> src/entity/vo/mod.rs:11:9
+   |
+11 | pub use area_vo::*;
+   |         ^^^^^^^^^^
+
+warning: unused import: `self`
+ --> src/diagrams/mod.rs:7:30
+  |
+7 | use crate::entity::diagram::{self, ActiveModel};
+  |                              ^^^^
+
+warning: unused import: `internal_api::*`
+ --> src/notes/mod.rs:3:9
+  |
+3 | pub use internal_api::*;
+  |         ^^^^^^^^^^^^^^^
+
+warning: unused import: `EntityTrait`
+ --> src/tables/mod.rs:4:35
+  |
+4 | use sea_orm::{DatabaseConnection, EntityTrait, TransactionTrait};
+  |                                   ^^^^^^^^^^^
+
+warning: unused imports: `prelude::*` and `table`
+ --> src/tables/mod.rs:5:21
+  |
+5 | use crate::entity::{prelude::*, table};
+  |                     ^^^^^^^^^^  ^^^^^
+
+warning: unused import: `build_table_link`
+ --> src/tables/mod.rs:6:34
+  |
+6 | use crate::entity::vo::{TableVo, build_table_link};
+  |                                  ^^^^^^^^^^^^^^^^
+
+warning: unused imports: `next_id` and `next_ids`
+ --> src/tables/mod.rs:7:13
+  |
+7 | use crate::{next_id, next_ids};
+  |             ^^^^^^^  ^^^^^^^^
+
+warning: unused imports: `field` and `table_link`
+ --> src/tables/mod.rs:9:21
+  |
+9 | use crate::entity::{field,table_link};
+  |                     ^^^^^ ^^^^^^^^^^
+
+warning: unused import: `internal_api::*`
+ --> src/indices/mod.rs:3:9
+  |
+3 | pub use internal_api::*;
+  |         ^^^^^^^^^^^^^^^
+
+warning: unused import: `diagram_repository::DiagramRepository`
+ --> src/repository/mod.rs:3:9
+  |
+3 | pub use diagram_repository::DiagramRepository;
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `access_ttl_secs`
+ --> src/auth/mod.rs:4:15
+  |
+4 | pub use jwt::{access_ttl_secs, sign_access_token, verify_access_token};
+  |               ^^^^^^^^^^^^^^^
+
+warning: unused import: `CollabHub`
+ --> src/collab_v1.rs:7:39
+  |
+7 |     get_collab_head, list_collab_ops, CollabHub, CollabServiceError,
+  |                                       ^^^^^^^^^
+
+warning: unused variable: `req`
+  --> src/common/mod.rs:82:25
+   |
+82 |     fn respond_to(self, req: &HttpRequest) -> HttpResponse {
+   |                         ^^^ help: if this is intentional, prefix it with an underscore: `_req`
+   |
+   = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `server_rev`
+   --> src/collab/ws.rs:203:40
+    |
+203 | ...                   Ok((_, server_rev, items)) if items.is_empty() => {
+    |                              ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_server_rev`
+
+warning: associated function `from_option` is never used
+  --> src/entity/vo/task_vo.rs:17:12
+   |
+16 | impl TaskVo {
+   | ----------- associated function in this implementation
+17 |     pub fn from_option(task: &TaskModel,diagram_id: String) -> Self {
+   |            ^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: method `convert_to_task` is never used
+  --> src/entity/vo/task_vo.rs:60:12
+   |
+59 | impl TaskUpdateVo {
+   | ----------------- method in this implementation
+60 |     pub fn convert_to_task(&self) -> TaskModel {
+   |            ^^^^^^^^^^^^^^^
+
+warning: associated items `convert_to_table`, `from`, and `convert_to_active_model` are never used
+  --> src/entity/vo/table_vo.rs:25:12
+   |
+24 | impl TableVo {
+   | ------------ associated items in this implementation
+25 |     pub fn convert_to_table(&self) -> TableModel {
+   |            ^^^^^^^^^^^^^^^^
+...
+37 |     pub fn from(table: &TableModel,diagram_id:String,fields:Option<Vec<FieldVo>>) -> Self {
+   |            ^^^^
+...
+65 |     pub fn convert_to_active_model(&self) -> TableActiveModel{
+   |            ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `convert_to_field` is never used
+  --> src/entity/vo/table_vo.rs:94:12
+   |
+93 | impl FieldVo {
+   | ------------ method in this implementation
+94 |     pub fn convert_to_field(&self) -> FieldModel {
+   |            ^^^^^^^^^^^^^^^^
+
+warning: function `build_table_link` is never used
+   --> src/entity/vo/table_vo.rs:129:8
+    |
+129 | pub fn build_table_link(id: String,table_id: String,field_id: String) -> TableLinkModel {
+    |        ^^^^^^^^^^^^^^^^
+
+warning: method `convert_to_area` is never used
+  --> src/entity/vo/area_vo.rs:16:12
+   |
+15 | impl AreaVo {
+   | ----------- method in this implementation
+16 |     pub fn convert_to_area(&self) -> AreaModel {
+   |            ^^^^^^^^^^^^^^^
+
+warning: method `convert_to_note` is never used
+  --> src/entity/vo/note_vo.rs:16:12
+   |
+15 | impl NoteVo {
+   | ----------- method in this implementation
+16 |     pub fn convert_to_note(&self) -> NoteModel {
+   |            ^^^^^^^^^^^^^^^
+
+warning: method `convert_to_reference` is never used
+  --> src/entity/vo/reference_vo.rs:17:12
+   |
+16 | impl ReferenceVo {
+   | ---------------- method in this implementation
+17 |     pub fn convert_to_reference(&self) -> ReferenceModel {
+   |            ^^^^^^^^^^^^^^^^^^^^
+
+warning: method `convert_to_indice` is never used
+  --> src/entity/vo/indice_vo.rs:11:12
+   |
+10 | impl IndiceVo {
+   | ------------- method in this implementation
+11 |     pub fn convert_to_indice(&self) -> IndiceModel {
+   |            ^^^^^^^^^^^^^^^^^
+
+warning: function `add_references` is never used
+ --> src/references/internal_api.rs:9:14
+  |
+9 | pub async fn add_references(
+  |              ^^^^^^^^^^^^^^
+
+warning: function `delete_references` is never used
+  --> src/references/internal_api.rs:26:14
+   |
+26 | pub async fn delete_references(
+   |              ^^^^^^^^^^^^^^^^^
+
+warning: function `add_note` is never used
+ --> src/notes/internal_api.rs:6:14
+  |
+6 | pub async fn add_note(
+  |              ^^^^^^^^
+
+warning: function `update_note` is never used
+  --> src/notes/internal_api.rs:17:14
+   |
+17 | pub async fn update_note(
+   |              ^^^^^^^^^^^
+
+warning: function `delete_note` is never used
+  --> src/notes/internal_api.rs:28:14
+   |
+28 | pub async fn delete_note(
+   |              ^^^^^^^^^^^
+
+warning: function `add_table` is never used
+  --> src/tables/internal_api.rs:60:14
+   |
+60 | pub async fn add_table(
+   |              ^^^^^^^^^
+
+warning: function `batch_add_table` is never used
+  --> src/tables/internal_api.rs:97:14
+   |
+97 | pub async fn batch_add_table(
+   |              ^^^^^^^^^^^^^^^
+
+warning: function `update_table` is never used
+   --> src/tables/internal_api.rs:161:14
+    |
+161 | pub async fn update_table(
+    |              ^^^^^^^^^^^^
+
+warning: function `delete_table` is never used
+   --> src/tables/internal_api.rs:216:14
+    |
+216 | pub async fn delete_table(
+    |              ^^^^^^^^^^^^
+
+warning: function `add_indice` is never used
+ --> src/indices/internal_api.rs:5:14
+  |
+5 | pub async fn add_indice(
+  |              ^^^^^^^^^^
+
+warning: function `update_indice` is never used
+  --> src/indices/internal_api.rs:16:14
+   |
+16 | pub async fn update_indice(
+   |              ^^^^^^^^^^^^^
+
+warning: function `delete_indice` is never used
+  --> src/indices/internal_api.rs:27:14
+   |
+27 | pub async fn delete_indice(
+   |              ^^^^^^^^^^^^^
+
+warning: struct `DiagramRepository` is never constructed
+ --> src/repository/diagram_repository.rs:7:12
+  |
+7 | pub struct DiagramRepository;
+  |            ^^^^^^^^^^^^^^^^^
+
+warning: associated functions `query_all`, `query_by_id`, `create`, `update`, and `delete` are never used
+  --> src/repository/diagram_repository.rs:10:18
+   |
+9  | impl DiagramRepository {
+   | ---------------------- associated functions in this implementation
+10 |     pub async fn query_all(db: &DatabaseConnection) -> Result<Vec<Model>, DrawDBError> {
+   |                  ^^^^^^^^^
+...
+14 |     pub async fn query_by_id(db: &DatabaseConnection, id: &str) -> Result<Option<Model>, DrawDBError> {
+   |                  ^^^^^^^^^^^
+...
+18 |     pub async fn create(db: &DatabaseConnection, mut model: Model) -> Result<Model, DrawDBError> {
+   |                  ^^^^^^
+...
+28 |     pub async fn update(db: &DatabaseConnection, model: ActiveModel) -> Result<Model, DrawDBError> {
+   |                  ^^^^^^
+...
+35 |     pub async fn delete(db: &DatabaseConnection, id: &str) -> Result<(), DrawDBError> {
+   |                  ^^^^^^
+
+warning: function `access_ttl_secs` is never used
+  --> src/auth/jwt.rs:47:8
+   |
+47 | pub fn access_ttl_secs() -> i64 {
+   |        ^^^^^^^^^^^^^^^
+
+warning: fields `operation_id`, `op_type`, and `payload` are never read
+  --> src/collab/mod.rs:40:9
+   |
+38 | pub struct AppendOpResult {
+   |            -------------- fields in this struct
+39 |     pub server_rev: i64,
+40 |     pub operation_id: String,
+   |         ^^^^^^^^^^^^
+41 |     pub op_type: String,
+   |         ^^^^^^^
+42 |     pub payload: serde_json::Value,
+   |         ^^^^^^^
+   |
+   = note: `AppendOpResult` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: variant `InvalidOp` is never constructed
+   --> src/collab/mod.rs:286:5
+    |
+277 | pub enum CollabServiceError {
+    |          ------------------ variant in this enum
+...
+286 |     InvalidOp(String),
+    |     ^^^^^^^^^
+    |
+    = note: `CollabServiceError` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: method `send_json` is never used
+  --> src/collab/ws.rs:37:8
+   |
+36 | impl CollabWsSession {
+   | -------------------- method in this implementation
+37 |     fn send_json(&self, ctx: &mut ws::WebsocketContext<Self>, value: Value) {
+   |        ^^^^^^^^^
+
+warning: constant `RELATIVE_PATH` is never used
+  --> src/verify_reporter.rs:10:7
+   |
+10 | const RELATIVE_PATH: &str = "logos/resources/verify/test-results.jsonl";
+   |       ^^^^^^^^^^^^^
+
+warning: static `FILE_LOCK` is never used
+  --> src/verify_reporter.rs:12:8
+   |
+12 | static FILE_LOCK: OnceCell<Mutex<()>> = OnceCell::new();
+   |        ^^^^^^^^^
+
+warning: static `TRUNCATE_DONE` is never used
+  --> src/verify_reporter.rs:13:8
+   |
+13 | static TRUNCATE_DONE: AtomicBool = AtomicBool::new(false);
+   |        ^^^^^^^^^^^^^
+
+warning: function `lock` is never used
+  --> src/verify_reporter.rs:15:4
+   |
+15 | fn lock() -> &'static Mutex<()> {
+   |    ^^^^
+
+warning: function `project_root` is never used
+  --> src/verify_reporter.rs:19:4
+   |
+19 | fn project_root() -> PathBuf {
+   |    ^^^^^^^^^^^^
+
+warning: function `result_path` is never used
+  --> src/verify_reporter.rs:24:4
+   |
+24 | fn result_path() -> PathBuf {
+   |    ^^^^^^^^^^^
+
+warning: function `now_iso8601` is never used
+  --> src/verify_reporter.rs:28:4
+   |
+28 | fn now_iso8601() -> String {
+   |    ^^^^^^^^^^^
+
+warning: function `seconds_to_ymdhms` is never used
+  --> src/verify_reporter.rs:40:4
+   |
+40 | fn seconds_to_ymdhms(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
+   |    ^^^^^^^^^^^^^^^^^
+
+warning: function `civil_from_days` is never used
+  --> src/verify_reporter.rs:50:4
+   |
+50 | fn civil_from_days(z: i64) -> (u32, u32, u32) {
+   |    ^^^^^^^^^^^^^^^
+
+warning: function `ensure_parent` is never used
+  --> src/verify_reporter.rs:64:4
+   |
+64 | fn ensure_parent(path: &PathBuf) {
+   |    ^^^^^^^^^^^^^
+
+warning: function `id_is_valid` is never used
+  --> src/verify_reporter.rs:70:4
+   |
+70 | fn id_is_valid(id: &str) -> bool {
+   |    ^^^^^^^^^^^
+
+warning: function `append_only_mode` is never used
+  --> src/verify_reporter.rs:84:4
+   |
+84 | fn append_only_mode() -> bool {
+   |    ^^^^^^^^^^^^^^^^
+
+warning: function `append_record` is never used
+  --> src/verify_reporter.rs:88:4
+   |
+88 | fn append_record(id: &str, status: &str, duration_ms: Option<u128>, error: Option<&str>) {
+   |    ^^^^^^^^^^^^^
+
+warning: function `escape_json` is never used
+   --> src/verify_reporter.rs:121:4
+    |
+121 | fn escape_json(s: &str) -> String {
+    |    ^^^^^^^^^^^
+
+warning: function `truncate` is never used
+   --> src/verify_reporter.rs:129:8
+    |
+129 | pub fn truncate() {
+    |        ^^^^^^^^
+
+warning: function `report_pass` is never used
+   --> src/verify_reporter.rs:136:8
+    |
+136 | pub fn report_pass(id: &str, duration_ms: u128) {
+    |        ^^^^^^^^^^^
+
+warning: function `report_fail` is never used
+   --> src/verify_reporter.rs:140:8
+    |
+140 | pub fn report_fail(id: &str, duration_ms: u128, error: &str) {
+    |        ^^^^^^^^^^^
+
+warning: function `report_skip` is never used
+   --> src/verify_reporter.rs:144:8
+    |
+144 | pub fn report_skip(id: &str, reason: &str) {
+    |        ^^^^^^^^^^^
+
+warning: method `convert_to_task` is never used
+  --> src/entity/vo/task_vo.rs:60:12
+   |
+59 | impl TaskUpdateVo {
+   | ----------------- method in this implementation
+60 |     pub fn convert_to_task(&self) -> TaskModel {
+   |            ^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: methods `convert_to_table` and `convert_to_active_model` are never used
+  --> src/entity/vo/table_vo.rs:25:12
+   |
+24 | impl TableVo {
+   | ------------ methods in this implementation
+25 |     pub fn convert_to_table(&self) -> TableModel {
+   |            ^^^^^^^^^^^^^^^^
+...
+65 |     pub fn convert_to_active_model(&self) -> TableActiveModel{
+   |            ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `backend` (bin "backend") generated 61 warnings (run `cargo fix --bin "backend"` to apply 14 suggestions)
+warning: `backend` (bin "backend" test) generated 44 warnings (42 duplicates)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 19.31s
+     Running unittests src/main.rs (target/debug/deps/backend-7972bc3dc9b2956b)
+
+running 43 tests
+test init::test::test_init ... ok
+test diagrams::tests::ut_pu_20_query_related_with_isolated_database ... ok
+test diagrams_v1::tests::ut_s01_01_create_empty_diagram ... ok
+test diagrams_v1::tests::ut_s02_02_get_missing_diagram_returns_404 ... ok
+test init::test::test_phase1_migration_applied_and_idempotent ... ok
+test auth_v1::tests::ut_s03_02_register_duplicate_email ... ok
+test auth_v1::tests::ut_s03_06_refresh_invalid ... ok
+test tables::internal_api::tests::batch_insert ... ok
+test auth_v1::tests::ut_s03_01_register_success ... ok
+test diagrams_v1::tests::ut_s01_04_put_with_stale_revision ... ok
+test diagrams_v1::tests::ut_s02_01_get_existing_diagram ... ok
+test diagrams_v1::tests::ut_s01_03_put_with_correct_revision ... ok
+test diagrams_v1::tests::ut_s01_05_delete_cascades ... ok
+test diagrams_v1::tests::st_s01_02_import_success_and_invalid_payload ... ok
+test diagram_persistence::tests::round_trip_table_and_field ... ok
+test diagrams_v1::tests::st_s01_01_diagram_crud_and_conflict ... ok
+test phase3_bridge::tests::st_b_01_bridge_config_update_and_import_local ... ok
+test auth_v1::tests::st_s03_01_register_login_me_flow ... ok
+test auth_v1::tests::ut_s03_03_login_success_sets_cookie ... ok
+test auth_v1::tests::ut_s03_05_refresh_success ... ok
+test todos::test::test_add_todo ... ok
+test rooms_v1::tests::ut_s04_03_create_room_diagram_not_found ... ok
+test auth_v1::tests::ut_s03_07_logout_revokes_refresh ... ok
+test todos::test::test_query_all_todos ... ok
+test todos::test::test_delete_todo ... ok
+test auth_v1::tests::ut_s03_04_login_invalid_password ... ok
+test todos::test::test_update_todo ... ok
+test collab_v1::tests::ut_c04_sync_catch_up ... ok
+test rooms_v1::tests::ut_s04_01_create_room_success ... ok
+test rooms_v1::tests::ut_s04_02_create_room_diagram_taken ... ok
+test rooms_v1::tests::ut_s04_04_create_invite_success ... ok
+test rooms_v1::tests::ut_s04_05_preview_invite_success ... ok
+test collab_v1::tests::ut_c03_sequential_ops_increment_rev ... ok
+test collab_v1::tests::ut_c01_ws_connected_frame ... ok
+test rooms_v1::tests::ut_s04_09_owner_cannot_leave ... ok
+test rooms_v1::tests::ut_s04_10_archive_room_success ... ok
+test rooms_v1::tests::ut_s04_06_accept_invite_success ... ok
+test rooms_v1::tests::st_s04_01_room_lifecycle_flow ... ok
+test collab_v1::tests::ut_c05_viewer_read_only ... ok
+test collab_v1::tests::ut_c02_op_ack_and_remote_op ... ok
+test rooms_v1::tests::ut_s04_07_get_room_not_a_member ... ok
+test rooms_v1::tests::ut_s04_08_remove_member_success ... ok
+test collab_v1::tests::st_c01_ot_collab_flow ... ok
+
+test result: ok. 43 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.57s
+
+     Running unittests src/bin/reset_password.rs (target/debug/deps/reset_password-30363d12d1a8d8bd)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/verify_bootstrap.rs (target/debug/deps/verify_bootstrap-b180b6e71d8b22c1)
+
+running 1 test
+test bootstrap_unimplemented_cases_as_skip ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[verify-pre-run] frontend-rs cargo test ...
+   Compiling quote v1.0.45
+   Compiling proc-macro2 v1.0.106
+   Compiling futures-channel v0.3.32
+   Compiling serde_core v1.0.228
+   Compiling serde v1.0.228
+   Compiling libc v0.2.186
+   Compiling proc-macro-error-attr v1.0.4
+   Compiling proc-macro-error v1.0.4
+   Compiling http v0.2.12
+   Compiling proc-macro2-diagnostics v0.10.1
+   Compiling parking_lot_core v0.9.12
+   Compiling want v0.3.1
+   Compiling slotmap v1.1.1
+   Compiling wasm-bindgen v0.2.122
+   Compiling camino v1.2.2
+   Compiling paste v1.0.15
+   Compiling anyhow v1.0.102
+   Compiling prettyplease v0.2.37
+   Compiling aho-corasick v1.1.4
+   Compiling walkdir v2.5.0
+   Compiling toml_edit v0.19.15
+   Compiling num-traits v0.2.19
+   Compiling convert_case v0.6.0
+   Compiling nom v7.1.3
+   Compiling syn v2.0.117
+   Compiling proc-macro-utils v0.8.0
+   Compiling http-body v0.4.6
+   Compiling const_format_proc_macros v0.2.34
+   Compiling regex-automata v0.4.14
+   Compiling mio v1.2.1
+   Compiling socket2 v0.6.4
+   Compiling socket2 v0.5.10
+   Compiling getrandom v0.4.2
+   Compiling manyhow-macros v0.8.1
+   Compiling uuid v1.23.2
+   Compiling parking_lot v0.12.5
+   Compiling tokio v1.52.3
+   Compiling const_format v0.2.36
+   Compiling proc-macro-crate v1.3.1
+   Compiling serde_json v1.0.150
+   Compiling regex v1.12.3
+   Compiling wasm-bindgen-macro-support v0.2.122
+   Compiling synstructure v0.13.2
+   Compiling manyhow v0.8.1
+   Compiling tokio-util v0.7.18
+   Compiling serde_derive v1.0.228
+   Compiling futures-macro v0.3.32
+   Compiling zerofrom-derive v0.1.7
+   Compiling yoke-derive v0.8.2
+   Compiling thiserror-impl v1.0.69
+   Compiling zerovec-derive v0.11.3
+   Compiling displaydoc v0.2.6
+   Compiling tracing-attributes v0.1.31
+   Compiling zerocopy-derive v0.8.50
+   Compiling pin-project-internal v1.1.13
+   Compiling derive-where v1.6.1
+   Compiling syn_derive v0.1.8
+   Compiling async-trait v0.1.89
+   Compiling typed-builder-macro v0.18.2
+   Compiling async-recursion v1.1.1
+   Compiling gloo-worker-macros v0.1.0
+   Compiling wasm-bindgen-test-macro v0.3.72
+   Compiling futures-util v0.3.32
+   Compiling pin-project v1.1.13
+   Compiling zerofrom v0.1.8
+   Compiling thiserror v1.0.69
+   Compiling tracing v0.1.44
+   Compiling rstml v0.11.2
+   Compiling yoke v0.8.3
+   Compiling typed-builder v0.18.2
+   Compiling zerovec v0.11.6
+   Compiling zerotrie v0.2.4
+   Compiling quote-use-macros v0.7.2
+   Compiling zerocopy v0.8.50
+   Compiling tinystr v0.8.3
+   Compiling potential_utf v0.1.5
+   Compiling icu_collections v2.2.0
+   Compiling icu_locale_core v2.2.0
+   Compiling quote-use v0.7.2
+   Compiling attribute-derive-macro v0.8.1
+   Compiling wasm-bindgen-macro v0.2.122
+   Compiling icu_provider v2.2.0
+   Compiling icu_normalizer v2.2.0
+   Compiling icu_properties v2.2.0
+   Compiling attribute-derive v0.8.1
+   Compiling serde_urlencoded v0.7.1
+   Compiling serde_qs v0.12.0
+   Compiling toml v0.5.11
+   Compiling bincode v1.3.3
+   Compiling chrono v0.4.45
+   Compiling server_fn_macro v0.5.7
+   Compiling leptos_hot_reload v0.5.7
+   Compiling server_fn_macro_default v0.5.7
+   Compiling futures-executor v0.3.32
+   Compiling h2 v0.3.27
+   Compiling leptos_macro v0.5.7
+   Compiling idna_adapter v1.2.2
+   Compiling futures v0.3.32
+   Compiling pinned v0.1.0
+   Compiling idna v1.1.0
+   Compiling config v0.13.4
+   Compiling url v2.5.8
+   Compiling js-sys v0.3.99
+   Compiling console_error_panic_hook v0.1.7
+   Compiling leptos_config v0.5.7
+   Compiling half v2.7.1
+   Compiling ciborium-ll v0.2.2
+   Compiling ciborium v0.2.2
+   Compiling hyper v0.14.32
+   Compiling reqwest v0.11.27
+   Compiling server_fn v0.5.7
+   Compiling web-sys v0.3.99
+   Compiling wasm-bindgen-futures v0.4.72
+   Compiling serde-wasm-bindgen v0.5.0
+   Compiling serde-wasm-bindgen v0.6.5
+   Compiling gloo-timers v0.3.0
+   Compiling gloo-timers v0.2.6
+   Compiling wasm-bindgen-test v0.3.72
+   Compiling gloo-utils v0.2.0
+   Compiling leptos_reactive v0.5.7
+   Compiling gloo-events v0.2.0
+   Compiling gloo-render v0.2.0
+   Compiling gloo-dialogs v0.2.0
+   Compiling gloo-storage v0.3.0
+   Compiling gloo-worker v0.5.0
+   Compiling gloo-console v0.3.0
+   Compiling gloo-net v0.5.0
+   Compiling gloo-history v0.2.2
+   Compiling gloo-file v0.3.0
+   Compiling gloo v0.11.0
+   Compiling leptos_server v0.5.7
+   Compiling leptos_dom v0.5.7
+   Compiling leptos v0.5.7
+   Compiling frontend-rs v0.1.0 (/tmp/openlogos-cli-sandbox-bzHg0T/workspace/frontend-rs)
+warning: unused imports: `Field` and `Table`
+    --> src/editor_panels.rs:9055:52
+     |
+9055 |         use crate::editor_core::types::{Reference, Table, Field};
+     |                                                    ^^^^^  ^^^^^
+     |
+     = note: `#[warn(unused_imports)]` on by default
+
+warning: unused imports: `Field` and `Table`
+    --> src/editor_panels.rs:9079:52
+     |
+9079 |         use crate::editor_core::types::{Reference, Table, Field};
+     |                                                    ^^^^^  ^^^^^
+
+warning: unused imports: `Field` and `Table`
+    --> src/editor_panels.rs:9103:52
+     |
+9103 |         use crate::editor_core::types::{Reference, Table, Field};
+     |                                                    ^^^^^  ^^^^^
+
+warning: unused imports: `Field` and `Table`
+    --> src/editor_panels.rs:9137:52
+     |
+9137 |         use crate::editor_core::types::{Reference, Table, Field};
+     |                                                    ^^^^^  ^^^^^
+
+warning: unused imports: `Field` and `Table`
+    --> src/editor_panels.rs:9191:52
+     |
+9191 |         use crate::editor_core::types::{Reference, Table, Field};
+     |                                                    ^^^^^  ^^^^^
+
+warning: unused imports: `Field` and `Table`
+    --> src/editor_panels.rs:9229:52
+     |
+9229 |         use crate::editor_core::types::{Reference, Table, Field};
+     |                                                    ^^^^^  ^^^^^
+
+warning: variable does not need to be mutable
+   --> src/editor_core.rs:860:13
+    |
+860 |         let mut diagram = Diagram {
+    |             ----^^^^^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: variable does not need to be mutable
+    --> src/editor_render.rs:1741:13
+     |
+1741 |         let mut t = Table {
+     |             ----^
+     |             |
+     |             help: remove this `mut`
+
+warning: `frontend-rs` (lib test) generated 8 warnings (run `cargo fix --lib -p frontend-rs --tests` to apply 8 suggestions)
+warning: function `report_skip` is never used
+   --> tests/verify_reporter.rs:137:8
+    |
+137 | pub fn report_skip(id: &str, reason: &str) {
+    |        ^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: `frontend-rs` (test "entity_id_uniqueness") generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 23.24s
+     Running unittests src/lib.rs (target/debug/deps/frontend_rs-4b0b6f219af4c9c4)
+
+running 147 tests
+test command_palette::tests::ut_e4_08_filter_palette_by_query ... ok
+test command_palette::tests::ut_e4_09_build_palette_from_tables ... ok
+test editor_core::tests::test_command_stack_redo_empty_ut_mm_16 ... ok
+test editor_core::tests::feat_table_resize_ot_add_table_accepts_width_and_min_height ... ok
+test editor_core::tests::test_command_stack_redo_ut_mm_16 ... ok
+test editor_core::tests::test_command_stack_undo_empty_ut_mm_15 ... ok
+test editor_core::tests::test_debounce_retrigger_resets_ut_s01_08 ... ignored, requires wasm-pack test (B5); gloo-timers callback needs Send + 'static
+test editor_core::tests::test_debounce_trigger_fires_after_delay_ut_s01_08 ... ignored, requires wasm-pack test (B5); gloo-timers callback needs Send + 'static
+test editor_core::tests::test_command_stack_undo_ut_mm_15 ... ok
+test editor_core::tests::test_delete_field_happy_and_missing_ut_s01_07 ... ok
+test editor_core::tests::test_editor_store_areas_default_empty_ut_cr_01 ... ok
+test editor_core::tests::test_editor_store_areas_load_ut_cr_01 ... ok
+test editor_core::tests::test_editor_store_notes_load_ut_cr_02 ... ok
+test editor_core::tests::test_undo_stack_push_addtable_ut_s01_07 ... ok
+test editor_core::tests::ut_fe_s05_07_collab_ot_queue_and_ack ... ok
+test editor_core::tests::test_undo_stack_rejects_duplicate_id_ut_s01_07 ... ok
+test editor_core::tests::ut_fe_s05_08_collab_ot_reconnect_flushes_offline_queue ... ok
+test editor_core::tests::ut_fe_s05_09_collab_ot_read_only_blocks_local_op ... ok
+test editor_data_access::auth_error_tests::ut_s03_err_01_auth_errors_are_redacted ... ok
+test editor_data_access::auth_error_tests::ut_s03_err_02_auth_error_display_redacts_server_message ... ok
+test editor_data_access::auth_error_tests::ut_s03_err_03_auth_error_display_redacts_5xx ... ok
+test editor_data_access::auth_tests::ut_fe_s03_02_auth_token_response_parse ... ok
+test editor_data_access::auth_tests::ut_fe_s03_03_user_profile_display_name ... ok
+test editor_data_access::auth_tests::ut_fe_s03_04_token_expired_detection ... ok
+test editor_data_access::auth_tests::ut_fe_s03_05_auth_error_message_is_sanitized ... ok
+test editor_data_access::bridge_api_tests::ut_align_b01_bridge_config_envelope_parse ... ok
+test editor_data_access::bridge_api_tests::ut_align_b01_bridge_config_update_envelope_parse ... ok
+test editor_data_access::bridge_api_tests::ut_align_b01_bridge_config_update_partial_serialize ... ok
+test editor_data_access::bridge_api_tests::ut_align_b02_import_logs_envelope_parse ... ok
+test editor_data_access::bridge_api_tests::ut_align_b02_retry_import_envelope_parse ... ok
+test editor_data_access::collab_tests::ut_fe_s05_01_connected_frame_parse ... ok
+test editor_data_access::collab_tests::ut_fe_s05_02_ack_and_remote_op_parse ... ok
+test editor_data_access::collab_tests::ut_fe_s05_03_sync_frame_parse ... ok
+test editor_data_access::collab_tests::ut_fe_s05_04_read_only_error_parse ... ok
+test editor_data_access::collab_tests::ut_fe_s05_05_ws_url_build ... ok
+test editor_data_access::collab_tests::ut_fe_s05_06_collab_rest_dto_parse ... ok
+test editor_data_access::room_tests::ut_fe_proto_03_rooms_list_empty_and_full_parse ... ok
+test editor_data_access::room_tests::ut_fe_proto_04_create_room_response_sets_required_fields ... ok
+test editor_data_access::room_tests::ut_fe_s04_01_room_list_response_parse ... ok
+test editor_data_access::room_tests::ut_fe_s04_02_create_room_response_parse_with_defaults ... ok
+test editor_data_access::room_tests::ut_fe_s04_03_room_permissions ... ok
+test editor_data_access::room_tests::ut_fe_s04_04_invite_and_accept_parse ... ok
+test editor_data_access::room_tests::ut_fe_s04_05_member_response_parse ... ok
+test editor_data_access::save_retry_tests::ut_s01_09_retry_delays_match_spec ... ok
+test editor_panels::tests::test_add_custom_type_replaces_duplicate_ut_mm_13 ... ok
+test editor_panels::tests::test_add_custom_type_ut_mm_13 ... ok
+test editor_panels::tests::test_areas_notes_add_updates_store_snapshot_ut_align_a01 ... ok
+test editor_panels::tests::test_build_create_url_ut_mm_01 ... ok
+test editor_panels::tests::test_build_reference_uses_inferred_cardinality_ut_mm_20 ... ok
+test editor_panels::tests::test_build_reference_ut_pb_02 ... ok
+test editor_panels::tests::test_build_share_url_ut_mm_08 ... ok
+test editor_panels::tests::test_confirm_create_increments_refs_ut_pb_05 ... ok
+test editor_panels::tests::test_auth_gate_inputs_two_way_bound ... ok
+test editor_panels::tests::test_count_dbml_tables_ut_pc_05 ... ok
+test editor_panels::tests::test_export_diagram_dbml_ut_pc_03 ... ok
+test editor_panels::tests::test_export_diagram_sql_ut_pc_02 ... ok
+test editor_panels::tests::test_filter_by_query_generic_ut_sp_10 ... ok
+test editor_panels::tests::test_filter_empty_query_returns_all_ut_sp_02 ... ok
+test editor_panels::tests::test_filter_references_ut_sp_10 ... ok
+test editor_panels::tests::test_filter_tables_by_type_ut_sp_02 ... ok
+test editor_panels::tests::test_filter_tables_case_insensitive_ut_sp_02 ... ok
+test editor_panels::tests::test_filter_tables_ut_sp_02 ... ok
+test editor_panels::tests::test_flip_reference_endpoints_re_infers_cardinality_ut_mm_19 ... ok
+test editor_panels::tests::test_flip_reference_endpoints_ut_pb_03 ... ok
+test editor_panels::tests::test_global_search_cross_tab_ut_sp_10 ... ok
+test editor_panels::tests::test_import_parse_summary_ut_pc_01 ... ok
+test editor_panels::tests::test_infer_cardinality_fallback_field_not_exist_ut_mm_18 ... ok
+test editor_panels::tests::test_infer_cardinality_fallback_zero_count_ut_mm_18 ... ok
+test editor_panels::tests::test_infer_cardinality_many_to_many_ut_mm_18 ... ok
+test editor_panels::tests::test_infer_cardinality_one_to_many_ut_mm_18 ... ok
+test editor_panels::tests::test_infer_cardinality_many_to_one_ut_mm_18 ... ok
+test editor_panels::tests::test_infer_cardinality_one_to_many_s3_ut_mm_18 ... ok
+test editor_panels::tests::test_is_redo_shortcut_ut_kb_01 ... ok
+test editor_panels::tests::test_is_table_selected_mismatch_ut_stub_01 ... ok
+test editor_panels::tests::test_is_table_selected_none_ut_stub_01 ... ok
+test editor_panels::tests::test_is_table_selected_some_id_match_ut_stub_01 ... ok
+test editor_panels::tests::test_is_table_selected_rejects_testid_prefix_ut_stub_01 ... ok
+test editor_panels::tests::test_parse_dbml_import_tables_builds_nested_tables ... ok
+test editor_panels::tests::test_parse_diagram_json_happy_ut_mm_09 ... ok
+test editor_panels::tests::test_parse_diagram_json_invalid_ut_mm_09 ... ok
+test editor_panels::tests::test_infer_cardinality_one_to_one_ut_mm_18 ... ok
+test editor_panels::tests::test_parse_sql_statements_strips_comments_ut_mm_10 ... ok
+test editor_panels::tests::test_parse_sql_statements_empty_ut_mm_10 ... ok
+test editor_panels::tests::test_parse_table_height_happy_ut_mm_17 ... ok
+test editor_panels::tests::test_parse_table_height_zero_is_auto_ut_mm_17 ... ok
+test editor_panels::tests::test_parse_sql_statements_multi_ut_mm_10 ... ok
+test editor_panels::tests::test_parse_table_width_happy_ut_mm_11 ... ok
+test editor_panels::tests::test_parse_table_width_invalid_ut_mm_11 ... ok
+test editor_panels::tests::test_modal_root_overlay_only_renders_when_kind_is_some ... ok
+test editor_panels::tests::test_password_strength_level ... ok
+test editor_panels::tests::test_regression_session_notice_sanitization ... ok
+test editor_panels::tests::test_parse_table_height_invalid_ut_mm_17 ... ok
+test editor_panels::tests::test_resolve_import_source_ut_mm_14 ... ok
+test editor_panels::tests::test_room_create_error_message_is_friendly ... ok
+test editor_panels::tests::test_is_undo_shortcut_ut_kb_01 ... ok
+test editor_panels::tests::test_selection_auto_opens_inspector_ut_in_01 ... ok
+test editor_panels::tests::test_side_panel_tab_label_nonempty_ut_sp_09 ... ok
+test editor_panels::tests::test_remove_custom_type_nonexistent_ut_mm_13 ... ok
+test editor_panels::tests::test_remove_custom_type_ut_mm_13 ... ok
+test editor_panels::tests::test_validate_title_empty_ut_mm_06 ... ok
+test editor_panels::tests::test_validate_title_empty_disables_submit_ut_mm_07 ... ok
+test editor_panels::tests::test_validate_title_happy_ut_mm_01 ... ok
+test editor_panels::tests::test_side_panel_tab_testid_completeness_ut_sp_09 ... ok
+test editor_panels::tests::ut_fe_s05_11_collab_status_labels ... ok
+test editor_panels::tests::ut_id_global_02_new_format_ids_bypass_next_id_parsing ... ok
+test editor_panels::tests::test_validate_language_ut_mm_12 ... ok
+test editor_render::tests::feat_table_resize_draw_table_width_uses_default_when_none ... ok
+test editor_panels::tests::test_canvas_container_has_editor_canvas_testid ... ok
+test editor_panels::tests::test_validate_title_too_long_ut_mm_06 ... ok
+test editor_render::tests::feat_table_resize_hit_test_field_uses_table_width ... ok
+test editor_render::tests::feat_table_resize_draw_table_width_uses_table_width_some ... ok
+test editor_render::tests::feat_table_resize_hit_test_uses_table_width ... ok
+test editor_render::tests::test_hit_test_field_ut_pb_01 ... ok
+test editor_render::tests::test_update_reference_endpoint_end_ut_cr_04 ... ok
+test editor_render::tests::test_update_reference_endpoint_nonexistent_ut_cr_05 ... ok
+test editor_panels::tests::test_styles_css_root_token_block_intact ... ok
+test editor_panels::tests::test_schedule_save_calls_debouncer_schedule_ut_stub_02 ... ok
+test editor_render::tests::test_update_reference_endpoint_start_ut_cr_03 ... ok
+test editor_panels::tests::ut_align_b03_delete_and_import_log_retry_rules ... ok
+test location_tests::ut_fe_proto_01_pathname_search_returns_page_state ... ok
+test editor_panels::tests::ut_fe_proto_06_responsive_layout_class_helpers ... ok
+test editor_panels::tests::test_snapshot_before_io_drawer_ut_pc_04 ... ok
+test location_tests::ut_fe_proto_02b_auth_state_machine_transitions ... ok
+test location_tests::ut_fe_proto_02_session_notice_must_not_leak_token ... ok
+test location_tests::ut_fe_s03_01_share_route_bypasses_auth_gate ... ok
+test editor_panels::tests::test_phase_c_io_drawer_components_ut_pc_06 ... ok
+test location_tests::ut_s02_route_01_share_wins_and_enables_read_only_mode ... ok
+test editor_panels::tests::ut_fe_s05_12_collab_activity_from_frame ... ok
+test editor_render::tests::feat_table_resize_apply_writes_width_to_all_tables ... ok
+test editor_render::tests::feat_table_resize_draw_table_min_height_none_uses_auto ... ok
+test editor_render::tests::feat_table_resize_draw_table_min_height_overrides_auto ... ok
+test editor_render::tests::ut_cr_06_snap_to_grid_rounds_on_release ... ok
+test editor_render::tests::ut_cr_07_calc_path_uses_current_visual_coords ... ok
+test editor_panels::tests::test_validate_title_whitespace_only_ut_mm_06 ... ok
+test editor_render::tests::ut_fe_s05_10_remote_presence_slots_are_stable ... ok
+test editor_panels::tests::ut_fe_proto_05_collab_state_machine_text_stability ... ok
+test location_tests::ut_fe_s04_01_invite_route_not_treated_as_diagram_id ... ok
+test location_tests::ut_s02_01_share_param_parsed ... ok
+test location_tests::ut_s02_02_share_takes_priority_over_pathname ... ok
+test location_tests::ut_s02_03_pathname_fallback ... ok
+test location_tests::ut_s02_404_error_is_public_and_does_not_leak_body ... ok
+test editor_panels::tests::test_toggle_field_primary_ut_pb_04 ... ok
+test location_tests::ut_s02_04_default_when_empty ... ok
+test editor_panels::tests::test_regression_page_states_registered ... ok
+test editor_panels::tests::test_regression_invariants_preserved ... ok
+test editor_panels::tests::test_auth_prototype_alignment_anchors ... ok
+test editor_panels::tests::test_phase_a_layout_components_ut_pa_06 ... ok
+
+test result: ok. 145 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/code_view.rs (target/debug/deps/code_view-802b227855a5ee3a)
+
+running 7 tests
+test ut_e4_01_code_view_module_exists ... ok
+test ut_e4_02_code_view_language_enum ... ok
+test ut_e4_03_view_mode_canvas_code ... ok
+test ut_e4_04_command_palette_module ... ok
+test ut_e4_05_palette_item_kinds ... ok
+test ut_e4_07_cargo_toml_monaco_placeholder ... ok
+test ut_e4_06_css_styles_present ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/components.rs (target/debug/deps/components-c07ffb2404aa53cb)
+
+running 8 tests
+test ut_e3_01_to_08_eight_components_exist ... ok
+test ut_e3_dropdown_components ... ok
+test ut_e3_collapse_sidesheet ... ok
+test ut_e3_modal_4_widths ... ok
+test ut_e3_button_renders_4_variants ... ok
+test ut_e3_no_hardcoded_colors ... ok
+test ut_e3_tag_6_colors ... ok
+test ut_e3_tooltip_popover_present ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/dark_mode.rs (target/debug/deps/dark_mode-2815fac107db1562)
+
+running 10 tests
+test ut_e5_01_dark_token_block_complete ... ok
+test ut_e5_02_prefers_color_scheme_media ... ok
+test ut_e5_03_z_modal_token_in_dark ... ok
+test ut_e6_04_reduced_motion ... ok
+test ut_r6_03_panel_spring_entrance ... ok
+test ut_e6_03_animation_tokens_used ... ok
+test ut_r6_01_pulse_naming_split ... ok
+test ut_r6_02_button_focus_and_active ... ok
+test ut_e6_02_component_animations ... ok
+test ut_e6_01_keyframes_present ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/entity_id_uniqueness.rs (target/debug/deps/entity_id_uniqueness-236eb7b66e33f7b0)
+
+running 1 test
+test ut_id_global_01_entity_ids_globally_unique ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/icons.rs (target/debug/deps/icons-9f410b9392e6cf05)
+
+running 2 tests
+test ut_e2_01_50_icons_registered ... ok
+test ut_e2_02_size_and_color_param ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/integration_smoke.rs (target/debug/deps/integration_smoke-587f55c18741a651)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/openlogos_reporter.rs (target/debug/deps/openlogos_reporter-e89f757cd4b0295e)
+
+running 1 test
+test emit_frontend_openlogos_coverage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/phase_b_relationship.rs (target/debug/deps/phase_b_relationship-7b7c6cafc6ba5ec9)
+
+running 13 tests
+test ut_pb_01_hit_test_field_returns_table_and_field_id ... ok
+test ut_pb_01b_hit_test_field_returns_first_field ... ok
+test ut_pb_01c_hit_test_field_misses_when_outside_table ... ok
+test ut_pb_01d_hit_test_field_misses_header_area ... ok
+test ut_pb_02_build_reference_one_to_many_with_restrict ... ok
+test ut_pb_04_toggle_field_primary_sets_target_and_unsets_others ... ok
+test ut_pb_03_flip_reference_endpoints_swaps_start_and_end ... ok
+test ut_pb_04b_toggle_field_primary_false_unsets_only_target ... ok
+test ut_pb_04c_toggle_field_primary_missing_table_is_noop ... ok
+test ut_pb_06_relation_drag_threshold_is_euclidean_screen_px ... ok
+test ut_pb_07_rubber_band_path_uses_source_anchor_and_pointer ... ok
+test ut_pb_06b_eight_px_enters_dragging_and_shows_rubber_band ... ok
+test ut_pb_05_confirm_bar_increments_references_count ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/phase_c_import_export.rs (target/debug/deps/phase_c_import_export-59a193c9107645dc)
+
+running 16 tests
+test ut_ab_04b_import_summary_dbml_uses_count_dbml_tables ... ok
+test ut_ab_04c_import_summary_json_counts_tables_field ... ok
+test ut_pc_01_parse_two_create_statements_returns_two_statements_summary ... ok
+test ut_pc_01b_parse_with_comments_strips_line_comments ... ok
+test ut_ab_04_btn_import_is_enabled_in_phase_c ... ok
+test ut_pc_01c_parse_empty_returns_zero_statements ... ok
+test ut_pc_02_export_diagram_sql_generic_contains_create_table ... ok
+test ut_pc_02b_export_diagram_sql_engine_specific_adds_header_comment ... ok
+test ut_pc_03_export_diagram_dbml_contains_table_and_ref ... ok
+test ut_pc_04_snapshot_before_io_drawer_collapses_inspector ... ok
+test ut_pc_04b_snapshot_before_io_drawer_keeps_cache_none_when_already_closed ... ok
+test ut_pc_05_count_dbml_tables_returns_table_block_count ... ok
+test ut_pc_05b_count_dbml_tables_lowercase_table_keyword ... ok
+test ut_pc_05c_count_dbml_tables_empty_returns_zero ... ok
+test ut_pc_04c_io_drawer_kind_transitions_to_import_on_open ... ok
+test ut_pc_06_guide_import_sql_triggers_io_drawer ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/spec_parity_c.rs (target/debug/deps/spec_parity_c-87ba7879f1dfe28e)
+
+running 3 tests
+test s01_409_modal_suppression_matrix ... ok
+test ut_s01_ss_01_save_chip_state_matches_prototype_save_text ... ok
+test ut_s01_ss_02_save_failure_keeps_dirty_and_shows_error ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/spec_parity_d.rs (target/debug/deps/spec_parity_d-34b2379d1c857778)
+
+running 4 tests
+test grid_size_matches_production_contract ... ok
+test shortcut_text_target_matrix ... ok
+test tool_shortcut_key_mapping_matrix ... ok
+test approot_wires_d_batch_shortcuts ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/tokens.rs (target/debug/deps/tokens-798921c4f873c697)
+
+running 2 tests
+test ut_e1_02_dark_mode_placeholder ... ok
+test ut_e1_01_token_naming ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/verify_reporter.rs (target/debug/deps/verify_reporter-f5764486b968f5b6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests frontend_rs
+
+running 1 test
+test src/editor_data_access.rs - editor_data_access::DiagramClient (line 915) ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[verify-pre-run] MCP cargo test ...
+   Compiling icu_normalizer_data v2.3.0
+   Compiling icu_properties_data v2.3.0
+   Compiling http v1.5.0
+   Compiling futures-util v0.3.34
+   Compiling want v0.3.1
+   Compiling quote v1.0.47
+   Compiling ring v0.17.14
+   Compiling num-traits v0.2.19
+   Compiling tracing v0.1.44
+   Compiling webpki-roots v1.0.9
+   Compiling thiserror v2.0.20
+   Compiling errno v0.3.14
+   Compiling parking_lot_core v0.9.12
+   Compiling getrandom v0.4.3
+   Compiling serde_json v1.0.151
+   Compiling rustix v1.1.4
+   Compiling signal-hook-registry v1.4.8
+   Compiling parking_lot v0.12.5
+   Compiling syn v3.0.3
+   Compiling syn v2.0.119
+   Compiling http-body v1.1.0
+   Compiling http-body-util v0.1.5
+   Compiling chrono v0.4.45
+   Compiling tempfile v3.27.0
+   Compiling synstructure v0.13.2
+   Compiling rustls v0.23.43
+   Compiling zerofrom-derive v0.1.7
+   Compiling yoke-derive v0.8.2
+   Compiling zerofrom v0.1.8
+   Compiling yoke v0.8.3
+   Compiling zerovec-derive v0.11.5
+   Compiling displaydoc v0.2.7
+   Compiling serde_derive v1.0.229
+   Compiling tokio-macros v2.7.2
+   Compiling thiserror-impl v2.0.20
+   Compiling rustls-webpki v0.103.14
+   Compiling tokio v1.53.1
+   Compiling zerotrie v0.2.5
+   Compiling zerovec v0.11.7
+   Compiling tinystr v0.8.4
+   Compiling potential_utf v0.1.6
+   Compiling icu_collections v2.3.0
+   Compiling icu_locale_core v2.3.0
+   Compiling serde v1.0.229
+   Compiling icu_provider v2.3.0
+   Compiling icu_properties v2.3.0
+   Compiling icu_normalizer v2.3.0
+   Compiling serde_urlencoded v0.7.1
+   Compiling toml_datetime v0.6.11
+   Compiling serde_yaml v0.9.34+deprecated
+   Compiling serde_spanned v0.6.9
+   Compiling toml_edit v0.22.27
+   Compiling idna_adapter v1.2.2
+   Compiling idna v1.1.0
+   Compiling url v2.5.8
+   Compiling toml v0.8.23
+   Compiling hyper v1.11.0
+   Compiling tower v0.5.3
+   Compiling tokio-rustls v0.26.4
+   Compiling tower-http v0.6.11
+   Compiling hyper-util v0.1.20
+   Compiling hyper-rustls v0.27.9
+   Compiling reqwest v0.12.28
+   Compiling coldrawdb-mcp v0.1.0 (/tmp/openlogos-cli-sandbox-bzHg0T/workspace/mcp-server)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.50s
+     Running unittests src/lib.rs (target/debug/deps/coldrawdb_mcp-70ea24b5c74cb84c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/coldrawdb_mcp-ba4aa47e03a1cba1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/c2_read_tools.rs (target/debug/deps/c2_read_tools-f35cdd718adbb844)
+
+running 7 tests
+test ut_mcp_04_list_normalization ... ok
+test ut_mcp_09_delete_requires_confirmation ... ok
+test ut_mcp_14_connection_failure ... ok
+test ut_mcp_02_03_initialize_and_contract ... ok
+test ut_mcp_05_and_st_mcp_02_get_and_export ... ok
+test ut_mcp_01_config_and_exit_code ... ok
+test st_mcp_01_real_stdio_handshake ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/c3_write_tools.rs (target/debug/deps/c3_write_tools-82155949219bc5cb)
+
+running 4 tests
+test ut_mcp_13_http_error_mapping ... ok
+test ut_mcp_10_import_validation_is_local ... ok
+test write_chain_revision_and_request_shapes ... ok
+test st_mcp_05_timeout_and_redaction ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.01s
+
+     Running tests/c4_client_configs.rs (target/debug/deps/c4_client_configs-0fae46aa71245740)
+
+running 1 test
+test ut_mcp_11_and_four_client_handshakes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+   Doc-tests coldrawdb_mcp
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[verify-pre-run] 解析 Playwright 浏览器 ...
+[verify-pre-run] PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright HEADLESS_SHELL=default
+[verify-pre-run] 单文件原型 Playwright 回归 ...
+
+> frontend-rs@1.0.0 test:unified-prototype
+> node scripts/test-unified-prototype.mjs && node scripts/test-unified-prototype-render.mjs
+
+Terminated
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+browser.newPage: Target page, context or browser has been closed
+    at withPage (/tmp/openlogos-cli-sandbox-bzHg0T/workspace/frontend-rs/scripts/test-unified-prototype.mjs:30:30)
+    at /tmp/openlogos-cli-sandbox-bzHg0T/workspace/frontend-rs/scripts/test-unified-prototype.mjs:173:7
+
+Node.js v22.22.0
