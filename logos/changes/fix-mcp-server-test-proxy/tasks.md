@@ -20,18 +20,15 @@
 ### 验证项（cargo test 触发，非独立 verify 节点）
 
 - [ ] **带代理**跑 `cd mcp-server && cargo test --test c2_read_tools` → 全绿（7 passed / 0 failed）
-- [ ] **清代理**跑 `env -u HTTPS_PROXY -u HTTP_PROXY -u https_proxy -u http_proxy cd mcp-server && cargo test --test c2_read_tools` → 全绿（7 passed / 0 failed）
+- [ ] **清代理**跑 `cd mcp-server && env -u HTTPS_PROXY -u HTTP_PROXY -u https_proxy -u http_proxy cargo test --test c2_read_tools` → 全绿（7 passed / 0 failed）
 - [ ] 双跑结果一致（均 7 passed / 0 failed）→ 证明 `.no_proxy()` 修复生效
-- [ ] 全量 `openlogos verify`（独立 CLI 节点）→ Gate 3.5 + 3.6 双 PASS（acceptance-report.md 自然刷新——当前工作区失真报告勿手动改，verify 会覆盖）
 
 ## [spec] 规格登记（无新增用例，仅 spec 确认）
 
 - [ ] 无新增用例（`ut_mcp_05_and_st_mcp_02_get_and_export` 是既有用例，修复后自然通过）
 - [ ] 确认 ledger 无变化（`logos/resources/test/core-S06-mcp-service-test-cases.md` 等已有 UT-MCP-05/06/ST-MCP-02..09 登记行，无需新增）
 
-## [archive] 归档（留待外环下一条 steer 派发）
-
-- [ ] `openlogos archive fix-mcp-server-test-proxy`（外环复验 verify Gate 3.5+3.6 双 PASS 后代行）
+## [archive] 归档（留待外环下一条 steer 派发，verify/archive 属独立 CLI 节点不列入 tasks）
 
 ## 实现顺序建议
 

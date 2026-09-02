@@ -14,6 +14,11 @@ impl ApiClient {
     pub fn new(config: Config) -> Result<Self, ToolError> {
         let client = Client::builder()
             .timeout(config.timeout)
+            // fix-mcp-server-test-proxy: 显式禁用 reqwest 环境代理。
+            // 测试(mock_response 直连 127.0.0.1:0)与生产(自托管部署走本地
+            // 后端 127.0.0.1)均不应走环境代理;reqwest 默认读 HTTPS_PROXY/
+            // HTTP_PROXY 且 NO_PROXY=127.* 不被识别为合法 CIDR。
+            .no_proxy()
             .build()
             .map_err(|_| ToolError::config("无法初始化 HTTP 客户端"))?;
         Ok(Self { config, client })
