@@ -96,7 +96,10 @@
   wrapper 亡则 agent 必亡、锁即 VACANT,绝无 agent 活而锁 VACANT 的
   split brain;孙辈进程不持有 fd,agent 退出而孙辈长驻亦为 VACANT);
   `check` 仅观察、绝不夺取;活锁接管只归 operator(终止旧 holder 后
-  再 acquire),无 agent 自助强夺。metadata sidecar 与一切 TTL 仅诊断、绝不参与裁定。范围:**Linux-only**(单机 flock+PDEATHSIG+/proc;非
+  再 acquire),无 agent 自助强夺。metadata sidecar 与一切 TTL 仅诊断、绝不参与裁定。
+  交互式用法:hold 会把终端前台进程组切给 agent(退出后归还),TUI 外环
+  (`-- claude` 等)可直接持锁运行;非 TTY 场景该交接为空操作
+  (spec: task-outer-duty-tty-foreground)。范围:**Linux-only**(单机 flock+PDEATHSIG+/proc;非
   Linux 平台命令显式 unsupported 退出 2;Windows LockFileEx 另立条目),
   NFS 不适用;本切片 fencing 为文档层纪律,硬 gate(board-append/push
   校验 lease)为后续条目。
