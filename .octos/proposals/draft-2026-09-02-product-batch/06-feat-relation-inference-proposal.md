@@ -1,10 +1,10 @@
 # 变更提案：feat-relation-inference
 
 > module: core | created: 2026-09-02
-> 状态：**草案**（落 `.octos/proposals/`，**未**走 `openlogos change`）
+> 状态：**草案 v2（外环条目6 判词打回修订后重写）**（落 `.octos/proposals/`，**未**走 `openlogos change`）
 > 父批次：[产品优化批次-2026-09-02](./01-current-state.md) D 案（需求 2 独立）
 > 上游裁决：黑板条目6 operator 批注（Q2=允许手动覆盖 + 字段按用户点击顺序；推导规则 1+1→1:1、1+N→1:N、N+N→N:N）
-> 上游判词：条目6 尾部 feat-table-resize 归档通报（9c49476 已 push）
+> 上游判词：条目6 尾部外环(claude) 主审评审 2026-09-03 — 语义层错误打回修订 v2
 
 ## 变更原因
 
@@ -22,7 +22,15 @@
 
 **operator 裁决（Q2）**：**允许手动覆盖 + 字段按用户点击顺序**。推导规则：**1+1→1:1、1+N→1:N、N+N→N:N**（字段按用户点击顺序排列）。
 
-**数据契约**（关键）：`Reference` struct 的 `start_field_id`/`end_field_id` 是**单字段**（非数组），Q2 的"连接多个字段自然推导"需扩展为 `start_field_ids: Vec<String>` + `end_field_ids: Vec<String>`（或保持单字段，推导规则仅基于两端字段数——需裁决）。
+**外环判词修正（v2 语义层错误）**：草案 v1 误把 Q2 的 1/N 理解为**两端表的总字段数**（`fields.len()`）——这与关系基数**无语义关联**。反例：20 字段表与 3 字段表之间连**一条**单字段关系，草案会推导出 N+N→many_to_many，但用户只连了一对字段，应为 one_to_one。
+
+**Q2 正确语义（外环裁定）**：「1+1→1:1、1+N→1:N、N+N→N:N」中的 1/N 指**该字段已参与的关系计数**（含本次新建），不是表总字段数。推导函数应改为 `infer_cardinality(start_field_id, end_field_id, store)`：
+- s = start_field 已参与的关系数（含本条），e = end_field 已参与的关系数（含本条）
+- s==1 && e==1 → `one_to_one`；s==1 && e>1 → `one_to_many`；s>1 && e==1 → `many_to_one`；s>1 && e>1 → `many_to_many`
+- 「字段按用户点击顺序」落实为先点者为 start（方向由此决定）
+- 例：用户先连 A.a→B.x，再连 A.a→B.y——第二条创建时 A.a 参与 2 条（s=2）、B.y 参与 1 条（e=1）→ many_to_one……注意方向：A 端一个字段对 B 端多个字段，语义是 A:B=1:N，即 start=A 时应得 one_to_many。实现时注意 s/e 的计数语义与 start 端为"一"侧的对应关系。
+
+**数据契约**（外环代决）：**不扩展 Reference 数据契约**（不加 `start_field_ids`/`end_field_ids` 数组，复合外键另立案）。operator 需求 2「连接多个字段自然推导」在上述语义下已完整覆盖——多条单字段关系在同一字段上累计即自然形成 1:N/N:N，无需改契约。
 
 ## 变更类型
 
@@ -52,10 +60,10 @@
   - `CARDINALITY_OPTIONS:411` —— 4 选 1 必选下拉（**去除**）
   - `RelToolState::Confirm:370-389` —— 确认条状态机含 `cardinality: String`（**改为推导值**，允许用户手动覆盖）
   - `build_reference:411-434` —— 创建 Reference 时传入 cardinality（**改为推导值**）
-  - `flip_reference_endpoints:439` —— 翻转端点函数（**推导后翻转需重新推导 cardinality**）
+  - `flip_reference_endpoints:439` —— 翻转端点函数（**推导后翻转需重新推导 cardinality**，基于翻转后的两端字段已参与关系计数）
   - 关系创建交互流程：点击两点 / 拖线 → 确认条（**去掉 cardinality 下拉**，改为显示推导结果 + 允许手动覆盖）
   - Inspector reference 面板：cardinality 编辑器（**保留**，允许手动覆盖推导结果）
-- `src/editor_core.rs`：`Reference` struct `type_: String` 字段保持 `String`（向后兼容）；**如需支持多字段**需扩展 `start_field_ids: Vec<String>`/`end_field_ids: Vec<String>`（**待定**——operator Q2 未明确是否支持多字段，需裁决）
+- `src/editor_core.rs`：`Reference` struct `type_: String` 字段保持 `String`（向后兼容）；**不扩展** `start_field_ids`/`end_field_ids` 数组（外环代决否决，复合外键另立案）
 
 ## 部署影响
 
@@ -69,33 +77,49 @@
 ## 变更概述
 
 去掉关系创建确认条的 cardinality 必选下拉，改为**自动推导 + 允许手动覆盖**：
-- 推导规则（operator Q2 裁决）：1+1→1:1、1+N→1:N、N+N→N:N（字段按用户点击顺序）
+- 推导规则（operator Q2 裁决 + 外环判词修正）：**1/N 指该字段已参与的关系计数（含本次新建）**，不是表总字段数
+  - `infer_cardinality(start_field_id, end_field_id, store)`：s = start_field 已参与的关系数（含本条），e = end_field 已参与的关系数（含本条）
+  - s==1 && e==1 → `one_to_one`；s==1 && e>1 → `one_to_many`；s>1 && e==1 → `many_to_one`；s>1 && e>1 → `many_to_many`
+  - **方向**：start 端为"一"侧时 one_to_many（start 是 1，end 是 N）
 - 确认条显示推导结果（如"1:N"），用户可点击切换为其它 cardinality（手动覆盖）
 - Inspector reference 面板保留 cardinality 编辑器（允许手动覆盖推导结果）
-- `flip_reference_endpoints` 翻转后重新推导 cardinality（基于翻转后的两端字段数）
-- **待定**：是否支持多字段连接（`start_field_ids: Vec<String>`/`end_field_ids: Vec<String>`）——operator Q2 未明确，需裁决
+- `flip_reference_endpoints` 翻转后重新推导 cardinality（基于翻转后的两端字段已参与关系计数，s/e 互换）
+- **不扩展** `Reference` struct 数据契约（不加 `start_field_ids`/`end_field_ids` 数组，外环代决否决，复合外键另立案）
 
 ## 设计决策记录（ADR-style 摘要）
 
 | 决策 | 选 | 否 | 依据 |
 |---|---|---|---|
-| 推导规则 | 1+1→1:1、1+N→1:N、N+N→N:N | 固定 one_to_many 默认 / 完全自动 | operator Q2 裁决 |
-| 字段顺序 | 按用户点击顺序 | 按 schema 顺序 | operator Q2 裁决 |
+| 推导依据 | 字段已参与关系计数（含本次新建）| 表总字段数 `fields.len()` | 外环判词修正（v1 语义层错误） |
+| 推导规则 | s==1 && e==1 → one_to_one；s==1 && e>1 → one_to_many；s>1 && e==1 → many_to_one；s>1 && e>1 → many_to_many | 固定 one_to_many 默认 / 完全自动 | operator Q2 裁决 + 外环判词修正 |
+| 字段顺序 | 按用户点击顺序（先点者为 start） | 按 schema 顺序 | operator Q2 裁决 |
 | 手动覆盖 | 允许（Inspector 保留编辑器）| 完全自动不可改 | operator Q2 裁决 |
 | 确认条 UI | 显示推导结果 + 可点击切换 | 去掉确认条直接创建 | 保留确认条可减少误操作（现有 ST-PB-01/02 测试覆盖确认条交互）|
-| 数据结构 | `type_: String` 保持 | 改为 Enum / 加 `auto_inferred: bool` | 向后兼容 + 最小改动 |
+| 数据结构 | `type_: String` 保持 | 改为 Enum / 加 `auto_inferred: bool` / 加 `start_field_ids`/`end_field_ids` 数组 | 向后兼容 + 最小改动 + 外环代决否决（复合外键另立案） |
+
+## 真值表（外环判词要求）
+
+| start_field 已参与关系数（s，含本条） | end_field 已参与关系数（e，含本条） | 推导结果 | 语义 |
+|---|---|---|---|
+| 1 | 1 | `one_to_one` | start:end = 1:1 |
+| 1 | N (N>1) | `one_to_many` | start:end = 1:N（start 端为"一"侧） |
+| N (N>1) | 1 | `many_to_one` | start:end = N:1（end 端为"一"侧） |
+| N (N>1) | N (N>1) | `many_to_many` | start:end = N:N |
+
+**方向对应关系**：start 端为"一"侧时 `one_to_many`（start 是 1，end 是 N）；end 端为"一"侧时 `many_to_one`（start 是 N，end 是 1）。
 
 ## 范围外（明确排除）
 
-- 不支持多字段连接（`start_field_ids: Vec<String>`/`end_field_ids: Vec<String>`）——operator Q2 未明确，需裁决；如支持需扩展 `Reference` struct 数据契约（**重大变更**，另立提案）
+- 不支持多字段连接（`start_field_ids: Vec<String>`/`end_field_ids: Vec<String>`）——外环代决否决（复合外键另立案）；operator 需求 2「连接多个字段自然推导」在字段已参与关系计数语义下已完整覆盖——多条单字段关系在同一字段上累计即自然形成 1:N/N:N，无需改契约
 - 不修改 `Reference.type_` 字段类型（保持 `String`，向后兼容）
 - 不修改 reference 连线布局的端点计算算法（仅跟随 cardinality 推导结果；新算法属 `feat-relation-inference` 后续扩展）
 - 不修改 Inspector 其它字段编辑逻辑
+- 不修改测试断言（外环强制约束）
 
 ## 风险点
 
 - **R1**：推导规则与老数据兼容性——存量 `reference.type_` 字段保持 `String`，新推导规则只影响新建 relation，老数据原 cardinality 字段保留（向后兼容）
-- **R2**：`flip_reference_endpoints` 翻转后重新推导 cardinality——翻转后两端字段数可能变化（如 1+N → N+1），推导结果可能不同（1:N → N:1），需验证语义正确性
+- **R2**：`flip_reference_endpoints` 翻转后重新推导 cardinality——翻转后 start/end 互换，s/e 互换，推导结果可能不同（如 s=1 && e=2 时 one_to_many → 翻转后 s=2 && e=1 时 many_to_one），需验证语义正确性
 - **R3**：确认条去掉 cardinality 下拉后，ST-PB-01/02 测试需更新（现有测试断言确认条含 cardinality 下拉）——**外环强制约束：禁止改测试断言**，需新增测试覆盖推导逻辑
 - **R4**：与 feat-table-resize 的端点计算可能耦合（reference 端点位置计算依赖 `table.width`/`table.min_height`，D 案在 A 案之后执行）
 
@@ -106,6 +130,7 @@
 - **C 去掉确认条直接创建**：点击两点/拖线后直接创建 relation 无确认条——否决（保留确认条可减少误操作，现有 ST-PB-01/02 测试覆盖确认条交互）
 - **D `type_` 改为 Enum**：破坏向后兼容（存量 `type_` 字段是 `String`，Enum 需 schema migration）——否决
 - **E 加 `auto_inferred: bool` 字段**：标记推导值 vs 手动覆盖值——否决（最小改动原则，`type_` 字段已足够，无需额外标记）
+- **F 加 `start_field_ids`/`end_field_ids` 数组**：扩展 Reference 数据契约支持多字段连接——否决（外环代决，复合外键另立案；字段已参与关系计数语义下已完整覆盖）
 
 ## 关联场景
 
@@ -118,7 +143,7 @@
 
 ## 不在范围（明确排除）
 
-- 不支持多字段连接（`start_field_ids`/`end_field_ids` 数组）——需 operator 裁决后另立提案
+- 不支持多字段连接（`start_field_ids`/`end_field_ids` 数组）——外环代决否决（复合外键另立案）
 - 不修改 `Reference.type_` 字段类型（保持 `String`）
 - 不修改 reference 连线布局的端点计算算法
 - 不修改 Inspector 其它字段编辑逻辑
