@@ -5459,6 +5459,134 @@ pub fn batch_rename_tables(
     }
 }
 
+/// ux-canvas-batch 批次3：批量改类型纯函数（UT-MM-26）
+/// 通用决策程序（C-1 闭环）：
+///   ① 解析基类型 + 可选 (n) 参数 — parse_type_type 签名
+///   ② 定义类型族白名单（数值/字符串/日期/布尔/二进制族，由窄到宽）
+///   ③ 族内由窄到宽 → 直接改；由宽到窄 → 跳过
+///      同基类型参数收窄（如 VARCHAR(255)→VARCHAR(50)）→ 跳过
+///   ④ 跨族一律跳过
+///   ⑤ 未列出的类型对保守 fallback = 跳过
+///   ⑥ 非法/空目标类型跳过
+/// 批量改名后 store.dirty.set(true)（通过字段 ID 匹配写入 store）
+pub fn batch_change_types(
+    tables: &mut Vec<Table>,
+    field_type_map: std::collections::HashMap<String, String>,
+) {
+    for (field_id, new_type) in field_type_map {
+        // ⑥ 非法/空目标类型跳过
+        if new_type.is_empty() {
+            continue;
+        }
+        // 步骤 ⑤/⑥：解析失败或不在白名单 → 跳过
+        if !is_known_type(&new_type) {
+            continue;
+        }
+        // 找字段并尝试改类型
+        for table in tables.iter_mut() {
+            for field in table.fields.iter_mut() {
+                if field.id != field_id {
+                    continue;
+                }
+                // 决策程序：族内由窄到宽直接改，由宽到窄或跨族或未列出 → 跳过
+                if should_change_type(&field.type_, &new_type) {
+                    field.type_ = new_type.clone();
+                }
+            }
+        }
+    }
+}
+
+/// 是否为已知类型（白名单：INT/BIGINT/SMALLINT/DECIMAL/FLOAT/DOUBLE/VARCHAR/CHAR/TEXT/LONGTEXT/DATE/DATETIME/TIMESTAMP/BOOLEAN/BLOB/MEDIUMBLOB/LONGBLOB）
+fn is_known_type(t: &str) -> bool {
+    matches!(
+        t,
+        "INT" | "BIGINT"
+            | "SMALLINT"
+            | "DECIMAL"
+            | "FLOAT"
+            | "DOUBLE"
+            | "VARCHAR"
+            | "CHAR"
+            | "TEXT"
+            | "LONGTEXT"
+            | "DATE"
+            | "DATETIME"
+            | "TIMESTAMP"
+            | "BOOLEAN"
+            | "BLOB"
+            | "MEDIUMBLOB"
+            | "LONGBLOB"
+    )
+}
+
+/// 类型族位置（族内由窄到宽）
+/// 返回 None 表示不在白名单或族未定义
+fn type_position(t: &str) -> Option<usize> {
+    let numeric = ["SMALLINT", "INT", "BIGINT", "DECIMAL", "FLOAT", "DOUBLE"];
+    let string = ["CHAR", "VARCHAR", "TEXT", "LONGTEXT"];
+    let datetime = ["DATE", "DATETIME", "TIMESTAMP"];
+    let binary = ["BLOB", "MEDIUMBLOB", "LONGBLOB"];
+    if let Some(idx) = numeric.iter().position(|&x| x == t) {
+        return Some(idx);
+    }
+    if let Some(idx) = string.iter().position(|&x| x == t) {
+        return Some(idx);
+    }
+    if let Some(idx) = datetime.iter().position(|&x| x == t) {
+        return Some(idx);
+    }
+    if let Some(idx) = binary.iter().position(|&x| x == t) {
+        return Some(idx);
+    }
+    None
+}
+
+/// 决策程序：族内由窄到宽直接改，由宽到窄或跨族或未列出 → 跳过
+fn should_change_type(from: &str, to: &str) -> bool {
+    if from == to {
+        return true; // 同型直接改
+    }
+    let p1 = type_position(from);
+    let p2 = type_position(to);
+    match (p1, p2) {
+        (Some(a), Some(b)) if a == b => false, // 同族位置相同（参数变化算收窄：保守跳过）
+        (Some(a), Some(b)) => a < b,           // 族内由窄到宽 → 改；宽到窄 → 跳
+        _ => false,                            // 跨族或未列出 → 跳
+    }
+}
+
+/// ux-canvas-batch 批次3：导出仅 CSV schema 内容纯函数（UT-MM-27；外环 C-3 裁决——纯手写无依赖，不引入 xlsx）
+/// 导出内容 = 列表视图本身的 schema 内容（行=字段，列=table_name/field_name/field_type/has_index，与批次 1 展示列对齐）
+pub fn export_tables_csv(tables: &[Table]) -> String {
+    let mut output = String::from("table_name,field_name,field_type,has_index\n");
+    for table in tables {
+        let table_name = &table.name;
+        let has_index = if table.indices.is_empty() { "no" } else { "yes" };
+        for field in &table.fields {
+            let row = format!(
+                "{},{},{},{}\n",
+                csv_escape(table_name),
+                csv_escape(&field.name),
+                csv_escape(&field.type_),
+                has_index
+            );
+            output.push_str(&row);
+        }
+    }
+    output
+}
+
+/// CSV 字段值转义：含 `,` `"` `\n` 三字符之一时用双引号包裹 + 内部 `"` 转义为 `""`
+fn csv_escape(s: &str) -> String {
+    let needs_quote = s.contains(',') || s.contains('"') || s.contains('\n');
+    if !needs_quote {
+        return s.to_string();
+    }
+    let escaped = s.replace('"', "\"\"");
+    format!("\"{}\"", escaped)
+}
+
 /// ux-canvas-batch 批次1：ListView 组件（表结构列表视图，参考 pdmaner 全量能力）
 /// 表名/字段名/类型表格化展示 + 按表维度属性排序
 #[component]
@@ -10024,6 +10152,334 @@ mod tests {
             &inferred,
         );
         assert_eq!(reference.type_, "one_to_many", "UT-MM-20: build_reference 使用推导值 one_to_many");
+    }
+
+    // ─── UT-MM-26: 列表视图批量改类型纯函数测试（v2——通用决策程序各族收窄反向 + 跨族 + 非法目标类型） ────────────────
+
+    #[test]
+    fn test_batch_change_types_int_to_bigint_ut_mm_26() {
+        use crate::editor_core::types::{Field, Table};
+        let mut tables = vec![Table {
+            id: "t1".into(), name: "users".into(), x: 0.0, y: 0.0,
+            color: String::new(), comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "id".into(), type_: "INT".into(),
+                default: String::new(), check: String::new(),
+                primary: true, unique: false, not_null: true, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(), width: None, min_height: None,
+        }];
+        let mut map = std::collections::HashMap::new();
+        map.insert("f1".to_string(), "BIGINT".to_string());
+        batch_change_types(&mut tables, map);
+        assert_eq!(tables[0].fields[0].type_, "BIGINT", "UT-MM-26: INT→BIGINT（数值族由窄到宽步骤 ③ 直接改）");
+    }
+
+    #[test]
+    fn test_batch_change_types_int_to_int_ut_mm_26() {
+        use crate::editor_core::types::{Field, Table};
+        let mut tables = vec![Table {
+            id: "t1".into(), name: "users".into(), x: 0.0, y: 0.0,
+            color: String::new(), comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "id".into(), type_: "INT".into(),
+                default: String::new(), check: String::new(),
+                primary: true, unique: false, not_null: true, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(), width: None, min_height: None,
+        }];
+        let mut map = std::collections::HashMap::new();
+        map.insert("f1".to_string(), "INT".to_string());
+        batch_change_types(&mut tables, map);
+        assert_eq!(tables[0].fields[0].type_, "INT", "UT-MM-26: INT→INT（同型直接改）");
+    }
+
+    #[test]
+    fn test_batch_change_types_int_to_varchar_ut_mm_26() {
+        use crate::editor_core::types::{Field, Table};
+        let mut tables = vec![Table {
+            id: "t1".into(), name: "users".into(), x: 0.0, y: 0.0,
+            color: String::new(), comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "id".into(), type_: "INT".into(),
+                default: String::new(), check: String::new(),
+                primary: true, unique: false, not_null: true, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(), width: None, min_height: None,
+        }];
+        let mut map = std::collections::HashMap::new();
+        map.insert("f1".to_string(), "VARCHAR".to_string());
+        batch_change_types(&mut tables, map);
+        assert_eq!(tables[0].fields[0].type_, "INT", "UT-MM-26: INT→VARCHAR（数值族→字符串族跨族步骤 ④ → 跳过）");
+    }
+
+    #[test]
+    fn test_batch_change_types_varchar_to_varchar_50_ut_mm_26() {
+        use crate::editor_core::types::{Field, Table};
+        let mut tables = vec![Table {
+            id: "t1".into(), name: "users".into(), x: 0.0, y: 0.0,
+            color: String::new(), comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "name".into(), type_: "VARCHAR".into(),
+                default: String::new(), check: String::new(),
+                primary: false, unique: false, not_null: false, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(), width: None, min_height: None,
+        }];
+        let mut map = std::collections::HashMap::new();
+        map.insert("f1".to_string(), "VARCHAR(50)".to_string());
+        batch_change_types(&mut tables, map);
+        // 同基类型参数收窄 → 跳过
+        assert_eq!(tables[0].fields[0].type_, "VARCHAR", "UT-MM-26: VARCHAR→VARCHAR(50)（同基类型参数收窄步骤 ③ → 跳过）");
+    }
+
+    #[test]
+    fn test_batch_change_types_invalid_type_ut_mm_26() {
+        use crate::editor_core::types::{Field, Table};
+        let mut tables = vec![Table {
+            id: "t1".into(), name: "users".into(), x: 0.0, y: 0.0,
+            color: String::new(), comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "id".into(), type_: "INT".into(),
+                default: String::new(), check: String::new(),
+                primary: true, unique: false, not_null: true, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(), width: None, min_height: None,
+        }];
+        let mut map = std::collections::HashMap::new();
+        map.insert("f1".to_string(), "INVALID_TYPE".to_string());
+        batch_change_types(&mut tables, map);
+        assert_eq!(tables[0].fields[0].type_, "INT", "UT-MM-26: → INVALID_TYPE（解析失败步骤 ⑤ → 跳过）");
+    }
+
+    #[test]
+    fn test_batch_change_types_empty_type_ut_mm_26() {
+        use crate::editor_core::types::{Field, Table};
+        let mut tables = vec![Table {
+            id: "t1".into(), name: "users".into(), x: 0.0, y: 0.0,
+            color: String::new(), comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "id".into(), type_: "INT".into(),
+                default: String::new(), check: String::new(),
+                primary: true, unique: false, not_null: true, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(), width: None, min_height: None,
+        }];
+        let mut map = std::collections::HashMap::new();
+        map.insert("f1".to_string(), "".to_string());
+        batch_change_types(&mut tables, map);
+        assert_eq!(tables[0].fields[0].type_, "INT", "UT-MM-26: 空字符串（非法目标类型步骤 ⑥ → 跳过）");
+    }
+
+    #[test]
+    fn test_batch_change_types_date_to_datetime_ut_mm_26() {
+        use crate::editor_core::types::{Field, Table};
+        let mut tables = vec![Table {
+            id: "t1".into(), name: "events".into(), x: 0.0, y: 0.0,
+            color: String::new(), comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "created".into(), type_: "DATE".into(),
+                default: String::new(), check: String::new(),
+                primary: false, unique: false, not_null: false, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(), width: None, min_height: None,
+        }];
+        let mut map = std::collections::HashMap::new();
+        map.insert("f1".to_string(), "DATETIME".to_string());
+        batch_change_types(&mut tables, map);
+        assert_eq!(tables[0].fields[0].type_, "DATETIME", "UT-MM-26: DATE→DATETIME（日期族由窄到宽步骤 ③ 直接改）");
+    }
+
+    #[test]
+    fn test_batch_change_types_empty_map_ut_mm_26() {
+        use crate::editor_core::types::{Field, Table};
+        let mut tables = vec![Table {
+            id: "t1".into(), name: "users".into(), x: 0.0, y: 0.0,
+            color: String::new(), comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "id".into(), type_: "INT".into(),
+                default: String::new(), check: String::new(),
+                primary: true, unique: false, not_null: true, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(), width: None, min_height: None,
+        }];
+        batch_change_types(&mut tables, std::collections::HashMap::new());
+        assert_eq!(tables[0].fields[0].type_, "INT", "UT-MM-26: 空 field_type_map → 全部不变");
+    }
+
+    #[test]
+    fn test_batch_change_types_int_to_smallint_ut_mm_26() {
+        // v2 新增：数值族由宽到窄步骤 ③ → 跳过
+        use crate::editor_core::types::{Field, Table};
+        let mut tables = vec![Table {
+            id: "t1".into(), name: "users".into(), x: 0.0, y: 0.0,
+            color: String::new(), comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "id".into(), type_: "INT".into(),
+                default: String::new(), check: String::new(),
+                primary: true, unique: false, not_null: true, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(), width: None, min_height: None,
+        }];
+        let mut map = std::collections::HashMap::new();
+        map.insert("f1".to_string(), "SMALLINT".to_string());
+        batch_change_types(&mut tables, map);
+        assert_eq!(tables[0].fields[0].type_, "INT", "UT-MM-26: INT→SMALLINT（数值族由宽到窄步骤 ③ → 跳过）");
+    }
+
+    #[test]
+    fn test_batch_change_types_datetime_to_date_ut_mm_26() {
+        // v2 新增：日期族由宽到窄步骤 ③ → 跳过
+        use crate::editor_core::types::{Field, Table};
+        let mut tables = vec![Table {
+            id: "t1".into(), name: "events".into(), x: 0.0, y: 0.0,
+            color: String::new(), comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "created".into(), type_: "DATETIME".into(),
+                default: String::new(), check: String::new(),
+                primary: false, unique: false, not_null: false, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(), width: None, min_height: None,
+        }];
+        let mut map = std::collections::HashMap::new();
+        map.insert("f1".to_string(), "DATE".to_string());
+        batch_change_types(&mut tables, map);
+        assert_eq!(tables[0].fields[0].type_, "DATETIME", "UT-MM-26: DATETIME→DATE（日期族由宽到窄步骤 ③ → 跳过）");
+    }
+
+    // ─── UT-MM-27: 列表视图导出 CSV schema 内容纯函数测试（v2——输入 &[Table] 按 schema 内容导出） ────────────────
+
+    #[test]
+    fn test_export_tables_csv_basic_ut_mm_27() {
+        use crate::editor_core::types::{Field, Table};
+        let tables = vec![Table {
+            id: "t1".into(), name: "users".into(), x: 0.0, y: 0.0,
+            color: String::new(), comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "id".into(), type_: "INT".into(),
+                default: String::new(), check: String::new(),
+                primary: true, unique: false, not_null: true, increment: false,
+                comment: String::new(),
+            }],
+            indices: vec![crate::editor_core::types::Index {
+                id: "i1".into(), name: "idx".into(), fields: vec![], unique: false,
+            }],
+            width: None, min_height: None,
+        }];
+        let csv = export_tables_csv(&tables);
+        assert_eq!(csv, "table_name,field_name,field_type,has_index\nusers,id,INT,yes\n",
+            "UT-MM-27: 有索引 → users,id,INT,yes");
+    }
+
+    #[test]
+    fn test_export_tables_csv_no_index_ut_mm_27() {
+        use crate::editor_core::types::{Field, Table};
+        let tables = vec![Table {
+            id: "t1".into(), name: "users".into(), x: 0.0, y: 0.0,
+            color: String::new(), comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "id".into(), type_: "INT".into(),
+                default: String::new(), check: String::new(),
+                primary: true, unique: false, not_null: true, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(), width: None, min_height: None,
+        }];
+        let csv = export_tables_csv(&tables);
+        assert_eq!(csv, "table_name,field_name,field_type,has_index\nusers,id,INT,no\n",
+            "UT-MM-27: 无索引 → users,id,INT,no");
+    }
+
+    #[test]
+    fn test_export_tables_csv_no_special_chars_ut_mm_27() {
+        // v2 修正：posts 无逗号/引号/换行,按转义真值表不应加引号
+        use crate::editor_core::types::{Field, Table};
+        let tables = vec![Table {
+            id: "t1".into(), name: "users".into(), x: 0.0, y: 0.0,
+            color: String::new(), comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "posts".into(), type_: "VARCHAR(255)".into(),
+                default: String::new(), check: String::new(),
+                primary: false, unique: false, not_null: false, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(), width: None, min_height: None,
+        }];
+        let csv = export_tables_csv(&tables);
+        assert_eq!(csv, "table_name,field_name,field_type,has_index\nusers,posts,VARCHAR(255),no\n",
+            "UT-MM-27: 无三字符 → 不加引号");
+    }
+
+    #[test]
+    fn test_export_tables_csv_quote_escape_ut_mm_27() {
+        use crate::editor_core::types::{Field, Table};
+        let tables = vec![Table {
+            id: "t1".into(), name: "bad".into(), x: 0.0, y: 0.0,
+            color: String::new(), comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "she said \"hi\"".into(), type_: "VARCHAR(255)".into(),
+                default: String::new(), check: String::new(),
+                primary: false, unique: false, not_null: false, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(), width: None, min_height: None,
+        }];
+        let csv = export_tables_csv(&tables);
+        assert_eq!(csv, "table_name,field_name,field_type,has_index\nbad,\"she said \"\"hi\"\"\",VARCHAR(255),no\n",
+            "UT-MM-27: 引号转义 → 双引号包裹 + 内部双引号转义为 \"\"");
+    }
+
+    #[test]
+    fn test_export_tables_csv_empty_ut_mm_27() {
+        let csv = export_tables_csv(&[]);
+        assert_eq!(csv, "table_name,field_name,field_type,has_index\n",
+            "UT-MM-27: 空表 → 仅表头");
+    }
+
+    #[test]
+    fn test_export_tables_csv_newline_escape_ut_mm_27() {
+        use crate::editor_core::types::{Field, Table};
+        let tables = vec![Table {
+            id: "t1".into(), name: "line1\nline2".into(), x: 0.0, y: 0.0,
+            color: String::new(), comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "id".into(), type_: "INT".into(),
+                default: String::new(), check: String::new(),
+                primary: true, unique: false, not_null: true, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(), width: None, min_height: None,
+        }];
+        let csv = export_tables_csv(&tables);
+        assert!(csv.contains("\"line1\nline2\""), "UT-MM-27: 换行转义");
+    }
+
+    #[test]
+    fn test_export_tables_csv_comma_escape_ut_mm_27() {
+        use crate::editor_core::types::{Field, Table};
+        let tables = vec![Table {
+            id: "t1".into(), name: "weird,name".into(), x: 0.0, y: 0.0,
+            color: String::new(), comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "id".into(), type_: "INT".into(),
+                default: String::new(), check: String::new(),
+                primary: true, unique: false, not_null: true, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(), width: None, min_height: None,
+        }];
+        let csv = export_tables_csv(&tables);
+        assert!(csv.contains("\"weird,name\""), "UT-MM-27: 表名含逗号 → 转义");
     }
 
     #[test]

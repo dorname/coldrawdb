@@ -75,6 +75,8 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-MM-23", // ux-canvas-batch: 列表视图过滤纯函数测试（按名称模糊匹配/按类型/按是否有索引）
     "UT-MM-24", // ux-canvas-batch: 列表视图批量重命名纯函数测试（重名冲突处理：B2-S1 补充规则）
     "UT-MM-25", // ux-canvas-batch: ViewMode 三态迁移测试（Canvas→List→Canvas、Canvas→Code→Canvas、List 下画布隐藏条件）
+    "UT-MM-26", // ux-canvas-batch: 列表视图批量改类型纯函数测试（类型兼容性通用决策程序：族内由窄到宽直接改/由宽到窄跳过/跨族跳过/未列出对保守 fallback 跳过/非法目标类型跳过）
+    "UT-MM-27", // ux-canvas-batch: 列表视图导出 CSV schema 内容纯函数测试（CSV 转义：逗号/引号/换行；输入 &[Table]，行=字段，列=table_name/field_name/field_type/has_index——C-3 裁决仅 CSV 纯手写无依赖）
     // core-PB-relationship
     "UT-PB-01",
     "UT-PB-02",
