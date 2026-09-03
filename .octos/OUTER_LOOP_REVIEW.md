@@ -3383,3 +3383,52 @@ ACK(done): commit b9e8efc — ux-canvas-batch 批次 3（条目 13 修复）— 
 4. 全量 cargo test 自证（OPENLOGOS_APPEND=1）。
 
 **push 状态**：`1397779` 暂缓，定点修正复验后一并 push。
+
+---
+
+## 条目 29 ACK(done)（内环 2026-09-04③）——删坏壳 + 步骤 7 spec 登记闭环
+
+**Commit 链（本轮 3 commit）**：
+- `cbfe835 docs(phase2): 批次 4 步骤 7 spec 登记 + 字段 tag 契约扩展登记`
+- `376a558 fix(ux-canvas-batch4-条目29): 删坏壳 schedule_render + 12 号文件裁撤口径`
+
+**改派 ①（删坏壳 schedule_render）**：
+- 删除 `editor_render.rs::schedule_render`（`static PENDING: AtomicBool` 私有不可达）
+- `schedule_render_dedup`（可测同步核）+ `TextCacheKey`（键结构）保留为可测基础设施
+- 注释补「**集成留后续性能专项**」（条目 29 外环代决：件套②③集成裁撤，C-2 帧率不入门禁）
+
+**改派 ②（12 号文件裁撤口径）**：
+- 步骤 6 段 `### 代码实现` 6 个 checkbox 同步：
+  - `[x]` 字体探测 + `schedule_render_dedup` + `TextCacheKey`（保留）
+  - `[ ]` TextCache 实际缓存接入 + 表头绘制改走 TextCache + request_redraw 改道（裁撤）
+  - `~~` `schedule_render` 壳删除（横线删除）
+- 新增「**外环判词强制约束落实（条目 29 集成裁撤）**」段（4 项：件套①全链采认、件套②③裁撤理由、C-2 三态纪律）
+
+**改派 ③（步骤 7 spec 登记）**：
+- `logos/resources/test/core-UI-modals-2-test-cases.md` 末尾追加 UT-MM-28/29/30 三行（15+7+6 = 28 子用例说明）
+- `docs/phase2/PHASE2_VALIDATION.md` 末尾追加「批次 4 契约扩展登记」段：
+  - Field.tag 契约扩展说明（serde default + 53 处构造点 0 遗漏）
+  - 步骤 7 spec 登记说明
+  - 样式集成裁撤登记（schedule_render 壳删除 + C-2 帧率不入门禁）
+
+**Validation**：
+- `cargo test --manifest-path frontend-rs/Cargo.toml`（OPENLOGOS_APPEND=1）→ **298 passed / 0 failed**（删壳无回归）
+- jsonl：3082 行（2946 + 136）；UT-MM-30 :2855 :2991（壳删除后 UT-MM-30 仍生效——dedup 核保留）
+
+**C-2 三态纪律回应（条目 29 记一笔）**：
+- 规格未完整交付时正确三态是 `blocked`（交外环裁决裁撤），而非 `done` + 「切片诚实交代」事后披露
+- 本次披露内容诚实完整，外环代决如上；下不为例
+- 三态定式 ACK 实践：blocked = 等待外环裁决（不能擅自简化范围），done = 规格完整交付，wontdo = 主动放弃
+
+**进度账（批次 4 全闭环）**：
+| 步骤 | 状态 | commit |
+|---|---|---|
+| 1 | ✅ Field.tag 契约扩展 | `1cb7d83` + `a06a46a` |
+| 2 | ✅ clamp + auto_calc + UT-MM-28 | `6cc1f02` + `9fafda7` + `3303410` |
+| 3 | ✅ 列宽会话态 + UI + dblclick 数据链 + 拖拽 | `e85050f` + `0dd2d8d` + `7626f01` |
+| 4 | ✅ group_tables + UT-MM-29 | `ca0cc3e` |
+| 5 | ✅ 分组 UI + Inspector field-tag | `c566819` |
+| 6 | ✅ 字体 CDN 全链 + dedup 核 + TextCacheKey（集成留续） | `1397779` + `376a558` |
+| 7 | ✅ spec 登记 + 契约扩展 + 裁撤口径 | `cbfe835` |
+
+**结论**：条目 29 改派**采认 done**。批次 4 全 7 步闭环。`1397779` + `cbfe835` + `376a558` 待外环 push。
