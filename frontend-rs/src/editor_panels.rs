@@ -5620,6 +5620,22 @@ fn csv_escape(s: &str) -> String {
     format!("\"{}\"", escaped)
 }
 
+/// ux-canvas-batch 批次4 步骤 2 (条目 19/20)：ListView 列宽钳制纯函数（UT-MM-28）
+/// - 列宽下限 60px（防塌陷），上限 480px（防溢出）
+/// - 真值表（6 行）：30 → 60 / 60 → 60 / 200 → 200 / 480 → 480 / 600 → 480 / 150 → 150
+pub fn clamp_column_width(w: u32) -> u32 {
+    w.max(60).min(480)
+}
+
+/// ux-canvas-batch 批次4 步骤 2 (条目 19/20)：ListView 列宽自适应纯函数（UT-MM-28 追加子用例）
+/// - 公式：max(60, min(480, max_field_chars × 8 + 40))
+/// - 8 px/字符近似 + 40 px padding（左右各 20px）
+/// - 真值表：0 → 60 / 30 → 280 / 100 → 480 / 300 → 480
+pub fn auto_calc_column_width(max_field_chars: u32) -> u32 {
+    let raw = max_field_chars.saturating_mul(8).saturating_add(40);
+    raw.max(60).min(480)
+}
+
 /// ux-canvas-batch 批次3 步骤 2：批量改类型选中态（ListViewState 扩展——条目 12 修正 4）
 #[derive(Clone, Default)]
 pub struct BatchTypeSelection {
@@ -11808,4 +11824,53 @@ fn retry_save_after_conflict(
         }
         is_saving.set(false);
     });
+}
+
+/// ux-canvas-batch 批次4 步骤 2 (条目 19/20): UT-MM-28 ListView 列宽钳制 + 自适应
+#[cfg(test)]
+mod tests_ut_mm_28 {
+    use super::*;
+
+    #[test]
+    fn test_clamp_column_width_min_ut_mm_28() {
+        assert_eq!(clamp_column_width(0), 60, "UT-MM-28: 0 → 60");
+        assert_eq!(clamp_column_width(30), 60, "UT-MM-28: 30 < 60 → 60");
+    }
+
+    #[test]
+    fn test_clamp_column_width_max_ut_mm_28() {
+        assert_eq!(clamp_column_width(481), 480, "UT-MM-28: 481 > 480 → 480");
+        assert_eq!(clamp_column_width(600), 480, "UT-MM-28: 600 > 480 → 480");
+    }
+
+    #[test]
+    fn test_clamp_column_width_in_range_ut_mm_28() {
+        assert_eq!(clamp_column_width(60), 60, "UT-MM-28: 60 = min → 60");
+        assert_eq!(clamp_column_width(200), 200, "UT-MM-28: 200 in range → 200");
+        assert_eq!(clamp_column_width(480), 480, "UT-MM-28: 480 = max → 480");
+        assert_eq!(clamp_column_width(150), 150, "UT-MM-28: 150 in range → 150");
+    }
+
+    #[test]
+    fn test_auto_calc_column_width_zero_ut_mm_28() {
+        assert_eq!(auto_calc_column_width(0), 60, "UT-MM-28: 0 字符 → 60 (公式 0×8+40=40, 钳制下限)");
+    }
+
+    #[test]
+    fn test_auto_calc_column_width_in_range_ut_mm_28() {
+        assert_eq!(auto_calc_column_width(30), 280, "UT-MM-28: 30 字符 → 30×8+40=280, 界内无钳制");
+        assert_eq!(auto_calc_column_width(10), 120, "UT-MM-28: 10 字符 → 10×8+40=120, 界内");
+    }
+
+    #[test]
+    fn test_auto_calc_column_width_clamped_ut_mm_28() {
+        assert_eq!(auto_calc_column_width(100), 480, "UT-MM-28: 100 字符 → 100×8+40=840, 钳制 480");
+        assert_eq!(auto_calc_column_width(300), 480, "UT-MM-28: 300 字符 → 钳制 480");
+    }
+
+    #[test]
+    fn test_auto_calc_column_width_overflow_ut_mm_28() {
+        // 防止 saturating_mul 触发 — u32::MAX * 8 应钳制 480
+        assert_eq!(auto_calc_column_width(u32::MAX), 480, "UT-MM-28: u32::MAX 字符 → 480 (saturating)");
+    }
 }
