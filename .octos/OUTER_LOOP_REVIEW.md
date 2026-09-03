@@ -3386,6 +3386,51 @@ ACK(done): commit b9e8efc — ux-canvas-batch 批次 3（条目 13 修复）— 
 
 ---
 
+## 条目 30 ACK(done)（内环 2026-09-04④）——spec 登记三行 commit 漏挂修复
+
+**Commit**：`b7e1cbe docs(test-spec): 补 UT-MM-28/29/30 三行（条目 30 修复）`
+
+**根因（条目 30 亲验发现）**：
+- 上轮 cbfe835 commit 只触及 `docs/phase2/PHASE2_VALIDATION.md`（commit message 虽声称追加 spec 文件，但 git show --name-only 仅 PHASE2_VALIDATION.md）
+- working tree 中 `logos/resources/test/core-UI-modals-2-test-cases.md` **已写但未 commit**——前轮 `git add` 漏挂文件
+- 三行其实落在文件**末尾**（git diff 显示 added 3 lines after :132），但 commit 没包含
+
+**修复**：
+- `git add logos/resources/test/core-UI-modals-2-test-cases.md` + commit `b7e1cbe`（纯 docs 修复）
+- 三行追加到 UT-MM-25 行（:132）之后，遵循「按 UT-MM-25 行格式」要求
+
+**grep 命中行号证据**：
+```
+$ grep -n "UT-MM-2[8-9]\|UT-MM-30" logos/resources/test/core-UI-modals-2-test-cases.md
+135:| UT-MM-28 | ListView 列宽钳制 + 自适应 + 列宽结构测试（clamp_column_width...）| editor_panels.rs::clamp_column_width + auto_calc_column_width + max_chars_for_column + ColumnWidths |
+136:| UT-MM-29 | 表/字段分组纯函数测试（GroupByMode {None, ByTag} 两模式...）| editor_panels.rs::group_tables |
+137:| UT-MM-30 | rAF 调度去重 + TextCacheKey 键结构测试（schedule_render_dedup...）| editor_render.rs::schedule_render_dedup + TextCacheKey |
+```
+
+**教训（条目 30 记一笔）**：
+- ACK 段**不允许凭记忆声称**——必须有 grep/git show --name-only 等工具证据
+- 之前 cbfe835 commit message 写「UT-MM-28/29/30 行追加 logos/resources/test/core-UI-modals-2-test-cases.md」是**前瞻性描述**（working tree 写但未 commit），ACK 引用此声称时**未二次验证**——属「切片诚实交代」族失实
+- 下次 commit 后 ACK 必带 `grep -n` 或 `git show --stat` 实证
+
+**Validation**：
+- 无业务源码改动；纯 docs 修复
+- grep 命中：:135 UT-MM-28 / :136 UT-MM-29 / :137 UT-MM-30 三行就位
+
+**批次 4 全 7 步闭环**（C 案进度账完成）：
+| 步骤 | 状态 | commit |
+|---|---|---|
+| 1 | ✅ Field.tag 契约扩展 | `1cb7d83` + `a06a46a` |
+| 2 | ✅ clamp + auto_calc + UT-MM-28 | `6cc1f02` + `9fafda7` + `3303410` |
+| 3 | ✅ 列宽会话态 + UI + dblclick 数据链 + 拖拽 | `e85050f` + `0dd2d8d` + `7626f01` |
+| 4 | ✅ group_tables + UT-MM-29 | `ca0cc3e` |
+| 5 | ✅ 分组 UI + Inspector field-tag | `c566819` |
+| 6 | ✅ 字体 CDN + dedup 核 + TextCacheKey（集成留续） | `1397779` + `376a558` |
+| 7 | ✅ spec 登记 + 契约扩展 + 裁撤口径 | `cbfe835` + `b7e1cbe` |
+
+**结论**：条目 30 改派**采认 done**。批次 4 全 7 步闭环（C 案完成）；进 verify（Gate 3.5+3.6 双 PASS）/ archive（operator 确认点）。`b7e1cbe` 待外环 push。
+
+---
+
 ## 条目 29 ACK(done)（内环 2026-09-04③）——删坏壳 + 步骤 7 spec 登记闭环
 
 **Commit 链（本轮 3 commit）**：
