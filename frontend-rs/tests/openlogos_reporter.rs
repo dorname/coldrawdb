@@ -77,6 +77,7 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-MM-25", // ux-canvas-batch: ViewMode 三态迁移测试（Canvas→List→Canvas、Canvas→Code→Canvas、List 下画布隐藏条件）
     "UT-MM-26", // ux-canvas-batch: 列表视图批量改类型纯函数测试（类型兼容性通用决策程序：族内由窄到宽直接改/由宽到窄跳过/跨族跳过/未列出对保守 fallback 跳过/非法目标类型跳过）
     "UT-MM-27", // ux-canvas-batch: 列表视图导出 CSV schema 内容纯函数测试（CSV 转义：逗号/引号/换行；输入 &[Table]，行=字段，列=table_name/field_name/field_type/has_index——C-3 裁决仅 CSV 纯手写无依赖）
+    "UT-MM-28", // ux-canvas-batch 批次4: ListView 列宽钳制 + 自适应纯函数测试（clamp_column_width min=60, max=480；auto_calc_column_width 公式 max(60, min(480, chars × 8 + 40))；7 子用例覆盖边界/钳制/saturating 溢出）
     // core-PB-relationship
     "UT-PB-01",
     "UT-PB-02",
