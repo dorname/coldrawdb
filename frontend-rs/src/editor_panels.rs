@@ -5497,62 +5497,78 @@ pub fn batch_change_types(
     }
 }
 
-/// 是否为已知类型（白名单：INT/BIGINT/SMALLINT/DECIMAL/FLOAT/DOUBLE/VARCHAR/CHAR/TEXT/LONGTEXT/DATE/DATETIME/TIMESTAMP/BOOLEAN/BLOB/MEDIUMBLOB/LONGBLOB）
-fn is_known_type(t: &str) -> bool {
-    matches!(
-        t,
-        "INT" | "BIGINT"
-            | "SMALLINT"
-            | "DECIMAL"
-            | "FLOAT"
-            | "DOUBLE"
-            | "VARCHAR"
-            | "CHAR"
-            | "TEXT"
-            | "LONGTEXT"
-            | "DATE"
-            | "DATETIME"
-            | "TIMESTAMP"
-            | "BOOLEAN"
-            | "BLOB"
-            | "MEDIUMBLOB"
-            | "LONGBLOB"
-    )
+/// ux-canvas-batch 批次3（条目 13 改派修复）：类型族标识
+/// v1 type_position 只返族内位置（族身份丢失，跨族漏判）
+/// v2 改返 (family, position) 二元组，确保跨族比较先比族
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TypeFamily {
+    Numeric,
+    String,
+    Datetime,
+    Binary,
 }
 
-/// 类型族位置（族内由窄到宽）
-/// 返回 None 表示不在白名单或族未定义
-fn type_position(t: &str) -> Option<usize> {
-    let numeric = ["SMALLINT", "INT", "BIGINT", "DECIMAL", "FLOAT", "DOUBLE"];
-    let string = ["CHAR", "VARCHAR", "TEXT", "LONGTEXT"];
-    let datetime = ["DATE", "DATETIME", "TIMESTAMP"];
-    let binary = ["BLOB", "MEDIUMBLOB", "LONGBLOB"];
-    if let Some(idx) = numeric.iter().position(|&x| x == t) {
-        return Some(idx);
-    }
-    if let Some(idx) = string.iter().position(|&x| x == t) {
-        return Some(idx);
-    }
-    if let Some(idx) = datetime.iter().position(|&x| x == t) {
-        return Some(idx);
-    }
-    if let Some(idx) = binary.iter().position(|&x| x == t) {
-        return Some(idx);
-    }
+/// 解析类型字符串为 (BaseType, params)——拆基类型 + 可选 (n) / (p,s) 参数
+/// v1 未实现（注释自承「parse_type_type 签名」为占位），v2 实现
+/// 基类型归族位置（带参按基类型归族，如 VARCHAR(255)→字符串族 VARCHAR 位）
+/// to 侧带参维持现行「一律跳过」保守语义（与真值表 VARCHAR(50) 行一致）
+fn parse_type(s: &str) -> Option<(TypeFamily, usize, &'static str)> {
+    // 按基类型字符串前缀匹配（带括号参数按基类型归族）
+    let s = s.trim();
+    // 数值族（族内由窄到宽）
+    if s == "SMALLINT" { return Some((TypeFamily::Numeric, 0, "SMALLINT")); }
+    if s == "INT" { return Some((TypeFamily::Numeric, 1, "INT")); }
+    if s == "BIGINT" { return Some((TypeFamily::Numeric, 2, "BIGINT")); }
+    if s == "DECIMAL" { return Some((TypeFamily::Numeric, 3, "DECIMAL")); }
+    if s == "FLOAT" { return Some((TypeFamily::Numeric, 4, "FLOAT")); }
+    if s == "DOUBLE" { return Some((TypeFamily::Numeric, 5, "DOUBLE")); }
+    // 字符串族
+    if s == "CHAR" { return Some((TypeFamily::String, 0, "CHAR")); }
+    if s == "VARCHAR" { return Some((TypeFamily::String, 1, "VARCHAR")); }
+    if s == "TEXT" { return Some((TypeFamily::String, 2, "TEXT")); }
+    if s == "LONGTEXT" { return Some((TypeFamily::String, 3, "LONGTEXT")); }
+    // 日期族
+    if s == "DATE" { return Some((TypeFamily::Datetime, 0, "DATE")); }
+    if s == "DATETIME" { return Some((TypeFamily::Datetime, 1, "DATETIME")); }
+    if s == "TIMESTAMP" { return Some((TypeFamily::Datetime, 2, "TIMESTAMP")); }
+    // 二进制族
+    if s == "BLOB" { return Some((TypeFamily::Binary, 0, "BLOB")); }
+    if s == "MEDIUMBLOB" { return Some((TypeFamily::Binary, 1, "MEDIUMBLOB")); }
+    if s == "LONGBLOB" { return Some((TypeFamily::Binary, 2, "LONGBLOB")); }
+    if s == "BOOLEAN" { return None; } // 布尔族自成一族（外环条目 12 决策程序描述），v2 暂不支持跨族 BOOLEAN 转换
+    // 带参类型（VARCHAR(255)/DECIMAL(10,2) 等）按基类型归族
+    if s.starts_with("VARCHAR(") && s.ends_with(")") { return Some((TypeFamily::String, 1, "VARCHAR")); }
+    if s.starts_with("CHAR(") && s.ends_with(")") { return Some((TypeFamily::String, 0, "CHAR")); }
+    if s.starts_with("DECIMAL(") && s.ends_with(")") { return Some((TypeFamily::Numeric, 3, "DECIMAL")); }
     None
 }
 
-/// 决策程序：族内由窄到宽直接改，由宽到窄或跨族或未列出 → 跳过
+/// 是否为已知类型（白名单：INT/BIGINT/SMALLINT/DECIMAL/FLOAT/DOUBLE/VARCHAR/CHAR/TEXT/LONGTEXT/DATE/DATETIME/TIMESTAMP/BOOLEAN/BLOB/MEDIUMBLOB/LONGBLOB）
+fn is_known_type(t: &str) -> bool {
+    parse_type(t).is_some()
+}
+
+/// 决策程序 v2（条目 13 修复）：族身份先比 + 族内由窄到宽直接改 / 由宽到窄或跨族或未列出 → 跳过
+/// from 侧带参按基类型归族（如 VARCHAR(255)→字符串族 VARCHAR 位）；
+/// to 侧带参维持现行「一律跳过」保守语义（与真值表 VARCHAR(50) 行一致）
 fn should_change_type(from: &str, to: &str) -> bool {
     if from == to {
         return true; // 同型直接改
     }
-    let p1 = type_position(from);
-    let p2 = type_position(to);
+    let p1 = parse_type(from);
+    let p2 = parse_type(to);
     match (p1, p2) {
-        (Some(a), Some(b)) if a == b => false, // 同族位置相同（参数变化算收窄：保守跳过）
-        (Some(a), Some(b)) => a < b,           // 族内由窄到宽 → 改；宽到窄 → 跳
-        _ => false,                            // 跨族或未列出 → 跳
+        (Some((f1, a, _)), Some((f2, b, _))) => {
+            if f1 != f2 {
+                return false; // 跨族一律跳过（族身份先比——v2 修复族身份丢失 bug）
+            }
+            if a == b {
+                false // 同族位置相同（保守跳过——参数变化算收窄）
+            } else {
+                a < b // 族内由窄到宽 → 改；宽到窄 → 跳
+            }
+        }
+        _ => false, // 未列出对保守 fallback = 跳过
     }
 }
 
@@ -10355,6 +10371,95 @@ mod tests {
         map.insert("f1".to_string(), "DATE".to_string());
         batch_change_types(&mut tables, map);
         assert_eq!(tables[0].fields[0].type_, "DATETIME", "UT-MM-26: DATETIME→DATE（日期族由宽到窄步骤 ③ → 跳过）");
+    }
+
+    // ─── ux-canvas-batch 批次3（条目 13 改派修复）回归用例 ────────────────
+
+    /// 异索引跨族对回归 SMALLINT(0)→VARCHAR(1)（数值族位置 0 ≠ 字符串族位置 1）
+    /// v1 type_position 丢失族身份会误判为 true（直接改），v2 二元组正确判 false
+    #[test]
+    fn test_batch_change_types_smallint_to_varchar_ut_mm_26() {
+        use crate::editor_core::types::{Field, Table};
+        let mut tables = vec![Table {
+            id: "t1".into(), name: "users".into(), x: 0.0, y: 0.0,
+            color: String::new(), comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "id".into(), type_: "SMALLINT".into(),
+                default: String::new(), check: String::new(),
+                primary: true, unique: false, not_null: true, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(), width: None, min_height: None,
+        }];
+        let mut map = std::collections::HashMap::new();
+        map.insert("f1".to_string(), "VARCHAR".to_string());
+        batch_change_types(&mut tables, map);
+        assert_eq!(tables[0].fields[0].type_, "SMALLINT", "UT-MM-26 回归: SMALLINT→VARCHAR（异索引跨族 → 跨族一律跳过）");
+    }
+
+    /// 异索引跨族对回归 INT(1)→TEXT(2)
+    #[test]
+    fn test_batch_change_types_int_to_text_ut_mm_26() {
+        use crate::editor_core::types::{Field, Table};
+        let mut tables = vec![Table {
+            id: "t1".into(), name: "users".into(), x: 0.0, y: 0.0,
+            color: String::new(), comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "id".into(), type_: "INT".into(),
+                default: String::new(), check: String::new(),
+                primary: true, unique: false, not_null: true, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(), width: None, min_height: None,
+        }];
+        let mut map = std::collections::HashMap::new();
+        map.insert("f1".to_string(), "TEXT".to_string());
+        batch_change_types(&mut tables, map);
+        assert_eq!(tables[0].fields[0].type_, "INT", "UT-MM-26 回归: INT→TEXT（异索引跨族 → 跨族一律跳过）");
+    }
+
+    /// 异索引跨族对回归 DATE(0)→VARCHAR(1)
+    #[test]
+    fn test_batch_change_types_date_to_varchar_ut_mm_26() {
+        use crate::editor_core::types::{Field, Table};
+        let mut tables = vec![Table {
+            id: "t1".into(), name: "events".into(), x: 0.0, y: 0.0,
+            color: String::new(), comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "created".into(), type_: "DATE".into(),
+                default: String::new(), check: String::new(),
+                primary: false, unique: false, not_null: false, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(), width: None, min_height: None,
+        }];
+        let mut map = std::collections::HashMap::new();
+        map.insert("f1".to_string(), "VARCHAR".to_string());
+        batch_change_types(&mut tables, map);
+        assert_eq!(tables[0].fields[0].type_, "DATE", "UT-MM-26 回归: DATE→VARCHAR（异索引跨族 → 跨族一律跳过）");
+    }
+
+    /// 带参类型回归 VARCHAR(255)→TEXT（from 带参归族→字符串族 VARCHAR 位；族内由窄到宽 → 改）
+    /// v1 parse_type 未实现（注释自承占位），VARCHAR(255)→None → from 误判为未列出 → 跳过
+    /// v2 parse_type 实现 + 二元组：VARCHAR(255) 归族 (String, 1) → TEXT (String, 2) → 同族窄→宽 → 改
+    #[test]
+    fn test_batch_change_types_varchar_255_to_text_ut_mm_26() {
+        use crate::editor_core::types::{Field, Table};
+        let mut tables = vec![Table {
+            id: "t1".into(), name: "users".into(), x: 0.0, y: 0.0,
+            color: String::new(), comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(), name: "name".into(), type_: "VARCHAR(255)".into(),
+                default: String::new(), check: String::new(),
+                primary: false, unique: false, not_null: false, increment: false,
+                comment: String::new(),
+            }],
+            indices: Vec::new(), width: None, min_height: None,
+        }];
+        let mut map = std::collections::HashMap::new();
+        map.insert("f1".to_string(), "TEXT".to_string());
+        batch_change_types(&mut tables, map);
+        assert_eq!(tables[0].fields[0].type_, "TEXT", "UT-MM-26 回归: VARCHAR(255)→TEXT（from 带参归族 + 族内窄→宽 → 改）");
     }
 
     // ─── UT-MM-27: 列表视图导出 CSV schema 内容纯函数测试（v2——输入 &[Table] 按 schema 内容导出） ────────────────
