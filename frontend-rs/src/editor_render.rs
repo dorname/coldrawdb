@@ -49,16 +49,19 @@ fn dpr_font(weight: u32, px: f64, family: &str) -> String {
     format!("{} {}px {}", weight, dpr_font_boost(px), family)
 }
 
-// ux-canvas-batch 批次4 步骤 6 (条目 28): rAF 统一调度
-// - schedule_render（壳，对外 API）—— 内部维护 pending 标志 + request_animation_frame
+// ux-canvas-batch 批次4 步骤 6 (条目 28/29): rAF 统一调度
 // - schedule_render_dedup（可测同步核）—— 无 rAF 副作用，pending 状态机可单元测试
-// 同文件分层（v2 提案，条目 18 P 笔记一笔）；panels 侧仅引 schedule_render
+// - schedule_render（壳，已删除——条目 29 修正：原私有 static PENDING 外部不可达，
+//   首调后置真永不可清，若有调用方第二次起永远 noop，设计性错误 + 死代码）
+// 集成（OffscreenCanvas/drawImage/request_redraw 改道）留后续性能专项
 
-/// ux-canvas-batch 批次4 步骤 6 (条目 28): rAF 调度去重可测同步核（UT-MM-30）
+/// ux-canvas-batch 批次4 步骤 6 (条目 28/29): rAF 调度去重可测同步核（UT-MM-30）
 /// - 首次入队：返 true 执行；pending 置 true
 /// - 二次入队（pending=true）：返 false noop
-/// - rAF 回调清 pending（clear_pending()）后再入队可执行
+/// - rAF 回调清 pending（state.set(false)）后再入队可执行
 /// - 无 rAF 副作用，纯函数可测
+/// - **集成留后续性能专项**（条目 29 外环代决：本批仅交付可测基础设施；C-2 帧率 <16ms
+///   不入门禁，request_redraw 全改道 + OffscreenCanvas 渲染接入均不背工程量）
 pub fn schedule_render_dedup<F>(state: &std::cell::Cell<bool>, render_fn: F) -> bool
 where
     F: FnOnce(),
@@ -72,31 +75,11 @@ where
     true
 }
 
-/// ux-canvas-batch 批次4 步骤 6 (条目 28): rAF 调度壳（对外 API，浏览器侧）
-/// - 维护全局 pending Cell + 调 schedule_render_dedup 完成去重逻辑
-/// - rAF 回调清 pending（实际 request_animation_frame 在浏览器调用，本壳仅状态层）
-/// 注：实际 request_animation_frame 需要 `&Function` JsValue；本批切片交付 dedup 核
-///      （无 rAF 副作用）+ 壳（pending 状态管理）；panels 侧调用 schedule_render_dedup 即可
-pub fn schedule_render<F>(render_fn: F) -> bool
-where
-    F: FnOnce(),
-{
-    // 单进程内 pending 状态机（wasm 端单线程全局）
-    use std::sync::atomic::{AtomicBool, Ordering};
-    static PENDING: AtomicBool = AtomicBool::new(false);
-    let already = PENDING.swap(true, Ordering::SeqCst);
-    if already {
-        return false; // 已入队，二次 noop
-    }
-    render_fn();
-    // rAF 回调清 pending（生产应调 window.request_animation_frame 后由回调 clear；
-    // 本壳为简化版，调用方负责在 rAF 回调调 PENDING.store(false)）
-    true
-}
-
-/// ux-canvas-batch 批次4 步骤 6 (条目 28): 文本离屏缓存键
+/// ux-canvas-batch 批次4 步骤 6 (条目 28/29): 文本离屏缓存键
 /// - 缓存键 = (text, font_weight, font_px, dpr)
 /// - 字体度量（measureText）+ 预渲染（OffscreenCanvas）走同一键
+/// - **集成留后续性能专项**（条目 29 外环代决：本批仅交付键结构 + PartialEq/Hash；
+///   OffscreenCanvas 预渲染 + drawImage 复用路径属渲染层接入，不背工程量）
 /// 注：wasm-bindgen OffscreenCanvas 支持版本 ≥ 0.2.83（frontend-rs Cargo.toml 既有）
 #[derive(Clone, Debug)]
 pub struct TextCacheKey {

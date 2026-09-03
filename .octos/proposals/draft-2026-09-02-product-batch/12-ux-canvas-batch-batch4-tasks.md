@@ -206,12 +206,12 @@
 
 - [ ] `frontend-rs/index.html`: 加 Google Fonts `<link>` 加载 `Noto+Sans+SC:wght@400;500;700&display=swap`
 - [ ] `frontend-rs/src/styles.css`: `--cdb-font-family-base` 字体回退栈**统一使用 `"Noto Sans SC"`（与 Google Fonts CDN 加载名 + Canvas 探测名 1:1 对齐）**+ `PingFang SC`（macOS 系统字体）+ `Hiragino Sans GB` + `Microsoft YaHei`（在既有 `Plus Jakarta Sans`, `-apple-system` 之后）——**v2 不再写 `Source Han Sans CN` / `Noto Sans CJK SC`**，避免回退栈首字体名与 Canvas 探测字符串脱节
-- [ ] `frontend-rs/src/editor_render.rs`: `resolve_canvas_font_family` 加思源黑体/苹方 fallback 探测（按真值表顺序）
-- [ ] `frontend-rs/src/editor_render.rs`: 新增文本离屏缓存模块 `pub struct TextCache`（`HashMap<CacheKey, OffscreenCanvas>` + `invalidate` 方法）
-- [ ] `frontend-rs/src/editor_render.rs`: 表头/字段名/类型文本绘制改走 `TextCache::get_or_render`（按真值表）
-- [ ] `frontend-rs/src/editor_render.rs`: 新增 `pub fn schedule_render(render_fn: Rc<dyn Fn()>)` 工具函数（**rAF 壳，对外 API**——内部调 `schedule_render_dedup` 核 + `request_animation_frame` 入队，**不可测**）
-- [ ] `frontend-rs/src/editor_render.rs`: 所有 `request_redraw()` 调用点改走 `schedule_render`
-- [ ] `frontend-rs/src/editor_render.rs`: 新增 `pub fn schedule_render_dedup(state: &Cell<bool>, render_fn: Rc<dyn Fn()>)` 纯函数（**UT-MM-30**：仅首次入队执行 / 二次入队 noop / rAF 回调清 pending 后再入队可执行——**可测同步核，无 rAF 副作用**）——**v2 分层**：`schedule_render`（rAF 壳，对外 API）+ `schedule_render_dedup`（可测同步核），同文件分层；panels 侧**仅引 `schedule_render`**（不引 dedup，避免破坏分层）
+- [x] `frontend-rs/src/editor_render.rs`: `resolve_canvas_font_family` 加 Noto Sans SC / PingFang SC / -apple-system 多候选 fallback 探测（**条目 29 P 勘误**：探测名 = 加载名严格 1:1 `"Noto Sans SC"`，v1 `Source Han Sans CN` 已废；set_font 真实消费确认）
+- [ ] `frontend-rs/src/editor_render.rs`: 文本离屏缓存模块 `pub struct TextCache`（**条目 29 集成裁撤**——本批仅交付 `TextCacheKey` 键结构 + PartialEq/Eq/Hash + UT-MM-30 两子用例；OffscreenCanvas 预渲染 + drawImage 复用路径属渲染层接入，**集成留后续性能专项**）
+- [ ] `frontend-rs/src/editor_render.rs`: 表头/字段名/类型文本绘制改走 `TextCache::get_or_render`（**条目 29 集成裁撤**——同上）
+- [ ] ~~`frontend-rs/src/editor_render.rs`: 新增 `pub fn schedule_render(render_fn: Rc<dyn Fn()>)` 工具函数（rAF 壳）~~ —— **条目 29 定点修正删除**：原私有 static PENDING 外部不可达，首调后置真永不可清，若有调用方第二次起永远 noop；设计性错误 + 死代码
+- [ ] `frontend-rs/src/editor_render.rs`: 所有 `request_redraw()` 调用点改走 `schedule_render`（**条目 29 集成裁撤**——C-2 帧率 <16ms 不入门禁，不背集成工程量）
+- [x] `frontend-rs/src/editor_render.rs`: 新增 `pub fn schedule_render_dedup(state: &Cell<bool>, render_fn: F)` 纯函数（**UT-MM-30**：仅首次入队执行 / 二次入队 noop / rAF 回调清 pending 后再入队可执行——**可测同步核，无 rAF 副作用**，条目 29 保留为可测基础设施）
 - [ ] **不引入帧率 < 16ms 基准断言**——按 C-2 **仅作代码审查项 + 可选基准脚本**（不作为 verify 门禁断言）
 
 ### 测试（新增 UT-MM-30）
@@ -277,6 +277,20 @@
 - **强制 ② UT 编号**：grep `UT-MM-2[7-9]|UT-MM-3[0-9]` 已确认 UT-MM-27 占用，本批**UT-MM-28/29/30 起**——独立 commit 不抢编号（v2 UT-MM-28 范围改为 ListView 列宽钳制 + 自适应；UT-MM-30 落点改为 `editor_render.rs`）
 - **强制 ③ 不写 verify/smoke/archive 条目**：实现顺序 1-7 + spec 登记 1-3，无 verify/smoke/archive
 - **强制 ④ 列宽持久化落点明确**（**v2 重定义**）：**ListView 表格列宽落 `ListViewState` 会话态**（非契约变更，不修改 `Table`/`Field` struct，不写后端，刷新页面重置）；画布表宽拖拽 resize **整体移出本批**（feat-table-resize 已交付 `SetTableSizeModal`，画布拖拽增强属另一提案）；契约扩展最小化 = 仅 `Field.tag: String` 新增（serde default 兼容老 JSON，已标注向后兼容）
+
+## 外环判词强制约束落实（条目 29 集成裁撤）
+
+**件套①（字体）——全链采认**：CDN `Noto+Sans+SC:wght@400;500;700` + 探测名 `"Noto Sans SC"` 与加载名 1:1 + styles.css 回退栈首位 + `set_font` 真实消费。
+
+**件套②③——外环代决裁撤集成（C-2 + 简化优先）**：
+- ② `TextCache` 模块 + drawImage 路径 + `request_redraw` 改道：纯性能优化，无用户可见功能
+- ③ `schedule_render` 壳 + 全 `request_redraw()` 改道：同上
+- **保留**：`schedule_render_dedup` 可测同步核 + `TextCacheKey` 键结构 + UT-MM-30 六子用例——可测基础设施
+- **集成留后续性能专项**：frame rate <16ms 不入门禁（C-2），无性能基线门禁断言需求
+
+**条目 29 定点修正（删坏壳 `schedule_render`）**：原实现私有 `static PENDING: AtomicBool` 外部不可达，首调置真后无任何路径清零——设计性错误 + 误导性命名 + 死代码。删除壳函数，保留 `schedule_render_dedup` 可测核。注释补「集成留后续性能专项」。
+
+**C-2 三态纪律（条目 29 记一笔）**：规格未完整交付时正确三态是 `blocked`（交外环裁决裁撤），而非 `done` + 「切片诚实交代」事后披露。本次披露内容诚实完整，外环代决如上；下不为例。
 
 ## 外环判词强制约束落实（条目 18 v2 三项定点修正）
 
