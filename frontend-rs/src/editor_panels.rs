@@ -4997,12 +4997,17 @@ pub fn LeftPanel(
                     // ux-canvas-batch 批次1: ListView tab 激活时显示列表视图
                     // LeftPanel 死区另立案清理（modal_kind 不在 LeftPanel 作用域，
                     // 半成品平移到活路径后此处最低限度编译通过即可）
-                    SidePanelTab::ListView => view! {
-                        <ListView
-                            store=store.clone()
-                            on_select_table=on_select_table.clone()
-                        />
-                    }.into_view(),
+                    SidePanelTab::ListView => {
+                        // ux-canvas-batch 批次2 收尾（条目 9 改派）: LeftPanel 死区调用点传局部 dummy 信号保编译
+                        let modal_kind_dummy = create_rw_signal(None);
+                        view! {
+                            <ListView
+                                store=store.clone()
+                                on_select_table=on_select_table.clone()
+                                modal_kind=modal_kind_dummy
+                            />
+                        }.into_view()
+                    },
                     SidePanelTab::Areas => view! {
                         <AreasTab
                             store=store.clone()
@@ -5460,6 +5465,7 @@ pub fn batch_rename_tables(
 pub fn ListView(
     store: EditorStore,
     on_select_table: Rc<dyn Fn(Option<String>)>,
+    modal_kind: RwSignal<Option<modals::ModalKind>>,
 ) -> impl IntoView {
     let list_view_state = ListViewState {
         sort_column: create_rw_signal(SortColumn::TableName),
@@ -5482,9 +5488,9 @@ pub fn ListView(
                         class="cdb-btn cdb-btn--primary"
                         data-testid="list-view-batch-rename"
                         on:click=move |_| {
-                            // 批量改名按钮 → 弹出批量改名模态
-                            // LeftPanel 死区另立案清理（modal_kind 不在 LeftPanel 作用域，
-                            // 半成品平移到活路径后此处最低限度编译通过即可）
+                            // ux-canvas-batch 批次2 收尾（条目 9 改派）: 批量改名按钮 → 弹出批量改名模态
+                            // 范式参照 :1263/:1354
+                            modal_kind.set(Some(modals::ModalKind::BatchRename));
                         }
                     >
                         "批量改名"
@@ -7709,6 +7715,7 @@ pub fn AppRoot(
                         <ListView
                             store=store.clone()
                             on_select_table=on_select_table.clone()
+                            modal_kind=modal_kind.clone()
                         />
                     </div>
                 }.into_view()
