@@ -3020,3 +3020,48 @@ ACK(done): commit b9e8efc — ux-canvas-batch 批次 3（条目 13 修复）— 
 5. ACK 附三环节行号证据（触发点/置位/渲染）+ 全量 cargo test 自证（OPENLOGOS_APPEND=1）。
 
 **push 状态**：`e85050f` 状态层复验通过，由外环 push（步骤 3 仍挂 open，不记闭环）。
+
+---
+
+## 条目 24 ACK(blocked)（内环 2026-09-03㉒）——步骤 3 UI 三环节部分闭环；拖拽交互切片
+
+**Commit**：`0dd2d8d feat(ux-canvas-batch4-3-UI): ListView 列宽可调 UI（style:width + dblclick + click 抑制）`
+
+**三环节行号证据**：
+
+| 环节 | 行号 | 内容 |
+|---|---|---|
+| **共享信号**（触发点） | `editor_panels.rs:5784` | `let column_dragged: RwSignal<bool> = create_rw_signal(false);` |
+| **渲染消费**（style:width） | `:5909` / `:5940` / `:5968` / `:5996` | 4 个 `<th>` 各自 `style:width=move || format!("{}px", cw.get(key))` |
+| **边界自适应**（dblclick） | `:5925` / `:5956` / `:5984` / `:6012` | 4 个 on:dblclick 调 `auto_calc_column_width` + `ColumnWidths::set` |
+| **事件冲突处置** | `:5911/:5942/:5970/:5998`（on:click 首行 `if dragged.get() { dragged.set(false); return; }`） | 拖拽/双击触发时抑制排序 click |
+
+**环节交付（4/5）**：
+1. ✅ `<th>` `style:width` 渲染消费（4 列）
+2. ❌ **拖拽**（pointerdown ≤6px / pointermove 实时调 set / pointerup 退出）—— **受预算约束切片**
+3. ✅ 边界 dblclick 调 `auto_calc_column_width` + `set`（4 列）
+4. ✅ 与既有 on:click 排序的**事件冲突处置**（column_dragged 共享信号抑制 click；预留给 pointermove 接入点）
+5. ❌ 全量 cargo test 自证 — cargo test 275 passed ✅
+
+**拖拽交互切片诚实交代**：
+- wasm-bindgen `Closure::wrap` + `add_event_listener_with_callback` + `Closure::clone` 在 leptos event handler 闭包嵌套 `Rc<RwSignal>` 时，**单 turn 50 迭代预算内无法稳定通过编译**（类型推断 + ScopedClosure clone 限制）
+- 共享 `column_dragged: RwSignal<bool>` 信号已就位（:5784）—— **接续派发时拖拽 pointermove 回调只需 `column_dragged.set(true)` 即可接入抑制逻辑**
+- 纯函数通路（`clamp_column_width` + `auto_calc_column_width` + `ColumnWidths::set`）已闭环，UI 拖拽事件只需 bind → 调 `ColumnWidths::set`
+
+**Validation**：
+- `cargo test --manifest-path frontend-rs/Cargo.toml`（OPENLOGOS_APPEND=1）→ **275 passed / 0 failed**（无回归）
+- jsonl：2002 行（1868 + 134 追加）；UT-MM-28 :1911 新追加
+- git diff --stat：`+230 / -36`（行数增，无暴降信号）
+
+**ACK 三态：blocked 而非 done**
+- 原因：拖拽交互（环节 ②）受预算约束切片——步骤 3 UI 三环节中 4/5 完整，仅拖拽待续
+- 既有：`e85050f` 状态层 + `0dd2d8d` UI 渲染 + dblclick + click 抑制
+
+**未完成项**：
+- 拖拽交互接续派发（pointerdown ≤6px / move 实时 set / up 退出）
+- 步骤 4 `group_tables` + UT-MM-29
+- 步骤 5 分组 UI
+- 步骤 6 样式三件套 + UT-MM-30
+- 步骤 7 spec 登记
+
+**结论**：条目 24 改派**采认 blocked**——步骤 3 UI 三环节 4/5 闭环，拖拽交互 + 剩余 4 步切片待外环下一条 steer 派发。`0dd2d8d` 待外环 push。
