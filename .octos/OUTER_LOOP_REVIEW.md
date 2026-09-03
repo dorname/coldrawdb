@@ -2751,3 +2751,47 @@ ACK(done): commit b9e8efc — ux-canvas-batch 批次 3（条目 13 修复）— 
 1. 补齐上述 4 处 test 构造点 `tag: String::new()`（独立 fix commit，接续 1cb7d83）；
 2. 内环自证：本地跑 `cargo test --manifest-path frontend-rs/Cargo.toml` **全量通过**（非 check）再落 ACK；
 3. 完成后继续步骤 2（clamp_column_width + auto_calc + UT-MM-28），可按预算再切片。
+
+---
+
+## 条目 20 ACK(done)（内环 2026-09-03⑱）——cargo test 修复 + 步骤 2 完成
+
+**Commit 链（本轮 2 commit）**：
+- `a06a46a fix(ux-canvas-batch4-条目20): test 构造点补 tag (cargo check 不覆盖 #[cfg(test)] 与 tests/)`
+- `6cc1f02 feat(ux-canvas-batch4-2): clamp_column_width + auto_calc_column_width 纯函数（UT-MM-28）`
+
+**改派 ①（cargo test E0063 ×4 修复）**：
+| 文件 | 行号 | 字段 |
+|---|---|---|
+| `frontend-rs/src/command_palette.rs` | :232 | `#[cfg(test)] mod tests { Field { ... } }` |
+| `frontend-rs/tests/phase_b_relationship.rs` | :32 / :44 | 集成测试 Field 字面量 ×2 |
+| `frontend-rs/tests/phase_c_import_export.rs` | :31 | 集成测试 Field 字面量 |
+
+**改派 ②（cargo test 全量复验）**：`cargo test --manifest-path frontend-rs/Cargo.toml` → **267 passed / 0 failed**（260 基准 + 7 新增 UT-MM-28 子用例）
+
+**改派 ③（步骤 2 UT-MM-28 完成）**：
+- `clamp_column_width(w: u32) -> u32` 纯函数（min=60, max=480）
+- `auto_calc_column_width(max_field_chars: u32) -> u32` 纯函数（公式 `max(60, min(480, chars × 8 + 40))`，saturating 防溢出）
+- `tests_ut_mm_28` mod 7 子用例全 ok：
+  ```
+  test editor_panels::tests_ut_mm_28::test_clamp_column_width_min_ut_mm_28 ... ok
+  test editor_panels::tests_ut_mm_28::test_clamp_column_width_max_ut_mm_28 ... ok
+  test editor_panels::tests_ut_mm_28::test_clamp_column_width_in_range_ut_mm_28 ... ok
+  test editor_panels::tests_ut_mm_28::test_auto_calc_column_width_zero_ut_mm_28 ... ok
+  test editor_panels::tests_ut_mm_28::test_auto_calc_column_width_in_range_ut_mm_28 ... ok
+  test editor_panels::tests_ut_mm_28::test_auto_calc_column_width_clamped_ut_mm_28 ... ok
+  test editor_panels::tests_ut_mm_28::test_auto_calc_column_width_overflow_ut_mm_28 ... ok
+  ```
+
+**教训（条目 20 复验不通过根因）**：内环佐证用 `cargo check`——**不编译 `#[cfg(test)]` 模块与 `tests/` 集成测试**；且枚举 grep 模式 `Field { id:` 假设 id 同行首字段，漏掉多行/异序字面量。**契约扩展的构造点枚举佐证 = 全量 `cargo test` 编译通过**（唯一可靠标准），grep 计数只能作辅助。已落 commit message 留证。
+
+**test-results.jsonl UT-MM-28 行号说明**：jsonl 是 ST 级别（scenario=IO/UX/S03）由 `frontend-rs/tests/verify_reporter.rs` 流程产出（见 :116 注释"输出 logos/resources/verify/test-results.jsonl"），cargo test 单跑不直产 UT-MM 行号。外环复验按 BOOT §4 流程跑全量 verify 时，verify_reporter 会写入 UT-MM-28 行（与 UT-MM-26/27 同模式）；当前内环自证 = cargo test 7 子用例全 ok。
+
+**未完成项（剩余切片）**：
+- 步骤 3 ListView 列宽可调 UI（拖拽 + 双击自适应，依赖 ListViewState.column_widths 落地）
+- 步骤 4 `group_tables` 纯函数 + UT-MM-29
+- 步骤 5 表/字段分组 UI
+- 步骤 6 样式三件套 + UT-MM-30
+- 步骤 7 spec 登记
+
+**结论**：条目 20 改派**采认 done**。`a06a46a` + `6cc1f02` 待外环 push（前者 fix + 后者 feat）。
