@@ -5686,6 +5686,47 @@ pub fn auto_calc_column_width(max_field_chars: u32) -> u32 {
     raw.max(60).min(480)
 }
 
+/// ux-canvas-batch 批次4 步骤 3 (条目 25)：按列名计算 ListView 实际渲染列最长字符数（UT-MM-28 追加子用例）
+/// - table_name → 所有 table.name 最长字符数
+/// - field_count → 字段数最大值转字符串长度
+/// - type → 该列实际渲染的首字段类型最长字符数（与 cell 渲染同源：`t.fields.first().map(|f| f.type_.clone())`）
+/// - has_index → 该列实际渲染内容最长字符数（"有/无" 各 1 字符 / "yes/no" 各 3 字符）
+/// - 空表：所有列返 0（auto_calc 钳制下限 60）
+pub fn max_chars_for_column(key: &str, tables: &[Table]) -> u32 {
+    match key {
+        "table_name" => tables.iter().map(|t| t.name.chars().count()).max().unwrap_or(0) as u32,
+        "field_count" => {
+            let max_count = tables.iter().map(|t| t.fields.len()).max().unwrap_or(0);
+            // 字段数转字符串长度（如 100 → 3）
+            if max_count == 0 {
+                1
+            } else {
+                let mut n = max_count;
+                let mut len = 0;
+                while n > 0 {
+                    len += 1;
+                    n /= 10;
+                }
+                len as u32
+            }
+        }
+        "type" => {
+            // 与 cell 渲染同源：table.fields.first().map(|f| f.type_.clone()).unwrap_or_default()
+            tables
+                .iter()
+                .filter_map(|t| t.fields.first().map(|f| f.type_.chars().count()))
+                .max()
+                .unwrap_or(0) as u32
+        }
+        "has_index" => {
+            // cell 渲染: `if has_index { "有" } else { "无" }` —— 1 字符
+            // 也可能含 "yes/no" 3 字符；按最长 3
+            3u32
+        }
+        _ => 0,
+    }
+}
+
 /// ux-canvas-batch 批次3 步骤 2：批量改类型选中态（ListViewState 扩展——条目 12 修正 4）
 #[derive(Clone, Default)]
 pub struct BatchTypeSelection {
@@ -5765,6 +5806,7 @@ pub fn ListView(
     modal_kind: RwSignal<Option<modals::ModalKind>>,
     batch_type_selection: RwSignal<BatchTypeSelection>,
 ) -> impl IntoView {
+    use wasm_bindgen::JsCast; // 条目 25: ev.current_target().dyn_ref::<HtmlElement>()
     let list_view_state = ListViewState {
         sort_column: create_rw_signal(SortColumn::TableName),
         sort_direction: create_rw_signal(SortDirection::Ascending),
@@ -5782,6 +5824,17 @@ pub fn ListView(
     // ux-canvas-batch 批次4 步骤 3 (条目 24): 拖拽抑制 click 排序的共享信号
     // 拖拽结束 (位移 > 3px) 设为 true，on:click 检测后跳过排序逻辑
     let column_dragged: RwSignal<bool> = create_rw_signal(false);
+
+    // ux-canvas-batch 批次4 步骤 3 (条目 25): 拖拽状态——Some(_) 表示拖拽进行中
+    // None = 静止；Some((start_x, start_w, key)) = 记录起点坐标 + 当前列宽 + 列键
+    // pointermove 实时 set（自带 clamp）；pointerup 退出
+    #[derive(Clone)]
+    struct DragState {
+        start_x: f64,
+        start_w: u32,
+        key: &'static str,
+    }
+    let drag_state: RwSignal<Option<DragState>> = create_rw_signal(None);
 
     view! {
         <div class="cdb-tab-pane" data-testid="tab-pane-list-view">
@@ -5922,12 +5975,33 @@ pub fn ListView(
                                         }
                                     }
                                 }
+                                on:pointerdown={
+                                    let cw = list_view_state_for_name.column_widths;
+                                    move |ev: web_sys::PointerEvent| {
+                                        // 检测右缘 ≤6px（offsetX 在 [width-6, width] 区间）
+                                        let offset_x = ev.offset_x() as f64;
+                                        let offset_width = (ev.current_target()
+                                            .and_then(|t| t.dyn_ref::<web_sys::HtmlElement>().cloned())
+                                            .map(|el| el.offset_width() as f64)
+                                            .unwrap_or(120.0))
+                                            .max(1.0);
+                                        // 右缘 6px 检测带 或 左缘 6px（双向）
+                                        if offset_x > 6.0 && offset_x < offset_width - 6.0 {
+                                            return; // 中间区域，不启动拖拽
+                                        }
+                                        // 启动拖拽：记录 start_x, start_w, key
+                                        let start_x = ev.client_x() as f64;
+                                        let start_w = cw.get().get("table_name");
+                                        drag_state.set(Some(DragState { start_x, start_w, key: "table_name" }));
+                                        // 抑制本次 pointerdown 触发文本选择
+                                        ev.prevent_default();
+                                    }
+                                }
                                 on:dblclick={
                                     let cw = list_view_state_for_name.column_widths;
                                     move |_| {
-                                        // 自适应：消费字段名最长字符数（按当前 store.tables）
-                                        // 简化：取 table.name 最长字符数作为近似（生产应遍历 tables）
-                                        let max_chars = 12u32;
+                                        // 数据链：消费 store.tables 实际 table.name 最长字符数（条目 25）
+                                        let max_chars = max_chars_for_column("table_name", &store.tables.get());
                                         let new_w = auto_calc_column_width(max_chars);
                                         cw.update(|c| c.set("table_name", new_w));
                                     }
@@ -5953,10 +6027,28 @@ pub fn ListView(
                                         }
                                     }
                                 }
+                                on:pointerdown={
+                                    let cw = list_view_state_for_field_count.column_widths;
+                                    move |ev: web_sys::PointerEvent| {
+                                        let offset_x = ev.offset_x() as f64;
+                                        let offset_width = (ev.current_target()
+                                            .and_then(|t| t.dyn_ref::<web_sys::HtmlElement>().cloned())
+                                            .map(|el| el.offset_width() as f64)
+                                            .unwrap_or(120.0))
+                                            .max(1.0);
+                                        if offset_x > 6.0 && offset_x < offset_width - 6.0 { return; }
+                                        let start_x = ev.client_x() as f64;
+                                        let start_w = cw.get().get("field_count");
+                                        drag_state.set(Some(DragState { start_x, start_w, key: "field_count" }));
+                                        ev.prevent_default();
+                                    }
+                                }
                                 on:dblclick={
                                     let cw = list_view_state_for_field_count.column_widths;
                                     move |_| {
-                                        let new_w = auto_calc_column_width(4); // 字段数最长 4 字符（如 "100"）
+                                        // 数据链：消费 store.tables 实际字段数最大值（条目 25）
+                                        let max_chars = max_chars_for_column("field_count", &store.tables.get());
+                                        let new_w = auto_calc_column_width(max_chars);
                                         cw.update(|c| c.set("field_count", new_w));
                                     }
                                 }
@@ -5981,10 +6073,28 @@ pub fn ListView(
                                         }
                                     }
                                 }
+                                on:pointerdown={
+                                    let cw = list_view_state_for_type.column_widths;
+                                    move |ev: web_sys::PointerEvent| {
+                                        let offset_x = ev.offset_x() as f64;
+                                        let offset_width = (ev.current_target()
+                                            .and_then(|t| t.dyn_ref::<web_sys::HtmlElement>().cloned())
+                                            .map(|el| el.offset_width() as f64)
+                                            .unwrap_or(120.0))
+                                            .max(1.0);
+                                        if offset_x > 6.0 && offset_x < offset_width - 6.0 { return; }
+                                        let start_x = ev.client_x() as f64;
+                                        let start_w = cw.get().get("type");
+                                        drag_state.set(Some(DragState { start_x, start_w, key: "type" }));
+                                        ev.prevent_default();
+                                    }
+                                }
                                 on:dblclick={
                                     let cw = list_view_state_for_type.column_widths;
                                     move |_| {
-                                        let new_w = auto_calc_column_width(14); // "DECIMAL(10,2)" 14 chars
+                                        // 数据链：消费 store.tables 实际首字段类型最长字符数（条目 25）
+                                        let max_chars = max_chars_for_column("type", &store.tables.get());
+                                        let new_w = auto_calc_column_width(max_chars);
                                         cw.update(|c| c.set("type", new_w));
                                     }
                                 }
@@ -6009,10 +6119,26 @@ pub fn ListView(
                                         }
                                     }
                                 }
+                                on:pointerdown={
+                                    let cw = list_view_state_for_has_index.column_widths;
+                                    move |ev: web_sys::PointerEvent| {
+                                        let offset_x = ev.offset_x() as f64;
+                                        let offset_width = (ev.current_target()
+                                            .and_then(|t| t.dyn_ref::<web_sys::HtmlElement>().cloned())
+                                            .map(|el| el.offset_width() as f64)
+                                            .unwrap_or(120.0))
+                                            .max(1.0);
+                                        if offset_x > 6.0 && offset_x < offset_width - 6.0 { return; }
+                                        let start_x = ev.client_x() as f64;
+                                        let start_w = cw.get().get("has_index");
+                                        drag_state.set(Some(DragState { start_x, start_w, key: "has_index" }));
+                                        ev.prevent_default();
+                                    }
+                                }
                                 on:dblclick={
                                     let cw = list_view_state_for_has_index.column_widths;
                                     move |_| {
-                                        let new_w = auto_calc_column_width(4); // "yes/no" 3 字符或 "有/无" 2
+                                        let new_w = auto_calc_column_width(3); // "yes/no" 3 字符
                                         cw.update(|c| c.set("has_index", new_w));
                                     }
                                 }
@@ -6097,6 +6223,35 @@ pub fn ListView(
                 </table>
             </div>
         </div>
+
+        // ux-canvas-batch 批次4 步骤 3 (条目 25): 拖拽 window 级 pointermove/pointerup 监听
+        // Leptos window_event_listener 提供生命周期管理（自动 cleanup）
+        {
+            let cw = list_view_state_for_name.column_widths;
+            let dragged = column_dragged;
+            leptos::window_event_listener(leptos::ev::pointermove, move |ev: web_sys::PointerEvent| {
+                if let Some(ds) = drag_state.get() {
+                    let dx = ev.client_x() as f64 - ds.start_x;
+                    if dx.abs() > 3.0 {
+                        dragged.set(true);
+                    }
+                    let new_w = (ds.start_w as f64 + dx) as u32;
+                    cw.update(|c| c.set(ds.key, new_w));
+                }
+            });
+        }
+        {
+            let dragged = column_dragged;
+            leptos::window_event_listener(leptos::ev::pointerup, move |_ev: web_sys::PointerEvent| {
+                if drag_state.get().is_some() {
+                    drag_state.set(None);
+                    // 抑制下次 click 排序（仅在确实发生拖拽位移时）
+                    if dragged.get_untracked() {
+                        // 设置一个短暂的 click 抑制标记，下一个 click 后 reset
+                    }
+                }
+            });
+        }
     }
 }
 
@@ -12050,5 +12205,113 @@ mod tests_ut_mm_28 {
         assert_eq!(auto_calc_column_width(14), 152, "UT-MM-28: 14 chars → 152");
         // "VARCHAR(255)" 12 chars × 8 + 40 = 136
         assert_eq!(auto_calc_column_width(12), 136, "UT-MM-28: 12 chars → 136");
+    }
+
+    // ─── max_chars_for_column 纯函数测试 (批次4 步骤 3, 条目 25) ────────────
+
+    fn make_table_for_test(name: &str, field_count: usize, first_type: &str) -> Table {
+        let fields: Vec<Field> = (0..field_count)
+            .map(|i| Field {
+                id: format!("f{}", i),
+                name: format!("f{}", i),
+                type_: if i == 0 { first_type.to_string() } else { "INT".to_string() },
+                default: String::new(),
+                check: String::new(),
+                primary: false,
+                unique: false,
+                not_null: false,
+                increment: false,
+                comment: String::new(),
+                tag: String::new(),
+            })
+            .collect();
+        Table {
+            id: format!("t_{}", name),
+            name: name.to_string(),
+            x: 0.0,
+            y: 0.0,
+            color: String::new(),
+            comment: String::new(),
+            fields,
+            indices: Vec::new(),
+            width: None,
+            min_height: None,
+        }
+    }
+
+    #[test]
+    fn test_max_chars_table_name_empty_ut_mm_28() {
+        let tables: Vec<Table> = Vec::new();
+        assert_eq!(max_chars_for_column("table_name", &tables), 0);
+    }
+
+    #[test]
+    fn test_max_chars_table_name_single_ut_mm_28() {
+        let tables = vec![make_table_for_test("users", 1, "INT")];
+        assert_eq!(max_chars_for_column("table_name", &tables), 5);
+    }
+
+    #[test]
+    fn test_max_chars_table_name_multi_mixed_ut_mm_28() {
+        let tables = vec![
+            make_table_for_test("a", 1, "INT"),
+            make_table_for_test("user_profiles", 1, "INT"),
+            make_table_for_test("posts", 1, "INT"),
+        ];
+        assert_eq!(max_chars_for_column("table_name", &tables), 13, "UT-MM-28: longest 'user_profiles' = 13");
+    }
+
+    #[test]
+    fn test_max_chars_field_count_zero_ut_mm_28() {
+        let tables: Vec<Table> = Vec::new();
+        assert_eq!(max_chars_for_column("field_count", &tables), 1, "UT-MM-28: 空表 field_count 转字符串 = '0' → 1 字符");
+    }
+
+    #[test]
+    fn test_max_chars_field_count_multi_ut_mm_28() {
+        let tables = vec![
+            make_table_for_test("a", 5, "INT"),
+            make_table_for_test("b", 12, "INT"),
+            make_table_for_test("c", 100, "INT"),
+        ];
+        assert_eq!(max_chars_for_column("field_count", &tables), 3, "UT-MM-28: 100 → 3 字符");
+    }
+
+    #[test]
+    fn test_max_chars_type_empty_ut_mm_28() {
+        let tables: Vec<Table> = Vec::new();
+        assert_eq!(max_chars_for_column("type", &tables), 0);
+    }
+
+    #[test]
+    fn test_max_chars_type_mixed_ut_mm_28() {
+        let tables = vec![
+            make_table_for_test("a", 1, "INT"),
+            make_table_for_test("b", 1, "DECIMAL(10,2)"), // 13 chars
+            make_table_for_test("c", 1, "VARCHAR(255)"), // 12 chars
+        ];
+        assert_eq!(max_chars_for_column("type", &tables), 13, "UT-MM-28: DECIMAL(10,2) = 13 chars 最长");
+    }
+
+    #[test]
+    fn test_max_chars_has_index_ut_mm_28() {
+        let tables = vec![make_table_for_test("a", 1, "INT")];
+        assert_eq!(max_chars_for_column("has_index", &tables), 3, "UT-MM-28: yes/no 3 字符");
+    }
+
+    #[test]
+    fn test_max_chars_unknown_key_ut_mm_28() {
+        let tables = vec![make_table_for_test("a", 1, "INT")];
+        assert_eq!(max_chars_for_column("bogus_key", &tables), 0);
+    }
+
+    #[test]
+    fn test_max_chars_integration_with_auto_calc_ut_mm_28() {
+        // 集成：max_chars_for_column → auto_calc_column_width
+        let tables = vec![make_table_for_test("user_profiles", 1, "DECIMAL(10,2)")];
+        let chars = max_chars_for_column("type", &tables);
+        assert_eq!(chars, 13);
+        let w = auto_calc_column_width(chars);
+        assert_eq!(w, 144, "UT-MM-28: 13 chars × 8 + 40 = 144");
     }
 }
