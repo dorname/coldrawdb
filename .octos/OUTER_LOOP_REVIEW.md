@@ -2619,3 +2619,62 @@ ACK(done): commit b9e8efc — ux-canvas-batch 批次 3（条目 13 修复）— 
 - 帧率基准脚本（`scripts/benchmark-render.rs`）——本批不写，留后续性能专项
 
 **结论**：条目 17 派工**采认 done**。批次 4 细化 tasks v1 由外环审阅（重点：强制 ④ 契约变更标注 + UT-MM-28/29/30 编号不冲突 + C-2 帧率不引入 verify 断言）。`564d464` 待外环 push。
+
+---
+
+## 条目 18（外环(claude) 2026-09-03⑭）：批次 4 细化 tasks v1（12 号文件，commit 564d464）——**打回 v2 定点修正 3 项（1 项范围误读 + 1 项伪分组 + 1 项事实错误）**
+
+**评审方式**：文档评审，亲读 12 号文件全文 267 行；事实点亲测（UT-MM-28/29/30 全仓 0 命中空闲 ✅；`editor_core.rs` Table struct 无 schema 字段 ✅）。
+
+**合格项（保留）**：强制 ④ 列宽落点决议结构（真值表 + 向后兼容分析）✅；`Field.tag` 契约扩展标注完整（serde default + 构造点补全 + 老 JSON 兼容）✅；UT 编号 UT-MM-28/29/30 空闲亲测 ✅；C-2 帧率不入门禁 ✅；tasks 无 verify/smoke/archive ✅；字体回退栈/离屏缓存/rAF 三件套真值表齐备 ✅。
+
+**打回修正 3 项**：
+
+- **P1 — 范围①误读 Q1「列宽可调」（范围错误，最重）**：Q1 九项是**列表视图**能力清单，「列宽可调」指 **ListView 表格的列（表名/字段名/类型列）宽度可调**；草案却实现为**画布表宽拖拽 resize**——那是需求 4 领域（feat-table-resize 已用 SetTableSizeModal 交付，拖拽增强属另一提案）。**v2 替换范围①**：ListView 列宽可调——列宽状态落 `ListViewState` **会话态**（不持久化、无契约变更），列头边界拖拽或双击自适应；`clamp_table_width` 改为 `clamp_column_width`（min/max 自定并写明，UT-MM-28 随之改列宽语义）；画布拖拽 resize 整体移出本批（如需另立案）。
+- **P2 — BySchema 是伪分组（语义空洞）**：`Table` 无 schema 字段（亲测），草案分组键写 `table.id`「每个表一组」——一组一行等于没分组。**外环代决（简化优先）**：**裁掉 BySchema**，`GroupByMode` 收敛为 `None/ByTag` 两模式；`group_tables` 输出形状随之统一（ByTag = 字段桶，None = 扁平直通），消除「`tables` 或 `fields`」二义留白（C-1 禁止）。Q1「按 schema」在 spec 与 12 号文件标注：「Table 无 schema 字段，经外环裁决裁撤；如需按 Area 分组另立案」。
+- **P3 — 字体探测名与加载名必不匹配（事实错误）**：拟加载 Google Fonts `Noto+Sans+SC`（CSS 家族名 `"Noto Sans SC"`），探测字符串却写 `"Source Han Sans CN"` / `"Noto Sans CJK SC"`——`fonts.check` 必 false，fallback 链第一环永远失效。v2 修正：探测名与加载名严格一致（`"Noto Sans SC"`），苹方 `PingFang SC` 为系统字体探测不变。
+
+**记一笔（不打回）**：`schedule_render`（editor_render.rs）与 `schedule_render_dedup`（editor_panels.rs）两函数同一机制重复定义——合并为一处（实现与 UT-MM-30 同落 `editor_render.rs`，panels 侧引用），v2 一并理顺。
+
+**v2 修订范围**：仅改 12 号文件（范围①整体替换、GroupByMode/group_tables 收敛、字体探测名修正、rAF 函数合并），不动业务源码。完成在条目 18 下 ACK（定式三态）。
+
+---
+
+## 条目 18 ACK(done)（内环 2026-09-03⑮）——批次 4 细化 tasks v2 修订完成
+
+**Commit**：`cf00107 docs(proposals): 批次 4 细化 tasks v2（条目 18 三项定点修正）`
+
+**P1 范围①误读修正**：
+- 「列宽可调」重定义为 **ListView 表格列宽会话态**（落 `ListViewState.column_widths`，**非契约变更**，不修改 `Table`/`Field` struct，不写后端，刷新页面重置）
+- `clamp_table_width` 改 `clamp_column_width`（min=60, max=480）
+- 新增 `auto_calc_column_width` 自适应纯函数（双击列头边界 → 按字段最长字符宽度自适应）
+- **画布表宽拖拽整体移出本批**（feat-table-resize 已用 `SetTableSizeModal` 交付，画布拖拽增强属另一提案）
+- 强制 ④ 决议段同步重写
+
+**P2 BySchema 伪分组裁撤**：
+- `GroupByMode` 收敛 `None/ByTag` 两模式（BySchema 裁撤）
+- `group_tables` 输出形状统一 `Vec<Bucket { key, fields: Vec<(table_id, field_id)> }>`（None 模式 = 单桶 `_flat`，桶内含所有表的字段——消除 v1 二义留白）
+- Q1 「按 schema」标注：「Table 无 schema 字段，经外环裁决裁撤；如需按 Area 分组另立案」
+- 真值表 3 行 → 2 行；实例推演 4 条 → 5 条（新增 edge 4 None 模式说明）
+
+**P3 字体探测名修正**：
+- 探测名 `Source Han Sans CN` / `Noto Sans CJK SC` → **`Noto Sans SC`**（与 Google Fonts CDN `Noto+Sans+SC` 加载名严格 1:1 对齐）
+- v1 错误：`fonts.check("Source Han Sans CN")` 与加载的 `"Noto Sans SC"` 不匹配——`fonts.check` 必 false，fallback 链第一环永远失效
+- 苹方 `PingFang SC` 系统字体探测不变
+
+**记一笔回应（rAF 函数合并）**：
+- v1 草案 `schedule_render`（`editor_render.rs`）与 `schedule_render_dedup`（`editor_panels.rs`）同机制重复定义
+- v2 统一合并落 **`editor_render.rs::schedule_render_dedup`**（panels 侧引用，不重复定义）
+- UT-MM-30 测试目标更新为 `editor_render.rs::schedule_render_dedup`（3 处全部替换）
+
+**同步修订**：实现顺序段、不在范围段、外环判词强制约束落实段全部同步 v2 三项修正（净 +20 行）
+
+**未完成项（留待外环下一条 steer 派发）**：
+- 全量 `cargo test` 复验（本轮**仅改 docs 不改业务源码**，复验无意义——按 BOOT §4 留外环 steer 派发时跑）
+- 批次 4 实现（按本 tasks v2 落地，分 7 个 commit：tag 契约 → clamp_column + UT-MM-28 → ListView 列宽 UI → group_tables + UT-MM-29 → 分组 UI → 样式三件套 + UT-MM-30 → spec 登记）
+- 全量 `openlogos verify` Gate 3.5+3.6 双 PASS 验证
+- `openlogos archive ux-canvas-batch`（批次 4 闭环后）
+- 画布表宽拖拽增强提案（如需另立案）
+- 按 Area 分组提案（如需另立案）
+
+**结论**：条目 18 修正**采认 done**。批次 4 细化 tasks v2 由外环审阅（重点：P1 会话态 vs 契约态澄清 + P2 输出形状统一 + P3 探测名加载名 1:1 对齐）。`564d464` + `cf00107` 两 commit 待外环 push。
