@@ -5722,6 +5722,50 @@ pub fn ListView(
                     >
                         "批量改名"
                     </button>
+                    // ux-canvas-batch 批次3 步骤 5: 导出 CSV（条目 12 修正 4——list-view-export-csv + Blob 下载）
+                    <button
+                        class="cdb-btn cdb-btn--primary"
+                        data-testid="list-view-export-csv"
+                        on:click=move |_| {
+                            // ux-canvas-batch 批次3 步骤 5: 导出 CSV → Blob/URL.createObjectURL 触发浏览器下载
+                            // 简化：取当前 store.tables 渲染 CSV (表名,字段数,首字段类型,有索引)
+                            let mut csv = String::from("table_name,field_count,first_field_type,has_index\n");
+                            for table in store.tables.get().iter() {
+                                let first_type = table.fields.first().map(|f| f.type_.clone()).unwrap_or_default();
+                                let has_index = if table.indices.is_empty() { "0" } else { "1" };
+                                // CSV 字段值含逗号/双引号时转义（RFC 4180）
+                                let name_escaped = if table.name.contains(',') || table.name.contains('"') {
+                                    format!("\"{}\"", table.name.replace('"', "\"\""))
+                                } else {
+                                    table.name.clone()
+                                };
+                                csv.push_str(&format!("{},{},{},{}\n", name_escaped, table.fields.len(), first_type, has_index));
+                            }
+                            // 创建 Blob + ObjectURL → 触发下载
+                            use wasm_bindgen::JsCast;
+                            let array = js_sys::Array::new();
+                            array.push(&wasm_bindgen::JsValue::from_str(&csv));
+                            let blob = web_sys::Blob::new_with_str_sequence(&array).ok();
+                            if let Some(blob) = blob {
+                                let url = web_sys::Url::create_object_url_with_blob(&blob).ok();
+                                if let Some(url) = url {
+                                    if let Some(window) = web_sys::window() {
+                                        if let Some(document) = window.document() {
+                                            let a = document.create_element("a").ok();
+                                            if let Some(a) = a {
+                                                let _ = a.set_attribute("href", &url);
+                                                let _ = a.set_attribute("download", "tables.csv");
+                                                let _ = a.dyn_ref::<web_sys::HtmlElement>().map(|el| el.click());
+                                                let _ = web_sys::Url::revoke_object_url(&url);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    >
+                        "导出 CSV"
+                    </button>
                 </div>
                 <div class="cdb-list-view-filters" data-testid="list-view-filters">
                     <input
