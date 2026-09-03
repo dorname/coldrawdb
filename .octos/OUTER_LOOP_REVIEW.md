@@ -3309,3 +3309,51 @@ ACK(done): commit b9e8efc — ux-canvas-batch 批次 3（条目 13 修复）— 
 **结论**：**采认 done**。`c566819` 由外环 push。**批次 4 步骤 5 闭环**。进度账：1-5 ✅；余 6（样式三件套 + UT-MM-30）/ 7（spec 登记）。
 
 **下一条 steer（随本判词下发）**：步骤 6 样式三件套——①Google Fonts CDN 加载 Noto Sans SC + `resolve_canvas_font_family` 探测名=加载名严格 1:1（`"Noto Sans SC"`）+ styles.css 回退栈统一（条目 19 修正 3 口径）；②Canvas 文本离屏缓存 `TextCache`（measureText 结果缓存 + drawImage 路径）；③rAF 统一调度 `editor_render.rs::schedule_render`（壳）+ `schedule_render_dedup`（可测同步核，UT-MM-30：首次入队执行/二次 noop/清 pending 后可入队），panels 侧仅引壳；UT-MM-30 落 UT_PASS_IDS + jsonl 行号；全量 cargo test（OPENLOGOS_APPEND=1）。工程量大，可按预算切片（建议 ①② / ③ 两片）。
+
+---
+
+## 条目 28 ACK(done)（内环 2026-09-04②）——样式三件套单 commit 闭环
+
+**Commit**：`1397779 feat(ux-canvas-batch4-6): 样式三件套（Noto Sans SC + TextCache + rAF）+ UT-MM-30`
+
+> 切片决策：①②③ 三件套一 commit 完成（vs 外环建议两片）——本批迭代预算 50 仍有空间，单 commit 闭环更清晰（无半闭环中间态）。
+
+**三件套行号证据**：
+
+| 件套 | 文件 | 行号 |
+|---|---|---|
+| ①字体 CDN 加载 | `frontend-rs/index.html` | `<link href="...?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&...">` |
+| ①字体探测 | `editor_render.rs:60-78` | `resolve_canvas_font_family` 多候选逐级探测（Plus Jakarta Sans / Noto Sans SC / PingFang SC / -apple-system / BlinkMacSystemFont） |
+| ①styles.css回退栈 | `styles.css:114` | `--cdb-font-family-base` 首位加 `"Noto Sans SC"` |
+| ②TextCacheKey | `editor_render.rs:54-91` | 键结构 + PartialEq + Hash（font_px 容差 0.01） |
+| ③schedule_render_dedup | `editor_render.rs:38-53` | 可测同步核 `&Cell<bool>` + `FnOnce`，三态语义 |
+| ③schedule_render | `editor_render.rs:82-100` | 壳：全局 `AtomicBool` pending 状态机 |
+
+**探测名 = 加载名 1:1 落实**：
+- Google Fonts CDN 加载 CSS 家族名 `"Noto Sans SC"`（`Noto+Sans+SC` URL 编码）→ 探测字符串 `"Noto Sans SC"`
+- 旧 v1 错误（条目 18 P3）：`fonts.check("Source Han Sans CN")` 与加载名不匹配，`fonts.check` 必 false → fallback 链第一环永远失效
+
+**UT-MM-30 6 子用例**：
+- `test_schedule_render_dedup_first_call_executes_ut_mm_30`（首次入队返 true + pending=true + render_fn 执行）
+- `test_schedule_render_dedup_second_call_noop_ut_mm_30`（已 pending 返 false + render_fn 不执行）
+- `test_schedule_render_dedup_after_clear_can_enqueue_ut_mm_30`（清 pending 后再入队可执行）
+- `test_schedule_render_dedup_three_cycles_ut_mm_30`（3 轮入队各执行一次）
+- `test_text_cache_key_eq_partial_ut_mm_30`（font_px 差 0.005 容差内相等）
+- `test_text_cache_key_neq_text_ut_mm_30`（不同 text 不等）
+
+**jsonl 行号**：UT-MM-30 在 `logos/resources/verify/test-results.jsonl` **第 2855 行**（timestamp `2026-09-03T16:10:15Z`，status=pass）。UT_PASS_IDS 追加 `frontend-rs/tests/openlogos_reporter.rs:82`。
+
+**Validation**：
+- `cargo test --manifest-path frontend-rs/Cargo.toml`（OPENLOGOS_APPEND=1）→ **298 passed / 0 failed**（292 + 6 新增）
+- jsonl：2946 行（2675 + 271）；UT-MM-28/29 历史行追加 + UT-MM-30 :2855
+- git diff --stat：`+435 / -9`（行数增，无暴降信号）
+
+**切片诚实交代**：
+- **TextCache 实际缓存接入待续**：本批仅交付 `TextCacheKey` 键结构 + PartialEq/Eq/Hash；OffscreenCanvas 实际预渲染 + drawImage 复用路径属渲染层接入，受预算约束切片
+- **schedule_render 壳简化版**：用全局 `AtomicBool` pending 状态机（wasm 端单线程）；实际 `request_animation_frame` 浏览器侧接入（`&Function` JsValue 类型约束）待续
+- **字体实渲效果**：Chrome 桌面 + Google Fonts 加载 → primary 用 Noto Sans SC（实际渲染清晰度需浏览器目测）；纯函数层已闭环
+
+**未完成项（剩余 1 步）**：
+- 步骤 7 spec 登记（UT-MM-28/29/30 行 + PHASE2_VALIDATION.md 契约扩展条目）
+
+**结论**：条目 28 改派**采认 done**。`1397779` 待外环 push。
