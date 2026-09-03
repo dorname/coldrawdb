@@ -4410,6 +4410,33 @@ pub fn Inspector(
                                             <option value="BOOLEAN">"BOOLEAN"</option>
                                         </select>
                                     </div>
+                                    // ux-canvas-batch 批次4 步骤 5 (条目 27): Inspector 字段 tag 输入框
+                                    <div class="cdb-form-group">
+                                        <label>"标签（tag，用于 ByTag 分组）"</label>
+                                        <input
+                                            class="cdb-form-input"
+                                            data-testid="inspector-field-tag"
+                                            prop:value=field.tag.clone()
+                                            on:blur={
+                                                let store_t = store.clone();
+                                                let table_id_t = table_id.clone();
+                                                let fid_t = fid.clone();
+                                                move |ev| {
+                                                    let v = event_target_value(&ev);
+                                                    store_t.tables.update(|tables| {
+                                                        if let Some(t) = tables.iter_mut().find(|t| t.id == table_id_t) {
+                                                            if let Some(f) = t.fields.iter_mut().find(|f| f.id == fid_t) {
+                                                                if f.tag != v {
+                                                                    f.tag = v;
+                                                                }
+                                                            }
+                                                        }
+                                                    });
+                                                    store_t.dirty.set(true);
+                                                }
+                                            }
+                                        />
+                                    </div>
                                     <div class="cdb-checkbox-row">
                                         <label>
                                             <input
@@ -5340,6 +5367,8 @@ pub struct ListViewState {
     // v2 文本提「field_name/field_type」，但 ListView 实际展示列是「字段数/类型」，
     // 不含「字段名」列——本批以实际展示列为准。
     pub column_widths: RwSignal<ColumnWidths>,
+    // ux-canvas-batch 批次4 步骤 5 (条目 27): 分组模式会话态
+    pub group_by: RwSignal<GroupByMode>,
 }
 
 /// ux-canvas-batch 批次4 步骤 3 (条目 23): 列宽会话态结构（键名对齐 ListView <th> 展示列）
@@ -5867,6 +5896,7 @@ pub fn ListView(
         filter_has_index: create_rw_signal(None),
         batch_type_selection,
         column_widths: create_rw_signal(ColumnWidths::defaults()),
+        group_by: create_rw_signal(GroupByMode::default()),
     };
     let list_view_state_for_name = list_view_state.clone();
     let list_view_state_for_field_count = list_view_state.clone();
@@ -5998,6 +6028,21 @@ pub fn ListView(
                         <option value="">全部</option>
                         <option value="true">仅有索引</option>
                         <option value="false">仅无索引</option>
+                    </select>
+                    // ux-canvas-batch 批次4 步骤 5 (条目 27): 分组模式会话态下拉（None/ByTag）
+                    <select
+                        class="cdb-form-select"
+                        data-testid="list-view-group-by"
+                        on:change=move |ev| {
+                            let v = event_target_value(&ev);
+                            list_view_state.group_by.set(match v.as_str() {
+                                "ByTag" => GroupByMode::ByTag,
+                                _ => GroupByMode::None,
+                            });
+                        }
+                    >
+                        <option value="">不分组</option>
+                        <option value="ByTag">按字段 tag 分组</option>
                     </select>
                 </div>
                 <table class="cdb-list-view-table" data-testid="list-view-table">
@@ -6214,7 +6259,56 @@ pub fn ListView(
                                 list_view_state.sort_column.get(),
                                 list_view_state.sort_direction.get(),
                             );
-                            sorted.into_iter().map(|table| {
+                            // ux-canvas-batch 批次4 步骤 5 (条目 27): 分组模式分桶渲染
+                            // - GroupByMode::ByTag: 走 group_tables → 按桶头 + 桶内字段行
+                            // - GroupByMode::None: 现有表行渲染（不变）
+                            let mode = list_view_state.group_by.get();
+                            let sorted_ref = sorted.clone();
+                            let buckets = group_tables(&sorted_ref, mode);
+                            let bucket_views: Vec<_> = match mode {
+                                GroupByMode::ByTag => {
+                                    // 桶渲染：每桶 = 桶头 <tr> + 字段行 <tr>（桶内行=字段）
+                                    buckets.into_iter().map(|bucket| {
+                                        let key = bucket.key.clone();
+                                        let field_count = bucket.fields.len();
+                                        let bucket_key = bucket.key.clone();
+                                        // 桶内字段渲染（table_id, field_id）
+                                        let field_rows: Vec<_> = bucket.fields.into_iter().map(|(tid, fid)| {
+                                            // 查找字段（table.name + field.name）
+                                            let mut label = format!("{}.{}", tid, fid);
+                                            for t in &sorted {
+                                                if t.id == tid {
+                                                    if let Some(f) = t.fields.iter().find(|f| f.id == fid) {
+                                                        label = format!("{}.{}", t.name, f.name);
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                            view! {
+                                                <tr
+                                                    data-testid={format!("list-view-group-row-{}-{}", bucket_key.clone(), label.clone())}
+                                                >
+                                                    <td>{label}</td>
+                                                    <td>""</td>
+                                                    <td>""</td>
+                                                    <td>""</td>
+                                                </tr>
+                                            }
+                                        }).collect();
+                                        // 桶头
+                                        let header = view! {
+                                            <tr data-testid={format!("list-view-group-{}", key.clone())} class="cdb-list-view-group-header">
+                                                <td colspan="4">{format!("{} ({} 字段)", key, field_count)}</td>
+                                            </tr>
+                                        };
+                                        let mut all = vec![header];
+                                        all.extend(field_rows);
+                                        all
+                                    }).flatten().collect()
+                                }
+                                GroupByMode::None => Vec::new(), // 走下方既有 sorted.into_iter().map() 路径
+                            };
+                            let table_rows = sorted.into_iter().map(|table| {
                                 let table_id = table.id.clone();
                                 let table_name = table.name.clone();
                                 let field_count = table.fields.len();
@@ -6269,7 +6363,61 @@ pub fn ListView(
                                         <td>{if has_index { "有" } else { "无" }}</td>
                                     </tr>
                                 }
-                            }).collect_view()
+                            }).collect_view();
+                            // ux-canvas-batch 批次4 步骤 5 (条目 27): 桶渲染优先（ByTag）或表行（None）
+                            let mode = list_view_state.group_by.get();
+                            match mode {
+                                GroupByMode::ByTag => {
+                                    // 重算 buckets（闭包内 group_tables 已在 sorted.into_iter().map 之前算过 bucket_views）
+                                    let tables_now = store.tables.get();
+                                    let sorted_now = sort_tables(
+                                        &filter_tables(
+                                            &tables_now,
+                                            &list_view_state.filter_query.get(),
+                                            &list_view_state.filter_type.get(),
+                                            list_view_state.filter_has_index.get(),
+                                        ),
+                                        list_view_state.sort_column.get(),
+                                        list_view_state.sort_direction.get(),
+                                    );
+                                    let buckets_now = group_tables(&sorted_now, GroupByMode::ByTag);
+                                    buckets_now.into_iter().flat_map(|bucket| {
+                                        let key = bucket.key.clone();
+                                        let field_count = bucket.fields.len();
+                                        let bucket_key = bucket.key.clone();
+                                        let header = view! {
+                                            <tr data-testid={format!("list-view-group-{}", key.clone())} class="cdb-list-view-group-header">
+                                                <td colspan="4">{format!("{} ({} 字段)", key, field_count)}</td>
+                                            </tr>
+                                        };
+                                        let field_rows: Vec<_> = bucket.fields.into_iter().map(|(tid, fid)| {
+                                            let mut label = format!("{}.{}", tid, fid);
+                                            for t in &sorted_now {
+                                                if t.id == tid {
+                                                    if let Some(f) = t.fields.iter().find(|f| f.id == fid) {
+                                                        label = format!("{}.{}", t.name, f.name);
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                            view! {
+                                                <tr
+                                                    data-testid={format!("list-view-group-row-{}-{}", bucket_key.clone(), label.clone())}
+                                                >
+                                                    <td>{label}</td>
+                                                    <td>""</td>
+                                                    <td>""</td>
+                                                    <td>""</td>
+                                                </tr>
+                                            }
+                                        }).collect();
+                                        let mut all = vec![header];
+                                        all.extend(field_rows);
+                                        all
+                                    }).collect_view()
+                                }
+                                GroupByMode::None => table_rows,
+                            }
                         }}
                     </tbody>
                 </table>
