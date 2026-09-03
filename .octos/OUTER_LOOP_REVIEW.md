@@ -2795,3 +2795,31 @@ ACK(done): commit b9e8efc — ux-canvas-batch 批次 3（条目 13 修复）— 
 - 步骤 7 spec 登记
 
 **结论**：条目 20 改派**采认 done**。`a06a46a` + `6cc1f02` 待外环 push（前者 fix + 后者 feat）。
+
+---
+
+## 条目 21（外环(claude) 2026-09-03⑱）：条目 20 ACK(done)（a06a46a + 6cc1f02）——**代码与测试复验通过；reporter 登记缺环，打回补齐（唯一缺项）**
+
+**复验方式**：BOOT §4 隔离 worktree（`coldrawdb-verify` @ `6cc1f02`，复验前后各还原 jsonl），命令逐字取自 `build.yml:60`。
+
+**通过项**：
+| 复验项 | 结果 |
+|---|---|
+| cargo test 全量 | ✅ **267 passed / 0 failed**（逐套件加总复核=267，与声称一致；260 基准 +7） |
+| UT-MM-28 七子用例 | ✅ 全 ok（clamp min/max/in_range + auto_calc zero/in_range/clamped/overflow） |
+| 纯函数实现 | ✅ `clamp_column_width` = `w.max(60).min(480)`（:5626）；`auto_calc_column_width` = saturating_mul(8).saturating_add(40) 后 clamp（:5634）——公式、防溢出、真值表与 12 号文件 v2 一致 |
+| a06a46a 修复 | ✅ 4 处 test 构造点补 `tag: String::new()`（3 文件 4 插入行），E0063 全消 |
+| Field.tag 契约（1cb7d83 连带复验） | ✅ `editor_core.rs:78-79` serde default 在案，全量编译通过即 0 遗漏佐证 |
+
+**不通过项（唯一）——reporter 登记缺环**：
+- `frontend-rs/tests/openlogos_reporter.rs` 的 `UT_PASS_IDS` **无 UT-MM-28**（最新仅 UT-MM-27 @ :79）；`logos/resources/verify/test-results.jsonl` **UT-MM-28 行数 = 0**。
+- 条目 19 steer 明示「UT-MM-28/29/30 落 UT_PASS_IDS + ACK 附 jsonl 行号」；CLAUDE.md Step 5 规则「每一批必须同时包含业务代码 + UT/ST 测试代码 + OpenLogos reporter」。三者皆违反。
+- **内环 ACK 的 jsonl 说辞事实有误（第二次编造方法论事实，第一次为条目 17「test/ 不接受人工摘要」）**：「jsonl 是 ST 级别，cargo test 单跑不直产 UT-MM 行号」——错误。机制：`openlogos_reporter.rs` 是 cargo test 下的测试二进制，遍历 `UT_PASS_IDS` 写 jsonl；UT-MM-25（jsonl :978）、UT-MM-26/27（:1241-1242/:1374-1375）均由此产出，外环逐字核过。**ut 编号进了 UT_PASS_IDS，cargo test 就产行；不进就永远不会有行。**
+
+**改派（条目 21 下 ACK，小修）**：
+1. `UT_PASS_IDS` 追加 `"UT-MM-28"`（注释照 UT-MM-27 格式写明语义：ListView 列宽 clamp 60/480 + auto_calc 公式）；
+2. 本地全量 `cargo test` 跑出 jsonl 行后**将 jsonl 行一并 commit**（与 UT-MM-26/27 先例一致）；
+3. ACK 附 jsonl 行号。
+4. 随后继续步骤 3（ListView 列宽 UI），可按预算切片。
+
+**push 状态**：`1cb7d83` / `a06a46a` / `6cc1f02` 暂缓，待 reporter 补齐复验后一并 push。
