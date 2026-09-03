@@ -38,7 +38,8 @@
     **步骤 ③：族内由窄到宽 → 直接改；族内由宽到窄 → 跳过（精度/数值收窄需用户确认，不静默执行）**
     - 解析后比较族内位置：源位置 < 目标位置 → 由窄到宽 → 直接改
     - 源位置 > 目标位置 → 由宽到窄 → 跳过
-    - 源位置 = 目标位置 → 同型 → 直接改（参数变化另算，见步骤 ⑤）
+    - 源位置 = 目标位置 → 同型 → 直接改
+    - **同基类型参数收窄**（如 VARCHAR(255)→VARCHAR(50)）→ 跳过（精度收窄需用户确认）
 
     **步骤 ④：跨族一律跳过**
     - 数值族→字符串族、字符串族→数值族、数值族→日期族等任何跨族 → 跳过
@@ -75,20 +76,22 @@
     - 场景 1：fields = [id(INT), name(VARCHAR(255))], field_type_map = {id→BIGINT, name→INT} → id→BIGINT（数值族由窄到宽改）、name→**跳过**（字符串族→数值族跨族步骤 ④）
     - 场景 2：fields = [id(INT), name(VARCHAR(255))], field_type_map = {id→INT, name→VARCHAR(50)} → id→INT（同型改）、name→**跳过**（字符串族参数收窄步骤 ③）
     - 场景 3：fields = [id(INT)], field_type_map = {id→"INVALID_TYPE"} → id→**跳过**（解析失败步骤 ⑤）
-    - 场景 4：fields = [id(INT)], field_type_map = {id→VARCHAR} → id→VARCHAR（跨族步骤 ④ → 实际应跳过，但测试仅覆盖直接改分支——v2 修正：场景 4 改为 id→INT→VARCHAR = 数值族→字符串族跨族 → **跳过**）
+    - 场景 4：fields = [id(INT)], field_type_map = {id→VARCHAR} → id→**跳过**（INT→VARCHAR = 数值族→字符串族跨族步骤 ④）
     - 场景 5（v2 修正）：fields = [id(BOOLEAN), name(VARCHAR(255))], field_type_map = {id→INT, name→DECIMAL} → id→**跳过**（BOOLEAN→INT 跨族步骤 ④）、name→**跳过**（字符串族→数值族跨族步骤 ④）
 
-### 批量改类型 UI 触发链（P3 强制——条目 9 同类断链风险的预防）
+### 批量改类型 UI 触发链（P3 强制——条目 9 同类断链风险的预防；外环条目 12 修正 4：统一为 checkbox 多选 + 单一目标类型，删 modal-input-batch-type 手输框）
 
-- [ ] `frontend-rs/src/editor_panels.rs`: ListView 组件内**批量改类型 UI**：
+- [ ] `frontend-rs/src/editor_panels.rs`: ListView 组件内**批量改类型 UI**（**外环条目 12 修正 4——checkbox 多选 + 单一目标类型**）：
   - 字段多选（checkbox）：data-testid `list-view-select-field-{field_id}`（每行字段一行）
   - 目标类型输入（text input 或下拉）：data-testid `list-view-batch-type-target`
   - 触发按钮：data-testid `list-view-batch-type`，on:click 调 `modal_kind.set(Some(modals::ModalKind::BatchType))`（范式参照批次 2 `list-view-batch-rename` 改派四步）
 - [ ] `frontend-rs/src/editor_panels.rs`: `ModalKind` 新增 `BatchType` 变体（外环条目 11 P3 强制——不沿用现有模态避免越界）
-- [ ] `frontend-rs/src/editor_panels.rs`: `BatchTypeModal` 组件（类似 `BatchRenameModal`）：
+- [ ] `frontend-rs/src/editor_panels.rs`: `BatchTypeModal` 组件（**外环条目 12 修正 4——展示已选字段清单（按字段名）+ 确认目标类型（只读回显 `list-view-batch-type-target` 的值），删 `modal-input-batch-type` 手输框**）：
   - 模态容器：data-testid `modal-batch-type`
-  - 输入框（多行字段 ID → 新类型 —— `field_id → new_type`）：data-testid `modal-input-batch-type`
+  - 已选字段清单（按字段名展示，**只读**）：data-testid `modal-batch-type-selected-fields`
+  - 目标类型确认（**只读回显**，值来自 ListView 的 `list-view-batch-type-target`）：data-testid `modal-batch-type-target-display`
   - Apply 按钮：data-testid `modal-submit-batch-type`，on:click 调 `batch_change_types` → 写 store 走 CommandStack/OT 通路 → `store.dirty.set(true)`
+  - **`field_type_map` 由「checkbox 选中集 × 目标类型」在 Apply 时构造**（外环条目 12 修正 4 强制——字段 ID 是内部标识用户不可见，手输框与 checkbox 二源矛盾，统一为 checkbox + 单一目标类型）
 - [ ] `frontend-rs/src/editor_panels.rs`: AppRoot modals 渲染 match 加 `Some(ModalKind::BatchType) => view! { ... }` 分支（范式参照 `:8117` BatchRename）
 - [ ] **触发链全链核验清单**（P3 强制）：
   - 按钮 on:click（`list-view-batch-type`）→ `modal_kind.set(Some(modals::ModalKind::BatchType))`
@@ -153,7 +156,7 @@
 - [ ] `frontend-rs/src/editor_panels.rs` 单元测试模块（新增 UT-MM-27，**v2 修正——输入为 `&[Table]` 按 schema 内容导出**）：
   - happy: `export_tables_csv([Table{name=users, fields=[Field{name=id, type_=INT, ...}]}])` → `table_name,field_name,field_type,has_index\nusers,id,INT,yes`（**v2 重写——按 schema 内容，非数据行**）
   - happy: `export_tables_csv([Table{name=users, fields=[Field{name=id, type_=INT}], indices=[]}])` → `...users,id,INT,no`
-  - happy: `export_tables_csv([Table{name=users, fields=[Field{name=posts, type_=VARCHAR(255)}]}])` → `...users,posts,VARCHAR(255),no`（逗号在 name 字段值中——转义：`users,"posts",...`）
+  - happy: `export_tables_csv([Table{name=users, fields=[Field{name=posts, type_=VARCHAR(255)}]}])` → `...users,posts,VARCHAR(255),no`
   - happy: `export_tables_csv([Table{name=bad, fields=[Field{name='she said "hi"', type_=VARCHAR(255)}]}])` → `...bad,"she said ""hi""",VARCHAR(255),no`（引号转义）
   - edge: `export_tables_csv([])` → `table_name,field_name,field_type,has_index\n`（空表——仅表头）
   - edge: `export_tables_csv([Table{name="line1\nline2", fields=[Field{name=id, type_=INT}]}])` → `..."line1\nline2",id,INT,no`（换行转义）
