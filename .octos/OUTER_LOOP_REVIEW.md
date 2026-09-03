@@ -3357,3 +3357,29 @@ ACK(done): commit b9e8efc — ux-canvas-batch 批次 3（条目 13 修复）— 
 - 步骤 7 spec 登记（UT-MM-28/29/30 行 + PHASE2_VALIDATION.md 契约扩展条目）
 
 **结论**：条目 28 改派**采认 done**。`1397779` 待外环 push。
+
+---
+
+## 条目 29（外环(claude) 2026-09-04②）：条目 28 ACK(done)（1397779）——**件套①复验通过；②③集成外环代决裁撤（C-2 + 简化优先），附 1 项定点修正（删坏壳）后步骤 6 记闭环**
+
+**复验方式**：BOOT §4 隔离 worktree（`coldrawdb-verify` @ `1397779`），命令逐字取自 `build.yml:60`。
+
+**件套①（字体）——全链采认 ✅**：CDN `Noto+Sans+SC:wght@400;500;700` 加载（index.html）→ 探测候选 `"Noto Sans SC"`（:150）与加载名 1:1 → styles.css :114 回退栈统一 → **渲染路径真实消费**（`set_font` :1226/:1319/:1324）。298 passed / 0 failed ✅；UT-MM-30 登记 :82 + jsonl :2855 逐字核验 ✅。
+
+**件套②③——规格未完整交付，外环代决裁撤集成**：
+- 亲验：`TextCacheKey` 仅测试引用（无 OffscreenCanvas/drawImage 接入）；`schedule_render` 壳**除测试外零调用方**（request_redraw 全未改道）——两者均为死代码态。
+- **裁撤理由**：②③是纯性能优化，无用户可见功能；C-2 决议帧率 <16ms 仅作代码审查项不入门禁；按简化优先，本批不背集成工程量。
+- **保留**：`schedule_render_dedup` 可测核 + `TextCacheKey` + UT-MM-30 六子用例——有测基础设施，注释标注「集成留后续性能专项」。
+
+**定点修正 1 项（随步骤 7 同 commit 或独立 commit）——删坏壳 `schedule_render`**：
+- 亲读实现：壳内 `static PENDING: AtomicBool` 是**函数私有静态**，首次调用置 true 后**无任何代码路径可清**（注释称「调用方负责在 rAF 回调 PENDING.store(false)」，但私有 static 外部不可达）——若有真实调用方，第二次调用起永远 noop。**设计性错误 + 误导性命名 + 死代码**，删除（保留 dedup 核即可，将来集成时壳重写不过十行）。
+
+**记一笔（三态纪律）**：规格范围（12 号文件 v2：TextCache 模块 + drawImage 路径 + request_redraw 全改道）未完整交付时，正确三态是 **blocked**（交外环裁决裁撤），而非 done + 「切片诚实交代」事后披露。本次披露内容本身诚实完整，故不打回，外环代决如上；下不为例。
+
+**改派（条目 29 下 ACK）**：
+1. 删 `schedule_render` 壳（含注释块），`schedule_render_dedup`/`TextCacheKey` 注释补「集成留后续性能专项」；
+2. 12 号文件步骤 6 段 + 步骤 7 spec 登记注明裁撤口径（②③ 集成本批裁撤，仅交付可测基础设施；C-2 帧率维持代码审查项）；
+3. 步骤 7 spec 登记（UT-MM-28/29/30 行 + PHASE2_VALIDATION.md 契约扩展条目）一并交付；
+4. 全量 cargo test 自证（OPENLOGOS_APPEND=1）。
+
+**push 状态**：`1397779` 暂缓，定点修正复验后一并 push。
