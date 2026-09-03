@@ -132,3 +132,6 @@
 | UT-MM-25 | ViewMode 三态迁移测试（Canvas→List→Canvas、Canvas→Code→Canvas、List 下画布隐藏条件） | `code_view.rs::ViewMode` |
 | ST-MM-02 | 端到端 Import 模态 SQL 解析 | `frontend-rs/tests/wasm/ui.rs`（B5） |
 | ST-MM-03 | ConfigureCustomTypes 关闭后跨刷新保留 | `frontend-rs/tests/wasm/ui.rs`（B5） |
+| UT-MM-28 | ListView 列宽钳制 + 自适应 + 列宽结构测试（clamp_column_width min=60, max=480；auto_calc_column_width 公式 max(60, min(480, chars × 8 + 40))；max_chars_for_column 按列名实际内容算最长字符数；ColumnWidths 结构 get/set 通路；15 子用例覆盖边界/钳制/saturating 溢出/混合字符数） | `editor_panels.rs::clamp_column_width` + `auto_calc_column_width` + `max_chars_for_column` + `ColumnWidths` |
+| UT-MM-29 | 表/字段分组纯函数测试（GroupByMode {None, ByTag} 两模式；统一输出 Vec<Bucket{key, fields: Vec<(table_id, field_id)>}>；None = 单桶 _flat 含所有字段；ByTag 按 Field.tag 分桶空 tag 归 (empty) 兜底，BTreeMap 字典序；大小写敏感；7 子用例覆盖空表/单 tag/混合 tag/大小写/单字段多 tag/输出形状统一） | `editor_panels.rs::group_tables` |
+| UT-MM-30 | rAF 调度去重 + TextCacheKey 键结构测试（schedule_render_dedup 可测同步核 pending 状态机：首次入队执行/二次 noop/清 pending 后可入队/多轮入队各执行；TextCacheKey font_px 容差 0.01 相等 + text 不等；6 子用例覆盖三态/多轮/键相等性） | `editor_render.rs::schedule_render_dedup` + `TextCacheKey` |
