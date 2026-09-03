@@ -74,7 +74,7 @@
 
 ### 代码实现（新增 `editor_panels.rs`）
 
-- [ ] `frontend-rs/src/editor_panels.rs`: 新增 `ColumnWidths` 结构（`HashMap<String, u32>`，键 = 列名 `table_name` / `field_name` / `field_count` / `first_field_type` / `has_index`）+ `ColumnWidths::default()`（每列 `Some(120)`）
+- [ ] `frontend-rs/src/editor_panels.rs`: 新增 `ColumnWidths` 结构（`HashMap<String, u32>`，**键名与 ListView 实际 `<th>` 列严格对齐**（批次 1 展示列：表名/字段名/类型/是否有索引）=`table_name` / `field_name` / `field_type` / `has_index`——**不混入排序键 `field_count` / `first_field_type`**（前者是 SortColumn 排序键，后者是条目 16 刚灭掉的 CSV 错列名））+ `ColumnWidths::default()`（每列 `Some(120)`，**v2 统一默认值 = 120**，与 :33 / :73 全部对齐）
 - [ ] `frontend-rs/src/editor_panels.rs`: `ListViewState` 加 `column_widths: RwSignal<ColumnWidths>` 字段（**会话态**）
 - [ ] `frontend-rs/src/editor_panels.rs`: 新增 `pub fn clamp_column_width(w: u32) -> u32` 纯函数（**UT-MM-28**）：
   - 签名：`pub fn clamp_column_width(w: u32) -> u32`（返回钳制后列宽，min=60, max=480）
@@ -82,7 +82,7 @@
   - 测试：边界值 + 小于下限 + 大于上限 + 等于边界
 - [ ] `frontend-rs/src/editor_panels.rs`: 新增 `pub fn auto_calc_column_width(max_field_chars: u32) -> u32` 纯函数（**UT-MM-28 同 UT 名追加子用例**）：
   - 签名：`pub fn auto_calc_column_width(max_field_chars: u32) -> u32`（返回自适应列宽，公式 `max(60, min(480, max_field_chars × 8 + 40))`，8 px/字符近似 + 40 px padding）
-  - 测试：0 字符 → 60；100 字符 → 480；300 字符 → 480（钳制上限）；30 字符 → 280（钳制下限）
+  - 测试：0 字符 → 60；100 字符 → 480；300 字符 → 480（钳制上限）；30 字符 → 280（公式 30×8+40=280，在 [60,480] 界内，无钳制）
 - [ ] `frontend-rs/src/editor_panels.rs`: ListView `<th>` 加列头右侧边界拖拽（≤6px → cursor: col-resize → 启动拖拽）；双击列头右侧边界触发自适应
 - [ ] `frontend-rs/src/editor_panels.rs`: ListView `<td>` 列宽渲染读 `ListViewState.column_widths[col]`（无值时 fallback `Some(120)`）
 - [ ] **不修改画布渲染**：画布表宽 `Table.width` 既有路径（`SetTableSizeModal` + feat-table-resize）不变
@@ -121,7 +121,7 @@
 - **edge 1**：混合场景——部分字段有 tag，部分无 → `ByTag` 分组 → 有 tag 的字段按 tag 分组 + 无 tag 的字段归入 `(empty)`。
 - **edge 2**：老 JSON 无 tag 字段 → serde default `""` → 等同 happy 2。
 - **edge 3**：分组键大小写敏感性——tag **大小写敏感**（`Pk` ≠ `pk`，不同组），与字段名一致性约定一致。
-- **edge 4**（None 模式）：`GroupByMode::None` → `group_tables` 返回**单桶 `Bucket { key: "_flat", fields: [] }`**（输出形状与 ByTag 统一——消除二义，桶内 `fields` 由 ListView 直接展开所有表的字段）→ ListView 渲染扁平表格（既有行为）。
+- **edge 4**（None 模式）：`GroupByMode::None` → `group_tables` 返回**单桶 `Bucket { key: "_flat", fields: [所有表的字段 (table_id, field_id)] }`**（输出形状与 ByTag 统一——函数返回全字段单桶，ListView 直接按 `(table_id, field_id)` 渲染扁平表格，既有行为不变）。
 
 ### 代码实现（新增 `editor_panels.rs`）
 
@@ -172,10 +172,10 @@
 
 ### 实例推演（C-1 闭环）
 
-- **happy 1**：Chrome 桌面 + 思源黑体已加载（Google Fonts） → primary 用 Noto Sans CJK SC → 渲染清晰。
+- **happy 1**：Chrome 桌面 + Noto Sans SC 已加载（Google Fonts） → primary 用 Noto Sans SC → 渲染清晰。
 - **happy 2**：macOS Safari + 苹方系统字体可用 → fallback 2 命中 → 渲染清晰。
 - **happy 3**：Linux 桌面无中文字体 → fallback 3 命中 `-apple-system`（无中文也无 CJK，回退 latin） → 用户看到 latin 字符（与既有行为一致，不破坏）。
-- **edge 1**：Plus Jakarta Sans 未加载 + 思源黑体已加载 → 用思源黑体 → 渲染清晰。
+- **edge 1**：Plus Jakarta Sans 未加载 + Noto Sans SC 已加载 → 用 Noto Sans SC → 渲染清晰。
 - **edge 2**：所有字体均未加载 → 降级既有 `ui-monospace`（不破坏）。
 
 ### Canvas 文本离屏缓存（真值表）
@@ -199,19 +199,19 @@
 | hover 检测 | mousemove 触发立即重渲染 | 节流到 rAF（每帧最多一次） |
 | 字段编辑（input） | on:input 立即重渲染 | on:input 写 store 信号；rAF 调度渲染 |
 
-> **实现路径**：在 `editor_render.rs` 引入 `pub fn schedule_render(render_fn: Rc<dyn Fn()>)` 工具函数（内部维护 `pending: Cell<bool>` + `request_animation_frame`）；所有 `set_state` 后续的 `request_redraw()` 调用改走此函数。
-> **不引入新 UT**——rAF 调度是浏览器异步行为，纯函数不可测；测试覆盖 `schedule_render` 的 `pending` 状态机（仅首次入队执行，二次入队 noop 直到 rAF 回调清 pending）即可。
+> **实现路径**：在 `editor_render.rs` 引入 `pub fn schedule_render(render_fn: Rc<dyn Fn()>)`（**rAF 壳，对外 API**）+ `pub fn schedule_render_dedup(state: &Cell<bool>, render_fn: Rc<dyn Fn()>)`（**可测同步核**）；`schedule_render` 内部维护 `pending: Cell<bool>` + `request_animation_frame`，**调 `schedule_render_dedup` 核完成去重逻辑**后入队；所有 `set_state` 后续的 `request_redraw()` 调用改走 `schedule_render`。
+> **不引入新 UT for `schedule_render`**——rAF 调度是浏览器异步行为，rAF 壳不可测；测试覆盖 `schedule_render_dedup`（可测同步核）的 `pending` 状态机（仅首次入队执行，二次入队 noop 直到 rAF 回调清 pending）即可。
 
 ### 代码实现
 
 - [ ] `frontend-rs/index.html`: 加 Google Fonts `<link>` 加载 `Noto+Sans+SC:wght@400;500;700&display=swap`
-- [ ] `frontend-rs/src/styles.css`: `--cdb-font-family-base` 字体回退栈补 `Source Han Sans CN`, `Noto Sans CJK SC`, `PingFang SC`, `Hiragino Sans GB`, `Microsoft YaHei`（在既有 `Plus Jakarta Sans`, `-apple-system` 之后）
+- [ ] `frontend-rs/src/styles.css`: `--cdb-font-family-base` 字体回退栈**统一使用 `"Noto Sans SC"`（与 Google Fonts CDN 加载名 + Canvas 探测名 1:1 对齐）**+ `PingFang SC`（macOS 系统字体）+ `Hiragino Sans GB` + `Microsoft YaHei`（在既有 `Plus Jakarta Sans`, `-apple-system` 之后）——**v2 不再写 `Source Han Sans CN` / `Noto Sans CJK SC`**，避免回退栈首字体名与 Canvas 探测字符串脱节
 - [ ] `frontend-rs/src/editor_render.rs`: `resolve_canvas_font_family` 加思源黑体/苹方 fallback 探测（按真值表顺序）
 - [ ] `frontend-rs/src/editor_render.rs`: 新增文本离屏缓存模块 `pub struct TextCache`（`HashMap<CacheKey, OffscreenCanvas>` + `invalidate` 方法）
 - [ ] `frontend-rs/src/editor_render.rs`: 表头/字段名/类型文本绘制改走 `TextCache::get_or_render`（按真值表）
-- [ ] `frontend-rs/src/editor_render.rs`: 新增 `pub fn schedule_render(render_fn: Rc<dyn Fn()>)` 工具函数（rAF 统一调度 + pending 状态机）
+- [ ] `frontend-rs/src/editor_render.rs`: 新增 `pub fn schedule_render(render_fn: Rc<dyn Fn()>)` 工具函数（**rAF 壳，对外 API**——内部调 `schedule_render_dedup` 核 + `request_animation_frame` 入队，**不可测**）
 - [ ] `frontend-rs/src/editor_render.rs`: 所有 `request_redraw()` 调用点改走 `schedule_render`
-- [ ] `frontend-rs/src/editor_render.rs`: 新增 `pub fn schedule_render_dedup(state: &Cell<bool>, render_fn: Rc<dyn Fn()>)` 纯函数（**UT-MM-30**：仅首次入队执行 / 二次入队 noop / rAF 回调清 pending 后再入队可执行）——**v2 合并落点**：v1 草案 `editor_panels.rs::schedule_render` 与 `editor_render.rs::schedule_render_dedup` 同机制重复定义；v2 统一合并落 `editor_render.rs`，panels 侧引用（不重复定义）
+- [ ] `frontend-rs/src/editor_render.rs`: 新增 `pub fn schedule_render_dedup(state: &Cell<bool>, render_fn: Rc<dyn Fn()>)` 纯函数（**UT-MM-30**：仅首次入队执行 / 二次入队 noop / rAF 回调清 pending 后再入队可执行——**可测同步核，无 rAF 副作用**）——**v2 分层**：`schedule_render`（rAF 壳，对外 API）+ `schedule_render_dedup`（可测同步核），同文件分层；panels 侧**仅引 `schedule_render`**（不引 dedup，避免破坏分层）
 - [ ] **不引入帧率 < 16ms 基准断言**——按 C-2 **仅作代码审查项 + 可选基准脚本**（不作为 verify 门禁断言）
 
 ### 测试（新增 UT-MM-30）
@@ -231,10 +231,10 @@
 
 ## [spec] 规格登记（代码实现同步，非独立 delta 任务）
 
-- [ ] 在 `logos/resources/test/core-UI-modals-2-test-cases.md`（或同类 spec 文件）追加 UT-MM-28/29/30 行：
+- [ ] 在 `logos/resources/test/core-UI-modals-2-test-cases.md`（或同类 spec 文件）追加 UT-MM-28/29/30 行（**v2 修订**：UT-MM-28 范围改 ListView 列宽；UT-MM-29 收敛 None/ByTag 两模式）：
   ```
-  | UT-MM-28 | 列宽钳制纯函数测试（min=100, max=1000, 0 保持 0；真值表 + 实例推演覆盖 happy/edge） | `editor_panels.rs::clamp_table_width` |
-  | UT-MM-29 | 表/字段分组纯函数测试（None/BySchema/ByTag 三模式 + 混合 tag + 空表 + 大小写敏感） | `editor_panels.rs::group_tables` |
+  | UT-MM-28 | ListView 列宽钳制 + 自适应纯函数测试（clamp_column_width min=60, max=480；auto_calc_column_width 公式 max(60, min(480, chars × 8 + 40))；真值表 + 实例推演覆盖 happy/edge/0 字符/超长字符） | `editor_panels.rs::clamp_column_width` + `auto_calc_column_width` |
+  | UT-MM-29 | 表/字段分组纯函数测试（None/ByTag 两模式 + 混合 tag + 空表 + 单字段多 tag + 大小写敏感；统一输出形状 Vec<Bucket>） | `editor_panels.rs::group_tables` |
   | UT-MM-30 | rAF 调度去重纯函数测试（pending 状态机：仅首次入队执行 / 二次入队 noop / 清 pending 后再入队可执行） | `editor_render.rs::schedule_render_dedup` |
   ```
 - [ ] 确认 UT-MM-28/29/30 已被 reporter 写入 `test-results.jsonl`（cargo test 触发）
@@ -284,4 +284,4 @@
 - **P2 — BySchema 伪分组裁撤**：`GroupByMode` 收敛 `None/ByTag` 两模式；`group_tables` 输出形状统一为 `Vec<Bucket { key, fields: Vec<(table_id, field_id)> }>`（None 模式 = 单桶 `_flat`，桶内含所有表的字段——消除 v1 二义留白）；Q1「按 schema」在 spec + 12 号文件标注：「Table 无 schema 字段，经外环裁决裁撤；如需按 Area 分组另立案」
 - **P3 — 字体探测名与加载名必不匹配（事实错误）**：v2 字体探测名修正为 `"Noto Sans SC"`（与 Google Fonts CDN 加载名 `Noto+Sans+SC` CSS 家族名严格一致）；苹方 `PingFang SC` 系统字体探测不变
 
-**记一笔回应（条目 18）**：rAF 函数合并——`schedule_render`（v1 拟落 `editor_render.rs`）与 `schedule_render_dedup`（v1 拟落 `editor_panels.rs`）同机制重复定义，v2 统一合并落 `editor_render.rs::schedule_render_dedup`（panels 侧引用，不重复定义）。
+**记一笔回应（条目 18）**：rAF 函数合并——v1 草案 `editor_panels.rs::schedule_render` 与 `editor_panels.rs::schedule_render_dedup` 同机制重复定义；v2 统一合并落 `editor_render.rs`，分层为 `schedule_render`（rAF 壳，对外 API）+ `schedule_render_dedup`（可测同步核，UT-MM-30 保）；panels 侧仅引 `schedule_render`（不引 dedup）。
