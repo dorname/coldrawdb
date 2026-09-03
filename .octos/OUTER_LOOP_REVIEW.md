@@ -3179,3 +3179,53 @@ ACK(done): commit b9e8efc — ux-canvas-batch 批次 3（条目 13 修复）— 
 **结论**：**采认 done**。`0dd2d8d` + `7626f01` 由外环 push。**批次 4 步骤 3 全链闭环**（会话态 → style:width 渲染 → dblclick 数据链自适应 → 拖拽 → 排序冲突抑制）。
 
 **下一条 steer（随本判词下发）**：步骤 4 `group_tables` 纯函数 + UT-MM-29——`GroupByMode {None, ByTag}` 两模式；统一输出 `Vec<Bucket { key, fields: Vec<(table_id, field_id)> }>`；None = 全字段单桶（key "_flat"）；ByTag 按 `Field.tag` 分桶，空 tag 归 "(empty)" 兜底；真值表（混合 tag / 空表 / 单字段多 tag / 大小写敏感）+ 实例推遵照 12 号文件 v2；UT-MM-29 落 UT_PASS_IDS + jsonl 行号；全量 cargo test 自证（OPENLOGOS_APPEND=1）。
+
+---
+
+## 条目 26 ACK(done)（内环 2026-09-03㉔）——group_tables 纯函数 + UT-MM-29 闭环
+
+**Commit**：`ca0cc3e feat(ux-canvas-batch4-4): group_tables 纯函数 + UT-MM-29`
+
+**步骤 4 核心交付**：
+- `GroupByMode {None, ByTag}` enum（BySchema 裁撤见条目 18 P2）
+- `Bucket { key: String, fields: Vec<(String, String)> }` 统一输出形状
+- `group_tables(tables, mode) -> Vec<Bucket>` 纯函数：
+  - `None` → 单桶 `_flat` 含所有字段（扁平直通）
+  - `ByTag` → `BTreeMap` 按 `Field.tag` 分桶；空 tag → `(empty)` 兜底；key 字典序
+  - 大小写敏感（`Pk` ≠ `pk`）
+
+**真值表（5 行覆盖）**：
+| 场景 | GroupByMode | 桶数 | 桶键 |
+|---|---|---|---|
+| 空表 | None | 1 | `_flat` (fields 空) |
+| 3 字段多表 | None | 1 | `_flat` (3 fields) |
+| 空表 | ByTag | 0 | — |
+| 4 字段混合 tag | ByTag | 3 | `(empty)`, `fk`, `pk` (字典序) |
+| 2 字段 Pk/pk | ByTag | 2 | `Pk`, `pk`（大小写敏感） |
+
+**UT-MM-29 7 子用例**（全 ok）：
+- `test_group_tables_none_empty_ut_mm_29`（空表 _flat）
+- `test_group_tables_none_flat_ut_mm_29`（3 字段全在 _flat）
+- `test_group_tables_by_tag_empty_ut_mm_29`（ByTag 空表 0 桶）
+- `test_group_tables_by_tag_mixed_with_empty_ut_mm_29`（混合 tag + 空 tag 兜底）
+- `test_group_tables_by_tag_case_sensitive_ut_mm_29`（Pk ≠ pk）
+- `test_group_tables_by_tag_single_field_multi_tag_ut_mm_29`
+- `test_group_tables_output_shape_uniform_ut_mm_29`（None/ByTag 形状统一）
+
+**jsonl 行号**：UT-MM-29 在 `logos/resources/verify/test-results.jsonl` **第 2449 行**（timestamp `2026-09-03T15:50:15Z`，status=pass）。UT_PASS_IDS 追加 `frontend-rs/tests/openlogos_reporter.rs:81`。
+
+**记两笔顺手（条目 26 不打回）**：
+1. **has_index dblclick 直调纯函数**（:6193）：`auto_calc_column_width(max_chars_for_column("has_index", &store.tables.get()))` —— 单一数据源原则统一
+2. **has_index 字符数 1 vs 3**：按 cell 实渲 1 字符改纯函数（`max_chars_for_column("has_index", _)` 返 1）+ 修正 `test_max_chars_has_index_ut_mm_28` 断言 3 → 1。差 2 字符 ≈ 16px（60 clamp 之上 64 vs 60），外观级无功能影响；精度优先。
+
+**Validation**：
+- `cargo test --manifest-path frontend-rs/Cargo.toml`（OPENLOGOS_APPEND=1）→ **292 passed / 0 failed**（285 + 7 新增）
+- jsonl：2540 行（2405 + 135）；UT-MM-28 :2313 + UT-MM-29 :2314 :2449
+- git diff --stat：`+602 / -5`（行数增，无暴降信号）
+
+**未完成项（剩余 3 步切片）**：
+- 步骤 5 表/字段分组 UI（ListView filters 分组下拉 + 表格分桶渲染 + Inspector field-tag-input）
+- 步骤 6 样式三件套（Noto Sans SC 字体加载 + 文本离屏缓存 + rAF 统一调度 + UT-MM-30）
+- 步骤 7 spec 登记（UT-MM-28/29/30 行 + PHASE2_VALIDATION.md 契约扩展条目）
+
+**结论**：条目 26 改派**采认 done**。`ca0cc3e` 待外环 push。
