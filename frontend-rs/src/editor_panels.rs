@@ -5719,11 +5719,63 @@ pub fn max_chars_for_column(key: &str, tables: &[Table]) -> u32 {
                 .unwrap_or(0) as u32
         }
         "has_index" => {
-            // cell 渲染: `if has_index { "有" } else { "无" }` —— 1 字符
-            // 也可能含 "yes/no" 3 字符；按最长 3
-            3u32
+            // cell 渲染实际: `if has_index { "有" } else { "无" }` —— 1 字符
+            // 记录：条目 26 记一笔，cell 实渲 1 字符，纯函数按 cell 同源计 1
+            1u32
         }
         _ => 0,
+    }
+}
+
+/// ux-canvas-batch 批次4 步骤 4 (条目 17/18/26)：表/字段分组模式
+/// - None: 扁平（不分组）
+/// - ByTag: 按 Field.tag 分桶（空 tag → (empty) 兜底）
+/// - BySchema 裁撤（条目 18 P2：Table 无 schema 字段，分组键 = table.id = 一组一行 = 伪分组）
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum GroupByMode {
+    #[default]
+    None,
+    ByTag,
+}
+
+/// ux-canvas-batch 批次4 步骤 4 (条目 26)：分组桶统一输出形状
+/// - key: 桶键（None → "_flat"；ByTag → tag 值或 "(empty)" 兜底）
+/// - fields: 该桶字段列表（按 (table_id, field_id) 二元组——与 Table/Field.id 命名一致）
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Bucket {
+    pub key: String,
+    pub fields: Vec<(String, String)>, // (table_id, field_id)
+}
+
+/// ux-canvas-batch 批次4 步骤 4 (条目 26)：表/字段分组纯函数（UT-MM-29）
+/// - None → 单桶（key="_flat"），含所有 tables 的所有字段（扁平直通）
+/// - ByTag → 按 Field.tag 分桶（BTreeMap 保 key 字典序），空 tag → "(empty)" 兜底
+/// - 真值表（5 行覆盖：None / ByTag 单 tag / ByTag 混合 tag / 空表 / 单字段多 tag）
+/// - 大小写敏感（`Pk` ≠ `pk`）——与字段名命名约定一致
+pub fn group_tables(tables: &[Table], mode: GroupByMode) -> Vec<Bucket> {
+    use std::collections::BTreeMap;
+    match mode {
+        GroupByMode::None => {
+            // 单桶 _flat 含所有字段
+            let mut fields: Vec<(String, String)> = Vec::new();
+            for t in tables {
+                for f in &t.fields {
+                    fields.push((t.id.clone(), f.id.clone()));
+                }
+            }
+            vec![Bucket { key: "_flat".to_string(), fields }]
+        }
+        GroupByMode::ByTag => {
+            // 按 tag 分桶（空 tag → "(empty)" 兜底）
+            let mut buckets: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
+            for t in tables {
+                for f in &t.fields {
+                    let key = if f.tag.is_empty() { "(empty)".to_string() } else { f.tag.clone() };
+                    buckets.entry(key).or_default().push((t.id.clone(), f.id.clone()));
+                }
+            }
+            buckets.into_iter().map(|(key, fields)| Bucket { key, fields }).collect()
+        }
     }
 }
 
@@ -6138,7 +6190,7 @@ pub fn ListView(
                                 on:dblclick={
                                     let cw = list_view_state_for_has_index.column_widths;
                                     move |_| {
-                                        let new_w = auto_calc_column_width(3); // "yes/no" 3 字符
+                                        let new_w = auto_calc_column_width(max_chars_for_column("has_index", &store.tables.get())); // 条目 26 记一笔：单一数据源原则
                                         cw.update(|c| c.set("has_index", new_w));
                                     }
                                 }
@@ -12296,7 +12348,7 @@ mod tests_ut_mm_28 {
     #[test]
     fn test_max_chars_has_index_ut_mm_28() {
         let tables = vec![make_table_for_test("a", 1, "INT")];
-        assert_eq!(max_chars_for_column("has_index", &tables), 3, "UT-MM-28: yes/no 3 字符");
+        assert_eq!(max_chars_for_column("has_index", &tables), 1, "UT-MM-28: has_index cell 实渲 1 字符（条目 26 记一笔，与 cell 同源）");
     }
 
     #[test]
@@ -12313,5 +12365,145 @@ mod tests_ut_mm_28 {
         assert_eq!(chars, 13);
         let w = auto_calc_column_width(chars);
         assert_eq!(w, 144, "UT-MM-28: 13 chars × 8 + 40 = 144");
+    }
+
+    // ─── group_tables 纯函数测试 (批次4 步骤 4, 条目 26) ────────────────────────
+
+    fn make_field_with_tag(name: &str, type_: &str, tag: &str) -> Field {
+        Field {
+            id: format!("fid_{}", name),
+            name: name.to_string(),
+            type_: type_.to_string(),
+            default: String::new(),
+            check: String::new(),
+            primary: false,
+            unique: false,
+            not_null: false,
+            increment: false,
+            comment: String::new(),
+            tag: tag.to_string(),
+        }
+    }
+
+    fn make_table_with_tagged_fields(tid: &str, fields: Vec<Field>) -> Table {
+        Table {
+            id: tid.to_string(),
+            name: tid.to_string(),
+            x: 0.0,
+            y: 0.0,
+            color: String::new(),
+            comment: String::new(),
+            fields,
+            indices: Vec::new(),
+            width: None,
+            min_height: None,
+        }
+    }
+
+    #[test]
+    fn test_group_tables_none_empty_ut_mm_29() {
+        let tables: Vec<Table> = Vec::new();
+        let buckets = group_tables(&tables, GroupByMode::None);
+        assert_eq!(buckets.len(), 1, "UT-MM-29: None 空表 = 单桶 _flat");
+        assert_eq!(buckets[0].key, "_flat");
+        assert_eq!(buckets[0].fields.len(), 0);
+    }
+
+    #[test]
+    fn test_group_tables_none_flat_ut_mm_29() {
+        let tables = vec![
+            make_table_with_tagged_fields("t1", vec![
+                make_field_with_tag("a", "INT", "pk"),
+                make_field_with_tag("b", "VARCHAR", ""),
+            ]),
+            make_table_with_tagged_fields("t2", vec![
+                make_field_with_tag("c", "INT", "fk"),
+            ]),
+        ];
+        let buckets = group_tables(&tables, GroupByMode::None);
+        assert_eq!(buckets.len(), 1, "UT-MM-29: None 模式 = 单桶");
+        assert_eq!(buckets[0].key, "_flat");
+        assert_eq!(buckets[0].fields.len(), 3, "UT-MM-29: 3 字段全在 _flat 桶");
+        assert_eq!(buckets[0].fields[0], ("t1".to_string(), "fid_a".to_string()));
+        assert_eq!(buckets[0].fields[1], ("t1".to_string(), "fid_b".to_string()));
+        assert_eq!(buckets[0].fields[2], ("t2".to_string(), "fid_c".to_string()));
+    }
+
+    #[test]
+    fn test_group_tables_by_tag_empty_ut_mm_29() {
+        let tables: Vec<Table> = Vec::new();
+        let buckets = group_tables(&tables, GroupByMode::ByTag);
+        assert_eq!(buckets.len(), 0, "UT-MM-29: ByTag 空表 = 0 桶");
+    }
+
+    #[test]
+    fn test_group_tables_by_tag_mixed_with_empty_ut_mm_29() {
+        let tables = vec![
+            make_table_with_tagged_fields("t1", vec![
+                make_field_with_tag("id1", "INT", "pk"),
+                make_field_with_tag("name", "VARCHAR", ""),
+            ]),
+            make_table_with_tagged_fields("t2", vec![
+                make_field_with_tag("id2", "INT", "pk"),
+                make_field_with_tag("user_id", "INT", "fk"),
+            ]),
+        ];
+        let buckets = group_tables(&tables, GroupByMode::ByTag);
+        // 3 个桶: (empty), fk, pk (BTreeMap 字典序)
+        assert_eq!(buckets.len(), 3, "UT-MM-29: 3 个桶 (empty + fk + pk)");
+        assert_eq!(buckets[0].key, "(empty)", "UT-MM-29: 空 tag → (empty) 兜底");
+        assert_eq!(buckets[0].fields.len(), 1);
+        assert_eq!(buckets[0].fields[0], ("t1".to_string(), "fid_name".to_string()));
+        assert_eq!(buckets[1].key, "fk");
+        assert_eq!(buckets[1].fields.len(), 1);
+        assert_eq!(buckets[1].fields[0], ("t2".to_string(), "fid_user_id".to_string()));
+        assert_eq!(buckets[2].key, "pk");
+        assert_eq!(buckets[2].fields.len(), 2);
+        assert_eq!(buckets[2].fields[0], ("t1".to_string(), "fid_id1".to_string()));
+        assert_eq!(buckets[2].fields[1], ("t2".to_string(), "fid_id2".to_string()));
+    }
+
+    #[test]
+    fn test_group_tables_by_tag_case_sensitive_ut_mm_29() {
+        let tables = vec![
+            make_table_with_tagged_fields("t1", vec![
+                make_field_with_tag("a", "INT", "Pk"), // 大写 P
+                make_field_with_tag("b", "INT", "pk"), // 小写 p
+            ]),
+        ];
+        let buckets = group_tables(&tables, GroupByMode::ByTag);
+        assert_eq!(buckets.len(), 2, "UT-MM-29: 大小写敏感 = 2 桶（Pk 与 pk）");
+        let keys: Vec<&str> = buckets.iter().map(|b| b.key.as_str()).collect();
+        assert!(keys.contains(&"Pk"));
+        assert!(keys.contains(&"pk"));
+    }
+
+    #[test]
+    fn test_group_tables_by_tag_single_field_multi_tag_ut_mm_29() {
+        // 单字段 + 多 tag（实际 Field.tag 是单值，但测试同一字段两次不同 tag——模拟重复）
+        let mut f1 = make_field_with_tag("a", "INT", "tag1");
+        let mut f2 = make_field_with_tag("a", "INT", "tag2"); // 同字段 ID 不同 tag——仅供测试桶计数
+        f1.id = "fid_same".to_string();
+        f2.id = "fid_same".to_string();
+        let tables = vec![
+            make_table_with_tagged_fields("t1", vec![f1, f2]),
+        ];
+        let buckets = group_tables(&tables, GroupByMode::ByTag);
+        assert_eq!(buckets.len(), 2, "UT-MM-29: 2 桶 tag1 + tag2（按 tag 字段值分桶）");
+    }
+
+    #[test]
+    fn test_group_tables_output_shape_uniform_ut_mm_29() {
+        // None 和 ByTag 输出形状统一 Vec<Bucket{key, fields}>
+        let tables = vec![
+            make_table_with_tagged_fields("t1", vec![make_field_with_tag("a", "INT", "x")]),
+        ];
+        let none_buckets = group_tables(&tables, GroupByMode::None);
+        let bytag_buckets = group_tables(&tables, GroupByMode::ByTag);
+        for b in none_buckets.iter().chain(bytag_buckets.iter()) {
+            // 形状断言：每桶都是 Bucket{key: String, fields: Vec<(String, String)>}
+            let _: String = b.key.clone();
+            let _: Vec<(String, String)> = b.fields.clone();
+        }
     }
 }
