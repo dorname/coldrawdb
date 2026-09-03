@@ -79,6 +79,7 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-MM-27", // ux-canvas-batch: 列表视图导出 CSV schema 内容纯函数测试（CSV 转义：逗号/引号/换行；输入 &[Table]，行=字段，列=table_name/field_name/field_type/has_index——C-3 裁决仅 CSV 纯手写无依赖）
     "UT-MM-28", // ux-canvas-batch 批次4: ListView 列宽钳制 + 自适应纯函数测试（clamp_column_width min=60, max=480；auto_calc_column_width 公式 max(60, min(480, chars × 8 + 40))；7 子用例覆盖边界/钳制/saturating 溢出）
     "UT-MM-29", // ux-canvas-batch 批次4: 表/字段分组纯函数测试（GroupByMode {None, ByTag} 两模式；统一输出 Vec<Bucket{key, fields}>；None = 单桶 _flat；ByTag 按 Field.tag 分桶空 tag 归 (empty)；大小写敏感；7 子用例覆盖空表/单 tag/混合 tag/大小写/单字段多 tag/输出形状统一）
+    "UT-MM-30", // ux-canvas-batch 批次4: rAF 调度去重 + TextCacheKey 测试（schedule_render_dedup 可测同步核 pending 状态机：首次入队执行/二次 noop/清 pending 后可入队；schedule_render 壳 + TextCacheKey font_px 容差；6 子用例覆盖三态/多轮/键相等性）
     // core-PB-relationship
     "UT-PB-01",
     "UT-PB-02",

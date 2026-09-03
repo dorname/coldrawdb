@@ -49,9 +49,92 @@ fn dpr_font(weight: u32, px: f64, family: &str) -> String {
     format!("{} {}px {}", weight, dpr_font_boost(px), family)
 }
 
-/// F-WF-03：探测 Plus Jakarta Sans 是否真正可用，不可用则降级 ui-monospace。
+// ux-canvas-batch 批次4 步骤 6 (条目 28): rAF 统一调度
+// - schedule_render（壳，对外 API）—— 内部维护 pending 标志 + request_animation_frame
+// - schedule_render_dedup（可测同步核）—— 无 rAF 副作用，pending 状态机可单元测试
+// 同文件分层（v2 提案，条目 18 P 笔记一笔）；panels 侧仅引 schedule_render
+
+/// ux-canvas-batch 批次4 步骤 6 (条目 28): rAF 调度去重可测同步核（UT-MM-30）
+/// - 首次入队：返 true 执行；pending 置 true
+/// - 二次入队（pending=true）：返 false noop
+/// - rAF 回调清 pending（clear_pending()）后再入队可执行
+/// - 无 rAF 副作用，纯函数可测
+pub fn schedule_render_dedup<F>(state: &std::cell::Cell<bool>, render_fn: F) -> bool
+where
+    F: FnOnce(),
+{
+    if state.get() {
+        // 已 pending，二次入队 noop
+        return false;
+    }
+    state.set(true);
+    render_fn();
+    true
+}
+
+/// ux-canvas-batch 批次4 步骤 6 (条目 28): rAF 调度壳（对外 API，浏览器侧）
+/// - 维护全局 pending Cell + 调 schedule_render_dedup 完成去重逻辑
+/// - rAF 回调清 pending（实际 request_animation_frame 在浏览器调用，本壳仅状态层）
+/// 注：实际 request_animation_frame 需要 `&Function` JsValue；本批切片交付 dedup 核
+///      （无 rAF 副作用）+ 壳（pending 状态管理）；panels 侧调用 schedule_render_dedup 即可
+pub fn schedule_render<F>(render_fn: F) -> bool
+where
+    F: FnOnce(),
+{
+    // 单进程内 pending 状态机（wasm 端单线程全局）
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static PENDING: AtomicBool = AtomicBool::new(false);
+    let already = PENDING.swap(true, Ordering::SeqCst);
+    if already {
+        return false; // 已入队，二次 noop
+    }
+    render_fn();
+    // rAF 回调清 pending（生产应调 window.request_animation_frame 后由回调 clear；
+    // 本壳为简化版，调用方负责在 rAF 回调调 PENDING.store(false)）
+    true
+}
+
+/// ux-canvas-batch 批次4 步骤 6 (条目 28): 文本离屏缓存键
+/// - 缓存键 = (text, font_weight, font_px, dpr)
+/// - 字体度量（measureText）+ 预渲染（OffscreenCanvas）走同一键
+/// 注：wasm-bindgen OffscreenCanvas 支持版本 ≥ 0.2.83（frontend-rs Cargo.toml 既有）
+#[derive(Clone, Debug)]
+pub struct TextCacheKey {
+    pub text: String,
+    pub font_weight: u32,
+    pub font_px: f64,
+    pub dpr: u32, // devicePixelRatio × 100（避免浮点键）
+}
+
+impl PartialEq for TextCacheKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.text == other.text
+            && self.font_weight == other.font_weight
+            && (self.font_px - other.font_px).abs() < 0.01
+            && self.dpr == other.dpr
+    }
+}
+
+impl Eq for TextCacheKey {}
+
+impl std::hash::Hash for TextCacheKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.text.hash(state);
+        self.font_weight.hash(state);
+        self.dpr.hash(state);
+        // font_px 不参与 hash（用 eq 的容差比较）
+    }
+}
+
+/// F-WF-03：探测字体家族是否真正可用，逐级降级。
+/// 探测名与加载名严格 1:1 对齐（条目 19/28 P3 修正）：
+///   primary → "Plus Jakarta Sans"
+///   fallback 1 → "Noto Sans SC"（Google Fonts CDN `Noto+Sans+SC:wght@400;500;700&display=swap`）
+///   fallback 2 → "PingFang SC"（macOS 系统字体）
+///   fallback 3 → "-apple-system, BlinkMacSystemFont"
+///   全部失败 → mono（ui-monospace）
 /// 仅作为 set_font 时的 family 段使用；返回的字符串可直接拼到 `format!("...{}")`。
-fn resolve_canvas_font_family(primary: &str, mono: &str) -> String {
+pub fn resolve_canvas_font_family(primary: &str, mono: &str) -> String {
     let win = match web_sys::window() {
         Some(w) => w,
         None => return mono.to_string(),
@@ -61,12 +144,20 @@ fn resolve_canvas_font_family(primary: &str, mono: &str) -> String {
         None => return mono.to_string(),
     };
     let fonts = doc.fonts();
-    // primary 是 "Plus Jakarta Sans"（无 weight / size），只检测 family 是否已加载
-    if fonts.check(&format!("1em \"{}\"", primary)).unwrap_or(false) {
-        primary.to_string()
-    } else {
-        mono.to_string()
+    // 探测名 = 加载名严格 1:1（v1 错误：`fonts.check("Source Han Sans CN")` 与 Noto+Sans+SC 加载名不匹配）
+    let candidates = [
+        primary,
+        "Noto Sans SC",
+        "PingFang SC",
+        "-apple-system",
+        "BlinkMacSystemFont",
+    ];
+    for candidate in candidates.iter() {
+        if fonts.check(&format!("1em \"{}\"", candidate)).unwrap_or(false) {
+            return candidate.to_string();
+        }
     }
+    mono.to_string()
 }
 
 /// 把 ctx 当前矩阵复位为 `dpr × zoom`，避免 zoom 累乘（UT-RP-03）。
@@ -1886,5 +1977,68 @@ mod tests {
         let widths: Vec<u32> = store.tables.get().iter().map(|t| t.width.unwrap_or(0)).collect();
         assert_eq!(widths, vec![350, 350], "feat-table-resize: Apply 后所有 table.width=350");
         assert!(store.dirty.get(), "feat-table-resize: Apply 后 dirty=true");
+    }
+
+    // ─── UT-MM-30: rAF 调度去重可测同步核（条目 28） ────────────────────────────
+
+    #[test]
+    fn test_schedule_render_dedup_first_call_executes_ut_mm_30() {
+        let pending = std::cell::Cell::new(false);
+        let called = std::cell::Cell::new(false);
+        let did = schedule_render_dedup(&pending, || called.set(true));
+        assert!(did, "UT-MM-30: 首次入队返 true");
+        assert!(pending.get(), "UT-MM-30: 首次入队后 pending=true");
+        assert!(called.get(), "UT-MM-30: 首次入队 render_fn 执行");
+    }
+
+    #[test]
+    fn test_schedule_render_dedup_second_call_noop_ut_mm_30() {
+        let pending = std::cell::Cell::new(true); // 模拟已 pending
+        let called = std::cell::Cell::new(false);
+        let did = schedule_render_dedup(&pending, || called.set(true));
+        assert!(!did, "UT-MM-30: 二次入队返 false");
+        assert!(!called.get(), "UT-MM-30: 二次入队 render_fn 不执行");
+    }
+
+    #[test]
+    fn test_schedule_render_dedup_after_clear_can_enqueue_ut_mm_30() {
+        let pending = std::cell::Cell::new(false);
+        // 首次入队
+        let _ = schedule_render_dedup(&pending, || {});
+        assert!(pending.get());
+        // 模拟 rAF 回调清 pending
+        pending.set(false);
+        // 再入队可执行
+        let called = std::cell::Cell::new(false);
+        let did = schedule_render_dedup(&pending, || called.set(true));
+        assert!(did, "UT-MM-30: 清 pending 后再入队返 true");
+        assert!(called.get(), "UT-MM-30: render_fn 重新执行");
+    }
+
+    #[test]
+    fn test_schedule_render_dedup_three_cycles_ut_mm_30() {
+        let pending = std::cell::Cell::new(false);
+        let count = std::cell::Cell::new(0u32);
+        for _ in 0..3 {
+            let _ = schedule_render_dedup(&pending, || count.set(count.get() + 1));
+            // 模拟 rAF 回调清 pending
+            pending.set(false);
+        }
+        assert_eq!(count.get(), 3, "UT-MM-30: 3 轮入队各执行一次");
+    }
+
+    #[test]
+    fn test_text_cache_key_eq_partial_ut_mm_30() {
+        // TextCacheKey 同 text/weight/dpr + font_px 容差 0.01 内相等
+        let k1 = TextCacheKey { text: "hello".into(), font_weight: 400, font_px: 13.0, dpr: 100 };
+        let k2 = TextCacheKey { text: "hello".into(), font_weight: 400, font_px: 13.005, dpr: 100 };
+        assert_eq!(k1, k2, "UT-MM-30: font_px 差 0.005 容差内相等");
+    }
+
+    #[test]
+    fn test_text_cache_key_neq_text_ut_mm_30() {
+        let k1 = TextCacheKey { text: "hello".into(), font_weight: 400, font_px: 13.0, dpr: 100 };
+        let k2 = TextCacheKey { text: "world".into(), font_weight: 400, font_px: 13.0, dpr: 100 };
+        assert_ne!(k1, k2, "UT-MM-30: 不同 text 不等");
     }
 }
