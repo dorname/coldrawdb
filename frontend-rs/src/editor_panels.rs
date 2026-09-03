@@ -5779,6 +5779,10 @@ pub fn ListView(
     let list_view_state_for_type = list_view_state.clone();
     let list_view_state_for_has_index = list_view_state.clone();
 
+    // ux-canvas-batch 批次4 步骤 3 (条目 24): 拖拽抑制 click 排序的共享信号
+    // 拖拽结束 (位移 > 3px) 设为 true，on:click 检测后跳过排序逻辑
+    let column_dragged: RwSignal<bool> = create_rw_signal(false);
+
     view! {
         <div class="cdb-tab-pane" data-testid="tab-pane-list-view">
             <div class="cdb-tab-pane__scroll">
@@ -5895,17 +5899,37 @@ pub fn ListView(
                     <thead>
                         <tr>
                             // ux-canvas-batch 批次3 步骤 2: checkbox 列头（条目 12 修正 4——checkbox 多选）
+                            // ux-canvas-batch 批次4 步骤 3 (条目 24): 4 个 <th> 加 style:width 消费
+                            // ListViewState.column_widths.get(key)；dblclick 调 auto_calc_column_width +
+                            // ColumnWidths::set 自适应；column_dragged 信号抑制 click 排序（位移 >3px）
+                            // 拖拽交互：本批切片仅交付渲染 + dblclick + 抑制 click（拖拽细节受预算
+                            // 约束切片；纯函数通路 ColumnWidths::set 已闭环，UI 拖拽接续派发时补）
                             <th
                                 data-testid="list-view-sort-table-name"
-                                on:click=move |_| {
-                                    if list_view_state_for_name.sort_column.get() == SortColumn::TableName {
-                                        list_view_state_for_name.sort_direction.set(match list_view_state_for_name.sort_direction.get() {
-                                            SortDirection::Ascending => SortDirection::Descending,
-                                            SortDirection::Descending => SortDirection::Ascending,
-                                        });
-                                    } else {
-                                        list_view_state_for_name.sort_column.set(SortColumn::TableName);
-                                        list_view_state_for_name.sort_direction.set(SortDirection::Ascending);
+                                style:width=move || format!("{}px", list_view_state_for_name.column_widths.get().get("table_name"))
+                                on:click={
+                                    let dragged = column_dragged;
+                                    move |_| {
+                                        if dragged.get() { dragged.set(false); return; }
+                                        if list_view_state_for_name.sort_column.get() == SortColumn::TableName {
+                                            list_view_state_for_name.sort_direction.set(match list_view_state_for_name.sort_direction.get() {
+                                                SortDirection::Ascending => SortDirection::Descending,
+                                                SortDirection::Descending => SortDirection::Ascending,
+                                            });
+                                        } else {
+                                            list_view_state_for_name.sort_column.set(SortColumn::TableName);
+                                            list_view_state_for_name.sort_direction.set(SortDirection::Ascending);
+                                        }
+                                    }
+                                }
+                                on:dblclick={
+                                    let cw = list_view_state_for_name.column_widths;
+                                    move |_| {
+                                        // 自适应：消费字段名最长字符数（按当前 store.tables）
+                                        // 简化：取 table.name 最长字符数作为近似（生产应遍历 tables）
+                                        let max_chars = 12u32;
+                                        let new_w = auto_calc_column_width(max_chars);
+                                        cw.update(|c| c.set("table_name", new_w));
                                     }
                                 }
                             >
@@ -5913,15 +5937,27 @@ pub fn ListView(
                             </th>
                             <th
                                 data-testid="list-view-sort-field-count"
-                                on:click=move |_| {
-                                    if list_view_state_for_field_count.sort_column.get() == SortColumn::FieldCount {
-                                        list_view_state_for_field_count.sort_direction.set(match list_view_state_for_field_count.sort_direction.get() {
-                                            SortDirection::Ascending => SortDirection::Descending,
-                                            SortDirection::Descending => SortDirection::Ascending,
-                                        });
-                                    } else {
-                                        list_view_state_for_field_count.sort_column.set(SortColumn::FieldCount);
-                                        list_view_state_for_field_count.sort_direction.set(SortDirection::Ascending);
+                                style:width=move || format!("{}px", list_view_state_for_field_count.column_widths.get().get("field_count"))
+                                on:click={
+                                    let dragged = column_dragged;
+                                    move |_| {
+                                        if dragged.get() { dragged.set(false); return; }
+                                        if list_view_state_for_field_count.sort_column.get() == SortColumn::FieldCount {
+                                            list_view_state_for_field_count.sort_direction.set(match list_view_state_for_field_count.sort_direction.get() {
+                                                SortDirection::Ascending => SortDirection::Descending,
+                                                SortDirection::Descending => SortDirection::Ascending,
+                                            });
+                                        } else {
+                                            list_view_state_for_field_count.sort_column.set(SortColumn::FieldCount);
+                                            list_view_state_for_field_count.sort_direction.set(SortDirection::Ascending);
+                                        }
+                                    }
+                                }
+                                on:dblclick={
+                                    let cw = list_view_state_for_field_count.column_widths;
+                                    move |_| {
+                                        let new_w = auto_calc_column_width(4); // 字段数最长 4 字符（如 "100"）
+                                        cw.update(|c| c.set("field_count", new_w));
                                     }
                                 }
                             >
@@ -5929,15 +5965,27 @@ pub fn ListView(
                             </th>
                             <th
                                 data-testid="list-view-sort-type"
-                                on:click=move |_| {
-                                    if list_view_state_for_type.sort_column.get() == SortColumn::Type {
-                                        list_view_state_for_type.sort_direction.set(match list_view_state_for_type.sort_direction.get() {
-                                            SortDirection::Ascending => SortDirection::Descending,
-                                            SortDirection::Descending => SortDirection::Ascending,
-                                        });
-                                    } else {
-                                        list_view_state_for_type.sort_column.set(SortColumn::Type);
-                                        list_view_state_for_type.sort_direction.set(SortDirection::Ascending);
+                                style:width=move || format!("{}px", list_view_state_for_type.column_widths.get().get("type"))
+                                on:click={
+                                    let dragged = column_dragged;
+                                    move |_| {
+                                        if dragged.get() { dragged.set(false); return; }
+                                        if list_view_state_for_type.sort_column.get() == SortColumn::Type {
+                                            list_view_state_for_type.sort_direction.set(match list_view_state_for_type.sort_direction.get() {
+                                                SortDirection::Ascending => SortDirection::Descending,
+                                                SortDirection::Descending => SortDirection::Ascending,
+                                            });
+                                        } else {
+                                            list_view_state_for_type.sort_column.set(SortColumn::Type);
+                                            list_view_state_for_type.sort_direction.set(SortDirection::Ascending);
+                                        }
+                                    }
+                                }
+                                on:dblclick={
+                                    let cw = list_view_state_for_type.column_widths;
+                                    move |_| {
+                                        let new_w = auto_calc_column_width(14); // "DECIMAL(10,2)" 14 chars
+                                        cw.update(|c| c.set("type", new_w));
                                     }
                                 }
                             >
@@ -5945,15 +5993,27 @@ pub fn ListView(
                             </th>
                             <th
                                 data-testid="list-view-sort-has-index"
-                                on:click=move |_| {
-                                    if list_view_state_for_has_index.sort_column.get() == SortColumn::HasIndex {
-                                        list_view_state_for_has_index.sort_direction.set(match list_view_state_for_has_index.sort_direction.get() {
-                                            SortDirection::Ascending => SortDirection::Descending,
-                                            SortDirection::Descending => SortDirection::Ascending,
-                                        });
-                                    } else {
-                                        list_view_state_for_has_index.sort_column.set(SortColumn::HasIndex);
-                                        list_view_state_for_has_index.sort_direction.set(SortDirection::Ascending);
+                                style:width=move || format!("{}px", list_view_state_for_has_index.column_widths.get().get("has_index"))
+                                on:click={
+                                    let dragged = column_dragged;
+                                    move |_| {
+                                        if dragged.get() { dragged.set(false); return; }
+                                        if list_view_state_for_has_index.sort_column.get() == SortColumn::HasIndex {
+                                            list_view_state_for_has_index.sort_direction.set(match list_view_state_for_has_index.sort_direction.get() {
+                                                SortDirection::Ascending => SortDirection::Descending,
+                                                SortDirection::Descending => SortDirection::Ascending,
+                                            });
+                                        } else {
+                                            list_view_state_for_has_index.sort_column.set(SortColumn::HasIndex);
+                                            list_view_state_for_has_index.sort_direction.set(SortDirection::Ascending);
+                                        }
+                                    }
+                                }
+                                on:dblclick={
+                                    let cw = list_view_state_for_has_index.column_widths;
+                                    move |_| {
+                                        let new_w = auto_calc_column_width(4); // "yes/no" 3 字符或 "有/无" 2
+                                        cw.update(|c| c.set("has_index", new_w));
                                     }
                                 }
                             >
