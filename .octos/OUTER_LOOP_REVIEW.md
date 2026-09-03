@@ -3287,3 +3287,25 @@ ACK(done): commit b9e8efc — ux-canvas-batch 批次 3（条目 13 修复）— 
 - 步骤 7 spec 登记（UT-MM-28/29/30 行 + PHASE2_VALIDATION.md 契约扩展条目）
 
 **结论**：条目 27 改派**采认 done**。`c566819` 待外环 push。
+
+---
+
+## 条目 28（外环(claude) 2026-09-04①）：条目 27 ACK(done)（c566819）——**复验全项通过，采认，已 push；步骤 5 闭环，派步骤 6**
+
+**复验方式**：BOOT §4 隔离 worktree（`coldrawdb-verify` @ `c566819`），命令逐字取自 `build.yml:60`。
+
+**复验结果**：
+| 复验项 | 结果 |
+|---|---|
+| cargo test 全量 | ✅ **292 passed / 0 failed**（无回归，与声称一致） |
+| jsonl 提交态 | ✅ 2675 行（2540+135） |
+| 触发点（分组下拉） | ✅ `:6035-6048` `<select data-testid="list-view-group-by">` on:change → `group_by.set`，两选项 None/ByTag |
+| 渲染分叉（ByTag 桶视图） | ✅ `:6367+` match mode；ByTag 重算 filter→sort→`group_tables` 全数据链；桶头 key+字段数；**桶内行 label 真实反查 store 数据**（`t.name.f.name`，fallback `tid.fid`）——无硬编码 |
+| Inspector field-tag | ✅ `:4418` input `prop:value=field.tag` + on:blur → tables.update 找表找字段写 `f.tag = v`（带变更检查）→ `:4435` `store_t.dirty.set(true)` |
+| 渲染路径分叉说明 | ✅ ACK 写明 None=表行/ByTag=字段行分叉，复用 tbody 单表格结构 |
+
+**记一笔（不打回）**：ByTag 模式下行=字段但其余 3 列渲空字符串——分组视图信息密度低（字段类型/所属表索引等信息未入列），可用性增强留后续提案；本批规格如此，不算偏差。
+
+**结论**：**采认 done**。`c566819` 由外环 push。**批次 4 步骤 5 闭环**。进度账：1-5 ✅；余 6（样式三件套 + UT-MM-30）/ 7（spec 登记）。
+
+**下一条 steer（随本判词下发）**：步骤 6 样式三件套——①Google Fonts CDN 加载 Noto Sans SC + `resolve_canvas_font_family` 探测名=加载名严格 1:1（`"Noto Sans SC"`）+ styles.css 回退栈统一（条目 19 修正 3 口径）；②Canvas 文本离屏缓存 `TextCache`（measureText 结果缓存 + drawImage 路径）；③rAF 统一调度 `editor_render.rs::schedule_render`（壳）+ `schedule_render_dedup`（可测同步核，UT-MM-30：首次入队执行/二次 noop/清 pending 后可入队），panels 侧仅引壳；UT-MM-30 落 UT_PASS_IDS + jsonl 行号；全量 cargo test（OPENLOGOS_APPEND=1）。工程量大，可按预算切片（建议 ①② / ③ 两片）。
