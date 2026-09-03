@@ -598,6 +598,7 @@ pub fn parse_sql_import_tables(content: &str) -> Result<Vec<Table>, String> {
                 not_null: true,
                 increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: vec![],
             width: None,
@@ -677,6 +678,7 @@ pub fn parse_dbml_import_tables(content: &str) -> Result<Vec<Table>, String> {
                 not_null: true,
                 increment: false,
                 comment: String::new(),
+            tag: String::new(),
             });
         }
         tables.push(Table {
@@ -722,6 +724,7 @@ fn push_dbml_field(fields: &mut Vec<Field>, table_id: &str, field_index: usize, 
         not_null,
         increment: lower.contains("increment"),
         comment: String::new(),
+            tag: String::new(),
     });
 }
 
@@ -6923,6 +6926,7 @@ pub fn AppRoot(
                 not_null: true,
                 increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }];
             let new_table = Table {
                 id: table_id.clone(),
@@ -7072,6 +7076,7 @@ pub fn AppRoot(
                 not_null: false,
                 increment: false,
                 comment: String::new(),
+            tag: String::new(),
             };
             let mut tables = store.tables.get();
             if let Some(table) = tables.iter_mut().find(|t| t.id == table_id) {
@@ -9465,6 +9470,7 @@ mod tests {
             not_null: false,
             increment: false,
             comment: String::new(),
+            tag: String::new(),
         }
     }
 
@@ -10167,8 +10173,8 @@ mod tests {
     fn test_sort_tables_by_field_count_ascending_ut_mm_21() {
         use crate::editor_core::types::{Field, Table};
         let tables = vec![
-            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
-            Table { id: "t2".into(), name: "B".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }, Field { id: "f2".into(), name: "name".into(), type_: "VARCHAR".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
+            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new(), tag: String::new() }], indices: vec![], width: None, min_height: None },
+            Table { id: "t2".into(), name: "B".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new(), tag: String::new() }, Field { id: "f2".into(), name: "name".into(), type_: "VARCHAR".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new(), tag: String::new() }], indices: vec![], width: None, min_height: None },
             Table { id: "t3".into(), name: "C".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![], width: None, min_height: None },
         ];
         let sorted = sort_tables(&tables, SortColumn::FieldCount, SortDirection::Ascending);
@@ -10181,8 +10187,8 @@ mod tests {
     fn test_sort_tables_by_field_count_descending_ut_mm_21() {
         use crate::editor_core::types::{Field, Table};
         let tables = vec![
-            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
-            Table { id: "t2".into(), name: "B".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }, Field { id: "f2".into(), name: "name".into(), type_: "VARCHAR".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
+            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new(), tag: String::new() }], indices: vec![], width: None, min_height: None },
+            Table { id: "t2".into(), name: "B".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new(), tag: String::new() }, Field { id: "f2".into(), name: "name".into(), type_: "VARCHAR".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new(), tag: String::new() }], indices: vec![], width: None, min_height: None },
             Table { id: "t3".into(), name: "C".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![], indices: vec![], width: None, min_height: None },
         ];
         let sorted = sort_tables(&tables, SortColumn::FieldCount, SortDirection::Descending);
@@ -10195,8 +10201,8 @@ mod tests {
     fn test_sort_tables_by_type_ascending_ut_mm_21() {
         use crate::editor_core::types::{Field, Table};
         let tables = vec![
-            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "VARCHAR".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
-            Table { id: "t2".into(), name: "B".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
+            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "VARCHAR".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new(), tag: String::new() }], indices: vec![], width: None, min_height: None },
+            Table { id: "t2".into(), name: "B".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new(), tag: String::new() }], indices: vec![], width: None, min_height: None },
         ];
         let sorted = sort_tables(&tables, SortColumn::Type, SortDirection::Ascending);
         assert_eq!(sorted[0].fields[0].type_, "INT", "UT-MM-21: 类型升序 → INT 在前");
@@ -10250,8 +10256,8 @@ mod tests {
     fn test_filter_tables_by_name_ut_mm_23() {
         use crate::editor_core::types::{Field, Table};
         let tables = vec![
-            Table { id: "t1".into(), name: "users".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
-            Table { id: "t2".into(), name: "orders".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
+            Table { id: "t1".into(), name: "users".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new(), tag: String::new() }], indices: vec![], width: None, min_height: None },
+            Table { id: "t2".into(), name: "orders".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new(), tag: String::new() }], indices: vec![], width: None, min_height: None },
         ];
         let filtered = filter_tables(&tables, "users", "", None);
         assert_eq!(filtered.len(), 1, "UT-MM-23: 按名称模糊匹配 users → 1 个表");
@@ -10262,8 +10268,8 @@ mod tests {
     fn test_filter_tables_by_type_ut_mm_23() {
         use crate::editor_core::types::{Field, Table};
         let tables = vec![
-            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
-            Table { id: "t2".into(), name: "B".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "name".into(), type_: "VARCHAR".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
+            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new(), tag: String::new() }], indices: vec![], width: None, min_height: None },
+            Table { id: "t2".into(), name: "B".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "name".into(), type_: "VARCHAR".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new(), tag: String::new() }], indices: vec![], width: None, min_height: None },
         ];
         let filtered = filter_tables(&tables, "", "INT", None);
         assert_eq!(filtered.len(), 1, "UT-MM-23: 按类型过滤 INT → 1 个表");
@@ -10298,8 +10304,8 @@ mod tests {
     fn test_filter_tables_combined_ut_mm_23() {
         use crate::editor_core::types::{Field, Table, Index};
         let tables = vec![
-            Table { id: "t1".into(), name: "users".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![Index { id: "i1".into(), name: "idx".into(), fields: vec![], unique: false }], width: None, min_height: None },
-            Table { id: "t2".into(), name: "orders".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
+            Table { id: "t1".into(), name: "users".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new(), tag: String::new() }], indices: vec![Index { id: "i1".into(), name: "idx".into(), fields: vec![], unique: false }], width: None, min_height: None },
+            Table { id: "t2".into(), name: "orders".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new(), tag: String::new() }], indices: vec![], width: None, min_height: None },
         ];
         let filtered = filter_tables(&tables, "users", "INT", Some(true));
         assert_eq!(filtered.len(), 1, "UT-MM-23: 三条件 AND → 1 个表");
@@ -10318,8 +10324,8 @@ mod tests {
     fn test_filter_tables_no_filter_ut_mm_23() {
         use crate::editor_core::types::{Field, Table};
         let tables = vec![
-            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
-            Table { id: "t2".into(), name: "B".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "name".into(), type_: "VARCHAR".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new() }], indices: vec![], width: None, min_height: None },
+            Table { id: "t1".into(), name: "A".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "id".into(), type_: "INT".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new(), tag: String::new() }], indices: vec![], width: None, min_height: None },
+            Table { id: "t2".into(), name: "B".into(), x: 0.0, y: 0.0, color: String::new(), comment: String::new(), fields: vec![Field { id: "f1".into(), name: "name".into(), type_: "VARCHAR".into(), default: String::new(), check: String::new(), primary: false, unique: false, not_null: false, increment: false, comment: String::new(), tag: String::new() }], indices: vec![], width: None, min_height: None },
         ];
         let filtered = filter_tables(&tables, "", "", None);
         assert_eq!(filtered.len(), 2, "UT-MM-23: 不过滤 → 全部表");
@@ -10478,6 +10484,7 @@ mod tests {
                 default: String::new(), check: String::new(),
                 primary: true, unique: false, not_null: true, increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: Vec::new(), width: None, min_height: None,
         }];
@@ -10498,6 +10505,7 @@ mod tests {
                 default: String::new(), check: String::new(),
                 primary: true, unique: false, not_null: true, increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: Vec::new(), width: None, min_height: None,
         }];
@@ -10518,6 +10526,7 @@ mod tests {
                 default: String::new(), check: String::new(),
                 primary: true, unique: false, not_null: true, increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: Vec::new(), width: None, min_height: None,
         }];
@@ -10538,6 +10547,7 @@ mod tests {
                 default: String::new(), check: String::new(),
                 primary: false, unique: false, not_null: false, increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: Vec::new(), width: None, min_height: None,
         }];
@@ -10559,6 +10569,7 @@ mod tests {
                 default: String::new(), check: String::new(),
                 primary: true, unique: false, not_null: true, increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: Vec::new(), width: None, min_height: None,
         }];
@@ -10579,6 +10590,7 @@ mod tests {
                 default: String::new(), check: String::new(),
                 primary: true, unique: false, not_null: true, increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: Vec::new(), width: None, min_height: None,
         }];
@@ -10599,6 +10611,7 @@ mod tests {
                 default: String::new(), check: String::new(),
                 primary: false, unique: false, not_null: false, increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: Vec::new(), width: None, min_height: None,
         }];
@@ -10619,6 +10632,7 @@ mod tests {
                 default: String::new(), check: String::new(),
                 primary: true, unique: false, not_null: true, increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: Vec::new(), width: None, min_height: None,
         }];
@@ -10638,6 +10652,7 @@ mod tests {
                 default: String::new(), check: String::new(),
                 primary: true, unique: false, not_null: true, increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: Vec::new(), width: None, min_height: None,
         }];
@@ -10659,6 +10674,7 @@ mod tests {
                 default: String::new(), check: String::new(),
                 primary: false, unique: false, not_null: false, increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: Vec::new(), width: None, min_height: None,
         }];
@@ -10683,6 +10699,7 @@ mod tests {
                 default: String::new(), check: String::new(),
                 primary: true, unique: false, not_null: true, increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: Vec::new(), width: None, min_height: None,
         }];
@@ -10704,6 +10721,7 @@ mod tests {
                 default: String::new(), check: String::new(),
                 primary: true, unique: false, not_null: true, increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: Vec::new(), width: None, min_height: None,
         }];
@@ -10725,6 +10743,7 @@ mod tests {
                 default: String::new(), check: String::new(),
                 primary: false, unique: false, not_null: false, increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: Vec::new(), width: None, min_height: None,
         }];
@@ -10748,6 +10767,7 @@ mod tests {
                 default: String::new(), check: String::new(),
                 primary: false, unique: false, not_null: false, increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: Vec::new(), width: None, min_height: None,
         }];
@@ -10770,6 +10790,7 @@ mod tests {
                 default: String::new(), check: String::new(),
                 primary: true, unique: false, not_null: true, increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: vec![crate::editor_core::types::Index {
                 id: "i1".into(), name: "idx".into(), fields: vec![], unique: false,
@@ -10792,6 +10813,7 @@ mod tests {
                 default: String::new(), check: String::new(),
                 primary: true, unique: false, not_null: true, increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: Vec::new(), width: None, min_height: None,
         }];
@@ -10812,6 +10834,7 @@ mod tests {
                 default: String::new(), check: String::new(),
                 primary: false, unique: false, not_null: false, increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: Vec::new(), width: None, min_height: None,
         }];
@@ -10831,6 +10854,7 @@ mod tests {
                 default: String::new(), check: String::new(),
                 primary: false, unique: false, not_null: false, increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: Vec::new(), width: None, min_height: None,
         }];
@@ -10857,6 +10881,7 @@ mod tests {
                 default: String::new(), check: String::new(),
                 primary: true, unique: false, not_null: true, increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: Vec::new(), width: None, min_height: None,
         }];
@@ -10875,6 +10900,7 @@ mod tests {
                 default: String::new(), check: String::new(),
                 primary: true, unique: false, not_null: true, increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: Vec::new(), width: None, min_height: None,
         }];
@@ -11540,6 +11566,7 @@ mod tests {
                 not_null: true,
                 increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: Vec::new(),
             width: None,
@@ -11676,6 +11703,7 @@ mod tests {
                     not_null: false,
                     increment: false,
                     comment: String::new(),
+            tag: String::new(),
                 },
                 Field {
                     id: "f2".into(),
@@ -11688,6 +11716,7 @@ mod tests {
                     not_null: false,
                     increment: false,
                     comment: String::new(),
+            tag: String::new(),
                 },
             ];
             t

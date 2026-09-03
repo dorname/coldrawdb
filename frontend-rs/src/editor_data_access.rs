@@ -1377,6 +1377,7 @@ impl From<FieldOut> for Field {
             not_null: f.not_null,
             increment: f.increment,
             comment: f.comment,
+            tag: String::new(),
         }
     }
 }

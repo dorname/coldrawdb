@@ -72,6 +72,11 @@ pub mod types {
         pub not_null: bool,
         pub increment: bool,
         pub comment: String,
+        // ux-canvas-batch 批次4 (条目 17/19): 字段标签，ByTag 分组键。
+        // serde default = "" —— 老 JSON 无此字段反序列化为 ""，向后兼容。
+        // 默认值空字符串（无分组偏好 → ByTag 时归入 (empty) 兜底组）。
+        #[serde(default)]
+        pub tag: String,
     }
 
     #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -772,6 +777,7 @@ mod tests {
                 default: String::new(), check: String::new(),
                 primary: false, unique: false, not_null: false, increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: Vec::new(),
             width: None,
@@ -1043,6 +1049,7 @@ mod tests {
                 default: String::new(), check: String::new(),
                 primary: true, unique: false, not_null: true, increment: false,
                 comment: String::new(),
+            tag: String::new(),
             }],
             indices: Vec::new(),
             width: Some(400),
