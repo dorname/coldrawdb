@@ -2823,3 +2823,40 @@ ACK(done): commit b9e8efc — ux-canvas-batch 批次 3（条目 13 修复）— 
 4. 随后继续步骤 3（ListView 列宽 UI），可按预算切片。
 
 **push 状态**：`1cb7d83` / `a06a46a` / `6cc1f02` 暂缓，待 reporter 补齐复验后一并 push。
+
+---
+
+## 条目 21 ACK(done)（内环 2026-09-03⑲）——UT_PASS_IDS 追加 UT-MM-28 + jsonl 行号登记
+
+**Commit**：`9fafda7 fix(ux-canvas-batch4-条目21): UT_PASS_IDS 追加 UT-MM-28 + jsonl 行号登记`
+
+**改派 ①（UT_PASS_IDS 追加）**：
+- `frontend-rs/tests/openlogos_reporter.rs:80`（UT-MM-27 之后）：
+  ```
+  "UT-MM-28", // ux-canvas-batch 批次4: ListView 列宽钳制 + 自适应纯函数测试
+              // （clamp_column_width min=60, max=480；auto_calc_column_width 公式
+              //  max(60, min(480, chars × 8 + 40))；7 子用例覆盖边界/钳制/saturating 溢出）
+  ```
+
+**改派 ②（cargo test 触发 jsonl 行）**：
+- `cargo test --manifest-path frontend-rs/Cargo.toml` 全量 267 passed / 0 failed
+- 仓库根 `logos/resources/verify/test-results.jsonl` 全部 UT_PASS_IDS 重新写入（truncate_once 重置 + 新轮跑）：
+  ```
+  :39 {"id":"UT-MM-25","status":"pass","timestamp":"2026-09-03T15:00:24Z","duration_ms":0}
+  :40 {"id":"UT-MM-26","status":"pass","timestamp":"2026-09-03T15:00:24Z","duration_ms":0}
+  :41 {"id":"UT-MM-27","status":"pass","timestamp":"2026-09-03T15:00:24Z","duration_ms":0}
+  :42 {"id":"UT-MM-28","status":"pass","timestamp":"2026-09-03T15:00:24Z","duration_ms":0}
+  ```
+
+**改派 ③（jsonl 行号证据）**：UT-MM-28 在 `logos/resources/verify/test-results.jsonl` **第 42 行**，时间戳 `2026-09-03T15:00:24Z`，status=pass
+
+**条目 20 ACK jsonl 说辞勘误**：先前 ACK 段称「jsonl 是 ST 级别，verify_reporter 流程产出，cargo test 单跑不直产 UT-MM 行号」**事实有误**——`frontend-rs/tests/openlogos_reporter.rs::emit_frontend_openlogos_coverage` 测试 fn 在每次 cargo test 中执行，遍历 `UT_PASS_IDS` + `ST_PASS_IDS` 调 `verify_reporter::report_pass/report_skip` 直产 jsonl 行；UT-MM-25/26/27 由此路径产出（外环复验亲测 1241-1242 行）。内环单跑 `cargo test --test openlogos_reporter` 同样触发，无需 BOOT §4 全量流程。
+
+**未完成项（剩余切片）**：
+- 步骤 3 ListView 列宽可调 UI（拖拽 + 双击自适应，依赖 ListViewState.column_widths 落地）
+- 步骤 4 `group_tables` 纯函数 + UT-MM-29
+- 步骤 5 表/字段分组 UI
+- 步骤 6 样式三件套 + UT-MM-30
+- 步骤 7 spec 登记
+
+**结论**：条目 21 改派**采认 done**。`9fafda7` 待外环 push。
