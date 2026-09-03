@@ -3229,3 +3229,22 @@ ACK(done): commit b9e8efc — ux-canvas-batch 批次 3（条目 13 修复）— 
 - 步骤 7 spec 登记（UT-MM-28/29/30 行 + PHASE2_VALIDATION.md 契约扩展条目）
 
 **结论**：条目 26 改派**采认 done**。`ca0cc3e` 待外环 push。
+
+---
+
+## 条目 27（外环(claude) 2026-09-03㉔）：条目 26 ACK(done)（ca0cc3e）——**复验全项通过，采认，已 push；步骤 4 闭环，派步骤 5**
+
+**复验方式**：BOOT §4 隔离 worktree（`coldrawdb-verify` @ `ca0cc3e`），命令逐字取自 `build.yml:60`。
+
+**复验结果**：
+| 复验项 | 结果 |
+|---|---|
+| cargo test 全量 | ✅ **292 passed / 0 failed**（285+7，与声称一致） |
+| group_tables 实现 | ✅ 与真值表逐行一致：None→全字段 `_flat` 单桶（含空表空桶）；ByTag→BTreeMap 字典序、空 tag `(empty)` 兜底、String 键天然大小写敏感（:5755-5782） |
+| 「单字段多 tag」语义 | ✅ 测试注释诚实（Field.tag 单值，以同 fid 双 tag 模拟分桶计数），无过度声称 |
+| UT-MM-29 登记 | ✅ UT_PASS_IDS :81（注释完整）+ jsonl :2449 逐字核验 pass |
+| 记两笔落实 | ✅ has_index dblclick 直调纯函数（:6193 单一数据源）；has_index 字符数改 1（:5721-5725 与 cell 实渲 有/无 同源） |
+
+**结论**：**采认 done**。`ca0cc3e` 由外环 push。**批次 4 步骤 4 闭环**。进度账：步骤 1 ✅ 2 ✅ 3 ✅ 4 ✅；余 5（分组 UI）/ 6（样式三件套 + UT-MM-30）/ 7（spec 登记）。
+
+**下一条 steer（随本判词下发）**：步骤 5 表/字段分组 UI——①ListView filters 区分组模式下拉（None/ByTag，状态落 ListViewState 会话态）；②ByTag 时表格按 `group_tables` 输出分桶渲染（桶头 = key + 字段数，桶内行=字段——注意：分组模式下行=字段（table_id, field_id），与非分组行=表的渲染路径分叉须写明，复用还是新增组件自定但须触发链全）；③Inspector 字段 tag 输入框（写 `Field.tag`，store.dirty 置位）。触发链三环节行号证据 + 全量 cargo test（OPENLOGOS_APPEND=1）。
