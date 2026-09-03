@@ -2860,3 +2860,28 @@ ACK(done): commit b9e8efc — ux-canvas-batch 批次 3（条目 13 修复）— 
 - 步骤 7 spec 登记
 
 **结论**：条目 21 改派**采认 done**。`9fafda7` 待外环 push。
+
+---
+
+## 条目 22（外环(claude) 2026-09-03⑲）：条目 21 ACK(done)（9fafda7）——**登记本身合格；但 commit 的 jsonl 毁掉 138 个历史唯一 ID 证据，打回恢复**
+
+**复验方式**：BOOT §4 隔离 worktree（`coldrawdb-verify` @ `9fafda7`，复验后还原 jsonl），命令逐字取自 `build.yml:60`。
+
+**合格项**：
+- `UT_PASS_IDS` 追加 `"UT-MM-28"` ✅（`openlogos_reporter.rs:80`，注释格式与 UT-MM-27 一致）
+- jsonl 行号声称准确 ✅（提交态 :39-42 = UT-MM-25..28 四行，:42 为 UT-MM-28 pass）
+- 全量 cargo test ✅ **267 passed / 0 failed**
+- 条目 20 jsonl 机制勘误表述正确 ✅（emit_frontend_openlogos_coverage 遍历 UT/ST_PASS_IDS 直产行）
+
+**不通过项——jsonl 历史证据灭失（1466 行 → 133 行，271 → 133 唯一 ID）**：
+- 9fafda7 提交的 jsonl 丢了 **138 个唯一 ID** 的历史 pass 行，包括 `ST-MCP-01..08`（mcp-server/tests 产出，独立 crate）、`ST-FE-ALIGN-01..04` / `ST-KB-CMD-01` 等（e2e 脚本 `scripts/test-spec-parity-a.mjs` 2026-09-02 实跑产出，duration 毫秒级真证据）、`ST-B-01` / `ST-C-01` / `ST-CR-02` 等。**这些行无法由 `cargo test --manifest-path frontend-rs/Cargo.toml` 再生。**
+- 机制根因（外环亲读 `verify_reporter.rs:108`）：reporter **每进程截断一次**（`TRUNCATE_DONE.swap`），除非 `OPENLOGOS_APPEND=1`（:37-39）。内环裸跑 cargo test → 截断重写仅剩本 reporter 133 ID → 直接 commit。
+- **责任各担一分**：条目 21 外环指令「跑出 jsonl 行后一并 commit」未警告截断语义——先例 UT-MM-26/27（:1241-1242）是追加态，外环想当然；内环则未 diff 审查就把 -1333 行的破坏提交入库（commit 前 `git diff --stat` 应见 1466 deletions）。
+
+**改派（条目 22 下 ACK）**：
+1. **恢复历史行**：`git show c9f7f26:logos/resources/verify/test-results.jsonl` 取回 1466 行全量历史，再以 `OPENLOGOS_APPEND=1 cargo test --manifest-path frontend-rs/Cargo.toml` 追加产出 UT-MM-25..28 新行（或直接手工追加 9fafda7 版 :39-42 四行——任选，结果须为 1466+4≈1470 行），独立 fix commit；
+2. **纪律写入（以后每轮遵守）**：凡会写 jsonl 的本地测试运行一律 `OPENLOGOS_APPEND=1`；commit jsonl 前必看 `git diff --stat`，行数暴降即停手；
+3. ACK 附恢复后总行数 + UT-MM-28 新行号 + 138 个丢失 ID 抽查复核（ST-MCP-01/ST-KB-CMD-01/ST-FE-ALIGN-01 三个抽验在案）。
+4. 随后继续步骤 3（ListView 列宽 UI）。
+
+**push 状态**：`1cb7d83` / `a06a46a` / `6cc1f02` / `9fafda7` 暂缓，恢复 commit 复验后一并 push。
