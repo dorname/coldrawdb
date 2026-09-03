@@ -5009,12 +5009,14 @@ pub fn LeftPanel(
                                 on_select(Some(tid));
                             })
                         };
+                        let batch_type_selection_dummy: RwSignal<BatchTypeSelection> = create_rw_signal(BatchTypeSelection::default());
                         view! {
                             <ListView
                                 store=store.clone()
                                 on_select_table=on_select_table.clone()
                                 on_jump_to_canvas=on_jump_for_listview.clone()
                                 modal_kind=modal_kind_dummy
+                                batch_type_selection=batch_type_selection_dummy
                             />
                         }.into_view()
                     },
@@ -5692,6 +5694,7 @@ pub fn ListView(
     on_select_table: Rc<dyn Fn(Option<String>)>,
     on_jump_to_canvas: Rc<dyn Fn(String)>,
     modal_kind: RwSignal<Option<modals::ModalKind>>,
+    batch_type_selection: RwSignal<BatchTypeSelection>,
 ) -> impl IntoView {
     let list_view_state = ListViewState {
         sort_column: create_rw_signal(SortColumn::TableName),
@@ -5699,7 +5702,7 @@ pub fn ListView(
         filter_query: create_rw_signal(String::new()),
         filter_type: create_rw_signal(String::new()),
         filter_has_index: create_rw_signal(None),
-        batch_type_selection: create_rw_signal(BatchTypeSelection::default()),
+        batch_type_selection,
     };
     let list_view_state_for_name = list_view_state.clone();
     let list_view_state_for_field_count = list_view_state.clone();
@@ -5722,25 +5725,14 @@ pub fn ListView(
                     >
                         "批量改名"
                     </button>
-                    // ux-canvas-batch 批次3 步骤 5: 导出 CSV（条目 12 修正 4——list-view-export-csv + Blob 下载）
+                    // ux-canvas-batch 批次3 步骤 5 (条目 16 修复): 导出 CSV（直接调 export_tables_csv 纯函数，删自拼逻辑）
                     <button
                         class="cdb-btn cdb-btn--primary"
                         data-testid="list-view-export-csv"
                         on:click=move |_| {
-                            // ux-canvas-batch 批次3 步骤 5: 导出 CSV → Blob/URL.createObjectURL 触发浏览器下载
-                            // 简化：取当前 store.tables 渲染 CSV (表名,字段数,首字段类型,有索引)
-                            let mut csv = String::from("table_name,field_count,first_field_type,has_index\n");
-                            for table in store.tables.get().iter() {
-                                let first_type = table.fields.first().map(|f| f.type_.clone()).unwrap_or_default();
-                                let has_index = if table.indices.is_empty() { "0" } else { "1" };
-                                // CSV 字段值含逗号/双引号时转义（RFC 4180）
-                                let name_escaped = if table.name.contains(',') || table.name.contains('"') {
-                                    format!("\"{}\"", table.name.replace('"', "\"\""))
-                                } else {
-                                    table.name.clone()
-                                };
-                                csv.push_str(&format!("{},{},{},{}\n", name_escaped, table.fields.len(), first_type, has_index));
-                            }
+                            // 条目 16 修复: 直接调 export_tables_csv（行=字段，列 table_name/field_name/field_type/has_index）
+                            // 复用 csv_escape 纯函数通路，UI 转义逻辑脱离测试保护问题消除
+                            let csv = export_tables_csv(&store.tables.get());
                             // 创建 Blob + ObjectURL → 触发下载
                             use wasm_bindgen::JsCast;
                             let array = js_sys::Array::new();
@@ -6324,6 +6316,9 @@ pub fn AppRoot(
     let is_saving: RwSignal<bool> = create_rw_signal(false);
     let save_offline: RwSignal<bool> = create_rw_signal(false);
     let view_mode: RwSignal<ViewMode> = create_rw_signal(ViewMode::Canvas);
+    // ux-canvas-batch 批次3 步骤 2 (条目 16 修复): batch_type_selection 提升到 AppRoot 作用域
+    // ——Apply 数据链要求 ListView 选中集与 BatchTypeModal 在同一 RwSignal 上交汇
+    let batch_type_selection: RwSignal<BatchTypeSelection> = create_rw_signal(BatchTypeSelection::default());
     let code_visible: RwSignal<bool> = create_rw_signal(false);
     let code_language: RwSignal<CodeLanguage> = create_rw_signal(CodeLanguage::Sql);
     let code_copy_toast: RwSignal<Option<String>> = create_rw_signal(None);
@@ -8046,6 +8041,7 @@ pub fn AppRoot(
                             on_select_table=on_select_table.clone()
                             on_jump_to_canvas=on_jump_for_listview.clone()
                             modal_kind=modal_kind.clone()
+                            batch_type_selection=batch_type_selection
                         />
                     </div>
                 }.into_view()
@@ -8074,6 +8070,7 @@ pub fn AppRoot(
                 on_new=on_new_diagram
                 on_rename=on_rename_diagram
                 store=store.clone()
+                batch_type_selection=batch_type_selection
             />
             <modals::KeyboardShortcuts
                 enabled=!share_mode
@@ -8378,6 +8375,7 @@ pub mod modals {
         on_new: Rc<dyn Fn(String)>,
         on_rename: Rc<dyn Fn(String)>,
         store: EditorStore,
+        batch_type_selection: RwSignal<BatchTypeSelection>,
     ) -> impl IntoView {
         let on_action_new = on_new.clone();
         let on_action_rename = on_rename.clone();
@@ -8454,7 +8452,7 @@ pub mod modals {
                     // ux-canvas-batch 批次3: 批量改类型模态（条目 12 修正 4——checkbox 多选 + 单一目标类型）
                     Some(ModalKind::BatchType) => view! {
                         <div class="cdb-modal" data-testid="modal-batch-type" on:click=|ev| ev.stop_propagation()>
-                            <BatchTypeModal kind=kind store=store.clone() />
+                            <BatchTypeModal kind=kind store=store.clone() selection=batch_type_selection />
                         </div>
                     }.into_view(),
                     Some(ModalKind::ConfigureCustomTypes) => view! {
@@ -9184,69 +9182,108 @@ pub mod modals {
         }
     }
 
-    /// ux-canvas-batch 批次3 步骤 2：批量改类型模态（条目 12 修正 4——checkbox 多选 + 单一目标类型，删 modal-input-batch-type 手输框）
-    /// - 展示已选字段清单（按字段名，**只读**）+ 确认目标类型（**只读回显** `list-view-batch-type-target` 的值）
-    /// - Apply 调 `batch_change_types` → 写 store 走 CommandStack/OT 通路 → `store.dirty.set(true)`
-    #[component]
-    pub fn BatchTypeModal(kind: RwSignal<Option<ModalKind>>, store: EditorStore) -> impl IntoView {
-        let kind_close = kind;
-        let kind_close_apply = kind;
-        let store_apply = store;
+/// ux-canvas-batch 批次3 步骤 2（条目 16 修复）：批量改类型模态
+/// - selection 信号由 AppRoot 传入（与 ListView 共享同一 RwSignal）
+/// - Apply 真实消费 selected_field_ids × target_type → batch_change_types
+/// - 空选中集 Apply 禁用（disabled）
+/// - modal-batch-type-selected-fields 真实渲染选中字段名清单
+#[component]
+pub fn BatchTypeModal(
+    kind: RwSignal<Option<ModalKind>>,
+    store: EditorStore,
+    selection: RwSignal<BatchTypeSelection>,
+) -> impl IntoView {
+    let kind_close = kind;
+    let kind_close_apply = kind;
+    let store_apply = store;
+    let selection_apply = selection;
 
-        // 应用：从 ListView 的 ListViewState.batch_type_selection 读取选中集 + 目标类型
-        // 模态本身不持有状态（只读回显），由 ListView 传 prop
-        // 简化：模态直接读全局 ListViewState（ListView 暴露 batch_type_selection 给模态）
-        view! {
-            <div class="cdb-modal-header">
-                <h3 class="cdb-modal-title" data-testid="modal-title-batch-type">"Batch Change Types"</h3>
-                <button
-                    class="cdb-modal-close"
-                    data-testid="modal-cancel-batch-type"
-                    on:click=move |_| kind_close.set(None)
-                > <IconBox size="sm"><IconClose /></IconBox> </button>
-            </div>
-            <div class="cdb-modal-body">
-                <p class="cdb-form-hint">"确认已选字段与目标类型（外环条目 12 修正 4——checkbox 多选 + 单一目标类型）"</p>
-                <div class="cdb-form-group">
-                    <label>"目标类型"</label>
-                    <span data-testid="modal-batch-type-target-display">"（只读回显——从 ListView 的 list-view-batch-type-target 同步）"</span>
-                </div>
-                <div class="cdb-form-group">
-                    <label>"已选字段清单（按字段名）"</label>
-                    <span data-testid="modal-batch-type-selected-fields">"（只读回显——从 ListView 的 checkbox 选中集同步）"</span>
-                </div>
-            </div>
-            <div class="cdb-modal-footer">
-                <button
-                    class="cdb-btn"
-                    data-testid="modal-cancel-batch-type-btn"
-                    on:click=move |_| kind_close.set(None)
-                >"Cancel"</button>
-                <button
-                    class="cdb-btn cdb-btn--primary"
-                    data-testid="modal-submit-batch-type"
-                    on:click=move |_| {
-                        // ux-canvas-batch 批次3 步骤 2: 应用时构造 field_type_map
-                        // （checkbox 选中集 × 目标类型）→ 调 batch_change_types → 写 store
-                        // 走 CommandStack/OT 通路 → store.dirty.set(true)
-                        // 简化：从 store 当前状态读取所有 Table 字段（生产应从 ListViewState 读 selection）
-                        let mut tables = store_apply.tables.get();
-                        // 默认全表全字段（生产应从 selection.selected_field_ids 读）
-                        let mut field_type_map = std::collections::HashMap::new();
-                        for table in tables.iter() {
-                            for field in table.fields.iter() {
-                                field_type_map.insert(field.id.clone(), "INT".to_string());
-                            }
-                        }
-                        batch_change_types(&mut tables, field_type_map);
-                        store_apply.tables.set(tables);
-                        store_apply.dirty.set(true);
-                        kind_close_apply.set(None);
-                    }
-                >"Apply"</button>
-            </div>
+    // 渲染选中字段名清单：table_name.field_name 按 field_id 查找
+    let selected_labels: RwSignal<Vec<String>> = create_rw_signal(Vec::new());
+    Effect::new(move |_| {
+        let sel = selection.get();
+        let tables = store_apply.tables.get();
+        let mut labels = Vec::new();
+        for fid in &sel.selected_field_ids {
+            let mut found = None;
+            for table in &tables {
+                if let Some(f) = table.fields.iter().find(|f| &f.id == fid) {
+                    found = Some(format!("{}.{}", table.name, f.name));
+                    break;
+                }
+            }
+            labels.push(found.unwrap_or_else(|| fid.clone()));
         }
+        selected_labels.set(labels);
+    });
+
+    view! {
+        <div class="cdb-modal-header">
+            <h3 class="cdb-modal-title" data-testid="modal-title-batch-type">"Batch Change Types"</h3>
+            <button
+                class="cdb-modal-close"
+                data-testid="modal-cancel-batch-type"
+                on:click=move |_| kind_close.set(None)
+            > <IconBox size="sm"><IconClose /></IconBox> </button>
+        </div>
+        <div class="cdb-modal-body">
+            <p class="cdb-form-hint">"确认已选字段与目标类型（外环条目 12 修正 4——checkbox 多选 + 单一目标类型）"</p>
+            <div class="cdb-form-group">
+                <label>"目标类型"</label>
+                <span data-testid="modal-batch-type-target-display">
+                    {move || selection.get().target_type.clone()}
+                </span>
+            </div>
+            <div class="cdb-form-group">
+                <label>"已选字段清单（按字段名）"</label>
+                <span data-testid="modal-batch-type-selected-fields">
+                    {move || {
+                        let labels = selected_labels.get();
+                        if labels.is_empty() {
+                            "(未选任何字段)".to_string()
+                        } else {
+                            labels.join(", ")
+                        }
+                    }}
+                </span>
+            </div>
+        </div>
+        <div class="cdb-modal-footer">
+            <button
+                class="cdb-btn"
+                data-testid="modal-cancel-batch-type-btn"
+                on:click=move |_| kind_close.set(None)
+            >"Cancel"</button>
+            <button
+                class="cdb-btn cdb-btn--primary"
+                data-testid="modal-submit-batch-type"
+                prop:disabled=move || {
+                    let sel = selection.get();
+                    sel.selected_field_ids.is_empty() || sel.target_type.trim().is_empty()
+                }
+                on:click=move |_| {
+                    // 条目 16 修复: Apply 真实消费 selection.selected_field_ids × target_type
+                    let sel = selection_apply.get();
+                    if sel.selected_field_ids.is_empty() || sel.target_type.trim().is_empty() {
+                        return; // 防御：禁用虽已 prop 设，二次保险
+                    }
+                    let mut tables = store_apply.tables.get();
+                    let mut field_type_map = std::collections::HashMap::new();
+                    let target = sel.target_type.trim().to_string();
+                    for fid in &sel.selected_field_ids {
+                        field_type_map.insert(fid.clone(), target.clone());
+                    }
+                    batch_change_types(&mut tables, field_type_map);
+                    store_apply.tables.set(tables);
+                    store_apply.dirty.set(true);
+                    // 清空选中集（防止误点二次 Apply）
+                    selection_apply.update(|s| s.selected_field_ids.clear());
+                    kind_close_apply.set(None);
+                }
+            >"Apply"</button>
+        </div>
     }
+}
 
     /// ConfigureCustomTypes 模态: 增删改自定义类型
     /// - UT-MM-13: add/remove_custom_type 纯函数测试
