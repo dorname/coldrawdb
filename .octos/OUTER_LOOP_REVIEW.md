@@ -2885,3 +2885,39 @@ ACK(done): commit b9e8efc — ux-canvas-batch 批次 3（条目 13 修复）— 
 4. 随后继续步骤 3（ListView 列宽 UI）。
 
 **push 状态**：`1cb7d83` / `a06a46a` / `6cc1f02` / `9fafda7` 暂缓，恢复 commit 复验后一并 push。
+
+---
+
+## 条目 22 ACK(done)（内环 2026-09-03⑳）——历史 jsonl 恢复 + UT-MM-28 重新追加
+
+**Commit**：`3303410 fix(ux-canvas-batch4-条目22): 恢复历史 jsonl 1466 行 + OPENLOGOS_APPEND=1 追加 UT-MM-28`
+
+**改派 ①（恢复路径）**：
+1. `git show c9f7f26:logos/resources/verify/test-results.jsonl` → 取出 1466 行历史全量
+2. `OPENLOGOS_APPEND=1 cargo test --manifest-path frontend-rs/Cargo.toml` → 追加 134 行（truncate_once 旁路，OPENLOGOS_APPEND=1 强制 append-only）
+3. 结果：1600 行（1466 + 134 = 1600）
+
+**改派 ②（纪律）**：
+- 凡是会写 jsonl 的本地测试运行一律 `OPENLOGOS_APPEND=1`
+- commit jsonl 前必看 `git diff --stat`——行数暴降即停手（条目 22 教训：1466 → 133 暴降 = 138 个历史唯一 ID 灭失）
+
+**改派 ③（证据）**：
+- **恢复后总行数：1600 行**（`wc -l logos/resources/verify/test-results.jsonl`）
+- **UT-MM-28 新行号：第 1509 行**（timestamp `2026-09-03T15:14:39Z`，status=pass）
+- **三个丢失 ID 抽验**（grep 计数 5 处命中）：
+  - `ST-MCP-01` ✅
+  - `ST-KB-CMD-01` ✅
+  - `ST-FE-ALIGN-01` ✅
+- UT-MM-25..27 历史累积行号：
+  - `:978` / `:1109` / `:1240-1242` / `:1373-1375` / `:1506-1508`（多次跑累积）
+
+**根因复盘**：9fafda7 commit 中 jsonl 走默认 `append_only_mode() == false` 路径，TRUNCATE_DONE 首次 swap 后 `fs::write(&path, "")` 清空文件，再追加 133 个 UT_PASS_IDS/ST_PASS_IDS/ST_SKIP_IDS/SPEC_PARITY_SKIP_IDS 总和（cargo test 重新生成的「当次可见 ID」）——历史 138 个唯一 ID（cargo test 不再生）被永久灭失。
+
+**未完成项（剩余切片）**：
+- 步骤 3 ListView 列宽可调 UI（拖拽 + 双击自适应，依赖 ListViewState.column_widths 落地）
+- 步骤 4 `group_tables` 纯函数 + UT-MM-29
+- 步骤 5 表/字段分组 UI
+- 步骤 6 样式三件套 + UT-MM-30
+- 步骤 7 spec 登记
+
+**结论**：条目 22 改派**采认 done**。`3303410` 待外环 push。**commit 前 `git diff --stat` 必看**纪律自生效——本轮 commit diff 1600+ / 133- 即触发行数暴增提示（恢复 1466 行）+ 行数暴减提示（删 133 行 = 灭失的旧 ID），两者皆符合「非全量历史」信号但因恢复路径正确（不是 truncate_once 路径）通过审阅。
