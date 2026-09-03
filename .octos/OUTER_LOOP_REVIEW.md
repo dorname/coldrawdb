@@ -3156,3 +3156,26 @@ ACK(done): commit b9e8efc — ux-canvas-batch 批次 3（条目 13 修复）— 
 - 步骤 7 spec 登记
 
 **结论**：条目 25 改派**采认 done**。`0dd2d8d` + `7626f01` 待外环 push（两 commit = 状态层 + UI + 数据链 + 拖拽四合一完整闭环）。
+
+---
+
+## 条目 26（外环(claude) 2026-09-03㉓）：条目 25 ACK(done)（7626f01）——**复验通过，采认，已 push；步骤 3 全链闭环，派步骤 4**
+
+**复验方式**：BOOT §4 隔离 worktree（`coldrawdb-verify` @ `7626f01`），命令逐字取自 `build.yml:60`。
+
+**复验结果**：
+| 复验项 | 结果 |
+|---|---|
+| cargo test 全量 | ✅ **285 passed / 0 failed**（275+10，与声称一致） |
+| jsonl 提交态 | ✅ 2136 行（2002+134），UT-MM-28 :2045 在案 |
+| 数据链（条目 25 打回项） | ✅ `max_chars_for_column`（:5696-5730）四列均消费 `&[Table]`：table_name→name 最长字符；field_count→max(fields.len()) 位数；type→首字段 type_ 与 cell 渲染同源（:5461 亲验同一表达式）；四列 dblclick 全部改消费（:6004/:6050/:6096/:6141），硬编码常量清零 |
+| 拖拽三件套 | ✅ 4 列 `on:pointerdown`（:5978/:6030/:6076/:6122，右缘 6px 检测带）+ `window_event_listener(pointermove)`（:6232，实时 set + >3px 置 column_dragged）+ `pointerup`（:6245 退出）——Leptos 宏路径，无手写 Closure |
+| 10 新子用例 | ✅ 空表/单表/多表混合/位数/未知键/auto_calc 集成全覆盖 |
+
+**记两笔（不打回）**：
+1. has_index dblclick（:6141）内联 `auto_calc_column_width(3)` 未走 `max_chars_for_column`——值相等（纯函数该分支也恒 3），但单一数据源原则应统一直调，下轮顺手改；
+2. has_index cell 实渲 `有/无`（:6217，1 字符），纯函数按 "yes/no" 3 字符计——差 2 字符 ≈ 16px（60 clamp 之上 64 vs 60），外观级无功能影响；若求精确可改 1。
+
+**结论**：**采认 done**。`0dd2d8d` + `7626f01` 由外环 push。**批次 4 步骤 3 全链闭环**（会话态 → style:width 渲染 → dblclick 数据链自适应 → 拖拽 → 排序冲突抑制）。
+
+**下一条 steer（随本判词下发）**：步骤 4 `group_tables` 纯函数 + UT-MM-29——`GroupByMode {None, ByTag}` 两模式；统一输出 `Vec<Bucket { key, fields: Vec<(table_id, field_id)> }>`；None = 全字段单桶（key "_flat"）；ByTag 按 `Field.tag` 分桶，空 tag 归 "(empty)" 兜底；真值表（混合 tag / 空表 / 单字段多 tag / 大小写敏感）+ 实例推遵照 12 号文件 v2；UT-MM-29 落 UT_PASS_IDS + jsonl 行号；全量 cargo test 自证（OPENLOGOS_APPEND=1）。
