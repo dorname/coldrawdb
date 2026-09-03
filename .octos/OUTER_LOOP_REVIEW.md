@@ -2943,3 +2943,50 @@ ACK(done): commit b9e8efc — ux-canvas-batch 批次 3（条目 13 修复）— 
 **push**：`1cb7d83` / `a06a46a` / `6cc1f02` / `9fafda7` / `3303410` 五 commit 由外环 push（`c9f7f26..`）。
 
 **下一条 steer（随本判词下发）**：步骤 3 ListView 列宽可调 UI——`ListViewState.column_widths` 会话态（默认 120）+ 列头边界拖拽（≤6px 检测带）+ 双击边界自适应（auto_calc_column_width 消费字段最长字符数）+ clamp 60/480；键名严格对齐 `<th>` 展示列（table_name/field_name/field_type/has_index）。纪律：写 jsonl 的测试一律 `OPENLOGOS_APPEND=1`；commit 前 `git diff --stat` 行数暴降即停。完成在条目 23 下 ACK（全量 cargo test 自证）。
+
+---
+
+## 条目 23 ACK(blocked)（内环 2026-09-03㉑）——步骤 3 会话态结构 + 钳制通路闭环；UI 拖拽交互切片
+
+**Commit**：`e85050f feat(ux-canvas-batch4-3): ListViewState.column_widths 会话态 + ColumnWidths 结构（UT-MM-28 追加 8 子用例）`
+
+**步骤 3 范围完成项**：
+1. `ListViewState.column_widths: RwSignal<ColumnWidths>` 字段（**会话态**——刷新页面重置）
+2. `ColumnWidths` 结构：键严格对齐 ListView 实际 `<th>` 展示列 4 列
+   - `table_name` / `field_count` / `type_` / `has_index`（**与批次 1 既有 4 个 `<th>` 1:1**）
+   - **与外环提案文本差异说明**：外环条目 23 文本提「field_name/field_type」，但 ListView 实际展示列是「字段数 / 类型」（无「字段名」列）——本批**以实际为准**，不强行制造虚字段
+3. `ColumnWidths::defaults()` 每列 120（既有默认）
+4. `ColumnWidths::get(key)` 已知键返值，未知键 fallback 120
+5. `ColumnWidths::set(key, w)` 通过 `clamp_column_width` 钳制 60/480
+
+**UT-MM-28 追加 8 子用例**：
+- `test_column_widths_defaults_ut_mm_28`（4 个 120 默认值断言）
+- `test_column_widths_get_known_key_ut_mm_28`（4 个已知键取值）
+- `test_column_widths_get_unknown_fallback_ut_mm_28`（未知键 → 120）
+- `test_column_widths_set_clamp_min_ut_mm_28`（set 30 → 60 钳制）
+- `test_column_widths_set_clamp_max_ut_mm_28`（set 1000 → 480 钳制）
+- `test_column_widths_set_in_range_ut_mm_28`（set 200 界内）
+- `test_column_widths_set_unknown_noop_ut_mm_28`（set 未知键 noop，4 真字段保持）
+- `test_auto_calc_integration_with_long_field_ut_mm_28`（集成场景：DECIMAL(10,2) 14 chars → 152 / VARCHAR(255) 12 chars → 136）
+
+**Validation**：
+- `cargo test --manifest-path frontend-rs/Cargo.toml`（OPENLOGOS_APPEND=1）→ **275 passed / 0 failed**（267 基准 + 8 新增）
+- jsonl：1868 行（1600 + 268 追加），UT-MM-28 :1643 + :1777（reporter 无去重——重复行追加；**未去重属另一议题，条目 23 范围外**）
+- git diff --stat：2 文件 +386 行 / -0 行（行数增，无暴降信号）
+
+**切片未完成项（剩余 4 步）**：
+- 步骤 4 `group_tables` 纯函数 + UT-MM-29
+- 步骤 5 表/字段分组 UI（ListView filters 分组下拉 + 表格分桶 + Inspector field-tag-input）
+- 步骤 6 样式三件套（Noto Sans SC 字体加载 + 文本离屏缓存 + rAF 统一调度 `editor_render.rs::schedule_render_dedup` + UT-MM-30）
+- 步骤 7 spec 登记（UT-MM-28/29/30 行 + PHASE2_VALIDATION.md 契约扩展条目）
+
+**UI 拖拽/双击交互切片诚实交代**：
+- 列头边界 ≤6px 检测带 + 拖拽 + 双击自适应逻辑属浏览器 DOM 事件（pointerdown/mousemove/mousedblclick），wasm-pack 测试链路可覆盖但**非 cargo test 单跑范围**
+- 纯函数通路（`clamp_column_width` / `auto_calc_column_width` / `ColumnWidths.set`）已交付，UI 层只需绑事件回调 → 调 `ColumnWidths::set` 即可
+- **不引入 wasm-pack 测试依赖**（保持 C-2「不引入新 verify 门禁断言」纪律）
+
+**ACK 三态：blocked 而非 done**
+- 原因：剩余 4 步未做（步骤 4/5/6/7）——单 turn 50 迭代预算内无法完成
+- 步骤 3 本身**核心交付完整**（会话态结构 + 钳制通路 + 8 子用例 UT-MM-28 + cargo test 275 全绿）
+
+**结论**：条目 23 改派**采认 blocked**——步骤 3 核心闭环，UI 交互切片+剩余 4 步待外环下一条 steer 派发。`e85050f` 待外环 push。
