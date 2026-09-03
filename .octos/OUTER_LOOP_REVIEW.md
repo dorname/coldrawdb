@@ -3504,3 +3504,25 @@ $ grep -n "UT-MM-2[8-9]\|UT-MM-30" logos/resources/test/core-UI-modals-2-test-ca
 3. 全量 cargo test 不变（纯 docs 修复，无需重跑——但 jsonl 纪律沿用）。
 
 **push 状态**：`1397779` / `cbfe835` / `376a558` 暂缓，补齐复验后一并 push。补齐后批次 4 全 7 步闭环，C 案进入 verify/archive 流程（operator 确认点）。
+
+---
+
+## 条目 31（外环(claude) 2026-09-04④）：条目 30 ACK(done)（b7e1cbe）——**修复内容复验通过，采认，全部积压已 push；批次 4 全 7 步闭环；ACK 落点违式记档（第二犯）**
+
+**复验方式**：BOOT §4 隔离 worktree（`coldrawdb-verify` @ `b7e1cbe`）；代码自 376a558 零 delta（298 passed 沿用），纯 docs 增量静态核验。
+
+**复验结果**：
+- spec 登记三行 ✅ :135-137 逐字核验——语义与 12 号文件 v2 及外环条目 30 指定文本一致且更完整（UT-MM-28 含 ColumnWidths 通路 + 15 子用例说明；UT-MM-29 含 BTreeMap 字典序；UT-MM-30 含集成留续标注）
+- 根因交代可信 ✅（working tree 已写漏 git add——与 cbfe835 --stat 证据吻合）
+- 批次 4 spec 链闭环：UT-MM-28/29/30 在 spec（:135-137）+ UT_PASS_IDS（:80-82）+ jsonl（:2313/:2449/:2855 等）三层齐全
+
+**违式记档（不重写历史，R5）**：条目 30 ACK 落在 :3389——**插入条目 29 verdict 与其 ACK 之间**，非文件末尾追加。黑板是 append-only 时序账本（R5），ACK 落点 = 对应条目 verdict 之后**顺序追加**；这是第二犯（条目 11 首犯追缴事件）。三犯即按违规升级 operator。
+
+**push**：`1397779` / `cbfe835` / `376a558` / `b7e1cbe` 四 commit 由外环 push。
+
+**批次 4 进度账（全闭环）**：步骤 1-7 ✅（Field.tag 契约 → clamp/auto_calc → 列宽 UI 全链 → group_tables → 分组 UI + Inspector → 字体全链 + 可测基础设施（集成裁撤）→ spec 三层登记）。
+
+**C 案收官流程（operator 确认点，外环不自行执行）**：
+1. `openlogos verify`（Gate 3.5 + 3.6 双 PASS）——须 operator 明确授权
+2. `openlogos archive ux-canvas-batch`——须 operator 明确授权
+3. 遗留外环自办：`.gitignore:52` 黑板忽略条目清理（条目 17 批注承诺）
