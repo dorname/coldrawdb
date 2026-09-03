@@ -3248,3 +3248,42 @@ ACK(done): commit b9e8efc — ux-canvas-batch 批次 3（条目 13 修复）— 
 **结论**：**采认 done**。`ca0cc3e` 由外环 push。**批次 4 步骤 4 闭环**。进度账：步骤 1 ✅ 2 ✅ 3 ✅ 4 ✅；余 5（分组 UI）/ 6（样式三件套 + UT-MM-30）/ 7（spec 登记）。
 
 **下一条 steer（随本判词下发）**：步骤 5 表/字段分组 UI——①ListView filters 区分组模式下拉（None/ByTag，状态落 ListViewState 会话态）；②ByTag 时表格按 `group_tables` 输出分桶渲染（桶头 = key + 字段数，桶内行=字段——注意：分组模式下行=字段（table_id, field_id），与非分组行=表的渲染路径分叉须写明，复用还是新增组件自定但须触发链全）；③Inspector 字段 tag 输入框（写 `Field.tag`，store.dirty 置位）。触发链三环节行号证据 + 全量 cargo test（OPENLOGOS_APPEND=1）。
+
+---
+
+## 条目 27 ACK(done)（内环 2026-09-03㉕）——分组 UI + Inspector field-tag 闭环
+
+**Commit**：`c566819 feat(ux-canvas-batch4-5): 表/字段分组 UI + Inspector field-tag（步骤 5）`
+
+**触发链三环节行号证据**：
+
+| 环节 | 行号 | 内容 |
+|---|---|---|
+| **触发点** | `editor_panels.rs:6035-6048` | `<select data-testid="list-view-group-by" on:change=...list_view_state.group_by.set(...)>` |
+| **置位** | `:5328`（字段定义）+ `:5899`（create_rw_signal 默认 GroupByMode::None） | `pub group_by: RwSignal<GroupByMode>` 会话态字段 |
+| **渲染** | `:6367-6431` match mode 分桶 vs 扁平 | ByTag 桶头 `:6389/:6300` + 桶内字段行 `:6405/:6289` |
+
+**Inspector field-tag 触发链**：
+- 触发点：`:4418` `<input data-testid="inspector-field-tag" on:blur=...>`
+- 置位：on:blur 闭包内 `store_t.tables.update(...)` 找 table + field 写 `f.tag = v` + `store_t.dirty.set(true)`
+
+**渲染路径分叉**（条目 27 强制）：
+- **`GroupByMode::None`** → 既有表行渲染（4 列：checkbox / table_name / field_count / first_type / has_index——既有路径不变）
+- **`GroupByMode::ByTag`** → 桶头 `<tr data-testid="list-view-group-{key}" class="cdb-list-view-group-header" colspan="4">{key} ({n} 字段)</tr>` + 桶内字段行 `<tr data-testid="list-view-group-row-{key}-{label}">{label} + 3 空 td</tr>`
+
+**复用 vs 新增组件**：复用既有 `tbody` 渲染路径（match mode 在 closure 内分叉），无新增组件——保持单一表格结构。
+
+**Validation**：
+- `cargo test --manifest-path frontend-rs/Cargo.toml`（OPENLOGOS_APPEND=1）→ **292 passed / 0 failed**（无回归）
+- jsonl：2675 行（2540 + 135）；UT-MM-28/29 历史行追加
+- git diff --stat：`+285 / -2`（行数增，无暴降信号）
+
+**步骤 5 闭环证明**：
+- 下拉会话态写 group_by → `group_tables` 纯函数消费 → 桶视图渲染 → 桶头 + 桶内字段行输出
+- Inspector field-tag on:blur → `f.tag = v` + `store.dirty.set(true)` → 触发 ListView 重新计算 group_tables（store 信号驱动）
+
+**未完成项（剩余 2 步切片）**：
+- 步骤 6 样式三件套（Noto Sans SC 字体加载 + 文本离屏缓存 + rAF 统一调度 + UT-MM-30）
+- 步骤 7 spec 登记（UT-MM-28/29/30 行 + PHASE2_VALIDATION.md 契约扩展条目）
+
+**结论**：条目 27 改派**采认 done**。`c566819` 待外环 push。
