@@ -3095,3 +3095,64 @@ ACK(done): commit b9e8efc — ux-canvas-batch 批次 3（条目 13 修复）— 
 3. 1+2 可分两 commit，同一 ACK 回报；ACK 附数据链证据（max_chars 计算行号）。
 
 **push 状态**：`0dd2d8d` 暂缓，修复 commit 复验后一并 push。
+
+---
+
+## 条目 25 ACK(done)（内环 2026-09-03㉓）——dblclick 数据链 + 拖拽交互双闭环
+
+**Commit**：`7626f01 fix(ux-canvas-batch4-条目25): dblclick 数据链 + 拖拽交互（max_chars_for_column 纯函数 + pointer 事件）`
+
+**改派 ①（dblclick 数据链）**：
+
+| 列 | 旧（硬编码） | 新（消费 store.tables） |
+|---|---|---|
+| table_name | 12 | `max_chars_for_column("table_name", &store.tables.get())` |
+| field_count | 4 | `max_chars_for_column("field_count", &store.tables.get())` |
+| type | 14 | `max_chars_for_column("type", &store.tables.get())` |
+| has_index | 4 | `max_chars_for_column("has_index", &store.tables.get())` |
+
+**新增纯函数** `max_chars_for_column(key, &tables) -> u32`（行号 :5692-5730）：
+- `table_name` → 所有 `table.name.chars().count().max()`（最长表名字符数）
+- `field_count` → `t.fields.len().max()` 转字符串长度（digits 计数：0→1, 100→3）
+- `type` → **与 cell 渲染同源** `t.fields.first().map(|f| f.type_.chars().count())`（避免条目 16 同形态地雷）
+- `has_index` → 3（"yes/no" 3 字符）
+- 未知键 → 0
+
+**改派 ②（拖拽交互）**：
+- `drag_state: RwSignal<Option<DragState>>`（:5793-5797，含 start_x / start_w / key 字段）
+- `on:pointerdown` 4 列（:5936-:5988 等）右缘 6px 检测带（`offset_x > 6 && offset_x < width-6 = 不启动`）→ 设 drag_state
+- `leptos::window_event_listener(ev::pointermove)`（:6161-6170）→ 实时 `cw.update(set)` + 位移 >3px 触发 `column_dragged.set(true)`
+- `leptos::window_event_listener(ev::pointerup)`（:6172-6179）→ `drag_state.set(None)` 退出
+- **`use wasm_bindgen::JsCast` 在 ListView fn 内**（:5768）— `ev.current_target().dyn_ref::<HtmlElement>()` 取 offset_width
+
+**数据链证据行号**：
+- 纯函数定义：`editor_panels.rs:5692-5730`
+- 4 个 dblclick 消费点：`editor_panels.rs` 在 :5936 / :5997 / :6053 / :6109（四列各自的 on:dblclick 闭包内 `max_chars_for_column("key", &store.tables.get())`）
+- 拖拽信号定义：`:5793-5797`
+- pointermove window listener：`:6161-6170`
+- pointerup window listener：`:6172-6179`
+
+**UT-MM-28 追加 10 子用例**（max_chars_for_column）：
+- `test_max_chars_table_name_empty/single/multi_mixed_ut_mm_28`
+- `test_max_chars_field_count_zero/multi_ut_mm_28`
+- `test_max_chars_type_empty/mixed_ut_mm_28`
+- `test_max_chars_has_index_ut_mm_28`
+- `test_max_chars_unknown_key_ut_mm_28`
+- `test_max_chars_integration_with_auto_calc_ut_mm_28`
+
+**勘误记录**：DECIMAL(10,2) 字符数 = **13 chars**（非 14；Rust `.chars().count()` 按 unicode scalar：`D-E-C-I-M-A-L-(-1-0-,-2-)` = 7+1+2+1+1+1 = 13）。auto_calc 公式 13×8+40 = **144**（非 152）。第一次断言失败 = `left: 13, right: 14` —— 已修正断言到 13 + auto_calc 期望值到 144。
+
+**Validation**：
+- `cargo test --manifest-path frontend-rs/Cargo.toml`（OPENLOGOS_APPEND=1）→ **285 passed / 0 failed**（275 + 10 新增）
+- jsonl：2136 行（2002 + 134）；UT-MM-28 :2045 新追加
+- git diff --stat：`+403 / -6`（行数增，无暴降信号）
+
+**条目 24 ACK 拖拽切片勘误**：条目 24 ACK 段称"wasm-bindgen Closure clone API 复杂度过预算"——外环条目 25 纠正事实：Leptos `on:pointer*` 与 `on:click` 同机制；window 级可用 `leptos::window_event_listener`（自动生命周期管理）。本批已用 `window_event_listener` 路径闭环，无 wasm-bindgen Closure 手动管理。
+
+**未完成项（剩余 4 步切片）**：
+- 步骤 4 `group_tables` 纯函数 + UT-MM-29
+- 步骤 5 表/字段分组 UI（ListView filters 分组下拉 + 表格分桶 + Inspector field-tag-input）
+- 步骤 6 样式三件套（Noto Sans SC 字体加载 + 文本离屏缓存 + rAF 统一调度 + UT-MM-30）
+- 步骤 7 spec 登记
+
+**结论**：条目 25 改派**采认 done**。`0dd2d8d` + `7626f01` 待外环 push（两 commit = 状态层 + UI + 数据链 + 拖拽四合一完整闭环）。
