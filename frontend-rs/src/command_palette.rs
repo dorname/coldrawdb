@@ -240,6 +240,7 @@ mod tests {
                 not_null: true,
                 increment: false,
                 comment: String::new(),
+                tag: String::new(),
             }],
             indices: vec![],
             width: None,

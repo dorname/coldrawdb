@@ -40,6 +40,7 @@ fn fixture_table_two_fields() -> Table {
                 not_null: false,
                 increment: false,
                 comment: String::new(),
+                tag: String::new(),
             },
             Field {
                 id: "f2".to_string(),
@@ -52,6 +53,7 @@ fn fixture_table_two_fields() -> Table {
                 not_null: false,
                 increment: false,
                 comment: String::new(),
+                tag: String::new(),
             },
         ],
         indices: vec![],

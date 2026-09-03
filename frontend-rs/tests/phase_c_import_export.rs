@@ -39,6 +39,7 @@ fn fixture_minimal_table() -> Table {
             not_null: true,
             increment: true,
             comment: String::new(),
+            tag: String::new(),
         }],
         indices: vec![],
         width: None,
