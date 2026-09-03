@@ -62,3 +62,27 @@ Phase 2（API 完整化）当前定义范围内**已完成**。
 - 步骤 6（spec 登记）即本节——补档完成
 - UT-MM-28 编号空闲位未在本轮使用（步骤 2/3/5 全部复用既有纯函数 + UI 增项，无新纯函数可测单元，跳过 UT 占用）
 - reporter 落账：未跑 reporter（黑板尾部已连续累 260 passed / 0 failed，cargo check 通过已确认三 commit 编译通过，无 cargo test 回归触发必要）
+
+---
+
+## ux-canvas-batch 批次 4 契约扩展登记（2026-09-04）
+
+### 字段 tag 契约扩展（条目 19/26）
+
+- **`Field.tag: String` 新增**（`frontend-rs/src/editor_core.rs:71-73`）
+  - `#[serde(default)]` — 老 JSON 无此字段反序列化为 `""`，向后兼容
+  - 默认值空字符串（无分组偏好 → ByTag 时归入 `(empty)` 兜底组）
+  - 全仓 53 处 `Field` 构造点补 `tag: String::new()`（cargo test 全量通过 0 遗漏佐证）
+
+### 步骤 7 spec 登记（条目 26/28/29）
+
+- UT-MM-28/29/30 行追加到 `logos/resources/test/core-UI-modals-2-test-cases.md`
+  - UT-MM-28: ListView 列宽钳制 + 自适应 + ColumnWidths 结构（15 子用例）
+  - UT-MM-29: 表/字段分组（None/ByTag 两模式 + Vec<Bucket> 统一形状，7 子用例）
+  - UT-MM-30: rAF 调度去重 + TextCacheKey（6 子用例）
+
+### 样式集成裁撤登记（条目 29 外环代决）
+
+- `schedule_render` 壳（私有 static PENDING 设计性错误）已删除
+- 集成留后续性能专项（OffscreenCanvas / drawImage / request_redraw 改道）
+- C-2 帧率 <16ms 不入门禁（条目 17 / 28 多次重申）
