@@ -129,5 +129,6 @@
 | UT-MM-22 | 列表视图 tab 切换测试 | `editor_panels.rs::ListView` |
 | UT-MM-23 | 列表视图过滤纯函数测试（按名称模糊匹配/按类型/按是否有索引；与 SortColumn::Type 首字段类型口径对齐） | `editor_panels.rs::filter_tables` |
 | UT-MM-24 | 列表视图批量重命名纯函数测试（重名冲突处理：B2-S1 补充规则——冲突判定以改名前快照为准/处理顺序按旧名字典序/同一新名多旧名映射字典序靠前者得名其余跳过） | `editor_panels.rs::batch_rename_tables` |
+| UT-MM-25 | ViewMode 三态迁移测试（Canvas→List→Canvas、Canvas→Code→Canvas、List 下画布隐藏条件） | `code_view.rs::ViewMode` |
 | ST-MM-02 | 端到端 Import 模态 SQL 解析 | `frontend-rs/tests/wasm/ui.rs`（B5） |
 | ST-MM-03 | ConfigureCustomTypes 关闭后跨刷新保留 | `frontend-rs/tests/wasm/ui.rs`（B5） |

@@ -192,3 +192,47 @@ pub fn setup_code_view_escape(view_mode: RwSignal<ViewMode>, code_visible: RwSig
     );
     closure.forget();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ─── UT-MM-25: ViewMode 三态迁移测试（Canvas→List→Canvas、Canvas→Code→Canvas、List 下画布隐藏条件）───
+
+    #[test]
+    fn test_view_mode_canvas_to_list_to_canvas_ut_mm_25() {
+        let view_mode = create_rw_signal(ViewMode::Canvas);
+        let code_visible = create_rw_signal(false);
+        // Canvas → List
+        view_mode.set(ViewMode::List);
+        assert_eq!(view_mode.get(), ViewMode::List, "UT-MM-25: Canvas → List");
+        // List → Canvas
+        view_mode.set(ViewMode::Canvas);
+        assert_eq!(view_mode.get(), ViewMode::Canvas, "UT-MM-25: List → Canvas");
+    }
+
+    #[test]
+    fn test_view_mode_canvas_to_code_to_canvas_ut_mm_25() {
+        let view_mode = create_rw_signal(ViewMode::Canvas);
+        let code_visible = create_rw_signal(false);
+        // Canvas → Code
+        view_mode.set(ViewMode::Code);
+        code_visible.set(true);
+        assert_eq!(view_mode.get(), ViewMode::Code, "UT-MM-25: Canvas → Code");
+        assert_eq!(code_visible.get(), true, "UT-MM-25: Canvas → Code → code_visible=true");
+        // Code → Canvas
+        view_mode.set(ViewMode::Canvas);
+        code_visible.set(false);
+        assert_eq!(view_mode.get(), ViewMode::Canvas, "UT-MM-25: Code → Canvas");
+        assert_eq!(code_visible.get(), false, "UT-MM-25: Code → Canvas → code_visible=false");
+    }
+
+    #[test]
+    fn test_view_mode_list_hides_canvas_ut_mm_25() {
+        // List 下画布隐藏条件：view_mode != Canvas
+        let view_mode = create_rw_signal(ViewMode::List);
+        assert_eq!(view_mode.get(), ViewMode::List, "UT-MM-25: List 态");
+        // 画布隐藏条件：view_mode != Canvas（editor_panels.rs:7582 条件改为 != Canvas）
+        assert!(view_mode.get() != ViewMode::Canvas, "UT-MM-25: List 下画布隐藏（view_mode != Canvas）");
+    }
+}
