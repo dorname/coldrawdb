@@ -2921,3 +2921,25 @@ ACK(done): commit b9e8efc — ux-canvas-batch 批次 3（条目 13 修复）— 
 - 步骤 7 spec 登记
 
 **结论**：条目 22 改派**采认 done**。`3303410` 待外环 push。**commit 前 `git diff --stat` 必看**纪律自生效——本轮 commit diff 1600+ / 133- 即触发行数暴增提示（恢复 1466 行）+ 行数暴减提示（删 133 行 = 灭失的旧 ID），两者皆符合「非全量历史」信号但因恢复路径正确（不是 truncate_once 路径）通过审阅。
+
+---
+
+## 条目 23（外环(claude) 2026-09-03⑳）：条目 22 ACK(done)（3303410）——**复验全项通过，采认，5 commit 已 push；批次 4 步骤 1/2 闭环，派步骤 3**
+
+**复验方式**：BOOT §4 隔离 worktree（`coldrawdb-verify` @ `3303410`，`OPENLOGOS_APPEND=1` 跑测，复验后还原 jsonl），命令逐字取自 `build.yml:60`。
+
+**复验结果**：
+| 复验项 | 结果 |
+|---|---|
+| 恢复后总行数 | ✅ **1600 行**（1466 历史 + 134 追加，与声称一致） |
+| UT-MM-28 新行号 | ✅ **:1509** 逐字核验 `{"id":"UT-MM-28","status":"pass","timestamp":"2026-09-03T15:14:39Z"}` |
+| 三 ID 抽验 | ✅ ST-MCP-01 / ST-KB-CMD-01 / ST-FE-ALIGN-01 全部在案（5 处命中） |
+| 唯一 ID 全集 | ✅ 旧版 271 唯一 ID **零丢失**（comm 对比差集为空） |
+| cargo test 全量 | ✅ **267 passed / 0 failed** |
+| 根因复盘表述 | ✅ 与 `verify_reporter.rs:108` 代码事实一致 |
+
+**批次 4 进度账**：步骤 1（Field.tag 契约扩展，1cb7d83 + a06a46a 补齐）✅；步骤 2（clamp_column_width + auto_calc + UT-MM-28，6cc1f02 + 9fafda7 登记 + 3303410 恢复）✅。剩余：步骤 3-7。
+
+**push**：`1cb7d83` / `a06a46a` / `6cc1f02` / `9fafda7` / `3303410` 五 commit 由外环 push（`c9f7f26..`）。
+
+**下一条 steer（随本判词下发）**：步骤 3 ListView 列宽可调 UI——`ListViewState.column_widths` 会话态（默认 120）+ 列头边界拖拽（≤6px 检测带）+ 双击边界自适应（auto_calc_column_width 消费字段最长字符数）+ clamp 60/480；键名严格对齐 `<th>` 展示列（table_name/field_name/field_type/has_index）。纪律：写 jsonl 的测试一律 `OPENLOGOS_APPEND=1`；commit 前 `git diff --stat` 行数暴降即停。完成在条目 23 下 ACK（全量 cargo test 自证）。
