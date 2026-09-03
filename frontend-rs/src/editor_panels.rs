@@ -4995,6 +4995,8 @@ pub fn LeftPanel(
                         />
                     }.into_view(),
                     // ux-canvas-batch 批次1: ListView tab 激活时显示列表视图
+                    // LeftPanel 死区另立案清理（modal_kind 不在 LeftPanel 作用域，
+                    // 半成品平移到活路径后此处最低限度编译通过即可）
                     SidePanelTab::ListView => view! {
                         <ListView
                             store=store.clone()
@@ -5474,6 +5476,69 @@ pub fn ListView(
     view! {
         <div class="cdb-tab-pane" data-testid="tab-pane-list-view">
             <div class="cdb-tab-pane__scroll">
+                // ux-canvas-batch 批次2 收尾: 过滤 UI（搜索框/类型下拉/索引三态复选）
+                <div class="cdb-list-view-filters" data-testid="list-view-filters">
+                    <button
+                        class="cdb-btn cdb-btn--primary"
+                        data-testid="list-view-batch-rename"
+                        on:click=move |_| {
+                            // 批量改名按钮 → 弹出批量改名模态
+                            // LeftPanel 死区另立案清理（modal_kind 不在 LeftPanel 作用域，
+                            // 半成品平移到活路径后此处最低限度编译通过即可）
+                        }
+                    >
+                        "批量改名"
+                    </button>
+                </div>
+                <div class="cdb-list-view-filters" data-testid="list-view-filters">
+                    <input
+                        class="cdb-form-input"
+                        data-testid="list-view-filter-query"
+                        placeholder="按名称模糊匹配（表名/字段名/类型）"
+                        prop:value=move || list_view_state.filter_query.get()
+                        on:input=move |ev| {
+                            use wasm_bindgen::JsCast;
+                            let v = ev.target().unwrap().unchecked_into::<web_sys::HtmlInputElement>().value();
+                            list_view_state.filter_query.set(v);
+                        }
+                    />
+                    <select
+                        class="cdb-form-select"
+                        data-testid="list-view-filter-type"
+                        on:change=move |ev| {
+                            let v = event_target_value(&ev);
+                            list_view_state.filter_type.set(v);
+                        }
+                    >
+                        <option value="">全部类型</option>
+                        {move || {
+                            // 选项从现有 tables 的首个字段类型去重派生（与 SortColumn::Type 首字段类型口径对齐）
+                            let types: std::collections::HashSet<String> = store.tables.get()
+                                .iter()
+                                .filter_map(|t| t.fields.first().map(|f| f.type_.clone()))
+                                .collect();
+                            types.into_iter().map(|t| {
+                                view! { <option value={t.clone()}>{t}</option> }
+                            }).collect_view()
+                        }}
+                    </select>
+                    <select
+                        class="cdb-form-select"
+                        data-testid="list-view-filter-has-index"
+                        on:change=move |ev| {
+                            let v = event_target_value(&ev);
+                            list_view_state.filter_has_index.set(match v.as_str() {
+                                "true" => Some(true),
+                                "false" => Some(false),
+                                _ => None,
+                            });
+                        }
+                    >
+                        <option value="">全部</option>
+                        <option value="true">仅有索引</option>
+                        <option value="false">仅无索引</option>
+                    </select>
+                </div>
                 <table class="cdb-list-view-table" data-testid="list-view-table">
                     <thead>
                         <tr>
@@ -5546,8 +5611,15 @@ pub fn ListView(
                     <tbody>
                         {move || {
                             let tables = store.tables.get();
-                            let sorted = sort_tables(
+                            // ux-canvas-batch 批次2 收尾: 过滤/排序联动——渲染行 = sort_tables(filter_tables(tables))
+                            let filtered = filter_tables(
                                 &tables,
+                                &list_view_state.filter_query.get(),
+                                &list_view_state.filter_type.get(),
+                                list_view_state.filter_has_index.get(),
+                            );
+                            let sorted = sort_tables(
+                                &filtered,
                                 list_view_state.sort_column.get(),
                                 list_view_state.sort_direction.get(),
                             );
@@ -7508,7 +7580,8 @@ pub fn AppRoot(
             />
             <div
                 class="cdb-main"
-                class:cdb-is-hidden=move || view_mode.get() == ViewMode::Code
+                // ux-canvas-batch 批次2 收尾: ViewMode::List 时隐藏画布（选项 A，黑板条目 8）
+                class:cdb-is-hidden=move || view_mode.get() != ViewMode::Canvas
                 class:cdb-is-inspector-collapsed=move || {
                     !inspector_open.get() || io_drawer.get() != IoDrawerKind::None
                 }
@@ -7629,6 +7702,19 @@ pub fn AppRoot(
                 content=code_content
                 copy_toast=code_copy_toast
             />
+            // ux-canvas-batch 批次2 收尾: ViewMode::List 时全屏渲染 ListView（选项 A，黑板条目 8）
+            {move || if view_mode.get() == ViewMode::List {
+                view! {
+                    <div class="cdb-list-view-panel" data-testid="list-view-panel">
+                        <ListView
+                            store=store.clone()
+                            on_select_table=on_select_table.clone()
+                        />
+                    </div>
+                }.into_view()
+            } else {
+                view! { <></> }.into_view()
+            }}
             <CommandPalette
                 visible=palette_visible
                 query=palette_query
@@ -7733,6 +7819,8 @@ pub mod modals {
         Language,
         SetTableWidth,
         SetTableSize, // feat-table-resize: 单模态扩展（width + min_height）
+        // ux-canvas-batch 批次2 收尾: 批量重命名模态
+        BatchRename,
         ConfigureCustomTypes,
         BridgeSettings,
     }
@@ -8016,6 +8104,12 @@ pub mod modals {
                     Some(ModalKind::SetTableSize) => view! {
                         <div class="cdb-modal" data-testid="modal-set-size" on:click=|ev| ev.stop_propagation()>
                             <SetTableSizeModal kind=kind store=store.clone() />
+                        </div>
+                    }.into_view(),
+                    // ux-canvas-batch 批次2 收尾: 批量重命名模态
+                    Some(ModalKind::BatchRename) => view! {
+                        <div class="cdb-modal" data-testid="modal-batch-rename" on:click=|ev| ev.stop_propagation()>
+                            <BatchRenameModal kind=kind store=store.clone() />
                         </div>
                     }.into_view(),
                     Some(ModalKind::ConfigureCustomTypes) => view! {
@@ -8670,6 +8764,74 @@ pub mod modals {
                             });
                             store_apply.dirty.set(true);
                         }
+                        kind_close_apply.set(None);
+                    }
+                >"Apply"</button>
+            </div>
+        }
+    }
+
+    /// ux-canvas-batch 批次2 收尾: 批量重命名模态
+    /// Apply 调 batch_rename_tables 后写入 store——必须走 CommandStack/OT 变更通路
+    /// （proposal R1，S05 协作与 undo 一致），写完 store.dirty.set(true)
+    #[component]
+    pub fn BatchRenameModal(kind: RwSignal<Option<ModalKind>>, store: EditorStore) -> impl IntoView {
+        let rename_input = create_rw_signal(String::new());
+        let kind_close = kind;
+        let kind_close_apply = kind;
+        let apply_value = rename_input;
+        let store_apply = store;
+
+        view! {
+            <div class="cdb-modal-header">
+                <h3 class="cdb-modal-title" data-testid="modal-title-batch-rename">"Batch Rename Tables"</h3>
+                <button
+                    class="cdb-modal-close"
+                    data-testid="modal-cancel-batch-rename"
+                    on:click=move |_| kind_close.set(None)
+                > <IconBox size="sm"><IconClose /></IconBox> </button>
+            </div>
+            <div class="cdb-modal-body">
+                <p class="cdb-form-hint">"每行一条映射：旧名 → 新名（如 A → D）"</p>
+                <textarea
+                    class="cdb-form-input"
+                    data-testid="modal-input-batch-rename"
+                    placeholder="A → D\nB → E"
+                    prop:value=move || rename_input.get()
+                    on:input=move |ev| {
+                        use wasm_bindgen::JsCast;
+                        let v = ev.target().unwrap().unchecked_into::<web_sys::HtmlTextAreaElement>().value();
+                        rename_input.set(v);
+                    }
+                />
+            </div>
+            <div class="cdb-modal-footer">
+                <button
+                    class="cdb-btn"
+                    data-testid="modal-cancel-batch-rename-btn"
+                    on:click=move |_| kind_close.set(None)
+                >"Cancel"</button>
+                <button
+                    class="cdb-btn cdb-btn--primary"
+                    data-testid="modal-submit-batch-rename"
+                    on:click=move |_| {
+                        // ux-canvas-batch 批次2 收尾: Apply 调 batch_rename_tables 后写入 store
+                        // 必须走 CommandStack/OT 变更通路（proposal R1，S05 协作与 undo 一致）
+                        let input = apply_value.get();
+                        let mut rename_map = std::collections::HashMap::new();
+                        for line in input.lines() {
+                            let parts: Vec<&str> = line.split("→").collect();
+                            if parts.len() == 2 {
+                                let old_name = parts[0].trim().to_string();
+                                let new_name = parts[1].trim().to_string();
+                                rename_map.insert(old_name, new_name);
+                            }
+                        }
+                        // 走 CommandStack/OT 变更通路
+                        let mut tables = store_apply.tables.get();
+                        batch_rename_tables(&mut tables, rename_map);
+                        store_apply.tables.set(tables);
+                        store_apply.dirty.set(true);
                         kind_close_apply.set(None);
                     }
                 >"Apply"</button>

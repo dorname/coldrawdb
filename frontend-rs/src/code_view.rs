@@ -1,7 +1,7 @@
 //! E4 CodeView — SQL / DBML / JSON 只读预览（Monaco 可选升级，见 E4_ACTIVATION.md）
 //! Spec: core-0a-code-editor.md / core-S01-edit-and-save-design.md §3.6
 
-use crate::icons::{IconBox, IconCode};
+use crate::icons::{IconBox, IconCode, IconAddTable};
 use leptos::*;
 use wasm_bindgen::JsCast;
 
@@ -82,6 +82,8 @@ pub enum ViewMode {
     #[default]
     Canvas,
     Code,
+    // ux-canvas-batch 批次2 收尾: List 全屏列表视图（选项 A，黑板条目 8）
+    List,
 }
 
 #[component]
@@ -114,6 +116,32 @@ pub fn ViewModeToggle(
                 view! { "返回" }.into_view()
             } else {
                 view! { <IconBox size="sm"><IconCode /></IconBox> }.into_view()
+            }}
+        </button>
+        // ux-canvas-batch 批次2 收尾: List 全屏列表视图（选项 A，黑板条目 8）
+        <button
+            class="cdb-btn cdb-btn--icon"
+            data-testid="btn-list-view"
+            title=move || {
+                if matches!(view_mode.get(), ViewMode::List) {
+                    "返回画布"
+                } else {
+                    "列表视图"
+                }
+            }
+            on:click=move |_| {
+                if matches!(view_mode.get(), ViewMode::List) {
+                    view_mode.set(ViewMode::Canvas);
+                } else {
+                    view_mode.set(ViewMode::List);
+                    code_visible.set(false);
+                }
+            }
+        >
+            {move || if matches!(view_mode.get(), ViewMode::List) {
+                view! { "返回" }.into_view()
+            } else {
+                view! { <IconBox size="sm"><IconAddTable /></IconBox> }.into_view()
             }}
         </button>
     }
