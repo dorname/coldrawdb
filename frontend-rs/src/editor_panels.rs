@@ -5335,6 +5335,56 @@ pub struct ListViewState {
     pub filter_has_index: RwSignal<Option<bool>>, // 按是否有索引过滤（Some(true)=仅有索引，Some(false)=仅无索引，None=不过滤）
     // ux-canvas-batch 批次3 步骤 2: 批量改类型选中态（checkbox 多选 + 单一目标类型——外环条目 12 修正 4）
     pub batch_type_selection: RwSignal<crate::editor_panels::BatchTypeSelection>,
+    // ux-canvas-batch 批次4 步骤 3 (条目 23): 列宽会话态——键名严格对齐 ListView 实际 <th>
+    // 展示列（table_name/field_count/type/has_index，批次1既有4列）。注意：外环提案
+    // v2 文本提「field_name/field_type」，但 ListView 实际展示列是「字段数/类型」，
+    // 不含「字段名」列——本批以实际展示列为准。
+    pub column_widths: RwSignal<ColumnWidths>,
+}
+
+/// ux-canvas-batch 批次4 步骤 3 (条目 23): 列宽会话态结构（键名对齐 ListView <th> 展示列）
+/// - 键：table_name / field_count / type / has_index（与 ListView 实际 4 个 <th> 严格 1:1）
+/// - 默认每列 120px（既有默认）
+/// - 会话态：不写后端；用户刷新页面重置
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ColumnWidths {
+    pub table_name: u32,
+    pub field_count: u32,
+    pub type_: u32, // `type` 是 Rust 关键字，用 `type_` 字段名匹配既有 Table.field.type_ 命名
+    pub has_index: u32,
+}
+
+impl ColumnWidths {
+    /// 默认列宽（每列 120px）
+    pub fn defaults() -> Self {
+        Self {
+            table_name: 120,
+            field_count: 120,
+            type_: 120,
+            has_index: 120,
+        }
+    }
+    /// 按键名取列宽（不存在 fallback 120）
+    pub fn get(&self, key: &str) -> u32 {
+        match key {
+            "table_name" => self.table_name,
+            "field_count" => self.field_count,
+            "type" => self.type_,
+            "has_index" => self.has_index,
+            _ => 120,
+        }
+    }
+    /// 按键名设列宽（钳制 60/480）
+    pub fn set(&mut self, key: &str, w: u32) {
+        let clamped = clamp_column_width(w);
+        match key {
+            "table_name" => self.table_name = clamped,
+            "field_count" => self.field_count = clamped,
+            "type" => self.type_ = clamped,
+            "has_index" => self.has_index = clamped,
+            _ => {}
+        }
+    }
 }
 
 /// ux-canvas-batch 批次1：列表视图排序纯函数（UT-MM-21）
@@ -5722,6 +5772,7 @@ pub fn ListView(
         filter_type: create_rw_signal(String::new()),
         filter_has_index: create_rw_signal(None),
         batch_type_selection,
+        column_widths: create_rw_signal(ColumnWidths::defaults()),
     };
     let list_view_state_for_name = list_view_state.clone();
     let list_view_state_for_field_count = list_view_state.clone();
@@ -11872,5 +11923,72 @@ mod tests_ut_mm_28 {
     fn test_auto_calc_column_width_overflow_ut_mm_28() {
         // 防止 saturating_mul 触发 — u32::MAX * 8 应钳制 480
         assert_eq!(auto_calc_column_width(u32::MAX), 480, "UT-MM-28: u32::MAX 字符 → 480 (saturating)");
+    }
+
+    // ─── ColumnWidths 结构测试 (批次4 步骤 3, 条目 23) ───────────────────
+
+    #[test]
+    fn test_column_widths_defaults_ut_mm_28() {
+        let cw = ColumnWidths::defaults();
+        assert_eq!(cw.table_name, 120, "UT-MM-28: defaults table_name = 120");
+        assert_eq!(cw.field_count, 120, "UT-MM-28: defaults field_count = 120");
+        assert_eq!(cw.type_, 120, "UT-MM-28: defaults type_ = 120");
+        assert_eq!(cw.has_index, 120, "UT-MM-28: defaults has_index = 120");
+    }
+
+    #[test]
+    fn test_column_widths_get_known_key_ut_mm_28() {
+        let cw = ColumnWidths::defaults();
+        assert_eq!(cw.get("table_name"), 120);
+        assert_eq!(cw.get("field_count"), 120);
+        assert_eq!(cw.get("type"), 120);
+        assert_eq!(cw.get("has_index"), 120);
+    }
+
+    #[test]
+    fn test_column_widths_get_unknown_fallback_ut_mm_28() {
+        let cw = ColumnWidths::defaults();
+        assert_eq!(cw.get("unknown_key"), 120, "UT-MM-28: 未知键 fallback 120");
+    }
+
+    #[test]
+    fn test_column_widths_set_clamp_min_ut_mm_28() {
+        let mut cw = ColumnWidths::defaults();
+        cw.set("table_name", 30);
+        assert_eq!(cw.table_name, 60, "UT-MM-28: set 30 → 60 (clamp min)");
+    }
+
+    #[test]
+    fn test_column_widths_set_clamp_max_ut_mm_28() {
+        let mut cw = ColumnWidths::defaults();
+        cw.set("has_index", 1000);
+        assert_eq!(cw.has_index, 480, "UT-MM-28: set 1000 → 480 (clamp max)");
+    }
+
+    #[test]
+    fn test_column_widths_set_in_range_ut_mm_28() {
+        let mut cw = ColumnWidths::defaults();
+        cw.set("field_count", 200);
+        assert_eq!(cw.field_count, 200, "UT-MM-28: set 200 in range");
+    }
+
+    #[test]
+    fn test_column_widths_set_unknown_noop_ut_mm_28() {
+        let mut cw = ColumnWidths::defaults();
+        cw.set("bogus_key", 999);
+        // 四个真字段保持默认 120
+        assert_eq!(cw.table_name, 120);
+        assert_eq!(cw.field_count, 120);
+        assert_eq!(cw.type_, 120);
+        assert_eq!(cw.has_index, 120);
+    }
+
+    #[test]
+    fn test_auto_calc_integration_with_long_field_ut_mm_28() {
+        // 模拟 ListView 表格字段最长字符数 → auto_calc 应用
+        // Field.type_ "DECIMAL(10,2)" 14 chars × 8 + 40 = 152
+        assert_eq!(auto_calc_column_width(14), 152, "UT-MM-28: 14 chars → 152");
+        // "VARCHAR(255)" 12 chars × 8 + 40 = 136
+        assert_eq!(auto_calc_column_width(12), 136, "UT-MM-28: 12 chars → 136");
     }
 }
