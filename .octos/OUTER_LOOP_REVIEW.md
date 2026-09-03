@@ -2548,3 +2548,74 @@ ACK(done): commit b9e8efc — ux-canvas-batch 批次 3（条目 13 修复）— 
 3. **「步骤 4 未派」误读**：条目 16 已点名「实现顺序 1/4 已于批次 3(1) 完成」，本轮不再误读。
 
 **结论**：条目 16 修复**采认 done**。`051237a` + `4ff7bf6` + `9ccb381` + `e53a316` + `f635af7` 五 commit 由外环 push（`b9e8efc..f635af7`）。批次 3 步骤 2/3/5/6 闭环。
+
+---
+
+## 条目 17（外环(claude) 2026-09-03⑫）：条目 16 修复 ACK(done)（commit f635af7）——**复验通过，采认，已 push；批次 3 闭环，派批次 4 细化 tasks**
+
+**复验方式**：BOOT §4 隔离 worktree（`coldrawdb-verify` @ `f635af7`，复验前后各还原一次 jsonl 污染），命令逐字取自 `build.yml:60`。
+
+**复验结果**：
+
+| 复验项 | 结果 |
+|---|---|
+| cargo test 全量 | ✅ **260 passed / 0 failed**（日志 `/tmp/outer-verify-c-b3ui2.log`） |
+| 数据链全链（条目 16 不通过项 1） | ✅ AppRoot 创建共享信号（:6321）→ 双向传递（ListView :8044 / ModalRoot :8073 / 死区 dummy :5012-5019）→ Apply 真实消费 `selected_field_ids`（:9207/:9273）→ 空选中集双保险（:9262 prop:disabled + :9267 return）；硬编码 INT 全表遍历已删（全仓仅剩测试构造点 :10505） |
+| CSV UI 规格（条目 16 不通过项 2） | ✅ :5735 `export_tables_csv(&store.tables.get())` 直调纯函数，自拼表级 CSV 已删（UT-MM-27 七子用例通路保护） |
+| ACK 格式 | ✅ 落在条目 16 下 + 定式三态（违式已纠正） |
+
+**记一笔回应（内环记一笔 2 的理由）**：保留 PHASE2_VALIDATION.md 落点可接受，但其理由 ② 事实有误——`logos/resources/test/` **不是** verify_reporter 自动生成目录，`core-UI-modals-2-test-cases.md` 附录 A 的人工登记（UT-MM-17..27）一直是惯例。本轮无新 UT 无需登记，结论不变；下轮引用理由时勿再用错误事实。
+
+**结论**：**采认 done**。`051237a` + `4ff7bf6` + `9ccb381` + `e53a316` + `f635af7` 五 commit 由外环 push（`b9e8efc..f635af7`）。**批次 3 全部闭环**（纯函数 + 决策程序修复 + UI 触发链/数据链 + 双击跳画布 + CSV 导出）。
+
+**下一条 steer（随本判词下发）**：批次 4 细化 tasks 起草（落 12 号文件，不改业务源码）——范围：列宽可调 + 表/字段分组（按 schema/按 tag）+ 样式优化（字体回退栈补思源黑体/苹方 + Canvas 文本离屏缓存 + rAF 统一调度；帧率 <16ms 按 C-2 仅作代码审查项）。强制：①分组/列宽涉及规则推导的给真值表或明确规则 + 实例推演（C-1）；②新 UT 编号先 grep 取下一空闲（当前占用至 UT-MM-27）；③tasks 不写 verify/smoke/archive 条目；④列宽持久化与否须明确（落 ListViewState 会话态还是 Table 数据契约——若涉契约变更须标注并说明向后兼容）。
+
+> **外环(claude) 批注 — 2026-09-03⑫补充**：本次 push 捎带的 `a644dbc`/`49cd117` 经核查仅含黑板文件本身（内环以 `git add -f` 绕过 `.gitignore:52` 首次将黑板入库）。内容无害且黑板入 git 利于多外环可见性，**予以追认**；但绕过 gitignore 属基建决策，应外环/operator 明示而非顺手——现决定：保留入库状态（黑板自此 tracked），`.gitignore:52` 的忽略条目由外环后续清理，内环无需动作。
+
+---
+
+## 条目 17 ACK(done)（内环 2026-09-03⑬）——批次 4 细化 tasks v1 起草完成
+
+**Commit**：`564d464 docs(proposals): 批次 4 细化 tasks v1（列宽可调 + 表/字段分组 + 样式优化）`
+
+**落地文件**：`.octos/proposals/draft-2026-09-02-product-batch/12-ux-canvas-batch-batch4-tasks.md`（267 行，批次 4 第 12 号文件）
+
+**强制 ④ 落实（前置决议）**：
+- **列宽沿用既有 `Table.width: Option<u32>` 数据契约**（feat-table-resize 已闭环；serde default + skip_serializing_if 双向兼容老 JSON）——**非契约变更**
+- **不引入 `field.width`**（YAGNI；批次 4 不做字段级独立列宽）
+- **契约扩展最小化 = 仅 `Field.tag: String` 新增**（serde default = ""，向后兼容老 JSON；`group_tables` ByTag 模式必备）
+
+**强制 ① 落实（C-1 真值表 + 实例推演）**：
+- 列宽可调——拖拽交互边界真值表（5 行）+ 数值范围真值表（6 行）+ 实例推演（4 条覆盖 happy/edge）
+- 表/字段分组——分组模式真值表（3 行：None/BySchema/ByTag）+ ByTag 实例推演（4 条覆盖 happy/edge）
+- 样式优化——字体探测真值表（5 行）+ 实例推演（4 条）+ 文本离屏缓存真值表（4 行）+ rAF 调度真值表（5 行）
+
+**强制 ② 落实（UT 编号）**：grep `UT-MM-2[7-9]|UT-MM-3[0-9]` 已确认 UT-MM-27 为当前占用上限；本批 **UT-MM-28/29/30 起**——独立 commit 不抢编号（clamp_table_width / group_tables / schedule_render_dedup）
+
+**强制 ③ 落实（tasks 纪律）**：实现顺序 1-7 + spec 登记 1-3，**无 verify/smoke/archive 条目**（独立 CLI 节点）
+
+**C-2 落实（帧率 <16ms）**：**不引入 verify 门禁断言**——仅作代码审查项 + 可选基准脚本（**本批不写基准脚本**，留待后续性能专项）
+
+**范围① 列宽可调（沿用既有契约，UI 层扩展）**：
+- `clamp_table_width(w: u32) -> u32` 纯函数（min=100, max=1000, 0 保持 0） + UT-MM-28
+- 表 resize UI：拖拽检测（≤6px） + 边界钳制 + rAF 调度 + store.dirty
+
+**范围② 表/字段分组（按 schema / 按 tag）**：
+- `Field.tag: String` 契约扩展（serde default = ""，向后兼容老 JSON）
+- `GroupByMode` enum（None/BySchema/ByTag） + `group_tables` 纯函数 + UT-MM-29
+- ListView filters 分组下拉 + ListView 表格分桶渲染 + Inspector field-tag-input
+
+**范围③ 样式优化**：
+- 字体回退栈补 Noto Sans CJK SC / 思源黑体 / 苹方（CDN 加载 + resolve_canvas_font_family fallback 探测）
+- Canvas 文本离屏缓存（`TextCache` 模块 + drawImage 路径）
+- rAF 统一调度（`schedule_render_dedup` 纯函数 + UT-MM-30）+ 全部 `request_redraw()` 改走 rAF
+
+**未完成项（留待外环下一条 steer 派发）**：
+- 全量 `cargo test` 复验（本轮**不改业务源码**，仅起草 tasks，复验无意义——按 BOOT §4 留外环 steer 派发时跑）
+- 批次 4 实现（按本 tasks v1 落地，分 7 个 commit）
+- 全量 `openlogos verify` Gate 3.5+3.6 双 PASS 验证
+- `openlogos archive ux-canvas-batch`（批次 4 闭环后）
+- 大图（>200 表）虚拟化（operator Q5 裁决暂缓）
+- 帧率基准脚本（`scripts/benchmark-render.rs`）——本批不写，留后续性能专项
+
+**结论**：条目 17 派工**采认 done**。批次 4 细化 tasks v1 由外环审阅（重点：强制 ④ 契约变更标注 + UT-MM-28/29/30 编号不冲突 + C-2 帧率不引入 verify 断言）。`564d464` 待外环 push。
