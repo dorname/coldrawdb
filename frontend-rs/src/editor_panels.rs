@@ -4876,6 +4876,7 @@ pub fn TopBar(
 #[component]
 pub fn LeftPanel(
     store: EditorStore,
+    view_mode: RwSignal<ViewMode>,
     selected_table_id: RwSignal<Option<String>>,
     on_select_table: Rc<dyn Fn(Option<String>)>,
     on_jump_to_table: Option<Rc<dyn Fn(String)>>,
@@ -4999,11 +5000,20 @@ pub fn LeftPanel(
                     // 半成品平移到活路径后此处最低限度编译通过即可）
                     SidePanelTab::ListView => {
                         // ux-canvas-batch 批次2 收尾（条目 9 改派）: LeftPanel 死区调用点传局部 dummy 信号保编译
+                        // ux-canvas-batch 批次3 步骤 3: 双击跳画布 — on_jump_to_canvas prop = 切回 Canvas + 选中表
                         let modal_kind_dummy = create_rw_signal(None);
+                        let on_jump_for_listview: Rc<dyn Fn(String)> = {
+                            let on_select = on_select_table.clone();
+                            Rc::new(move |tid: String| {
+                                view_mode.set(ViewMode::Canvas);
+                                on_select(Some(tid));
+                            })
+                        };
                         view! {
                             <ListView
                                 store=store.clone()
                                 on_select_table=on_select_table.clone()
+                                on_jump_to_canvas=on_jump_for_listview.clone()
                                 modal_kind=modal_kind_dummy
                             />
                         }.into_view()
@@ -5680,6 +5690,7 @@ pub fn BatchTypeSelectionPanel(
 pub fn ListView(
     store: EditorStore,
     on_select_table: Rc<dyn Fn(Option<String>)>,
+    on_jump_to_canvas: Rc<dyn Fn(String)>,
     modal_kind: RwSignal<Option<modals::ModalKind>>,
 ) -> impl IntoView {
     let list_view_state = ListViewState {
@@ -5870,12 +5881,17 @@ pub fn ListView(
                                 let table_id_for_props = table_id.clone();
                                 let table_id_rc = std::rc::Rc::new(table_id.clone());
                                 let table_id_label = (*table_id_rc).clone();
+                                let on_jump_for_row = on_jump_to_canvas.clone();
                                 view! {
                                     <tr
                                         data-testid={format!("list-view-row-{}", table_id_label.clone())}
                                         on:click={
                                             let tid = table_id_rc.clone();
                                             move |_| on_select(Some((*tid).clone()))
+                                        }
+                                        on:dblclick={
+                                            let tid = table_id_rc.clone();
+                                            move |_| on_jump_for_row((*tid).clone())
                                         }
                                     >
                                         // ux-canvas-batch 批次3 步骤 2: 表行多选 checkbox（条目 12 修正 4——checkbox 多选）
@@ -7972,11 +7988,19 @@ pub fn AppRoot(
             />
             // ux-canvas-batch 批次2 收尾: ViewMode::List 时全屏渲染 ListView（选项 A，黑板条目 8）
             {move || if view_mode.get() == ViewMode::List {
+                let on_jump_for_listview: Rc<dyn Fn(String)> = {
+                    let on_select = on_select_table.clone();
+                    Rc::new(move |tid: String| {
+                        view_mode.set(ViewMode::Canvas);
+                        on_select(Some(tid));
+                    })
+                };
                 view! {
                     <div class="cdb-list-view-panel" data-testid="list-view-panel">
                         <ListView
                             store=store.clone()
                             on_select_table=on_select_table.clone()
+                            on_jump_to_canvas=on_jump_for_listview.clone()
                             modal_kind=modal_kind.clone()
                         />
                     </div>
