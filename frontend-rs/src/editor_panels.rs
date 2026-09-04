@@ -108,6 +108,9 @@ pub fn setup_editor_tool_shortcuts(
     // p0-fix 定点 3：Delete 键删除选中连线依赖
     selection: RwSignal<SelectionKind>,
     on_delete_ref: Rc<dyn Fn(String)>,
+    // p0-fix 定点 2：Delete 键删除选中区域 / 便签
+    on_delete_area: Rc<dyn Fn(String)>,
+    on_delete_note: Rc<dyn Fn(String)>,
 ) {
     use wasm_bindgen::JsCast;
     gloo::events::EventListener::new(&gloo::utils::document(), "keydown", move |ev| {
@@ -135,10 +138,22 @@ pub fn setup_editor_tool_shortcuts(
             return;
         }
         // p0-fix 定点 3：Delete/Backspace 删除选中连线（ST-PB-04）
+        // p0-fix 定点 2：同键删除选中区域 / 便签
         if is_delete_key(&ke.key()) {
-            if let SelectionKind::Reference(ref_id) = selection.get_untracked() {
-                ke.prevent_default();
-                on_delete_ref(ref_id);
+            match selection.get_untracked() {
+                SelectionKind::Reference(ref_id) => {
+                    ke.prevent_default();
+                    on_delete_ref(ref_id);
+                }
+                SelectionKind::Area(id) => {
+                    ke.prevent_default();
+                    on_delete_area(id);
+                }
+                SelectionKind::Note(id) => {
+                    ke.prevent_default();
+                    on_delete_note(id);
+                }
+                _ => {}
             }
             return;
         }
@@ -296,6 +311,9 @@ pub enum SelectionKind {
     Table(String),
     Field { table_id: String, field_id: String },
     Reference(String),
+    /// p0-fix 定点 2：选中区域 / 便签（Inspector 编辑 + Delete 键删除）
+    Area(String),
+    Note(String),
     Issues,
 }
 
@@ -384,6 +402,9 @@ pub enum ActiveTool {
     Select,
     Relationship,
     Pan,
+    /// p0-fix 定点 2：区域 / 便签创建工具
+    NewArea,
+    NewNote,
 }
 
 /// Phase B：关系工具状态机
@@ -3703,16 +3724,34 @@ pub fn ToolRail(
             </button>
             <button
                 class="cdb-tool-btn"
+                class:cdb-is-active=move || active_tool.get() == ActiveTool::NewArea
                 data-testid="tool-new-area"
                 disabled=rel_disabled
+                on:click=move |_| {
+                    if rel_disabled() {
+                        return;
+                    }
+                    // p0-fix 定点 2：进入区域创建工具（画布十字光标 + 拖框创建）
+                    rel_tool_state.set(RelToolState::Idle);
+                    active_tool.set(ActiveTool::NewArea);
+                }
             >
                 <IconBox size="md"><IconAddArea /></IconBox>
                 <span class="cdb-tool-tip">"添加区域"</span>
             </button>
             <button
                 class="cdb-tool-btn"
+                class:cdb-is-active=move || active_tool.get() == ActiveTool::NewNote
                 data-testid="tool-new-note"
                 disabled=rel_disabled
+                on:click=move |_| {
+                    if rel_disabled() {
+                        return;
+                    }
+                    // p0-fix 定点 2：进入便签创建工具（画布十字光标 + 点击放置）
+                    rel_tool_state.set(RelToolState::Idle);
+                    active_tool.set(ActiveTool::NewNote);
+                }
             >
                 <IconBox size="md"><IconAddNote /></IconBox>
                 <span class="cdb-tool-tip">"添加便签"</span>
@@ -4239,6 +4278,11 @@ pub fn Inspector(
     on_update_ref_field: Rc<dyn Fn(String, &str, String)>,
     on_flip_ref: Rc<dyn Fn(String)>,
     on_delete_ref: Rc<dyn Fn(String)>,
+    // p0-fix 定点 2：区域 / 便签编辑与删除
+    on_update_area: Rc<dyn Fn(String, &str, String)>,
+    on_update_note: Rc<dyn Fn(String, String)>,
+    on_delete_area: Rc<dyn Fn(String)>,
+    on_delete_note: Rc<dyn Fn(String)>,
     on_jump_to_table: Rc<dyn Fn(String)>,
     read_only: Rc<dyn Fn() -> bool>,
 ) -> impl IntoView {
@@ -4682,6 +4726,107 @@ pub fn Inspector(
                             }.into_view()
                         } else {
                             view! { <p class="cdb-empty-hint">"关系不存在"</p> }.into_view()
+                        }
+                    }
+                    SelectionKind::Area(area_id) => {
+                        // p0-fix 定点 2：区域编辑面板（name / color / 删除）
+                        let ro = read_only();
+                        let areas = store.areas.get();
+                        if let Some(a) = areas.iter().find(|x| x.id == area_id) {
+                            let area_name = a.name.clone();
+                            let area_color = a.color.clone();
+                            let aid_tag = area_id.clone();
+                            let aid_name = area_id.clone();
+                            let aid_color = area_id.clone();
+                            let aid_delete = area_id.clone();
+                            let on_upd_name = on_update_area.clone();
+                            let on_upd_color = on_update_area.clone();
+                            let on_del_area = on_delete_area.clone();
+                            view! {
+                                <div data-testid="inspector-area-form">
+                                    <section class="cdb-panel-section">
+                                        <div class="cdb-panel-title">
+                                            <span>"区域"</span>
+                                            <span class="cdb-panel-tag">{aid_tag}</span>
+                                        </div>
+                                        <div class="cdb-form-group">
+                                            <label>"名称"</label>
+                                            <input
+                                                class="cdb-form-input"
+                                                data-testid="inspector-area-name"
+                                                value=area_name
+                                                disabled=ro
+                                                on:input=move |ev| on_upd_name(aid_name.clone(), "name", event_target_value(&ev))
+                                            />
+                                        </div>
+                                        <div class="cdb-form-group">
+                                            <label>"颜色"</label>
+                                            <input
+                                                type="color"
+                                                class="cdb-form-input"
+                                                data-testid="inspector-area-color"
+                                                value=area_color
+                                                disabled=ro
+                                                on:input=move |ev| on_upd_color(aid_color.clone(), "color", event_target_value(&ev))
+                                            />
+                                        </div>
+                                        <button
+                                            class="cdb-btn cdb-btn--block cdb-btn--danger"
+                                            data-testid="btn-delete-area"
+                                            disabled=ro
+                                            on:click=move |_| on_del_area(aid_delete.clone())
+                                        >
+                                            "删除区域"
+                                        </button>
+                                    </section>
+                                </div>
+                            }.into_view()
+                        } else {
+                            view! { <p class="cdb-empty-hint">"区域不存在"</p> }.into_view()
+                        }
+                    }
+                    SelectionKind::Note(note_id) => {
+                        // p0-fix 定点 2：便签编辑面板（content textarea / 删除）
+                        let ro = read_only();
+                        let notes = store.notes.get();
+                        if let Some(n) = notes.iter().find(|x| x.id == note_id) {
+                            let note_content = n.content.clone();
+                            let nid_tag = note_id.clone();
+                            let nid_content = note_id.clone();
+                            let nid_delete = note_id.clone();
+                            let on_upd_note = on_update_note.clone();
+                            let on_del_note = on_delete_note.clone();
+                            view! {
+                                <div data-testid="inspector-note-form">
+                                    <section class="cdb-panel-section">
+                                        <div class="cdb-panel-title">
+                                            <span>"便签"</span>
+                                            <span class="cdb-panel-tag">{nid_tag}</span>
+                                        </div>
+                                        <div class="cdb-form-group">
+                                            <label>"内容"</label>
+                                            <textarea
+                                                class="cdb-form-input"
+                                                data-testid="inspector-note-content"
+                                                rows="4"
+                                                prop:value=note_content
+                                                disabled=ro
+                                                on:input=move |ev| on_upd_note(nid_content.clone(), event_target_value(&ev))
+                                            ></textarea>
+                                        </div>
+                                        <button
+                                            class="cdb-btn cdb-btn--block cdb-btn--danger"
+                                            data-testid="btn-delete-note"
+                                            disabled=ro
+                                            on:click=move |_| on_del_note(nid_delete.clone())
+                                        >
+                                            "删除便签"
+                                        </button>
+                                    </section>
+                                </div>
+                            }.into_view()
+                        } else {
+                            view! { <p class="cdb-empty-hint">"便签不存在"</p> }.into_view()
                         }
                     }
                     SelectionKind::None => {
@@ -6810,6 +6955,18 @@ pub fn AppRoot(
         rel_tool_active.set(picking);
     });
 
+    // p0-fix 定点 2：创建工具信号 — 画布十字光标 + 拖框建区域 / 点击放便签
+    let create_tool: RwSignal<Option<crate::editor_render::CreateToolKind>> =
+        create_rw_signal(None);
+    create_effect(move |_| {
+        let tool = match active_tool.get() {
+            ActiveTool::NewArea => Some(crate::editor_render::CreateToolKind::Area),
+            ActiveTool::NewNote => Some(crate::editor_render::CreateToolKind::Note),
+            _ => None,
+        };
+        create_tool.set(tool);
+    });
+
     // Phase C：IO 抽屉
     let io_drawer: RwSignal<IoDrawerKind> = create_rw_signal(IoDrawerKind::None);
     let inspector_before_io: RwSignal<Option<bool>> = create_rw_signal(None);
@@ -8076,6 +8233,230 @@ pub fn AppRoot(
         }))
     };
 
+    // p0-fix 定点 2：区域拖框落账（ST-AN-01）——创建后选中 + 开 Inspector + 复位选择工具
+    let on_area_create: Option<Box<dyn Fn(f64, f64, f64, f64) + 'static>> = {
+        let store = store.clone();
+        let debouncer = debouncer.clone();
+        let selection = selection.clone();
+        let inspector_open = inspector_open.clone();
+        let client_for_area = client.clone();
+        Some(Box::new(move |x: f64, y: f64, w: f64, h: f64| {
+            if editor_is_read_only(share_mode, current_room) {
+                return;
+            }
+            let area = crate::editor_render::build_area(
+                crate::editor_core::new_entity_id("area"),
+                x,
+                y,
+                w,
+                h,
+            );
+            let mut areas = store.areas.get();
+            areas.push(area.clone());
+            store.areas.set(areas);
+            store.dirty.set(true);
+            selection.set(SelectionKind::Area(area.id));
+            inspector_open.set(true);
+            active_tool.set(ActiveTool::Select);
+            schedule_save(
+                client_for_area.clone(),
+                store.clone(),
+                current_diagram_id.clone(),
+                current_title.clone(),
+                debouncer.clone(),
+                conflict.clone(),
+                error.clone(),
+                is_saving.clone(),
+                save_offline.clone(),
+                collab_state,
+                activity_feed,
+            );
+        }))
+    };
+
+    // p0-fix 定点 2：便签点击放置落账（ST-AN-02）
+    let on_note_create: Option<Box<dyn Fn(f64, f64) + 'static>> = {
+        let store = store.clone();
+        let debouncer = debouncer.clone();
+        let selection = selection.clone();
+        let inspector_open = inspector_open.clone();
+        let client_for_note = client.clone();
+        Some(Box::new(move |x: f64, y: f64| {
+            if editor_is_read_only(share_mode, current_room) {
+                return;
+            }
+            let note = crate::editor_render::build_note(
+                crate::editor_core::new_entity_id("note"),
+                x,
+                y,
+            );
+            let mut notes = store.notes.get();
+            notes.push(note.clone());
+            store.notes.set(notes);
+            store.dirty.set(true);
+            selection.set(SelectionKind::Note(note.id));
+            inspector_open.set(true);
+            active_tool.set(ActiveTool::Select);
+            schedule_save(
+                client_for_note.clone(),
+                store.clone(),
+                current_diagram_id.clone(),
+                current_title.clone(),
+                debouncer.clone(),
+                conflict.clone(),
+                error.clone(),
+                is_saving.clone(),
+                save_offline.clone(),
+                collab_state,
+                activity_feed,
+            );
+        }))
+    };
+
+    // p0-fix 定点 2：点击区域 / 便签 → 选中 + Inspector 编辑面板
+    let on_area_pick: Option<Box<dyn Fn(String) + 'static>> = {
+        let selection = selection.clone();
+        let inspector_open = inspector_open.clone();
+        Some(Box::new(move |id: String| {
+            selection.set(SelectionKind::Area(id));
+            inspector_open.set(true);
+        }))
+    };
+    let on_note_pick: Option<Box<dyn Fn(String) + 'static>> = {
+        let selection = selection.clone();
+        let inspector_open = inspector_open.clone();
+        Some(Box::new(move |id: String| {
+            selection.set(SelectionKind::Note(id));
+            inspector_open.set(true);
+        }))
+    };
+
+    // p0-fix 定点 2：删除区域 / 便签（Inspector 按钮 + Delete 键共用）
+    let on_delete_area = {
+        let store = store.clone();
+        let debouncer = debouncer.clone();
+        let selection = selection.clone();
+        let client_for_delete_area = client.clone();
+        Rc::new(move |area_id: String| {
+            if editor_is_read_only(share_mode, current_room) {
+                return;
+            }
+            let mut areas = store.areas.get();
+            areas.retain(|a| a.id != area_id);
+            store.areas.set(areas);
+            store.dirty.set(true);
+            selection.set(SelectionKind::None);
+            schedule_save(
+                client_for_delete_area.clone(),
+                store.clone(),
+                current_diagram_id.clone(),
+                current_title.clone(),
+                debouncer.clone(),
+                conflict.clone(),
+                error.clone(),
+                is_saving.clone(),
+                save_offline.clone(),
+                collab_state,
+                activity_feed,
+            );
+        })
+    };
+    let on_delete_note = {
+        let store = store.clone();
+        let debouncer = debouncer.clone();
+        let selection = selection.clone();
+        let client_for_delete_note = client.clone();
+        Rc::new(move |note_id: String| {
+            if editor_is_read_only(share_mode, current_room) {
+                return;
+            }
+            let mut notes = store.notes.get();
+            notes.retain(|n| n.id != note_id);
+            store.notes.set(notes);
+            store.dirty.set(true);
+            selection.set(SelectionKind::None);
+            schedule_save(
+                client_for_delete_note.clone(),
+                store.clone(),
+                current_diagram_id.clone(),
+                current_title.clone(),
+                debouncer.clone(),
+                conflict.clone(),
+                error.clone(),
+                is_saving.clone(),
+                save_offline.clone(),
+                collab_state,
+                activity_feed,
+            );
+        })
+    };
+
+    // p0-fix 定点 2：Inspector 编辑回写（区域 name/color；便签 content）
+    let on_update_area = {
+        let store = store.clone();
+        let debouncer = debouncer.clone();
+        let client_for_update_area = client.clone();
+        Rc::new(move |area_id: String, field: &str, value: String| {
+            if editor_is_read_only(share_mode, current_room) {
+                return;
+            }
+            let mut areas = store.areas.get();
+            let Some(a) = areas.iter_mut().find(|a| a.id == area_id) else {
+                return;
+            };
+            match field {
+                "name" => a.name = value,
+                "color" => a.color = value,
+                _ => return,
+            }
+            store.areas.set(areas);
+            store.dirty.set(true);
+            schedule_save(
+                client_for_update_area.clone(),
+                store.clone(),
+                current_diagram_id.clone(),
+                current_title.clone(),
+                debouncer.clone(),
+                conflict.clone(),
+                error.clone(),
+                is_saving.clone(),
+                save_offline.clone(),
+                collab_state,
+                activity_feed,
+            );
+        })
+    };
+    let on_update_note = {
+        let store = store.clone();
+        let debouncer = debouncer.clone();
+        let client_for_update_note = client.clone();
+        Rc::new(move |note_id: String, content: String| {
+            if editor_is_read_only(share_mode, current_room) {
+                return;
+            }
+            let mut notes = store.notes.get();
+            let Some(n) = notes.iter_mut().find(|n| n.id == note_id) else {
+                return;
+            };
+            n.content = content;
+            store.notes.set(notes);
+            store.dirty.set(true);
+            schedule_save(
+                client_for_update_note.clone(),
+                store.clone(),
+                current_diagram_id.clone(),
+                current_title.clone(),
+                debouncer.clone(),
+                conflict.clone(),
+                error.clone(),
+                is_saving.clone(),
+                save_offline.clone(),
+                collab_state,
+                activity_feed,
+            );
+        })
+    };
+
     let on_canvas_select: Option<Box<dyn Fn(String) + 'static>> = {
         let selection = selection.clone();        let inspector_open = inspector_open.clone();
         let selected_table_id = selected_table_id.clone();
@@ -8229,6 +8610,8 @@ pub fn AppRoot(
         on_create_table.clone(),
         selection,
         on_delete_ref.clone(),
+        on_delete_area.clone(),
+        on_delete_note.clone(),
     );
     setup_escape_layer_handler(
         palette_visible,
@@ -8420,6 +8803,11 @@ pub fn AppRoot(
                         on_relation_drag_cancel=on_relation_drag_cancel
                         on_table_drop=on_table_drop
                         on_reference_pick=on_reference_pick
+                        create_tool=create_tool
+                        on_area_create=on_area_create
+                        on_note_create=on_note_create
+                        on_area_pick=on_area_pick
+                        on_note_pick=on_note_pick
                         theme_mode=theme_mode
                     />
                     <ActivityFeed items=activity_feed visible=activity_open />
@@ -8442,6 +8830,10 @@ pub fn AppRoot(
                     on_update_ref_field=on_update_ref_field.clone()
                     on_flip_ref=on_flip_ref.clone()
                     on_delete_ref=on_delete_ref.clone()
+                    on_update_area=on_update_area.clone()
+                    on_update_note=on_update_note.clone()
+                    on_delete_area=on_delete_area.clone()
+                    on_delete_note=on_delete_note.clone()
                     on_jump_to_table=on_jump_to_table.clone()
                     read_only=inspector_read_only.clone()
                 />

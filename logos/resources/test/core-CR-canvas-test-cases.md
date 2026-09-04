@@ -145,3 +145,43 @@
 | UT-CR-07 | 连线使用当前视觉坐标 | `editor_render.rs::calc_path` |
 | ST-CR-01 | references 贝塞尔连线在画布可见 | `frontend-rs/tests/wasm/cr.rs` |
 | ST-CR-02 | 拖表过程中连线路径更新 | e2e canvas drag follow
+
+## 6. p0-fix 定点 2：区域 / 便签创建交互（2026-09-04）
+
+> 「V1 边界」中「Areas/Notes 拖拽创建放 B4 模态」由 p0-fix 定点 2 提前落地（工具按钮直接创建，无模态）。
+
+### UT-AREA-01 — Area 拖拽创建（拖框 < 10px 不创建）
+
+- **位置**：`frontend-rs/src/editor_render.rs`（`area_rect_from_drag` / `build_area` / `hit_test_area`）
+- **步骤**：
+  1. `area_rect_from_drag(100,100,260,220)` → `Some((100,100,160,120))`
+  2. 反向拖框 `(260,220)→(100,100)` → 归一化为同一矩形
+  3. 拖框 5×8 / 0×0 / 150×5 → `None`（<10px 防误触）
+  4. `build_area` 默认 `name="未命名区域"`、`color="#3b82f6"`
+  5. `hit_test_area` 矩形内命中、外部不命中、重叠时后创建优先
+
+### UT-NOTE-01 — Note 点击放置（固定 180×100 命中）
+
+- **位置**：`frontend-rs/src/editor_render.rs`（`build_note` / `hit_test_note`，`NOTE_WIDTH=180` / `NOTE_HEIGHT=100`）
+- **步骤**：
+  1. `build_note` 默认 `content=""`、`color="#f59e0b"`
+  2. `hit_test_note` 渲染矩形中心命中；右/下边界外 1px 不命中
+
+### ST-AN-01 — 拖框创建区域 → Inspector 编辑 → Delete 键删除（e2e）
+
+- **位置**：`frontend-rs/scripts/test-spec-parity-d.mjs`
+- **步骤**：`tool-new-area` → 画布拖框 300×200 → `inspector-area-form` 可见 → PUT `areas.len()==1`（默认名/宽度正确）→ `inspector-area-name` 改名落账 → Delete 键 → PUT `areas.len()==0`
+
+### ST-AN-02 — 点击放置便签 → Inspector 编辑内容 → 按钮删除（e2e）
+
+- **位置**：`frontend-rs/scripts/test-spec-parity-d.mjs`
+- **步骤**：`tool-new-note` → 点击画布 → `inspector-note-form` 可见 → PUT `notes.len()==1` → `inspector-note-content` 编辑落账 → `btn-delete-note` → PUT `notes.len()==0`
+
+### 附录 A 追加
+
+| ID | 标题 | 对齐实现 |
+|---|---|---|
+| UT-AREA-01 | Area 拖框创建（<10px 不创建） | `editor_render.rs::area_rect_from_drag` |
+| UT-NOTE-01 | Note 点击放置 | `editor_render.rs::build_note` |
+| ST-AN-01 | 区域创建/编辑/Delete 删除 | e2e test-spec-parity-d |
+| ST-AN-02 | 便签创建/编辑/按钮删除 | e2e test-spec-parity-d |

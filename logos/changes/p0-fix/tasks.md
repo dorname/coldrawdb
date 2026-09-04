@@ -69,7 +69,7 @@
 
 ### tool-new-area on:click（拖拽创建区域）
 
-- [ ] `frontend-rs/src/editor_panels.rs`: `tool-new-area` 按钮加 `on:click`：
+- [x] `frontend-rs/src/editor_panels.rs`: `tool-new-area` 按钮加 `on:click`：
   - 点击 → 画布十字光标（cursor: crosshair）
   - 拖拽画布框选区域（pointerdown → pointermove → pointerup）
   - 松开 → 创建 Area { id, name: "未命名区域", x, y, width, height, color: "#3b82f6" }
@@ -77,29 +77,32 @@
 
 ### tool-new-note on:click（点击放置便签）
 
-- [ ] `frontend-rs/src/editor_panels.rs`: `tool-new-note` 按钮加 `on:click`：
+- [x] `frontend-rs/src/editor_panels.rs`: `tool-new-note` 按钮加 `on:click`：
   - 点击 → 画布十字光标（cursor: crosshair）
   - 点击画布某点（pointerdown → pointerup）
   - 松开 → 创建 Note { id, content: "", x, y, color: "#f59e0b" }
 
 ### Inspector Area/Note 编辑面板
 
-- [ ] `frontend-rs/src/editor_panels.rs`: Inspector 加 Area/Note 编辑面板：
+- [x] `frontend-rs/src/editor_panels.rs`: Inspector 加 Area/Note 编辑面板：
   - 选中 Area → 显示 name/comment/color 编辑 + 删除按钮
   - 选中 Note → 显示 content textarea 编辑 + 删除按钮
   - 删除按钮 → 移除 Area/Note + dirty + PUT
+  - 偏差留痕：Area 类型无 comment 字段（editor_core::types::Area 仅 id/x/y/width/height/color/name），面板按既有 schema 提供 name/color 编辑
 
 ### Delete 键删除 Area/Note
 
-- [ ] `frontend-rs/src/editor_panels.rs`: 画布键盘事件加 Delete 键处理（选中 Area/Note → 移除 + dirty + PUT）
-- [ ] 选中态：Area/Note 被点击后高亮（border 加粗 + 颜色变化）
+- [x] `frontend-rs/src/editor_panels.rs`: 画布键盘事件加 Delete 键处理（选中 Area/Note → 移除 + dirty + PUT）
+- [x] 选中态：Area/Note 被点击后高亮（border 加粗 + 颜色变化）
 
 ## 测试
 
 - [ ] UT-ROOM-01：`RoomClient::delete_room` 纯函数测试（204 成功 / 403 无权限 / 404 房间不存在 / 500 服务器错误）
 - [ ] UT-REL-01：关系连线直接落账测试（Dragging → 落账，无 Confirm 状态）
-- [ ] UT-AREA-01：Area 拖拽创建测试（拖框 < 10px 不创建）
-- [ ] UT-NOTE-01：Note 点击放置测试（点击画布某点落账）
+- [x] UT-AREA-01：Area 拖拽创建测试（拖框 < 10px 不创建）
+- [x] UT-NOTE-01：Note 点击放置测试（点击画布某点落账）
+
+> 偏差留痕：UT-ROOM-01 实际登记为 UT-MM-31（grep 下一空闲编号）；UT-REL-01 由 ST-PB-01/02 e2e + UT-PB-05 断言反转覆盖（直接落账为事件流行为，无新增纯函数）。
 
 ## 不在范围
 

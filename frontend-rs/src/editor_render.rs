@@ -271,6 +271,8 @@ struct DragState {
     table_id: Option<String>,
     endpoint_drag: Option<(String, EndpointEnd)>, // (ref_id, end) when dragging an endpoint
     rel_drag: Option<RelFieldDrag>,
+    // p0-fix 定点 2：区域框选/便签放置的创建拖拽
+    create_drag: Option<CreateDrag>,
     pointer_id: i32,
     start_mouse_x: f64,
     start_mouse_y: f64,
@@ -280,12 +282,31 @@ struct DragState {
     start_table_y: f64,
 }
 
+/// p0-fix 定点 2：画布创建工具（区域 / 便签）
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CreateToolKind {
+    Area,
+    Note,
+}
+
+/// p0-fix 定点 2：创建拖拽进行态（diagram 坐标）
+#[derive(Clone, Copy, Debug)]
+struct CreateDrag {
+    tool: CreateToolKind,
+    start_x: f64,
+    start_y: f64,
+    cur_x: f64,
+    cur_y: f64,
+    moved: bool,
+}
+
 impl Default for DragState {
     fn default() -> Self {
         DragState {
             table_id: None,
             endpoint_drag: None,
             rel_drag: None,
+            create_drag: None,
             pointer_id: 0,
             start_mouse_x: 0.0,
             start_mouse_y: 0.0,
@@ -301,6 +322,8 @@ impl Default for DragState {
 struct LivePaint {
     tables: Option<Vec<Table>>,
     rubber: Option<(f64, f64, f64, f64)>,
+    /// p0-fix 定点 2：区域拖框预览矩形 (x, y, w, h)
+    area_preview: Option<(f64, f64, f64, f64)>,
 }
 
 // ─── Leptos canvas component ─────────────────────────────────────────────────
@@ -334,12 +357,24 @@ mod leptos_canvas {
         on_table_drop: Option<Box<dyn Fn() + 'static>>,
         /// p0-fix 定点 3：点击连线命中（返回 reference id）→ 弹关系详情模态
         on_reference_pick: Option<Box<dyn Fn(String) + 'static>>,
+        /// p0-fix 定点 2：当前创建工具（Some → 十字光标 + 拖拽创建区域 / 点击放置便签）
+        create_tool: RwSignal<Option<CreateToolKind>>,
+        /// p0-fix 定点 2：区域拖框落账（x, y, width, height）
+        on_area_create: Option<Box<dyn Fn(f64, f64, f64, f64) + 'static>>,
+        /// p0-fix 定点 2：便签点击放置落账（x, y）
+        on_note_create: Option<Box<dyn Fn(f64, f64) + 'static>>,
+        /// p0-fix 定点 2：点击区域命中（返回 area id）→ 选中 + Inspector
+        on_area_pick: Option<Box<dyn Fn(String) + 'static>>,
+        /// p0-fix 定点 2：点击便签命中（返回 note id）→ 选中 + Inspector
+        on_note_pick: Option<Box<dyn Fn(String) + 'static>>,
         // 主题模式（"dark"/"light"）：绘制 effect 需跟踪以在主题切换时重刷调色板
         theme_mode: RwSignal<String>,
     ) -> impl IntoView {
         let canvas_ref = create_node_ref::<html::Canvas>();
         let selected_id = create_rw_signal(None::<String>);
         let selected_ref_id = create_rw_signal(None::<String>);
+        let selected_area_id = create_rw_signal(None::<String>);
+        let selected_note_id = create_rw_signal(None::<String>);
         let drag_state = create_rw_signal(None::<DragState>);
         let rubber_d = create_rw_signal(None::<String>);
         let follow_path = create_rw_signal(String::new());
@@ -358,6 +393,10 @@ mod leptos_canvas {
         let on_relation_drag_cancel = Rc::new(on_relation_drag_cancel);
         let on_table_drop = Rc::new(on_table_drop);
         let on_reference_pick = Rc::new(on_reference_pick);
+        let on_area_create = Rc::new(on_area_create);
+        let on_note_create = Rc::new(on_note_create);
+        let on_area_pick = Rc::new(on_area_pick);
+        let on_note_pick = Rc::new(on_note_pick);
 
         {
             let raf_pending = raf_pending.clone();
@@ -465,6 +504,7 @@ mod leptos_canvas {
             let live_g = live.borrow();
             let tables = live_g.tables.clone().unwrap_or(store_tables);
             let rubber = live_g.rubber;
+            let area_preview = live_g.area_preview;
             drop(live_g);
             let refs = store.references.get();
             let areas = store.areas.get();
@@ -472,6 +512,8 @@ mod leptos_canvas {
             let presence = remote_presence.get();
             let sel = selected_id.get();
             let sel_ref = selected_ref_id.get();
+            let sel_area = selected_area_id.get();
+            let sel_note = selected_note_id.get();
 
             let width = canvas.width() as f64;
             let height = canvas.height() as f64;
@@ -487,7 +529,10 @@ mod leptos_canvas {
                 &presence,
                 sel.as_deref(),
                 sel_ref.as_deref(),
+                sel_area.as_deref(),
+                sel_note.as_deref(),
                 rubber,
+                area_preview,
             );
 
             if let Some((x1, y1, x2, y2)) = rubber {
@@ -511,6 +556,18 @@ mod leptos_canvas {
                 let _ = canvas.set_attribute("data-follow-path", "");
             }
         });
+        }
+
+        // p0-fix 定点 2：创建工具激活时画布十字光标
+        {
+            create_effect(move |_| {
+                let active = create_tool.get().is_some();
+                if let Some(canvas) = canvas_ref.get() {
+                    let ws: &web_sys::HtmlCanvasElement = &canvas;
+                    let el: &web_sys::HtmlElement = ws.unchecked_ref();
+                    let _ = el.style().set_property("cursor", if active { "crosshair" } else { "" });
+                }
+            });
         }
 
         // ── R-DPR-04：matchMedia DPR 变化触发 redraw（UT-RP-04）─────────────
@@ -545,6 +602,7 @@ mod leptos_canvas {
                     drag_state.set(None);
                     live.borrow_mut().rubber = None;
                     live.borrow_mut().tables = None;
+                    live.borrow_mut().area_preview = None;
                     rubber_d.set(None);
                     schedule_paint();
                 }
@@ -589,6 +647,7 @@ mod leptos_canvas {
                                 anchor_y,
                                 moved: false,
                             }),
+                            create_drag: None,
                             pointer_id: ev.pointer_id(),
                             start_mouse_x: ev.client_x() as f64,
                             start_mouse_y: ev.client_y() as f64,
@@ -607,6 +666,7 @@ mod leptos_canvas {
                         table_id: None,
                         endpoint_drag: None,
                         rel_drag: None,
+                        create_drag: None,
                         pointer_id: ev.pointer_id(),
                         start_mouse_x: ev.client_x() as f64,
                         start_mouse_y: ev.client_y() as f64,
@@ -617,12 +677,40 @@ mod leptos_canvas {
                     }));
                     return;
                 }
+                if !read_only {
+                    if let Some(tool) = create_tool.get_untracked() {
+                        // p0-fix 定点 2：创建工具激活 → 整个画布都是创建热区，吞掉本次 pointerdown
+                        capture_pointer(&canvas, ev.pointer_id());
+                        drag_state.set(Some(DragState {
+                            table_id: None,
+                            endpoint_drag: None,
+                            rel_drag: None,
+                            create_drag: Some(CreateDrag {
+                                tool,
+                                start_x: dx,
+                                start_y: dy,
+                                cur_x: dx,
+                                cur_y: dy,
+                                moved: false,
+                            }),
+                            pointer_id: ev.pointer_id(),
+                            start_mouse_x: ev.client_x() as f64,
+                            start_mouse_y: ev.client_y() as f64,
+                            start_pan_x: 0.0,
+                            start_pan_y: 0.0,
+                            start_table_x: 0.0,
+                            start_table_y: 0.0,
+                        }));
+                        return;
+                    }
+                }
                 if let Some((ref_id, end)) = super::hit_test_endpoint(&tables, &refs, dx, dy) {
                     capture_pointer(&canvas, ev.pointer_id());
                     drag_state.set(Some(DragState {
                         table_id: None,
                         endpoint_drag: Some((ref_id, end)),
                         rel_drag: None,
+                        create_drag: None,
                         pointer_id: ev.pointer_id(),
                         start_mouse_x: ev.client_x() as f64,
                         start_mouse_y: ev.client_y() as f64,
@@ -638,6 +726,8 @@ mod leptos_canvas {
                     let table_y = tables.iter().find(|t| t.id == id).map(|t| t.y).unwrap_or(0.0);
                     selected_id.set(Some(id.clone()));
                     selected_ref_id.set(None);
+                    selected_area_id.set(None);
+                    selected_note_id.set(None);
                     if let Some(cb) = on_select.as_ref() {
                         cb(id.clone());
                     }
@@ -647,6 +737,7 @@ mod leptos_canvas {
                         table_id: Some(id),
                         endpoint_drag: None,
                         rel_drag: None,
+                        create_drag: None,
                         pointer_id: ev.pointer_id(),
                         start_mouse_x: ev.client_x() as f64,
                         start_mouse_y: ev.client_y() as f64,
@@ -660,13 +751,37 @@ mod leptos_canvas {
                     // 命中顺序在表之后：连线被表遮住时点击应选中表而非不可见的线
                     selected_id.set(None);
                     selected_ref_id.set(Some(ref_id.clone()));
+                    selected_area_id.set(None);
+                    selected_note_id.set(None);
                     if let Some(cb) = on_reference_pick.as_ref() {
                         cb(ref_id);
+                    }
+                    schedule_paint();
+                } else if let Some(note_id) = super::hit_test_note(&store.notes.get_untracked(), dx, dy) {
+                    // p0-fix 定点 2：点击便签 → 选中高亮 + Inspector 编辑面板
+                    selected_id.set(None);
+                    selected_ref_id.set(None);
+                    selected_area_id.set(None);
+                    selected_note_id.set(Some(note_id.clone()));
+                    if let Some(cb) = on_note_pick.as_ref() {
+                        cb(note_id);
+                    }
+                    schedule_paint();
+                } else if let Some(area_id) = super::hit_test_area(&store.areas.get_untracked(), dx, dy) {
+                    // p0-fix 定点 2：点击区域 → 选中高亮 + Inspector 编辑面板（命中顺序在便签之后）
+                    selected_id.set(None);
+                    selected_ref_id.set(None);
+                    selected_note_id.set(None);
+                    selected_area_id.set(Some(area_id.clone()));
+                    if let Some(cb) = on_area_pick.as_ref() {
+                        cb(area_id);
                     }
                     schedule_paint();
                 } else {
                     selected_id.set(None);
                     selected_ref_id.set(None);
+                    selected_area_id.set(None);
+                    selected_note_id.set(None);
                     if let Some(cb) = on_deselect.as_ref() {
                         cb();
                     }
@@ -676,6 +791,7 @@ mod leptos_canvas {
                         table_id: None,
                         endpoint_drag: None,
                         rel_drag: None,
+                        create_drag: None,
                         pointer_id: ev.pointer_id(),
                         start_mouse_x: ev.client_x() as f64,
                         start_mouse_y: ev.client_y() as f64,
@@ -702,6 +818,33 @@ mod leptos_canvas {
                 };
                 let dx = ev.client_x() as f64 - drag.start_mouse_x;
                 let dy = ev.client_y() as f64 - drag.start_mouse_y;
+
+                if let Some(cd) = &drag.create_drag {
+                    // p0-fix 定点 2：创建拖拽——区域实时画虚线预览框；便签只记录 moved
+                    let (diag_x, diag_y) = screen_to_diagram(
+                        ev.client_x() as f64,
+                        ev.client_y() as f64,
+                        &canvas,
+                        &transform.get_untracked(),
+                    );
+                    let crossed = super::is_relation_drag(dx, dy, super::DRAG_THRESHOLD);
+                    drag_state.update(|d| {
+                        if let Some(ds) = d {
+                            if let Some(c) = &mut ds.create_drag {
+                                c.cur_x = diag_x;
+                                c.cur_y = diag_y;
+                                c.moved = c.moved || crossed;
+                            }
+                        }
+                    });
+                    if cd.tool == CreateToolKind::Area {
+                        live.borrow_mut().area_preview =
+                            Some((cd.start_x.min(diag_x), cd.start_y.min(diag_y),
+                                  (diag_x - cd.start_x).abs(), (diag_y - cd.start_y).abs()));
+                        schedule_paint();
+                    }
+                    return;
+                }
 
                 if let Some(rel) = drag.rel_drag.clone() {
                     let (diag_x, diag_y) = screen_to_diagram(
@@ -810,6 +953,8 @@ mod leptos_canvas {
             let on_relation_drop = on_relation_drop.clone();
             let on_relation_drag_cancel = on_relation_drag_cancel.clone();
             let on_table_drop = on_table_drop.clone();
+            let on_area_create = on_area_create.clone();
+            let on_note_create = on_note_create.clone();
             move |ev: PointerEvent| {
                 let Some(drag) = drag_state.get_untracked() else {
                     return;
@@ -817,6 +962,31 @@ mod leptos_canvas {
                 let canvas = canvas_ref.get();
                 if let Some(c) = &canvas {
                     let _ = c.release_pointer_capture(drag.pointer_id);
+                }
+
+                if let Some(cd) = &drag.create_drag {
+                    // p0-fix 定点 2：松开落账——区域按拖框矩形（<10px 不创建），便签在按下点放置
+                    live.borrow_mut().area_preview = None;
+                    let cd = cd.clone();
+                    drag_state.set(None);
+                    schedule_paint();
+                    match cd.tool {
+                        CreateToolKind::Area => {
+                            if let Some((x, y, w, h)) =
+                                super::area_rect_from_drag(cd.start_x, cd.start_y, cd.cur_x, cd.cur_y)
+                            {
+                                if let Some(cb) = on_area_create.as_ref() {
+                                    cb(x, y, w, h);
+                                }
+                            }
+                        }
+                        CreateToolKind::Note => {
+                            if let Some(cb) = on_note_create.as_ref() {
+                                cb(cd.start_x, cd.start_y);
+                            }
+                        }
+                    }
+                    return;
                 }
 
                 if let Some(rel) = drag.rel_drag {
@@ -913,6 +1083,7 @@ mod leptos_canvas {
                 }
                 live.borrow_mut().rubber = None;
                 live.borrow_mut().tables = None;
+                live.borrow_mut().area_preview = None;
                 rubber_d.set(None);
                 drag_state.set(None);
                 schedule_paint();
@@ -1138,7 +1309,12 @@ pub fn draw_canvas(
     selected_id: Option<&str>,
     // p0-fix 定点 3：选中的关系连线 id（点击连线高亮）
     selected_ref_id: Option<&str>,
+    // p0-fix 定点 2：选中的区域 / 便签 id（点击高亮 + Inspector 编辑）
+    selected_area_id: Option<&str>,
+    selected_note_id: Option<&str>,
     rubber_band: Option<(f64, f64, f64, f64)>,
+    // p0-fix 定点 2：区域拖框预览矩形 (x, y, w, h)
+    area_preview: Option<(f64, f64, f64, f64)>,
 ) {
     let dpr = current_device_pixel_ratio();
     // width/height 是 backing store 像素，clear_rect 必须按 backing store 清空
@@ -1156,7 +1332,24 @@ pub fn draw_canvas(
     let _ = ctx.set_image_smoothing_enabled(true);
 
     for area in areas {
-        draw_area(ctx, area, palette);
+        draw_area(ctx, area, palette, selected_area_id == Some(area.id.as_str()));
+    }
+
+    if let Some((x, y, w, h)) = area_preview {
+        // p0-fix 定点 2：区域拖框预览——虚线框 + 淡色填充，不写入 store
+        let _ = ctx.set_fill_style_str(palette.area_bg);
+        ctx.fill_rect(x, y, w, h);
+        let _ = ctx.set_stroke_style_str(palette.area_border);
+        ctx.set_line_width(1.0);
+        let dash = {
+            let a = js_sys::Array::new();
+            a.push(&wasm_bindgen::JsValue::from(6.0));
+            a.push(&wasm_bindgen::JsValue::from(4.0));
+            a
+        };
+        let _ = ctx.set_line_dash(&dash);
+        ctx.stroke_rect(x, y, w, h);
+        let _ = ctx.set_line_dash(&js_sys::Array::new());
     }
 
     for r in refs {
@@ -1173,7 +1366,7 @@ pub fn draw_canvas(
     }
 
     for note in notes {
-        draw_note(ctx, note, palette);
+        draw_note(ctx, note, palette, selected_note_id == Some(note.id.as_str()));
     }
 
     for presence in remote_presence {
@@ -1472,19 +1665,21 @@ fn draw_arrow_head(ctx: &CanvasRenderingContext2d, fromx: f64, fromy: f64, tox: 
     ctx.fill();
 }
 
-fn draw_area(ctx: &CanvasRenderingContext2d, area: &Area, palette: &CanvasPalette) {
+fn draw_area(ctx: &CanvasRenderingContext2d, area: &Area, palette: &CanvasPalette, selected: bool) {
     let _ = ctx.set_fill_style_str(palette.area_bg);
     ctx.fill_rect(area.x, area.y, area.width, area.height);
 
-    let _ = ctx.set_stroke_style_str(palette.area_border);
-    ctx.set_line_width(1.0);
+    // p0-fix 定点 2：选中态——描边加粗 + brand 色实线
+    let _ = ctx.set_stroke_style_str(if selected { palette.selected } else { palette.area_border });
+    ctx.set_line_width(if selected { 2.5 } else { 1.0 });
     let dash_arr = {
         let a = js_sys::Array::new();
         a.push(&wasm_bindgen::JsValue::from(6.0));
         a.push(&wasm_bindgen::JsValue::from(4.0));
         a
     };
-    let _ = ctx.set_line_dash(&dash_arr);
+    let empty_dash = js_sys::Array::new();
+    let _ = ctx.set_line_dash(if selected { &empty_dash } else { &dash_arr });
     ctx.stroke_rect(area.x, area.y, area.width, area.height);
     let _ = ctx.set_line_dash(&js_sys::Array::new());
 
@@ -1494,14 +1689,15 @@ fn draw_area(ctx: &CanvasRenderingContext2d, area: &Area, palette: &CanvasPalett
     let _ = ctx.fill_text(&area.name, area.x + 10.0, area.y + 10.0);
 }
 
-fn draw_note(ctx: &CanvasRenderingContext2d, note: &Note, palette: &CanvasPalette) {
-    let note_w = 180.0;
-    let note_h = 100.0;
+fn draw_note(ctx: &CanvasRenderingContext2d, note: &Note, palette: &CanvasPalette, selected: bool) {
+    let note_w = NOTE_WIDTH;
+    let note_h = NOTE_HEIGHT;
     let _ = ctx.set_fill_style_str(palette.note_bg);
     ctx.fill_rect(note.x, note.y, note_w, note_h);
 
-    let _ = ctx.set_stroke_style_str(palette.note_border);
-    ctx.set_line_width(1.0);
+    // p0-fix 定点 2：选中态——描边加粗 + brand 色
+    let _ = ctx.set_stroke_style_str(if selected { palette.selected } else { palette.note_border });
+    ctx.set_line_width(if selected { 2.5 } else { 1.0 });
     ctx.stroke_rect(note.x, note.y, note_w, note_h);
 
     let _ = ctx.set_fill_style_str(palette.note_text);
@@ -1603,6 +1799,69 @@ pub fn hit_test_endpoint(
             if (x - ex).powi(2) + (y - ey).powi(2) <= r2 {
                 return Some((r.id.clone(), EndpointEnd::End));
             }
+        }
+    }
+    None
+}
+
+// ─── Area/Note 创建与命中（p0-fix 定点 2） ─────────────────────────────────
+
+/// 便签渲染尺寸（draw_note 与 hit_test_note 共用）
+pub const NOTE_WIDTH: f64 = 180.0;
+pub const NOTE_HEIGHT: f64 = 100.0;
+
+/// p0-fix 定点 2：纯函数 — 拖拽矩形归一化（UT-AREA-01）
+/// 返回 (x, y, width, height)；宽或高 < 10px → None（防误触不创建）
+pub fn area_rect_from_drag(x1: f64, y1: f64, x2: f64, y2: f64) -> Option<(f64, f64, f64, f64)> {
+    let x = x1.min(x2);
+    let y = y1.min(y2);
+    let w = (x2 - x1).abs();
+    let h = (y2 - y1).abs();
+    if w < 10.0 || h < 10.0 {
+        return None;
+    }
+    Some((x, y, w, h))
+}
+
+/// p0-fix 定点 2：纯函数 — 构建 Area（默认 未命名区域 / #3b82f6，UT-AREA-01）
+pub fn build_area(id: String, x: f64, y: f64, width: f64, height: f64) -> Area {
+    Area {
+        id,
+        x,
+        y,
+        width,
+        height,
+        color: "#3b82f6".to_string(),
+        name: "未命名区域".to_string(),
+    }
+}
+
+/// p0-fix 定点 2：纯函数 — 构建 Note（默认空内容 / #f59e0b，UT-NOTE-01）
+pub fn build_note(id: String, x: f64, y: f64) -> Note {
+    Note {
+        id,
+        x,
+        y,
+        content: String::new(),
+        color: "#f59e0b".to_string(),
+    }
+}
+
+/// p0-fix 定点 2：纯函数 — 点命中区域矩形（后创建优先）
+pub fn hit_test_area(areas: &[Area], x: f64, y: f64) -> Option<String> {
+    for a in areas.iter().rev() {
+        if x >= a.x && x <= a.x + a.width && y >= a.y && y <= a.y + a.height {
+            return Some(a.id.clone());
+        }
+    }
+    None
+}
+
+/// p0-fix 定点 2：纯函数 — 点命中便签（180×100 渲染矩形，后创建优先）
+pub fn hit_test_note(notes: &[Note], x: f64, y: f64) -> Option<String> {
+    for n in notes.iter().rev() {
+        if x >= n.x && x <= n.x + NOTE_WIDTH && y >= n.y && y <= n.y + NOTE_HEIGHT {
+            return Some(n.id.clone());
         }
     }
     None
@@ -1895,6 +2154,55 @@ mod tests {
         assert!((dist_point_segment(-3.0, 0.0, 0.0, 0.0, 10.0, 0.0) - 3.0).abs() < 1e-9);
         assert!(point_near_bezier(&path, 50.0, 50.0, 8.0), "UT-MM-33: 曲线中点应命中");
         assert!(!point_near_bezier(&path, 50.0, 80.0, 4.0), "UT-MM-33: 远离曲线不应命中");
+    }
+
+    // ─── UT-AREA-01 / UT-NOTE-01 — p0-fix 定点 2 区域/便签创建 ─────────────
+
+    /// UT-AREA-01: 拖框归一化 + <10px 不创建 + build_area 默认值 + hit_test_area
+    #[test]
+    fn test_area_create_ut_area_01() {
+        // 正常拖框（含反向拖拽归一化）
+        assert_eq!(
+            area_rect_from_drag(100.0, 100.0, 260.0, 220.0),
+            Some((100.0, 100.0, 160.0, 120.0))
+        );
+        assert_eq!(
+            area_rect_from_drag(260.0, 220.0, 100.0, 100.0),
+            Some((100.0, 100.0, 160.0, 120.0)),
+            "UT-AREA-01: 反向拖框应归一化"
+        );
+        // 拖框 < 10px 不创建（防误触）
+        assert_eq!(area_rect_from_drag(100.0, 100.0, 105.0, 108.0), None);
+        assert_eq!(area_rect_from_drag(100.0, 100.0, 100.0, 100.0), None);
+        assert_eq!(area_rect_from_drag(100.0, 100.0, 150.0, 105.0), None);
+
+        let area = build_area("a1".into(), 100.0, 100.0, 160.0, 120.0);
+        assert_eq!(area.name, "未命名区域");
+        assert_eq!(area.color, "#3b82f6");
+        assert_eq!(hit_test_area(&[area.clone()], 150.0, 150.0), Some("a1".to_string()));
+        assert_eq!(hit_test_area(&[area.clone()], 50.0, 50.0), None);
+        // 后创建优先
+        let a2 = build_area("a2".into(), 120.0, 120.0, 160.0, 120.0);
+        assert_eq!(
+            hit_test_area(&[area, a2], 150.0, 150.0),
+            Some("a2".to_string()),
+            "UT-AREA-01: 重叠区域后创建优先"
+        );
+    }
+
+    /// UT-NOTE-01: build_note 默认值 + hit_test_note 固定 180×100 命中
+    #[test]
+    fn test_note_create_ut_note_01() {
+        let note = build_note("n1".into(), 200.0, 300.0);
+        assert_eq!(note.content, "");
+        assert_eq!(note.color, "#f59e0b");
+        assert_eq!(
+            hit_test_note(&[note.clone()], 200.0 + NOTE_WIDTH / 2.0, 300.0 + NOTE_HEIGHT / 2.0),
+            Some("n1".to_string())
+        );
+        // 渲染矩形边界外不命中
+        assert_eq!(hit_test_note(&[note.clone()], 200.0 + NOTE_WIDTH + 1.0, 300.0), None);
+        assert_eq!(hit_test_note(&[note], 200.0, 300.0 + NOTE_HEIGHT + 1.0), None);
     }
 
     #[test]

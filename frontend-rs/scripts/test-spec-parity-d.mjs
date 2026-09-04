@@ -19,6 +19,8 @@
 // p0-fix 定点 3 新增：
 //   ST-PB-03         点击连线弹关系详情模态；模态内删除落账 0 条
 //   ST-PB-04         选中连线按 Delete 键删除落账 0 条
+//   ST-AN-01         拖框创建区域 → Inspector 编辑 → Delete 键删除落账 0 个
+//   ST-AN-02         点击放置便签 → Inspector 编辑内容 → 按钮删除落账 0 个
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { reportOpenLogos } from "../tests/e2e/helpers/openlogos-reporter.mjs";
@@ -637,7 +639,7 @@ try {
 
     // 模态内删除 → 落账 0 条关系
     await page.locator('[data-testid="btn-delete-reference"]').click();
-    await page.locator('[data-testid="save-state"][data-state="saved"]').waitFor({ timeout: 8_000 });
+    await waitSaved(page);
     assert.equal(state.lastPutBody?.diagram?.references?.length, 0, "模态删除后必须落账 0 条关系");
   });
 
@@ -657,6 +659,69 @@ try {
     await page.keyboard.press("Delete");
     await waitSaved(page);
     assert.equal(state.lastPutBody?.diagram?.references?.length, 0, "Delete 键删除后必须落账 0 条关系");
+  });
+
+  // ─── ST-AN-01：拖框创建区域 → Inspector 编辑 → Delete 键删除（p0-fix 定点 2） ──
+  await run(["ST-AN-01"], "拖框创建区域并可编辑删除", async page => {
+    const state = await installApi(page);
+    await login(page);
+    await createRoomAndEnter(page);
+    await createTwoTables(page);
+
+    // 进入区域创建工具 → 十字光标拖框（避开两表区域）
+    await page.locator('[data-testid="tool-new-area"]').click();
+    const from = await canvasPoint(page, { x: 600, y: 400 });
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 300, from.y + 200, { steps: 5 });
+    await page.mouse.up();
+
+    // 松开落账：Inspector 区域面板 + PUT areas==1 + 工具复位
+    await page.locator('[data-testid="inspector-area-form"]:visible').waitFor();
+    await waitSaved(page);
+    assert.equal(state.lastPutBody?.diagram?.areas?.length, 1, "拖框松开后必须落账 1 个区域");
+    const area = state.lastPutBody.diagram.areas[0];
+    assert.equal(area.name, "未命名区域", "区域默认名必须为 未命名区域");
+    assert.equal(area.width, 300, "区域宽度必须等于拖框宽度");
+    await page.locator('[data-testid="tool-new-area"]:not(.cdb-is-active)').waitFor();
+
+    // Inspector 改名 → 落账新名称
+    await page.locator('[data-testid="inspector-area-name"]').fill("核心域");
+    await waitSaved(page);
+    assert.equal(state.lastPutBody?.diagram?.areas?.[0]?.name, "核心域", "改名后必须落账");
+
+    // 选中态按 Delete 键删除 → 落账 0 个
+    await page.keyboard.press("Delete");
+    await waitSaved(page);
+    assert.equal(state.lastPutBody?.diagram?.areas?.length, 0, "Delete 键删除后必须落账 0 个区域");
+  });
+
+  // ─── ST-AN-02：点击放置便签 → Inspector 编辑内容 → 按钮删除（p0-fix 定点 2） ──
+  await run(["ST-AN-02"], "点击放置便签并可编辑删除", async page => {
+    const state = await installApi(page);
+    await login(page);
+    await createRoomAndEnter(page);
+    await createTwoTables(page);
+
+    // 进入便签创建工具 → 点击画布放置（避开两表与 ST-AN-01 区域坐标）
+    await page.locator('[data-testid="tool-new-note"]').click();
+    const p = await canvasPoint(page, { x: 1000, y: 500 });
+    await page.mouse.click(p.x, p.y);
+
+    // 松开落账：Inspector 便签面板 + PUT notes==1
+    await page.locator('[data-testid="inspector-note-form"]:visible').waitFor();
+    await waitSaved(page);
+    assert.equal(state.lastPutBody?.diagram?.notes?.length, 1, "点击后必须落账 1 个便签");
+
+    // Inspector 编辑内容 → 落账
+    await page.locator('[data-testid="inspector-note-content"]').fill("这是一张便签");
+    await waitSaved(page);
+    assert.equal(state.lastPutBody?.diagram?.notes?.[0]?.content, "这是一张便签", "编辑后必须落账内容");
+
+    // 按钮删除 → 落账 0 个
+    await page.locator('[data-testid="btn-delete-note"]').click();
+    await waitSaved(page);
+    assert.equal(state.lastPutBody?.diagram?.notes?.length, 0, "按钮删除后必须落账 0 个便签");
   });
 
   // ─── ST-CR-02：拖表跟手 + 松手 GRID_SIZE=20 吸附 ──────────────────────────

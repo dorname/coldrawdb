@@ -84,6 +84,8 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-MM-32", // p0-fix 定点 1: can_delete_room 纯函数（my_role == "owner" → true；editor/viewer/空串 → false）
     "UT-MM-33", // p0-fix 定点 3: hit_test_reference / point_near_bezier / bezier_point / dist_point_segment 点到贝塞尔连线命中检测纯函数
     "UT-MM-34", // p0-fix 定点 3: is_delete_key 纯函数（Delete/Backspace 命中；普通键/Escape/空串不命中）
+    "UT-AREA-01", // p0-fix 定点 2: area_rect_from_drag 归一化 + <10px 不创建 + build_area 默认值 + hit_test_area 后创建优先
+    "UT-NOTE-01", // p0-fix 定点 2: build_note 默认值 + hit_test_note 固定 180×100 命中
     // core-PB-relationship
     "UT-PB-01",
     "UT-PB-02",
