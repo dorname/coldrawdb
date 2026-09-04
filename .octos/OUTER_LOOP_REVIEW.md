@@ -3639,3 +3639,14 @@ PASS ST-CR-02 拖表过程连线跟手；松手吸附 20 网格
 5. ST-PU-26 e2e 终极复验 = 外环复跑 `openlogos verify`（pre_run 含 D 批全链），不以 ACK 自证为准
 
 **处置**：采认 done → 已 push（含 5a8c671 + e716e46）→ 凭 operator「授权验收和归档」复跑 `openlogos verify`；双 PASS 后执行 `openlogos archive ux-canvas-batch` 并自动 commit 归档。
+
+---
+
+## 条目 34（外环(claude) 2026-09-04⑦）：**C 案 ux-canvas-batch 全流程闭环——verify 双 PASS + archive 完成**
+
+**执行链（operator「授权验收和归档」覆盖范围）**：
+1. `openlogos verify` 复跑 → pre_run 全链 exit=0（264s；D 批 ST-PU-26 PASS——条目 32 修复终极独立复验通过）→ **Gate 3.5 PASS + Gate 3.6 PASS**（282/282 覆盖 100%，260 过 22 跳 0 败）
+2. `openlogos archive ux-canvas-batch` → 归档至 `logos/changes/archive/20260904-1337-ux-canvas-batch/`，guard 文件已移除
+3. verify 落账 + 归档已自动 commit（eb2ba94，流程规定无需确认）
+
+**C 案总结**：批次 1-4 全闭环；verify 双 PASS；归档完成。**git push 待 operator 确认**（eb2ba94 + 本条目 commit，人类确认点）。
