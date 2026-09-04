@@ -82,6 +82,8 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-MM-30", // ux-canvas-batch 批次4: rAF 调度去重 + TextCacheKey 测试（schedule_render_dedup 可测同步核 pending 状态机：首次入队执行/二次 noop/清 pending 后可入队；schedule_render 壳 + TextCacheKey font_px 容差；6 子用例覆盖三态/多轮/键相等性）
     "UT-MM-31", // p0-fix 定点 1: delete_room URL 拼接 + 状态映射纯函数（204 → Ok；403/404/500 → ApiError::Server(状态码, body)）
     "UT-MM-32", // p0-fix 定点 1: can_delete_room 纯函数（my_role == "owner" → true；editor/viewer/空串 → false）
+    "UT-MM-33", // p0-fix 定点 3: hit_test_reference / point_near_bezier / bezier_point / dist_point_segment 点到贝塞尔连线命中检测纯函数
+    "UT-MM-34", // p0-fix 定点 3: is_delete_key 纯函数（Delete/Backspace 命中；普通键/Escape/空串不命中）
     // core-PB-relationship
     "UT-PB-01",
     "UT-PB-02",

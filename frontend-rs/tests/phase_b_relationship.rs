@@ -199,19 +199,20 @@ fn ut_pb_04c_toggle_field_primary_missing_table_is_noop() {
 
 #[test]
 fn ut_pb_05_confirm_bar_increments_references_count() {
-    // 该用例为组件层断言（确认条 visible + 点击 create 后 references.len()+1）。
-    // 在纯单元测试中无法直接渲染 Leptos 组件，改用源码扫描方式验证：
-    // 1) 关系确认条组件 RelationshipConfirmBar 存在（L1268）
-    // 2) 创建逻辑使用 `refs.push(reference) + store.references.set(refs)` 模式（L3077-3079）
-    // 3) editor_panels.rs::tests 模块内已有内联 UT-PB-05 断言（L4935-4936 验证 len==1）
+    // p0-fix 定点 3（2026-09-04 提案）：RelToolState::Confirm 与 RelationshipConfirmBar
+    // 已按变更提案删除——关系创建改为「拖拽松开 / 点击两点直接落账」，
+    // 不再要求确认条中间态。本用例相应改断言新规格：
+    // 1) 确认条组件已删除（直接落账）
+    // 2) 创建逻辑仍使用 `refs.push(reference) + store.references.set(refs)` 模式
+    // 3) editor_panels.rs::tests 模块内联 UT-PB-05 断言保留（len==1）
     //
-    // 完整 E2E 由 ST-PB-01 覆盖，此处确保测试基础设施与内联测试就位。
+    // 完整 E2E 由 ST-PB-01/02 覆盖（流程已同步更新），此处确保测试基础设施与内联测试就位。
 
     let panels_src = include_str!("../src/editor_panels.rs");
 
     assert!(
-        panels_src.contains("RelationshipConfirmBar"),
-        "UT-PB-05 FAIL: RelationshipConfirmBar 组件缺失"
+        !panels_src.contains("RelationshipConfirmBar"),
+        "UT-PB-05 FAIL: p0-fix 定点 3 后 RelationshipConfirmBar 组件应已删除（直接落账）"
     );
 
     assert!(

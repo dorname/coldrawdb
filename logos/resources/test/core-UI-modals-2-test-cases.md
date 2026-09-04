@@ -139,3 +139,5 @@
 | UT-MM-30 | rAF 调度去重 + TextCacheKey 键结构测试（schedule_render_dedup 可测同步核 pending 状态机：首次入队执行/二次 noop/清 pending 后可入队/多轮入队各执行；TextCacheKey font_px 容差 0.01 相等 + text 不等；6 子用例覆盖三态/多轮/键相等性） | `editor_render.rs::schedule_render_dedup` + `TextCacheKey` |
 | UT-MM-31 | delete_room URL 拼接 + 状态映射纯函数测试（`{base}/api/v1/rooms/{room_id}`；204 → Ok(())；403/404/500 → ApiError::Server(状态码, body)） | `editor_data_access.rs::delete_room_url` + `map_delete_room_status` |
 | UT-MM-32 | 删除房间可见性纯函数测试（can_delete_room：owner → true；editor/viewer/空串 → false） | `editor_panels.rs::can_delete_room` |
+| UT-MM-33 | 点到贝塞尔连线命中检测纯函数测试（hit_test_reference 24 段折线近似阈值 8px；bezier_point 端点性质；dist_point_segment 垂距/延长线截断；point_near_bezier 中点命中/远离不命中） | `editor_render.rs::hit_test_reference` + `point_near_bezier` + `bezier_point` + `dist_point_segment` |
+| UT-MM-34 | Delete 键判定纯函数测试（is_delete_key：Delete/Backspace → true；普通键/Escape/空串 → false） | `editor_panels.rs::is_delete_key` |

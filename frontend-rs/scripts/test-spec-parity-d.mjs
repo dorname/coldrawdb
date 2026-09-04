@@ -14,8 +14,11 @@
 //
 // 同批落地的既有 harness-skip（验收 §7.5 证据，落地后从 ST_SKIP_IDS 移除）：
 //   ST-CR-02         拖表过程连线路径跟手；松手后表坐标为 GRID_SIZE=20 的倍数
-//   ST-PB-01         关系工具点击两点 + 确认条创建关系
-//   ST-PB-02         关系工具拖线（≥4px + rubber-band）+ 确认条创建关系
+//   ST-PB-01         关系工具点击两点直接落账（p0-fix 定点 3：确认条已删除）
+//   ST-PB-02         关系工具拖线（≥4px + rubber-band）直接落账（p0-fix 定点 3）
+// p0-fix 定点 3 新增：
+//   ST-PB-03         点击连线弹关系详情模态；模态内删除落账 0 条
+//   ST-PB-04         选中连线按 Delete 键删除落账 0 条
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { reportOpenLogos } from "../tests/e2e/helpers/openlogos-reporter.mjs";
@@ -183,6 +186,51 @@ async function canvasPoint(page, point) {
   const box = await page.locator('[data-testid="editor-canvas-container"] canvas').boundingBox();
   assert.ok(box, "canvas 必须存在");
   return { x: box.x + point.x, y: box.y + point.y };
+}
+
+// p0-fix 定点 3：等保存完成（data-state=saved）。
+// 不用 locator visible wait：保存完成瞬间 dirty/is_saving/revision 多信号连变，
+// Leptos 会快速重建 chip 节点，locator 轮询可能稳定命中到刚被替换的隐藏旧节点（偶发 flake）。
+async function waitSaved(page, timeoutMs = 8_000) {
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="save-state"]')?.getAttribute("data-state") === "saved",
+    { timeout: timeoutMs }
+  );
+}
+
+// p0-fix 定点 3：从 canvas data-follow-path 解析连线中点
+// （贝塞尔控制点在两端中线上，曲线中点恰为端点中点，见 editor_render bezier_controls）
+async function relationLineMidpoint(page) {
+  const d = await page.locator('[data-testid="editor-canvas-container"] canvas').getAttribute("data-follow-path");
+  assert.ok(d && d.startsWith("M"), "关系线 data-follow-path 必须存在");
+  const nums = d.match(/-?\d+\.?\d*/g).map(Number);
+  // M x1 y1 C cx1 cy1,cx2 cy2,x2 y2 → 共 8 个数
+  const [x1, y1, , , , , x2, y2] = nums;
+  return { x: (x1 + x2) / 2, y: (y1 + y2) / 2 };
+}
+
+// p0-fix 定点 3：建一条「可见」关系——先把 table_2 拖开（默认布局两表重叠，
+// 连线被表遮住时命中顺序表 > 连线），再点击两点直接落账，最后 Esc 退出关系工具
+async function createVisibleRelation(page) {
+  await createTwoTables(page);
+  const header = await canvasPoint(page, TABLE2_HEADER);
+  await page.mouse.move(header.x, header.y);
+  await page.mouse.down();
+  await page.mouse.move(header.x + 300, header.y + 100, { steps: 5 });
+  await page.mouse.up();
+  await page.locator('[data-testid="save-state"][data-state="saved"]').waitFor({ timeout: 8_000 });
+  await waitForCanvasStable(page);
+
+  await page.keyboard.press("r");
+  await page.locator('[data-testid="rel-tool-hint"]:visible').waitFor();
+  let p = await canvasPoint(page, TABLE1_FIELD);
+  await page.mouse.click(p.x, p.y);
+  p = await canvasPoint(page, { x: TABLE2_FIELD.x + 300, y: TABLE2_FIELD.y + 100 });
+  await page.mouse.click(p.x, p.y);
+  await page.locator('[data-testid="inspector-reference-form"]:visible').waitFor();
+  await page.keyboard.press("Escape");
+  await page.locator('[data-testid="rel-tool-hint"]').waitFor({ state: "hidden" });
+  await waitForCanvasStable(page);
 }
 
 // 等画布布局稳定（Inspector 开合/保存态切换会触发容器过渡，动画中点击会落空）
@@ -522,8 +570,8 @@ try {
     }
   }, { viewport: { width: 720, height: 900 } });
 
-  // ─── ST-PB-01：关系工具点击两点 + 确认条创建 ──────────────────────────────
-  await run(["ST-PB-01"], "点击两点 + 确认条创建关系", async page => {
+  // ─── ST-PB-01：关系工具点击两点直接落账（p0-fix 定点 3：确认条已删除） ────
+  await run(["ST-PB-01"], "点击两点直接创建关系", async page => {
     const state = await installApi(page);
     await login(page);
     await createRoomAndEnter(page);
@@ -537,19 +585,15 @@ try {
     const p2 = await canvasPoint(page, TABLE2_FIELD);
     await page.mouse.click(p2.x, p2.y);
 
-    // 落点后必须出现确认条；确认后才 references+1
-    await page.locator('[data-testid="rel-confirm-bar"]:visible').waitFor();
-    await page.locator('[data-testid="rel-confirm-bar"]').getByText(/table_1\.id → table_2\.id/).waitFor();
-    await page.locator('[data-testid="rel-confirm-create"]').click();
-
-    // Inspector 可编辑该关系
+    // p0-fix 定点 3：第二击落点直接落账（无确认条）；确认条组件已删除
+    assert.equal(await page.locator('[data-testid="rel-confirm-bar"]').count(), 0, "p0-fix 后不应存在确认条");
     await page.locator('[data-testid="inspector-reference-form"]:visible').waitFor();
     await page.locator('[data-testid="save-state"][data-state="saved"]').waitFor({ timeout: 8_000 });
-    assert.equal(state.lastPutBody?.diagram?.references?.length, 1, "确认后必须落账 1 条关系");
+    assert.equal(state.lastPutBody?.diagram?.references?.length, 1, "点击两点后必须直接落账 1 条关系");
   });
 
-  // ─── ST-PB-02：拖线（≥4px + rubber-band）+ 确认条创建 ─────────────────────
-  await run(["ST-PB-02"], "字段拖线 + 确认条创建关系", async page => {
+  // ─── ST-PB-02：拖线（≥4px + rubber-band）直接落账（p0-fix 定点 3） ────────
+  await run(["ST-PB-02"], "字段拖线直接创建关系", async page => {
     const state = await installApi(page);
     await login(page);
     await createRoomAndEnter(page);
@@ -571,12 +615,48 @@ try {
     await page.mouse.move(to.x, to.y, { steps: 2 });
     await page.mouse.up();
 
-    // 落到目标字段 → 确认条可见 → 确认创建
-    await page.locator('[data-testid="rel-confirm-bar"]:visible').waitFor();
-    await page.locator('[data-testid="rel-confirm-create"]').click();
+    // p0-fix 定点 3：落到目标字段松开直接落账（无确认条）
+    assert.equal(await page.locator('[data-testid="rel-confirm-bar"]').count(), 0, "p0-fix 后不应存在确认条");
     await page.locator('[data-testid="inspector-reference-form"]:visible').waitFor();
+    await waitSaved(page);
+    assert.equal(state.lastPutBody?.diagram?.references?.length, 1, "拖线松开后必须直接落账 1 条关系");
+  });
+
+  // ─── ST-PB-03：点击连线弹关系详情模态 + 模态内删除（p0-fix 定点 3） ──────
+  await run(["ST-PB-03"], "点击连线弹详情模态并可删除", async page => {
+    const state = await installApi(page);
+    await login(page);
+    await createRoomAndEnter(page);
+    await createVisibleRelation(page);
+
+    // 点击连线中点 → 弹关系详情模态（含两端字段与 cardinality）
+    const mid = await canvasPoint(page, await relationLineMidpoint(page));
+    await page.mouse.click(mid.x, mid.y);
+    await page.locator('[data-testid="modal-reference-detail"]:visible').waitFor();
+    await page.locator('[data-testid="reference-detail-label"]').getByText(/table_1\.id → table_2\.id/).waitFor();
+
+    // 模态内删除 → 落账 0 条关系
+    await page.locator('[data-testid="btn-delete-reference"]').click();
     await page.locator('[data-testid="save-state"][data-state="saved"]').waitFor({ timeout: 8_000 });
-    assert.equal(state.lastPutBody?.diagram?.references?.length, 1, "拖线确认后必须落账 1 条关系");
+    assert.equal(state.lastPutBody?.diagram?.references?.length, 0, "模态删除后必须落账 0 条关系");
+  });
+
+  // ─── ST-PB-04：选中连线按 Delete 键删除（p0-fix 定点 3） ─────────────────
+  await run(["ST-PB-04"], "点击连线后 Delete 键删除", async page => {
+    const state = await installApi(page);
+    await login(page);
+    await createRoomAndEnter(page);
+    await createVisibleRelation(page);
+
+    // 点击连线选中（弹详情模态）→ 关闭模态 → Delete 键删除
+    const mid = await canvasPoint(page, await relationLineMidpoint(page));
+    await page.mouse.click(mid.x, mid.y);
+    await page.locator('[data-testid="modal-reference-detail"]:visible').waitFor();
+    await page.locator('[data-testid="btn-close-reference-detail"]').click();
+    await page.locator('[data-testid="modal-reference-detail"]').waitFor({ state: "hidden" });
+    await page.keyboard.press("Delete");
+    await waitSaved(page);
+    assert.equal(state.lastPutBody?.diagram?.references?.length, 0, "Delete 键删除后必须落账 0 条关系");
   });
 
   // ─── ST-CR-02：拖表跟手 + 松手 GRID_SIZE=20 吸附 ──────────────────────────
@@ -586,14 +666,12 @@ try {
     await createRoomAndEnter(page);
     await createTwoTables(page);
 
-    // 先建一条关系（点击两点 + 确认），再 Esc 退出关系工具
+    // 先建一条关系（点击两点直接落账，p0-fix 定点 3），再 Esc 退出关系工具
     await page.keyboard.press("r");
     const p1 = await canvasPoint(page, TABLE1_FIELD);
     await page.mouse.click(p1.x, p1.y);
     const p2 = await canvasPoint(page, TABLE2_FIELD);
     await page.mouse.click(p2.x, p2.y);
-    await page.locator('[data-testid="rel-confirm-bar"]:visible').waitFor();
-    await page.locator('[data-testid="rel-confirm-create"]').click();
     await page.locator('[data-testid="save-state"][data-state="saved"]').waitFor({ timeout: 8_000 });
     await page.keyboard.press("Escape");
     await page.locator('[data-testid="rel-tool-hint"]').waitFor({ state: "hidden" });

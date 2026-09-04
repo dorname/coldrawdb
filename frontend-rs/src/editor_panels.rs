@@ -90,6 +90,11 @@ pub fn tool_shortcut_for_key(key: &str, ctrl: bool, meta: bool, alt: bool) -> Op
 /// D 批：T/R 全局工具快捷键（ST-KB-T-01 / ST-KB-R-01 / ST-KB-VIEWER）。
 /// 仅在编辑器页、非只读、无输入焦点、无浮层遮挡时生效；Viewer / 分享只读不响应。
 #[allow(clippy::too_many_arguments)]
+/// p0-fix 定点 3：Delete/Backspace 键判定（UT-MM-34）
+pub fn is_delete_key(key: &str) -> bool {
+    matches!(key, "Delete" | "Backspace")
+}
+
 pub fn setup_editor_tool_shortcuts(
     current_page: RwSignal<PageState>,
     share_mode: bool,
@@ -100,6 +105,9 @@ pub fn setup_editor_tool_shortcuts(
     active_tool: RwSignal<ActiveTool>,
     rel_tool_state: RwSignal<RelToolState>,
     on_create_table: Rc<dyn Fn()>,
+    // p0-fix 定点 3：Delete 键删除选中连线依赖
+    selection: RwSignal<SelectionKind>,
+    on_delete_ref: Rc<dyn Fn(String)>,
 ) {
     use wasm_bindgen::JsCast;
     gloo::events::EventListener::new(&gloo::utils::document(), "keydown", move |ev| {
@@ -124,6 +132,14 @@ pub fn setup_editor_tool_shortcuts(
         }
         // 输入焦点门控：输入框 / contentEditable 内不抢键
         if shortcut_event_is_text_target(ke) {
+            return;
+        }
+        // p0-fix 定点 3：Delete/Backspace 删除选中连线（ST-PB-04）
+        if is_delete_key(&ke.key()) {
+            if let SelectionKind::Reference(ref_id) = selection.get_untracked() {
+                ke.prevent_default();
+                on_delete_ref(ref_id);
+            }
             return;
         }
         let Some(shortcut) =
@@ -371,6 +387,7 @@ pub enum ActiveTool {
 }
 
 /// Phase B：关系工具状态机
+/// p0-fix 定点 3：Confirm 态已删除——拖到目标字段松开 / 点击两点后直接落账，无确认条
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RelToolState {
     Idle,
@@ -382,13 +399,6 @@ pub enum RelToolState {
     Dragging {
         start_table_id: String,
         start_field_id: String,
-    },
-    Confirm {
-        start_table_id: String,
-        start_field_id: String,
-        end_table_id: String,
-        end_field_id: String,
-        cardinality: String,
     },
 }
 
@@ -3744,116 +3754,6 @@ pub fn RelToolHint(rel_state: RwSignal<RelToolState>) -> impl IntoView {
         {move || rel_state.get().hint().map(|text| view! {
             <div class="cdb-rel-tool-hint" data-testid="rel-tool-hint">{text}</div>
         })}
-    }
-}
-
-/// Phase B：关系确认条（画布底部，非模态）
-#[component]
-pub fn RelationshipConfirmBar(
-    store: EditorStore,
-    rel_state: RwSignal<RelToolState>,
-    next_ref_id: Rc<dyn Fn() -> String>,
-    on_create: Rc<dyn Fn(Reference)>,
-) -> impl IntoView {
-    view! {
-        {move || {
-            if let RelToolState::Confirm {
-                start_table_id,
-                start_field_id,
-                end_table_id,
-                end_field_id,
-                cardinality,
-            } = rel_state.get()
-            {
-                let label = format_rel_confirm_label(
-                    &store.tables.get(),
-                    &start_table_id,
-                    &start_field_id,
-                    &end_table_id,
-                    &end_field_id,
-                );
-                let card = cardinality.clone();
-                let st = start_table_id.clone();
-                let sf = start_field_id.clone();
-                let et = end_table_id.clone();
-                let ef = end_field_id.clone();
-                let on_create = on_create.clone();
-                let next_ref_id = next_ref_id.clone();
-                let st_change = st.clone();
-                let sf_change = sf.clone();
-                let et_change = et.clone();
-                let ef_change = ef.clone();
-                let card_for_options = card.clone();
-                let st_create = st.clone();
-                let sf_create = sf.clone();
-                let et_create = et.clone();
-                let ef_create = ef.clone();
-                let card_create = card.clone();
-                let inferred_cardinality = modals::infer_cardinality(&sf, &ef, &store);
-                let display_cardinality = inferred_cardinality.clone();
-                let display_cardinality_for_click = display_cardinality.clone();
-                view! {
-                    <div class="cdb-rel-confirm-bar" data-testid="rel-confirm-bar">
-                        <span class="cdb-rel-confirm-bar__label">{label}</span>
-                        // feat-relation-inference 批次2: 去掉 cardinality 必选下拉，
-                        // 改为显示推导结果 + 可点击切换为其它 cardinality（手动覆盖）
-                        <span
-                            class="cdb-form-select cdb-rel-confirm-bar__select"
-                            data-testid="rel-confirm-inferred-cardinality"
-                            title={format!("推导结果（点击可手动覆盖）")}
-                            on:click=move |_| {
-                                // 手动覆盖：点击后循环切换 cardinality（one_to_one → one_to_many → many_to_one → many_to_many → one_to_one）
-                                let current = display_cardinality_for_click.clone();
-                                let next = match current.as_str() {
-                                    "one_to_one" => "one_to_many",
-                                    "one_to_many" => "many_to_one",
-                                    "many_to_one" => "many_to_many",
-                                    "many_to_many" => "one_to_one",
-                                    _ => "one_to_many",
-                                };
-                                rel_state.set(RelToolState::Confirm {
-                                    start_table_id: st_change.clone(),
-                                    start_field_id: sf_change.clone(),
-                                    end_table_id: et_change.clone(),
-                                    end_field_id: ef_change.clone(),
-                                    cardinality: next.to_string(),
-                                });
-                            }
-                        >
-                            {display_cardinality}
-                        </span>
-                        <button
-                            class="cdb-btn cdb-btn--primary"
-                            data-testid="rel-confirm-create"
-                            on:click=move |_| {
-                                let id = next_ref_id();
-                                let reference = build_reference(
-                                    id,
-                                    st_create.clone(),
-                                    sf_create.clone(),
-                                    et_create.clone(),
-                                    ef_create.clone(),
-                                    &card_create,
-                                );
-                                on_create(reference);
-                                rel_state.set(RelToolState::PickSource);
-                            }
-                        >
-                            "创建"
-                        </button>
-                        <button
-                            class="cdb-btn"
-                            data-testid="rel-confirm-cancel"
-                            on:click=move |_| rel_state.set(RelToolState::PickSource)
-                        >
-                            "取消"
-                        </button>
-                    </div>
-                }.into_view()
-            } else {
-                view! { <></> }.into_view()
-            }
-        }}
     }
 }
 
@@ -7720,6 +7620,8 @@ pub fn AppRoot(
 
     let on_field_pick: Option<Box<dyn Fn(String, String) + 'static>> = {
         let rel_tool_state = rel_tool_state.clone();
+        let on_create_reference = on_create_reference.clone();
+        let next_ref_id = next_ref_id.clone();
         Some(Box::new(
             move |table_id: String, field_id: String| match rel_tool_state.get_untracked() {
                 RelToolState::PickSource => {
@@ -7732,15 +7634,18 @@ pub fn AppRoot(
                     start_table_id,
                     start_field_id,
                 } => {
-                    // feat-relation-inference 批次2: cardinality 改推导值（非必选下拉值）
+                    // p0-fix 定点 3：点击两点直接落账（无确认条），cardinality 用推导值
                     let inferred = modals::infer_cardinality(&start_field_id, &field_id, &store);
-                    rel_tool_state.set(RelToolState::Confirm {
+                    let reference = build_reference(
+                        next_ref_id(),
                         start_table_id,
                         start_field_id,
-                        end_table_id: table_id,
-                        end_field_id: field_id,
-                        cardinality: inferred,
-                    });
+                        table_id,
+                        field_id,
+                        &inferred,
+                    );
+                    on_create_reference(reference);
+                    rel_tool_state.set(RelToolState::PickSource);
                 }
                 RelToolState::Dragging { .. } => {}
                 _ => {}
@@ -7760,20 +7665,25 @@ pub fn AppRoot(
 
     let on_relation_drop: Option<Box<dyn Fn(String, String, String, String) + 'static>> = {
         let rel_tool_state = rel_tool_state.clone();
+        let on_create_reference = on_create_reference.clone();
+        let next_ref_id = next_ref_id.clone();
         Some(Box::new(
             move |start_table_id: String,
                   start_field_id: String,
                   end_table_id: String,
                   end_field_id: String| {
-                // feat-relation-inference 批次2: cardinality 改推导值（非必选下拉值）
+                // p0-fix 定点 3：拖到目标字段松开直接落账（无确认条），cardinality 用推导值
                 let inferred = modals::infer_cardinality(&start_field_id, &end_field_id, &store);
-                rel_tool_state.set(RelToolState::Confirm {
+                let reference = build_reference(
+                    next_ref_id(),
                     start_table_id,
                     start_field_id,
                     end_table_id,
                     end_field_id,
-                    cardinality: inferred,
-                });
+                    &inferred,
+                );
+                on_create_reference(reference);
+                rel_tool_state.set(RelToolState::PickSource);
             },
         ))
     };
@@ -8156,9 +8066,18 @@ pub fn AppRoot(
         }
     });
 
-    let on_canvas_select: Option<Box<dyn Fn(String) + 'static>> = {
+    // p0-fix 定点 3：点击连线 → 选中该关系 + 弹关系详情模态（ST-PB-03）
+    let on_reference_pick: Option<Box<dyn Fn(String) + 'static>> = {
         let selection = selection.clone();
-        let inspector_open = inspector_open.clone();
+        let modal_kind = modal_kind.clone();
+        Some(Box::new(move |ref_id: String| {
+            selection.set(SelectionKind::Reference(ref_id));
+            modal_kind.set(Some(modals::ModalKind::ReferenceDetail));
+        }))
+    };
+
+    let on_canvas_select: Option<Box<dyn Fn(String) + 'static>> = {
+        let selection = selection.clone();        let inspector_open = inspector_open.clone();
         let selected_table_id = selected_table_id.clone();
         Some(Box::new(move |id: String| {
             selected_table_id.set(Some(id.clone()));
@@ -8308,6 +8227,8 @@ pub fn AppRoot(
         active_tool,
         rel_tool_state,
         on_create_table.clone(),
+        selection,
+        on_delete_ref.clone(),
     );
     setup_escape_layer_handler(
         palette_visible,
@@ -8498,13 +8419,8 @@ pub fn AppRoot(
                         on_relation_drop=on_relation_drop
                         on_relation_drag_cancel=on_relation_drag_cancel
                         on_table_drop=on_table_drop
+                        on_reference_pick=on_reference_pick
                         theme_mode=theme_mode
-                    />
-                    <RelationshipConfirmBar
-                        store=store.clone()
-                        rel_state=rel_tool_state
-                        next_ref_id=next_ref_id.clone()
-                        on_create=on_create_reference.clone()
                     />
                     <ActivityFeed items=activity_feed visible=activity_open />
                     <FloatingControls transform=canvas_transform />
@@ -8619,6 +8535,8 @@ pub fn AppRoot(
                 auth_session=auth_session
                 current_room=current_room
                 on_room_deleted=on_room_deleted.clone()
+                selection=selection
+                on_delete_ref=on_delete_ref.clone()
             />
             <modals::KeyboardShortcuts
                 enabled=!share_mode
@@ -8709,6 +8627,8 @@ pub mod modals {
         BridgeSettings,
         // p0-fix 定点 1: 删除房间确认模态
         DeleteRoom,
+        // p0-fix 定点 3: 关系连线详情模态（点击连线弹出）
+        ReferenceDetail,
     }
 
     pub const TITLE_MAX_LEN: usize = 64;
@@ -8931,6 +8851,9 @@ pub mod modals {
         auth_session: RwSignal<Option<AuthSession>>,
         current_room: RwSignal<Option<RoomDetail>>,
         on_room_deleted: Rc<dyn Fn()>,
+        // p0-fix 定点 3: ReferenceDetail 模态依赖
+        selection: RwSignal<SelectionKind>,
+        on_delete_ref: Rc<dyn Fn(String)>,
     ) -> impl IntoView {
         let on_action_new = on_new.clone();
         let on_action_rename = on_rename.clone();
@@ -9029,6 +8952,17 @@ pub mod modals {
                                 auth_session=auth_session
                                 current_room=current_room
                                 on_deleted=on_room_deleted.clone()
+                            />
+                        </div>
+                    }.into_view(),
+                    // p0-fix 定点 3: 关系连线详情模态（点击连线弹出）
+                    Some(ModalKind::ReferenceDetail) => view! {
+                        <div class="cdb-modal" data-testid="modal-reference-detail" on:click=|ev| ev.stop_propagation()>
+                            <ReferenceDetailModal
+                                kind=kind
+                                store=store.clone()
+                                selection=selection
+                                on_delete=on_delete_ref.clone()
                             />
                         </div>
                     }.into_view(),
@@ -9134,6 +9068,75 @@ pub mod modals {
                 >
                     {move || if submitting.get() { "删除中..." } else { "确认删除" }}
                 </button>
+            </div>
+        }
+    }
+
+    // ─── ReferenceDetailModal（p0-fix 定点 3） ─────────────────────────────
+
+    /// 关系连线详情模态：点击画布连线弹出
+    /// - 显示 start_table.start_field → end_table.end_field + cardinality
+    /// - 删除按钮 → on_delete（移除 reference + dirty + PUT）→ 关闭
+    /// - 覆盖 ST-PB-03（e2e 链路）
+    #[component]
+    pub fn ReferenceDetailModal(
+        kind: RwSignal<Option<ModalKind>>,
+        store: EditorStore,
+        selection: RwSignal<SelectionKind>,
+        on_delete: Rc<dyn Fn(String)>,
+    ) -> impl IntoView {
+        let detail = move || {
+            let SelectionKind::Reference(ref_id) = selection.get() else {
+                return None;
+            };
+            let refs = store.references.get();
+            let r = refs.iter().find(|r| r.id == ref_id)?.clone();
+            let label = format_rel_confirm_label(
+                &store.tables.get(),
+                &r.start_table_id,
+                &r.start_field_id,
+                &r.end_table_id,
+                &r.end_field_id,
+            );
+            Some((r.id.clone(), label, r.type_.clone()))
+        };
+
+        view! {
+            <div class="cdb-modal-header">
+                <h3 class="cdb-modal-title" data-testid="modal-title-reference-detail">"关系详情"</h3>
+                <button
+                    class="cdb-modal-close"
+                    data-testid="btn-close-reference-detail"
+                    on:click=move |_| kind.set(None)
+                > <IconBox size="sm"><IconClose /></IconBox> </button>
+            </div>
+            <div class="cdb-modal-body">
+                {move || match detail() {
+                    Some((_, label, cardinality)) => view! {
+                        <p class="cdb-rel-confirm-bar__label" data-testid="reference-detail-label">{label}</p>
+                        <p data-testid="reference-detail-cardinality">{format!("cardinality: {cardinality}")}</p>
+                    }.into_view(),
+                    None => view! {
+                        <p data-testid="reference-detail-empty">"未选中关系"</p>
+                    }.into_view(),
+                }}
+            </div>
+            <div class="cdb-modal-footer">
+                <button
+                    class="cdb-btn"
+                    data-testid="btn-close-reference-detail-footer"
+                    on:click=move |_| kind.set(None)
+                >"关闭"</button>
+                <button
+                    class="cdb-btn cdb-btn--danger"
+                    data-testid="btn-delete-reference"
+                    on:click=move |_| {
+                        if let Some((ref_id, _, _)) = detail() {
+                            on_delete(ref_id);
+                        }
+                        kind.set(None);
+                    }
+                >"删除关系"</button>
             </div>
         }
     }
@@ -12316,6 +12319,18 @@ mod tests {
         assert!(!can_delete_room("editor"), "UT-MM-32: editor 不可删除");
         assert!(!can_delete_room("viewer"), "UT-MM-32: viewer 不可删除");
         assert!(!can_delete_room(""), "UT-MM-32: 空角色不可删除");
+    }
+
+    // ─── UT-MM-34 — p0-fix 定点 3 Delete 键判定纯函数 ──────────────────────
+
+    /// UT-MM-34: is_delete_key — Delete/Backspace 命中；其余键不命中
+    #[test]
+    fn test_is_delete_key_ut_mm_34() {
+        assert!(is_delete_key("Delete"), "UT-MM-34: Delete 应命中");
+        assert!(is_delete_key("Backspace"), "UT-MM-34: Backspace 应命中");
+        assert!(!is_delete_key("d"), "UT-MM-34: 普通键不命中");
+        assert!(!is_delete_key("Escape"), "UT-MM-34: Escape 不命中");
+        assert!(!is_delete_key(""), "UT-MM-34: 空串不命中");
     }
 
     // ─── UT-PB — Phase B 关系工具纯函数 ─────────────────────────────────────

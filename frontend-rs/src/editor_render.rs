@@ -332,11 +332,14 @@ mod leptos_canvas {
         on_relation_drag_cancel: Option<Box<dyn Fn() + 'static>>,
         /// 表拖动松手（吸附写回 store 后）通知调用方持久化（D 批：dirty + schedule_save）
         on_table_drop: Option<Box<dyn Fn() + 'static>>,
+        /// p0-fix 定点 3：点击连线命中（返回 reference id）→ 弹关系详情模态
+        on_reference_pick: Option<Box<dyn Fn(String) + 'static>>,
         // 主题模式（"dark"/"light"）：绘制 effect 需跟踪以在主题切换时重刷调色板
         theme_mode: RwSignal<String>,
     ) -> impl IntoView {
         let canvas_ref = create_node_ref::<html::Canvas>();
         let selected_id = create_rw_signal(None::<String>);
+        let selected_ref_id = create_rw_signal(None::<String>);
         let drag_state = create_rw_signal(None::<DragState>);
         let rubber_d = create_rw_signal(None::<String>);
         let follow_path = create_rw_signal(String::new());
@@ -354,6 +357,7 @@ mod leptos_canvas {
         let on_relation_drop = Rc::new(on_relation_drop);
         let on_relation_drag_cancel = Rc::new(on_relation_drag_cancel);
         let on_table_drop = Rc::new(on_table_drop);
+        let on_reference_pick = Rc::new(on_reference_pick);
 
         {
             let raf_pending = raf_pending.clone();
@@ -467,6 +471,7 @@ mod leptos_canvas {
             let notes = store.notes.get();
             let presence = remote_presence.get();
             let sel = selected_id.get();
+            let sel_ref = selected_ref_id.get();
 
             let width = canvas.width() as f64;
             let height = canvas.height() as f64;
@@ -481,6 +486,7 @@ mod leptos_canvas {
                 &notes,
                 &presence,
                 sel.as_deref(),
+                sel_ref.as_deref(),
                 rubber,
             );
 
@@ -631,6 +637,7 @@ mod leptos_canvas {
                     let table_x = tables.iter().find(|t| t.id == id).map(|t| t.x).unwrap_or(0.0);
                     let table_y = tables.iter().find(|t| t.id == id).map(|t| t.y).unwrap_or(0.0);
                     selected_id.set(Some(id.clone()));
+                    selected_ref_id.set(None);
                     if let Some(cb) = on_select.as_ref() {
                         cb(id.clone());
                     }
@@ -648,8 +655,18 @@ mod leptos_canvas {
                         start_table_x: table_x,
                         start_table_y: table_y,
                     }));
+                } else if let Some(ref_id) = super::hit_test_reference(&tables, &refs, dx, dy) {
+                    // p0-fix 定点 3：点击连线（表未命中时）→ 选中高亮 + 通知弹关系详情模态
+                    // 命中顺序在表之后：连线被表遮住时点击应选中表而非不可见的线
+                    selected_id.set(None);
+                    selected_ref_id.set(Some(ref_id.clone()));
+                    if let Some(cb) = on_reference_pick.as_ref() {
+                        cb(ref_id);
+                    }
+                    schedule_paint();
                 } else {
                     selected_id.set(None);
+                    selected_ref_id.set(None);
                     if let Some(cb) = on_deselect.as_ref() {
                         cb();
                     }
@@ -1119,6 +1136,8 @@ pub fn draw_canvas(
     notes: &[Note],
     remote_presence: &[RemotePresence],
     selected_id: Option<&str>,
+    // p0-fix 定点 3：选中的关系连线 id（点击连线高亮）
+    selected_ref_id: Option<&str>,
     rubber_band: Option<(f64, f64, f64, f64)>,
 ) {
     let dpr = current_device_pixel_ratio();
@@ -1144,7 +1163,7 @@ pub fn draw_canvas(
         let from = tables.iter().find(|tbl| tbl.id == r.start_table_id);
         let to = tables.iter().find(|tbl| tbl.id == r.end_table_id);
         if let (Some(f), Some(tbl)) = (from, to) {
-            draw_bezier_fields(ctx, f, &r.start_field_id, tbl, &r.end_field_id, palette);
+            draw_bezier_fields(ctx, f, &r.start_field_id, tbl, &r.end_field_id, palette, selected_ref_id == Some(&r.id));
         }
     }
 
@@ -1388,19 +1407,21 @@ fn draw_bezier_fields(
     to: &Table,
     to_field_id: &str,
     palette: &CanvasPalette,
+    // p0-fix 定点 3：选中态（点击连线高亮——stroke 加粗 + brand 色）
+    selected: bool,
 ) {
     let path = calc_path(from, from_field_id, to, to_field_id);
 
     // 主原型 .relation-path-bg：7px surface 光晕垫底，主线 2px brand
-    let _ = ctx.set_stroke_style_str(palette.relation_halo);
-    ctx.set_line_width(7.0);
+    let _ = ctx.set_stroke_style_str(if selected { palette.selected_soft } else { palette.relation_halo });
+    ctx.set_line_width(if selected { 10.0 } else { 7.0 });
     ctx.begin_path();
     ctx.move_to(path.x1, path.y1);
     ctx.bezier_curve_to(path.cx1, path.cy1, path.cx2, path.cy2, path.x2, path.y2);
     ctx.stroke();
 
-    let _ = ctx.set_stroke_style_str(palette.relation);
-    ctx.set_line_width(2.0);
+    let _ = ctx.set_stroke_style_str(if selected { palette.selected } else { palette.relation });
+    ctx.set_line_width(if selected { 3.5 } else { 2.0 });
     ctx.begin_path();
     ctx.move_to(path.x1, path.y1);
     ctx.bezier_curve_to(path.cx1, path.cy1, path.cx2, path.cy2, path.x2, path.y2);
@@ -1587,8 +1608,64 @@ pub fn hit_test_endpoint(
     None
 }
 
-// ─── Pure function: update reference endpoint (B3) ──────────────────────────
+// ─── Reference line hit test（p0-fix 定点 3） ───────────────────────────────
 
+/// 三次贝塞尔取点（与 RelationPath/calc_path 同一曲线）
+pub fn bezier_point(path: &RelationPath, t: f64) -> (f64, f64) {
+    let u = 1.0 - t;
+    let x = u * u * u * path.x1 + 3.0 * u * u * t * path.cx1 + 3.0 * u * t * t * path.cx2 + t * t * t * path.x2;
+    let y = u * u * u * path.y1 + 3.0 * u * u * t * path.cy1 + 3.0 * u * t * t * path.cy2 + t * t * t * path.y2;
+    (x, y)
+}
+
+/// 点到线段距离
+pub fn dist_point_segment(px: f64, py: f64, x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    let len2 = dx * dx + dy * dy;
+    if len2 <= f64::EPSILON {
+        return ((px - x1).powi(2) + (py - y1).powi(2)).sqrt();
+    }
+    let t = (((px - x1) * dx + (py - y1) * dy) / len2).clamp(0.0, 1.0);
+    let cx = x1 + t * dx;
+    let cy = y1 + t * dy;
+    ((px - cx).powi(2) + (py - cy).powi(2)).sqrt()
+}
+
+/// p0-fix 定点 3：纯函数 — 点是否在贝塞尔关系线附近（UT-MM-33）
+/// 24 段折线近似；阈值 8px（覆盖 7px 光晕 + 2px 主线的可点击区域）
+pub fn point_near_bezier(path: &RelationPath, x: f64, y: f64, tol: f64) -> bool {
+    const SEGMENTS: usize = 24;
+    let (mut px, mut py) = (path.x1, path.y1);
+    for i in 1..=SEGMENTS {
+        let t = i as f64 / SEGMENTS as f64;
+        let (qx, qy) = bezier_point(path, t);
+        if dist_point_segment(x, y, px, py, qx, qy) <= tol {
+            return true;
+        }
+        px = qx;
+        py = qy;
+    }
+    false
+}
+
+/// p0-fix 定点 3：纯函数 — (x, y) 命中哪条 reference 连线（UT-MM-33）
+/// 几何与 `draw_bezier_fields` 一致（calc_path 贝塞尔）；返回 reference id
+pub fn hit_test_reference(tables: &[Table], refs: &[Reference], x: f64, y: f64) -> Option<String> {
+    for r in refs {
+        let from = tables.iter().find(|t| t.id == r.start_table_id);
+        let to = tables.iter().find(|t| t.id == r.end_table_id);
+        if let (Some(f), Some(t)) = (from, to) {
+            let path = calc_path(f, &r.start_field_id, t, &r.end_field_id);
+            if point_near_bezier(&path, x, y, 8.0) {
+                return Some(r.id.clone());
+            }
+        }
+    }
+    None
+}
+
+// ─── Pure function: update reference endpoint (B3) ──────────────────────────
 /// 端点 drag 改 start_field_id 或 end_field_id；pure function（不修改原 Vec）
 /// - ref_id 不存在 → 返回原 Vec（no-op）
 /// - new_field_id == "" → 不更新（避免空值）
@@ -1734,6 +1811,90 @@ mod tests {
             Some(("t1".into(), "f1".into())),
             "UT-PB-01: 字段行命中应返回 (table_id, field_id)"
         );
+    }
+
+    // ─── UT-MM-33 — p0-fix 定点 3 连线命中检测 ─────────────────────────────
+
+    fn ut_mm_33_fixture() -> (Vec<Table>, Vec<Reference>) {
+        use crate::editor_core::types::Field;
+        let mk = |id: &str, x: f64, fid: &str| Table {
+            id: id.into(),
+            name: id.into(),
+            x,
+            y: 130.0,
+            color: "#000".into(),
+            comment: String::new(),
+            fields: vec![Field {
+                id: fid.into(),
+                name: fid.into(),
+                type_: "INT".into(),
+                default: String::new(),
+                check: String::new(),
+                primary: true,
+                unique: false,
+                not_null: false,
+                increment: false,
+                comment: String::new(),
+                tag: String::new(),
+            }],
+            indices: Vec::new(),
+            width: None,
+            min_height: None,
+        };
+        let tables = vec![mk("t1", 100.0, "f1"), mk("t2", 600.0, "f2")];
+        let refs = vec![Reference {
+            id: "r1".into(),
+            name: String::new(),
+            start_table_id: "t1".into(),
+            end_table_id: "t2".into(),
+            start_field_id: "f1".into(),
+            end_field_id: "f2".into(),
+            type_: "one_to_many".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+        }];
+        (tables, refs)
+    }
+
+    /// UT-MM-33: 连线中点命中 / 偏离 20px 不命中 / 无连线返回 None
+    #[test]
+    fn test_hit_test_reference_ut_mm_33() {
+        let (tables, refs) = ut_mm_33_fixture();
+        let anchor_y = 130.0 + TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT / 2.0;
+        // 连线为水平贝塞尔：起点 (100+TABLE_WIDTH, anchor_y) → 终点 (600, anchor_y)
+        let mid_x = (100.0 + TABLE_WIDTH + 600.0) / 2.0;
+        assert_eq!(
+            hit_test_reference(&tables, &refs, mid_x, anchor_y),
+            Some("r1".to_string()),
+            "UT-MM-33: 连线中点应命中"
+        );
+        assert_eq!(
+            hit_test_reference(&tables, &refs, mid_x, anchor_y + 20.0),
+            None,
+            "UT-MM-33: 偏离 20px 不应命中"
+        );
+        assert_eq!(
+            hit_test_reference(&tables, &[], mid_x, anchor_y),
+            None,
+            "UT-MM-33: 无连线应返回 None"
+        );
+    }
+
+    /// UT-MM-33: bezier_point 端点 与 dist_point_segment / point_near_bezier 基本性质
+    #[test]
+    fn test_bezier_point_and_dist_ut_mm_33() {
+        let path = RelationPath {
+            x1: 0.0, y1: 0.0, cx1: 50.0, cy1: 0.0,
+            cx2: 50.0, cy2: 100.0, x2: 100.0, y2: 100.0,
+        };
+        let (sx, sy) = bezier_point(&path, 0.0);
+        assert!((sx - 0.0).abs() < 1e-9 && (sy - 0.0).abs() < 1e-9, "UT-MM-33: t=0 应为起点");
+        let (ex, ey) = bezier_point(&path, 1.0);
+        assert!((ex - 100.0).abs() < 1e-9 && (ey - 100.0).abs() < 1e-9, "UT-MM-33: t=1 应为终点");
+        assert!((dist_point_segment(0.0, 5.0, 0.0, 0.0, 10.0, 0.0) - 5.0).abs() < 1e-9);
+        assert!((dist_point_segment(-3.0, 0.0, 0.0, 0.0, 10.0, 0.0) - 3.0).abs() < 1e-9);
+        assert!(point_near_bezier(&path, 50.0, 50.0, 8.0), "UT-MM-33: 曲线中点应命中");
+        assert!(!point_near_bezier(&path, 50.0, 80.0, 4.0), "UT-MM-33: 远离曲线不应命中");
     }
 
     #[test]

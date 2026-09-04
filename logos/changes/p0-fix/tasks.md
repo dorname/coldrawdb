@@ -42,25 +42,28 @@
 
 ### 删 RelToolState::Confirm 状态
 
-- [ ] `frontend-rs/src/editor_panels.rs`: `RelToolState` enum 删 `Confirm` 变体（`Dragging` → 直接落账）
-- [ ] `frontend-rs/src/editor_panels.rs`: `RelToolHint` 组件删 Confirm 分支提示
-- [ ] `frontend-rs/src/editor_panels.rs`: 关系创建逻辑改：
-  - 拖到目标字段松开 → **直接落账**（`store.references.push(new_reference)` + dirty + PUT）
-  - 无确认条（`rel-confirm-bar` 删除）
+- [x] `frontend-rs/src/editor_panels.rs`: `RelToolState` enum 删 `Confirm` 变体（`Dragging` → 直接落账）
+- [x] `frontend-rs/src/editor_panels.rs`: `RelToolHint` 组件删 Confirm 分支提示（hint() 无 Confirm 显式分支，随枚举删除自然收口）
+- [x] `frontend-rs/src/editor_panels.rs`: 关系创建逻辑改：
+  - 拖到目标字段松开 → **直接落账**（`build_reference` + `on_create_reference`：push + dirty + schedule_save）
+  - 无确认条（`RelationshipConfirmBar` 组件与使用点已删除）
   - cardinality 自动推导（`infer_cardinality` 纯函数，既有）
 
 ### 点击连线弹关系列表模态
 
-- [ ] `frontend-rs/src/editor_render.rs`: canvas click 事件加 reference 命中检测（点到连线 → 返回 reference id）
-- [ ] `frontend-rs/src/editor_panels.rs`: `ModalKind::ReferenceDetail` 模态：
+- [x] `frontend-rs/src/editor_render.rs`: canvas pointerdown 加 `hit_test_reference` 命中检测（点到贝塞尔线，24 段折线近似阈值 8px；命中顺序在表之后——连线被表遮住时选中表）
+- [x] `frontend-rs/src/editor_panels.rs`: `ModalKind::ReferenceDetail` 模态：
   - 显示 reference 详情：start_table.start_field → end_table.end_field + cardinality
   - 删除按钮（data-testid=`btn-delete-reference`）→ 移除 reference + dirty + PUT
   - 关闭按钮（data-testid=`btn-close-reference-detail`）
 
 ### Delete 键删除连线
 
-- [ ] `frontend-rs/src/editor_panels.rs`: 画布键盘事件加 Delete 键处理（选中连线 → 移除 reference + dirty + PUT）
-- [ ] 选中态：连线被点击后高亮（stroke 加粗 + 颜色变化）
+- [x] `frontend-rs/src/editor_panels.rs`: `setup_editor_tool_shortcuts` 加 Delete/Backspace 处理（`is_delete_key` 纯函数 UT-MM-34；选中连线 → `on_delete_ref` 移除 + dirty + PUT；页面/只读/浮层/输入焦点门控复用既有）
+- [x] 选中态：连线被点击后高亮（`selected_ref_id` 信号 → 光晕 10px selected_soft + 主线 3.5px selected）
+
+**定点 3 用例登记**：UT-MM-33 / UT-MM-34 → `core-UI-modals-2-test-cases.md`；ST-PB-01/02 流程更新 + ST-PB-03/04 新增 → `core-PB-relationship-test-cases.md` + `test-spec-parity-d.mjs`
+**规格驱动的断言调整**：`tests/phase_b_relationship.rs` UT-PB-05 源码扫描断言由「RelationshipConfirmBar 存在」反转为「已删除 + 直接落账通路保留」（提案删除确认条的必然结果）
 
 ## 定点 2：区域/便签交互（2-3 天）
 
