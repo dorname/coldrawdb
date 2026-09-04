@@ -131,6 +131,8 @@
 | UT-MM-24 | 列表视图批量重命名纯函数测试（重名冲突处理：B2-S1 补充规则——冲突判定以改名前快照为准/处理顺序按旧名字典序/同一新名多旧名映射字典序靠前者得名其余跳过） | `editor_panels.rs::batch_rename_tables` |
 | UT-MM-25 | ViewMode 三态迁移测试（Canvas→List→Canvas、Canvas→Code→Canvas、List 下画布隐藏条件） | `code_view.rs::ViewMode` |
 | ST-MM-02 | 端到端 Import 模态 SQL 解析 | `frontend-rs/tests/wasm/ui.rs`（B5） |
+| UT-MM-26 | 列表视图批量改类型纯函数测试（类型兼容性通用决策程序：族内由窄到宽直接改/由宽到窄跳过/跨族跳过/未列出对保守 fallback 跳过/非法目标类型跳过） | `editor_panels.rs::batch_change_types` |
+| UT-MM-27 | 列表视图导出 CSV schema 内容纯函数测试（CSV 转义：逗号/引号/换行；输入 &[Table]，行=字段，列=table_name,field_name,field_type,has_index——C-3 裁决仅 CSV 纯手写无依赖） | `editor_panels.rs::export_tables_csv` |
 | ST-MM-03 | ConfigureCustomTypes 关闭后跨刷新保留 | `frontend-rs/tests/wasm/ui.rs`（B5） |
 | UT-MM-28 | ListView 列宽钳制 + 自适应 + 列宽结构测试（clamp_column_width min=60, max=480；auto_calc_column_width 公式 max(60, min(480, chars × 8 + 40))；max_chars_for_column 按列名实际内容算最长字符数；ColumnWidths 结构 get/set 通路；15 子用例覆盖边界/钳制/saturating 溢出/混合字符数） | `editor_panels.rs::clamp_column_width` + `auto_calc_column_width` + `max_chars_for_column` + `ColumnWidths` |
 | UT-MM-29 | 表/字段分组纯函数测试（GroupByMode {None, ByTag} 两模式；统一输出 Vec<Bucket{key, fields: Vec<(table_id, field_id)>}>；None = 单桶 _flat 含所有字段；ByTag 按 Field.tag 分桶空 tag 归 (empty) 兜底，BTreeMap 字典序；大小写敏感；7 子用例覆盖空表/单 tag/混合 tag/大小写/单字段多 tag/输出形状统一） | `editor_panels.rs::group_tables` |
