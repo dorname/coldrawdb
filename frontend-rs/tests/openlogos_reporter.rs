@@ -80,6 +80,8 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-MM-28", // ux-canvas-batch 批次4: ListView 列宽钳制 + 自适应纯函数测试（clamp_column_width min=60, max=480；auto_calc_column_width 公式 max(60, min(480, chars × 8 + 40))；7 子用例覆盖边界/钳制/saturating 溢出）
     "UT-MM-29", // ux-canvas-batch 批次4: 表/字段分组纯函数测试（GroupByMode {None, ByTag} 两模式；统一输出 Vec<Bucket{key, fields}>；None = 单桶 _flat；ByTag 按 Field.tag 分桶空 tag 归 (empty)；大小写敏感；7 子用例覆盖空表/单 tag/混合 tag/大小写/单字段多 tag/输出形状统一）
     "UT-MM-30", // ux-canvas-batch 批次4: rAF 调度去重 + TextCacheKey 测试（schedule_render_dedup 可测同步核 pending 状态机：首次入队执行/二次 noop/清 pending 后可入队；schedule_render 壳 + TextCacheKey font_px 容差；6 子用例覆盖三态/多轮/键相等性）
+    "UT-MM-31", // p0-fix 定点 1: delete_room URL 拼接 + 状态映射纯函数（204 → Ok；403/404/500 → ApiError::Server(状态码, body)）
+    "UT-MM-32", // p0-fix 定点 1: can_delete_room 纯函数（my_role == "owner" → true；editor/viewer/空串 → false）
     // core-PB-relationship
     "UT-PB-01",
     "UT-PB-02",
@@ -186,6 +188,8 @@ const ST_SKIP_IDS: &[&str] = &[
     "ST-PC-01",
     "ST-SP-01",
     "ST-UI-05",
+    // p0-fix 定点 1：Owner 删除房间全流程（按钮→确认模态→DELETE→回 rooms 页刷新）——e2e 链路待 wasm-pack/Playwright harness
+    "ST-S04-UI-08",
     // align-frontend-to-prototype：浏览器/真实后端联调 ST 由 Playwright harness 承接
     // （需 playwright 像素基线 + 视觉回归）
     "ST-FE-PROTO-01",

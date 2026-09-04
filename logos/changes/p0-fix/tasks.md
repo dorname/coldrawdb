@@ -8,24 +8,24 @@
 
 ### 前端 RoomClient::delete_room 方法
 
-- [ ] `frontend-rs/src/editor_data_access.rs`: 加 `pub async fn delete_room(&self, token: &str, room_id: &str) -> Result<(), ApiError>`：
+- [x] `frontend-rs/src/editor_data_access.rs`: 加 `pub async fn delete_room(&self, token: &str, room_id: &str) -> Result<(), ApiError>`：
   - 调用 `DELETE /rooms/{room_id}`（backend/src/rooms_v1.rs:341 已实现）
-  - 返回 `Result<(), ApiError>`（204 无内容 → Ok(()); 403 无权限 → Err(ApiError::Forbidden); 404 房间不存在 → Err(ApiError::NotFound); 500 服务器错误 → Err(ApiError::Server)）
-  - 测试：UT-ROOM-01（待 grep 下一空闲）
+  - 返回 `Result<(), ApiError>`（204 无内容 → Ok(())；其余 → `ApiError::Server(status, body)`——实际枚举无 Forbidden/NotFound 变体，403/404 由 UI 层按状态码区分文案）
+  - 测试：UT-MM-31（grep 取下一空闲；`delete_room_url` + `map_delete_room_status` 纯函数）
 
 ### RoomPanel 加「删除房间」按钮
 
-- [ ] `frontend-rs/src/editor_panels.rs`: `RoomPanel` 组件加删除按钮：
+- [x] `frontend-rs/src/editor_panels.rs`: `RoomPanel` 组件加删除按钮：
   - 位置：RoomPanel 底部（成员列表之后）
-  - 可见性：仅 Owner 显示（`current_room.my_role == "owner"`）
+  - 可见性：仅 Owner 显示（`can_delete_room(my_role)` 纯函数，UT-MM-32）
   - 样式：`cdb-btn cdb-btn--danger`（红色警告按钮）
   - data-testid：`btn-delete-room`
   - 点击 → `ModalKind::DeleteRoom` 弹确认模态
 
 ### ModalKind::DeleteRoom 确认模态
 
-- [ ] `frontend-rs/src/editor_panels.rs`: `ModalKind` enum 加 `DeleteRoom` 变体
-- [ ] `frontend-rs/src/editor_panels.rs`: `DeleteRoomModal` 组件：
+- [x] `frontend-rs/src/editor_panels.rs`: `ModalKind` enum 加 `DeleteRoom` 变体
+- [x] `frontend-rs/src/editor_panels.rs`: `DeleteRoomModal` 组件：
   - 显示房间名 + 成员数 + 警告文案「删除后不可恢复，房间及其所有协作数据将被永久删除」
   - 确认按钮（红色，data-testid=`btn-confirm-delete-room`）→ 调 `RoomClient::delete_room` → 成功 → 关闭模态 → 回 rooms 页 → 刷新列表
   - 取消按钮（data-testid=`btn-cancel-delete-room`）→ 关闭模态
@@ -33,8 +33,10 @@
 
 ### 删除后行为
 
-- [ ] 删除成功 → 关闭 RoomPanel → 当前房间置 None → 回 rooms 页 → 刷新 rooms 列表（`RoomSummary` 重新拉取）
-- [ ] 删除失败 → 显示错误（模态内，不关闭）
+- [x] 删除成功 → 关闭 RoomPanel → 当前房间置 None → 回 rooms 页 → 刷新 rooms 列表（`reload_rooms` nonce 强制 `RoomSummary` 重新拉取，绕过 token 缓存）
+- [x] 删除失败 → 显示错误（模态内，不关闭）
+
+**定点 1 用例登记**：UT-MM-31 / UT-MM-32 → `core-UI-modals-2-test-cases.md`；ST-S04-UI-08 → `core-S04-test-cases.md`；reporter 已写入 `logos/resources/verify/test-results.jsonl`（UT×2 pass，ST skip——e2e harness 待接入）
 
 ## 定点 3：关系连线简化（1-2 天）
 

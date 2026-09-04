@@ -76,6 +76,7 @@ S04：房间列表、创建、邀请、成员、Viewer。页面锚点对齐主�
 | ST-S04-UI-05 | Owner | 成员面板改角色/移除 | 列表即时更新；API PATCH/DELETE | 本提案 B 批实现 |
 | ST-S04-UI-06 | Viewer | 新建表/改字段/邀请 | 写操作禁用或拦截；无写 API/WS op；只读提示 | 本提案 B 批实现 |
 | ST-S04-UI-07 | 邀请过期 | 打开 invite | 失效页；无加入按钮 | 本提案 B 批实现 |
+| ST-S04-UI-08 | Owner | RoomPanel 点「删除房间」→ 确认模态 → 确认 | `DELETE /rooms/{id}` 204；关闭模态回 rooms 页；列表刷新后该房间消失；403 显示「无权限删除此房间」模态不关闭 | p0-fix 定点 1 实现（e2e 链路待 wasm-pack/Playwright harness） |
 
 ## 既有 S04 用例补充约束
 

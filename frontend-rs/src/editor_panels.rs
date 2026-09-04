@@ -2128,6 +2128,12 @@ pub fn InviteModal(
 }
 
 
+/// p0-fix 定点 1：纯函数 — 是否可删除房间（仅 Owner）
+/// - UT-MM-32: owner → true；editor/viewer/空串 → false
+pub fn can_delete_room(my_role: &str) -> bool {
+    my_role == "owner"
+}
+
 #[component]
 pub fn RoomPanel(
     visible: RwSignal<bool>,
@@ -2137,6 +2143,7 @@ pub fn RoomPanel(
     room_members: RwSignal<Vec<RoomMember>>,
     error: RwSignal<Option<String>>,
     on_open_invite: Rc<dyn Fn()>,
+    modal_kind: RwSignal<Option<modals::ModalKind>>,
 ) -> impl IntoView {
     // B 批：成员抽屉 — 结构对齐主原型 members drawer：
     // 「房间成员」+ 邀请新成员 + member-list（角色选择 / 移除，Owner 可管理）。
@@ -2241,7 +2248,7 @@ pub fn RoomPanel(
     let can_manage = move || {
         current_room
             .get()
-            .map(|r| r.my_role == "owner")
+            .map(|r| can_delete_room(&r.my_role))
             .unwrap_or(false)
     };
     let self_id = move || {
@@ -2332,6 +2339,23 @@ pub fn RoomPanel(
                     }
                 } />
             </div>
+            // p0-fix 定点 1：删除房间入口（仅 Owner 可见）→ 弹 ModalKind::DeleteRoom 确认模态
+            {move || if can_manage() {
+                view! {
+                    <div class="cdb-room-panel__section">
+                        <button
+                            class="cdb-btn cdb-btn--danger cdb-btn--block"
+                            data-testid="btn-delete-room"
+                            on:click=move |_| modal_kind.set(Some(modals::ModalKind::DeleteRoom))
+                        >
+                            <IconBox size="sm"><IconDelete /></IconBox>
+                            "删除房间"
+                        </button>
+                    </div>
+                }.into_view()
+            } else {
+                view! { <></> }.into_view()
+            }}
             <p class="cdb-room-panel__note">"Owner 可以修改角色与移除成员；Owner 自身需先转让房间才能离开。"</p>
         </aside>
     }
@@ -2962,6 +2986,8 @@ pub fn RoomsListPage(
     on_logout: Rc<dyn Fn()>,
     on_select_room: Rc<dyn Fn(RoomDetail)>,
     on_create_room: Rc<dyn Fn(RoomDetail)>,
+    // p0-fix 定点 1：外部强制刷新信号（删除房间后回列表时 bump → 绕过 token 缓存重新拉取）
+    reload_rooms: RwSignal<u32>,
 ) -> impl IntoView {
     let loading = create_rw_signal(true);
     let rooms: RwSignal<Vec<RoomSummary>> = create_rw_signal(Vec::new());
@@ -2969,6 +2995,8 @@ pub fn RoomsListPage(
     let creating = create_rw_signal(false);
     let last_loaded_token = create_rw_signal(Option::<String>::None);
     let reload_nonce = create_rw_signal(0_u32);
+    // p0-fix 定点 1：已消费的外部刷新计数（与 reload_rooms 比较决定是否清缓存）
+    let last_external_reload = create_rw_signal(0_u32);
     let create_modal_open = create_rw_signal(false);
     let room_name = create_rw_signal(String::from("数据模型评审"));
     let diagram_choice = create_rw_signal(String::from("__new__"));
@@ -2985,6 +3013,12 @@ pub fn RoomsListPage(
         let auth_session = auth_session.clone();
         move |_| {
             reload_nonce.get();
+            // p0-fix 定点 1：外部强制刷新（删除房间后回列表）→ 清 token 缓存，保证重新拉取
+            let external = reload_rooms.get();
+            if external != last_external_reload.get_untracked() {
+                last_external_reload.set(external);
+                last_loaded_token.set(None);
+            }
             let Some(session) = auth_session.get() else {
                 loading.set(false);
                 rooms.set(Vec::new());
@@ -8199,6 +8233,18 @@ pub fn AppRoot(
         }) as Rc<dyn Fn()>
     };
 
+    // p0-fix 定点 1：删除房间成功后的收尾 — 关成员抽屉 → 清当前房间 → 回 rooms 页 → 强制刷新列表
+    let rooms_reload_nonce: RwSignal<u32> = create_rw_signal(0);
+    let on_room_deleted: Rc<dyn Fn()> = {
+        let current_page = current_page.clone();
+        Rc::new(move || {
+            room_panel_visible.set(false);
+            current_room.set(None);
+            rooms_reload_nonce.update(|n| *n += 1);
+            current_page.set(PageState::Rooms);
+        }) as Rc<dyn Fn()>
+    };
+
     let on_open_palette = {
         let palette_visible = palette_visible.clone();
         Rc::new(move || palette_visible.set(true)) as Rc<dyn Fn()>
@@ -8301,6 +8347,7 @@ pub fn AppRoot(
                 on_logout=on_logout.clone()
                 on_select_room=on_enter_room.clone()
                 on_create_room=on_create_room_enter.clone()
+                reload_rooms=rooms_reload_nonce
             />
         </div>
         // ─── Invite 独立页（align-frontend-to-prototype FEUX-AC-04） ───
@@ -8498,6 +8545,7 @@ pub fn AppRoot(
                     room_members=room_members
                     error=error.clone()
                     on_open_invite=on_open_invite.clone()
+                    modal_kind=modal_kind
                 />
                 <InviteModal
                     open=invite_modal_open
@@ -8567,6 +8615,10 @@ pub fn AppRoot(
                 on_rename=on_rename_diagram
                 store=store.clone()
                 batch_type_selection=batch_type_selection
+                room_client=room_client.clone()
+                auth_session=auth_session
+                current_room=current_room
+                on_room_deleted=on_room_deleted.clone()
             />
             <modals::KeyboardShortcuts
                 enabled=!share_mode
@@ -8655,6 +8707,8 @@ pub mod modals {
         BatchType,
         ConfigureCustomTypes,
         BridgeSettings,
+        // p0-fix 定点 1: 删除房间确认模态
+        DeleteRoom,
     }
 
     pub const TITLE_MAX_LEN: usize = 64;
@@ -8872,6 +8926,11 @@ pub mod modals {
         on_rename: Rc<dyn Fn(String)>,
         store: EditorStore,
         batch_type_selection: RwSignal<BatchTypeSelection>,
+        // p0-fix 定点 1: DeleteRoom 模态依赖
+        room_client: RoomClient,
+        auth_session: RwSignal<Option<AuthSession>>,
+        current_room: RwSignal<Option<RoomDetail>>,
+        on_room_deleted: Rc<dyn Fn()>,
     ) -> impl IntoView {
         let on_action_new = on_new.clone();
         let on_action_rename = on_rename.clone();
@@ -8961,8 +9020,120 @@ pub mod modals {
                             <BridgeSettingsModal kind=kind client=client.clone() error=error.clone() />
                         </div>
                     }.into_view(),
+                    // p0-fix 定点 1: 删除房间确认模态
+                    Some(ModalKind::DeleteRoom) => view! {
+                        <div class="cdb-modal" data-testid="modal-delete-room" on:click=|ev| ev.stop_propagation()>
+                            <DeleteRoomModal
+                                kind=kind
+                                room_client=room_client.clone()
+                                auth_session=auth_session
+                                current_room=current_room
+                                on_deleted=on_room_deleted.clone()
+                            />
+                        </div>
+                    }.into_view(),
                     None => view! { <></> }.into_view(),
                 }}
+            </div>
+        }
+    }
+
+    // ─── DeleteRoomModal（p0-fix 定点 1） ───────────────────────────────────
+
+    /// 删除房间确认模态：显示房间名 + 成员数 + 警告文案
+    /// - 确认 → DELETE /rooms/{id} → 成功 → 关闭模态 → on_deleted（回 rooms 页 + 列表刷新）
+    /// - 网络失败 → 「删除失败，请稍后重试」+ 模态保持打开；403 → 「无权限删除此房间」
+    /// - 覆盖 ST-S04-UI-08（e2e 链路）
+    #[component]
+    pub fn DeleteRoomModal(
+        kind: RwSignal<Option<ModalKind>>,
+        room_client: RoomClient,
+        auth_session: RwSignal<Option<AuthSession>>,
+        current_room: RwSignal<Option<RoomDetail>>,
+        on_deleted: Rc<dyn Fn()>,
+    ) -> impl IntoView {
+        let submitting = create_rw_signal(false);
+        let local_error = create_rw_signal(Option::<String>::None);
+
+        let room_name = move || {
+            current_room
+                .get()
+                .map(|r| r.name.clone())
+                .unwrap_or_default()
+        };
+        let member_count = move || current_room.get().map(|r| r.member_count).unwrap_or(0);
+
+        let on_confirm = {
+            let room_client = room_client.clone();
+            let on_deleted = on_deleted.clone();
+            move |_| {
+                if submitting.get_untracked() {
+                    return;
+                }
+                let Some(session) = auth_session.get_untracked() else {
+                    return;
+                };
+                let Some(room) = current_room.get_untracked() else {
+                    return;
+                };
+                submitting.set(true);
+                local_error.set(None);
+                let room_client = room_client.clone();
+                let on_deleted = on_deleted.clone();
+                spawn_local(async move {
+                    match room_client.delete_room(&session.access_token, &room.id).await {
+                        Ok(()) => {
+                            submitting.set(false);
+                            kind.set(None);
+                            on_deleted();
+                        }
+                        Err(ApiError::Server(403, _)) => {
+                            submitting.set(false);
+                            local_error.set(Some("无权限删除此房间".to_string()));
+                        }
+                        Err(_) => {
+                            submitting.set(false);
+                            local_error.set(Some("删除失败，请稍后重试".to_string()));
+                        }
+                    }
+                });
+            }
+        };
+
+        view! {
+            <div class="cdb-modal-header">
+                <h3 class="cdb-modal-title" data-testid="modal-title-delete-room">"删除房间"</h3>
+                <button
+                    class="cdb-modal-close"
+                    data-testid="btn-cancel-delete-room"
+                    on:click=move |_| kind.set(None)
+                > <IconBox size="sm"><IconClose /></IconBox> </button>
+            </div>
+            <div class="cdb-modal-body">
+                <p data-testid="delete-room-desc">
+                    {move || format!("确定删除房间「{}」吗？当前 {} 位成员。", room_name(), member_count())}
+                </p>
+                <p class="cdb-form-error" data-testid="delete-room-warning">
+                    "删除后不可恢复，房间及其所有协作数据将被永久删除"
+                </p>
+                {move || local_error.get().map(|e| view! {
+                    <span class="cdb-form-error" data-testid="modal-error-delete-room">{e}</span>
+                })}
+            </div>
+            <div class="cdb-modal-footer">
+                <button
+                    class="cdb-btn"
+                    data-testid="btn-cancel-delete-room-footer"
+                    on:click=move |_| kind.set(None)
+                >"取消"</button>
+                <button
+                    class="cdb-btn cdb-btn--danger"
+                    data-testid="btn-confirm-delete-room"
+                    disabled=move || submitting.get()
+                    on:click=on_confirm
+                >
+                    {move || if submitting.get() { "删除中..." } else { "确认删除" }}
+                </button>
             </div>
         }
     }
@@ -12134,6 +12305,17 @@ mod tests {
             "UT-AB-04: btn-import Phase C 应启用",
         );
         assert!(css.contains(".cdb-io-drawer"), "Phase C IO 抽屉样式");
+    }
+
+    // ─── UT-MM-32 — p0-fix 定点 1 删除房间可见性纯函数 ─────────────────────
+
+    /// UT-MM-32: can_delete_room — 仅 owner 可删除；editor/viewer/空串不可
+    #[test]
+    fn test_can_delete_room_ut_mm_32() {
+        assert!(can_delete_room("owner"), "UT-MM-32: owner 应可删除");
+        assert!(!can_delete_room("editor"), "UT-MM-32: editor 不可删除");
+        assert!(!can_delete_room("viewer"), "UT-MM-32: viewer 不可删除");
+        assert!(!can_delete_room(""), "UT-MM-32: 空角色不可删除");
     }
 
     // ─── UT-PB — Phase B 关系工具纯函数 ─────────────────────────────────────

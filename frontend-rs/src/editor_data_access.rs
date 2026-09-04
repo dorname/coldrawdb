@@ -727,6 +727,36 @@ impl RoomClient {
             s => Err(ApiError::Server(s, resp.text().await.unwrap_or_default())),
         }
     }
+
+    /// p0-fix 定点 1：删除（归档）房间 — DELETE /rooms/{room_id}
+    /// 后端 rooms_v1.rs archive_room 已实现，返回 204。
+    /// - UT-MM-31: URL 拼接与状态映射（204 → Ok；403/404/500 → Server）
+    pub async fn delete_room(&self, access_token: &str, room_id: &str) -> Result<(), ApiError> {
+        let url = delete_room_url(&self.base_url, room_id);
+        let resp = Request::delete(&url)
+            .header("Authorization", &Self::auth(access_token))
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        map_delete_room_status(status, body)
+    }
+}
+
+/// p0-fix 定点 1：纯函数 — 删除房间 URL（UT-MM-31）
+pub fn delete_room_url(base_url: &str, room_id: &str) -> String {
+    format!("{}/api/v1/rooms/{}", base_url, room_id)
+}
+
+/// p0-fix 定点 1：纯函数 — 删除房间状态映射（UT-MM-31）
+/// 204 → Ok(())；其余 → ApiError::Server(status, body)
+///（403 无权限 / 404 不存在 的文案区分由 UI 层按状态码处理）
+pub fn map_delete_room_status(status: u16, body: String) -> Result<(), ApiError> {
+    match status {
+        204 => Ok(()),
+        s => Err(ApiError::Server(s, body)),
+    }
 }
 
 impl AuthClient {
@@ -1707,6 +1737,37 @@ mod bridge_api_tests {
         assert_eq!(out.data.status, "success");
         assert_eq!(out.data.retry_count, 1);
         assert_eq!(out.data.diagram_id.as_deref(), Some("d-new"));
+    }
+
+    /// UT-MM-31: p0-fix 定点 1 — delete_room URL 拼接与状态映射
+    #[test]
+    fn ut_mm_31_delete_room_url() {
+        assert_eq!(
+            delete_room_url("http://127.0.0.1:3000", "r-1"),
+            "http://127.0.0.1:3000/api/v1/rooms/r-1"
+        );
+        assert_eq!(
+            delete_room_url("https://staging.example.com", "abc"),
+            "https://staging.example.com/api/v1/rooms/abc"
+        );
+    }
+
+    /// UT-MM-31: 204 → Ok；403/404/500 → ApiError::Server(状态码, body)
+    #[test]
+    fn ut_mm_31_map_delete_room_status() {
+        assert!(map_delete_room_status(204, String::new()).is_ok());
+        match map_delete_room_status(403, "forbidden".to_string()) {
+            Err(ApiError::Server(403, body)) => assert_eq!(body, "forbidden"),
+            other => panic!("UT-MM-31: 403 应映射为 Server(403)，实际 {other:?}"),
+        }
+        match map_delete_room_status(404, "ROOM_NOT_FOUND".to_string()) {
+            Err(ApiError::Server(404, _)) => {}
+            other => panic!("UT-MM-31: 404 应映射为 Server(404)，实际 {other:?}"),
+        }
+        match map_delete_room_status(500, "internal".to_string()) {
+            Err(ApiError::Server(500, _)) => {}
+            other => panic!("UT-MM-31: 500 应映射为 Server(500)，实际 {other:?}"),
+        }
     }
 }
 
