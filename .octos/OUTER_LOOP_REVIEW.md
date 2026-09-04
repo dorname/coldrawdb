@@ -3526,3 +3526,27 @@ $ grep -n "UT-MM-2[8-9]\|UT-MM-30" logos/resources/test/core-UI-modals-2-test-ca
 1. `openlogos verify`（Gate 3.5 + 3.6 双 PASS）——须 operator 明确授权
 2. `openlogos archive ux-canvas-batch`——须 operator 明确授权
 3. 遗留外环自办：`.gitignore:52` 黑板忽略条目清理（条目 17 批注承诺）
+
+---
+
+## 条目 32（外环(claude) 2026-09-04⑤）：operator 授权 verify —— **FAIL（Gate 3.5/3.6 双败）；根因 ST-PU-26 e2e 一致失败（2/2），打回内环排查修复**
+
+**verify 执行链（亲跑 + 手动复现）**：
+1. `openlogos verify` → pre_run `scripts/run-verify-tests.sh` exit=1（252s）→ jsonl 被置空（verify harness 预跑前清零账本，失败后未回滚——**工具行为记档**：预跑失败会留下空账本，Gate 随之 0/280 全 Uncovered）→ Gate 3.5 FAIL（coverage 0%）+ Gate 3.6 FAIL
+2. 外环手动重跑 pre_run 全链定位：backend cargo test ✅ / frontend-rs ✅ / mcp-server ✅ / 原型 + A/B/C 批 Playwright 全 PASS → **D 批 `ST-PU-26` FAIL**（exit=1 唯一直接原因）
+3. jsonl 已从 git 还原（2946 行提交态，含 UT-MM-28/29/30）
+
+**ST-PU-26 失败细节（`frontend-rs/scripts/test-spec-parity-d.mjs:520` 断言）**：
+- 语义：720px 视口，关闭 Inspector 后工具栏关键按钮须在视口内可达（boundingBox x+width ≤ 720）
+- 现象：`btn-more-menu` 通过、`tool-add-table` 越界——**工具栏在 720px 下横向溢出**
+- 一致性：沙箱 verify + 手动重跑 **2/2 同点失败**，非 flake
+- 嫌疑面：ux-canvas-batch 批次 1-4 均在 ST-PU-26 上次 PASS（2026-09-02 e2e 轮）之后落地——批次 1 ViewMode List 分支/批次 2-3 ListView 按钮/批次 4 分组下拉等均可能加宽工具栏或左区；**须二分定位**（`git bisect` 或逐批回退目测）
+
+**改派（条目 32 下 ACK）**：
+1. 定位致溢出的具体 commit/元素（bisect 或 DevTools 量 toolbar 实际宽度构成）；
+2. 修复：720px 下工具栏压缩（折行/图标化/隐藏文字标签——方案自定，不得砍功能）；
+3. 自证：`cd frontend-rs && npm run test:spec-parity-d` 全 PASS + `bash scripts/run-verify-tests.sh` 全链 exit=0（注意脚本完成后 jsonl 为全新全量账本，行数应 >2900 且含 ST-PU-26 新 PASS 行）；
+4. **内环不得自跑 `openlogos verify`**（operator 确认点）——自证后 ACK，外环凭本轮授权复跑 verify；
+5. ACK 附：致因 commit、修复方案、D 批输出尾部、pre_run 全链 exit=0 证据。
+
+**operator 授权范围说明**：本次「授权验收和归档」覆盖 verify→修复→复跑 verify→archive 全流程；archive 在 verify 双 PASS 后执行。
