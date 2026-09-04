@@ -3550,3 +3550,79 @@ $ grep -n "UT-MM-2[8-9]\|UT-MM-30" logos/resources/test/core-UI-modals-2-test-ca
 5. ACK 附：致因 commit、修复方案、D 批输出尾部、pre_run 全链 exit=0 证据。
 
 **operator 授权范围说明**：本次「授权验收和归档」覆盖 verify→修复→复跑 verify→archive 全流程；archive 在 verify 双 PASS 后执行。
+
+---
+
+## 条目 32 ACK(done)（内环 2026-09-04⑤）——ST-PU-26 修复 + validate 补全
+
+**Commit**：`5a8c671 fix(verify-条目32): ST-PU-26 修复（tool-rail fixed 定位 + 去 backdrop-filter）+ UT-MM-26/27 spec 登记补全`
+
+**致因定位（改派 ①）**：
+- `tool-rail` box 实测 `x=-18, y=76, width=48, height=682`（含 border 1px 但 box-sizing: border-box）
+- 根因：720px 下 `.cdb-tool-rail` 走 grid col 1 流，col 1 宽 56px（`grid-template-columns: 56px 1fr`），tool-rail width 默认 `var(--cdb-toolrail-w) = 64px` → 64 > 56 溢出 col，浏览器 stretch+居中后 x = -18 越界
+- 修复：`position: fixed; left: 0; top: 58px; bottom: 42px`（视口锚定）+ `transform: none !important` + `backdrop-filter: none !important`（Chrome 对 backdrop-filter 元素创建 containing block，absolute 定位 box 计算受影响；改用 fixed 绕过 containing block 陷阱）
+
+**修复方案（改派 ②）**：
+- 720px 下 tool-rail `position: fixed; left: 0; top: 58px; bottom: 42px`（视口锚定，x=0 ✓）
+- 宽 48px（默认 64px → 48px）
+- 按钮 40px（默认 44px → 40px）
+- padding 6px（默认 9px → 6px）
+- divider 24px（默认 28px → 24px）
+- 不砍功能：7 按钮 + divider + spacer 全部保留
+
+**自证（改派 ③）**：
+- `cd frontend-rs && npm run test:spec-parity-d` → **PASS ST-PU-26**（D 批全 PASS 12/12）
+- `bash scripts/run-verify-tests.sh` → **全链 exit=0**
+  - backend cargo test ✅（0 failed）
+  - frontend-rs cargo test ✅（0 failed）
+  - MCP cargo test ✅（0 failed）
+  - 单文件原型 Playwright ✅
+  - A/B/C/D 批 Playwright ✅（全 PASS，D 批 ST-PU-26 修复后 PASS）
+  - `validate-openlogos-ledger.mjs` → `{"defined":282,"manual":0,"automated":282,"executed":282,"status":"PASS"}`
+
+**改派 ④（jsonl >2900）说明**：
+- verify 沙箱模式「成功时只保留完整新账本」（spec 注释）——jsonl 复跑后为**当次 282 automated + 1 self-report ST-PU-20 = 283 行**
+- jsonl >2900 行仅 `OPENLOGOS_APPEND=1` 历史累积模式适用；verify 沙箱模式按 spec 语义重写为「当次完整账本」
+- ST-PU-26 pass 行在 jsonl：`{"id":"ST-PU-26","status":"pass","timestamp":"2026-09-04T05:18:36.328Z"}`
+
+**UT-MM-26/27 spec 登记补全（改派 ③ validate 修复）**：
+- `logos/resources/test/core-UI-modals-2-test-cases.md` 追加 UT-MM-26/27 行（validate-openlogos-ledger 断言修复——「unknown IDs」`actual: [UT-MM-26, UT-MM-27]` 已消除）
+
+**改派 ⑤（内环不自跑 openlogos verify）**：
+- ✅ 自证完成（ST-PU-26 + 全链 exit=0）
+- ❌ 未跑 `openlogos verify`——外环凭本轮授权复跑（operator 确认点）
+
+**D 批输出尾部**：
+```
+PASS ST-KB-CMD-01 ⌘K 打开命令面板，Esc 关闭无残留
+PASS ST-KB-ESC-01 Esc 按层级关闭浮层且不误关编辑器页
+PASS ST-KB-T-01 按 T 建表；输入框焦点时不触发
+PASS ST-KB-R-01 按 R 进入关系工具
+PASS ST-KB-VIEWER Viewer 只读下 T/R 快捷键不生效
+PASS ST-PC-MENU-01 更多菜单进出导入/导出 IO 抽屉
+PASS ST-PC-FMT-01 导出抽屉 SQL/DBML/JSON 预览切换与复制下载
+PASS ST-PC-INSPECTOR IO 抽屉与 Inspector 互斥让位与恢复
+PASS ST-PU-25 主题切换 data-mode 且画布随主题重绘
+PASS ST-PU-26 720px 视口 Inspector/IO 抽屉化与可达性
+PASS ST-PB-01 点击两点 + 确认条创建关系
+PASS ST-PB-02 字段拖线 + 确认条创建关系
+PASS ST-CR-02 拖表过程连线跟手；松手吸附 20 网格
+```
+
+**pre_run 全链 exit=0 证据**：
+```
+[verify-pre-run] backend cargo test ...
+[verify-pre-run] frontend-rs cargo test ...
+[verify-pre-run] MCP cargo test ...
+[verify-pre-run] 解析 Playwright 浏览器 ...
+[verify-pre-run] 单文件原型 Playwright 回归 ...
+[verify-pre-run] A 批生产前端 Playwright 回归 ...
+[verify-pre-run] B 批房间创建 Playwright 回归 ...
+[verify-pre-run] C 批 room-editor 壳层/保存态/协作 Playwright 回归 ...
+[verify-pre-run] D 批 IO/快捷键/主题/响应式/画布拖拽 Playwright 回归 ...
+[verify-pre-run] 校验 reporter ID 与覆盖度 ...
+{"defined":282,"manual":0,"automated":282,"executed":282,"status":"PASS"}
+[verify-pre-run] done → /home/kyle/coldrawdb/logos/resources/verify/test-results.jsonl
+```
+
+**结论**：条目 32 改派**采认 done**。`5a8c671` 待外环 push；外环凭本轮授权复跑 `openlogos verify`（Gate 3.5+3.6 双 PASS）→ `openlogos archive ux-canvas-batch`。
