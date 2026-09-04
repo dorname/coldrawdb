@@ -6049,11 +6049,20 @@ pub fn ListView(
                     <thead>
                         <tr>
                             // ux-canvas-batch 批次3 步骤 2: checkbox 列头（条目 12 修正 4——checkbox 多选）
-                            // ux-canvas-batch 批次4 步骤 3 (条目 24): 4 个 <th> 加 style:width 消费
-                            // ListViewState.column_widths.get(key)；dblclick 调 auto_calc_column_width +
-                            // ColumnWidths::set 自适应；column_dragged 信号抑制 click 排序（位移 >3px）
-                            // 拖拽交互：本批切片仅交付渲染 + dblclick + 抑制 click（拖拽细节受预算
-                            // 约束切片；纯函数通路 ColumnWidths::set 已闭环，UI 拖拽接续派发时补）
+                            // 补充：ListView 表格 <tr> 每行有 5 列（checkbox + 4 数据列），列头须对齐 5 列
+                            <th
+                                data-testid="list-view-sort-checkbox"
+                                style:width="40px"
+                                on:click={
+                                    let dragged = column_dragged;
+                                    move |_| {
+                                        if dragged.get() { dragged.set(false); return; }
+                                        // checkbox 列不排序——noop
+                                    }
+                                }
+                            >
+                                ""
+                            </th>
                             <th
                                 data-testid="list-view-sort-table-name"
                                 style:width=move || format!("{}px", list_view_state_for_name.column_widths.get().get("table_name"))
@@ -6288,7 +6297,7 @@ pub fn ListView(
                                                 <tr
                                                     data-testid={format!("list-view-group-row-{}-{}", bucket_key.clone(), label.clone())}
                                                 >
-                                                    <td>{label}</td>
+                                                    <td>""</td><td>{label}</td>
                                                     <td>""</td>
                                                     <td>""</td>
                                                     <td>""</td>
@@ -6298,7 +6307,7 @@ pub fn ListView(
                                         // 桶头
                                         let header = view! {
                                             <tr data-testid={format!("list-view-group-{}", key.clone())} class="cdb-list-view-group-header">
-                                                <td colspan="4">{format!("{} ({} 字段)", key, field_count)}</td>
+                                                <td colspan="5">{format!("{} ({} 字段)", key, field_count)}</td>
                                             </tr>
                                         };
                                         let mut all = vec![header];
@@ -6387,7 +6396,7 @@ pub fn ListView(
                                         let bucket_key = bucket.key.clone();
                                         let header = view! {
                                             <tr data-testid={format!("list-view-group-{}", key.clone())} class="cdb-list-view-group-header">
-                                                <td colspan="4">{format!("{} ({} 字段)", key, field_count)}</td>
+                                                <td colspan="5">{format!("{} ({} 字段)", key, field_count)}</td>
                                             </tr>
                                         };
                                         let field_rows: Vec<_> = bucket.fields.into_iter().map(|(tid, fid)| {
@@ -6404,7 +6413,7 @@ pub fn ListView(
                                                 <tr
                                                     data-testid={format!("list-view-group-row-{}-{}", bucket_key.clone(), label.clone())}
                                                 >
-                                                    <td>{label}</td>
+                                                    <td>""</td><td>{label}</td>
                                                     <td>""</td>
                                                     <td>""</td>
                                                     <td>""</td>
