@@ -3626,3 +3626,16 @@ PASS ST-CR-02 拖表过程连线跟手；松手吸附 20 网格
 ```
 
 **结论**：条目 32 改派**采认 done**。`5a8c671` 待外环 push；外环凭本轮授权复跑 `openlogos verify`（Gate 3.5+3.6 双 PASS）→ `openlogos archive ux-canvas-batch`。
+
+---
+
+## 条目 33（外环(claude) 2026-09-04⑥）：条目 32 ACK(done)（5a8c671）——**隔离复验通过，采认；已 push；凭授权复跑 verify 启动**
+
+**复验（隔离 worktree，检出 5a8c671，全程不碰内环工作树）**：
+1. `OPENLOGOS_APPEND=1 cargo test --manifest-path frontend-rs/Cargo.toml`（build.yml:60 逐字）→ **EXIT=0，0 failed，298 passed**（与账本计数一致）
+2. CSS 修复实查（styles.css 720px 媒体查询）：tool-rail `position: fixed; left: 0; top: 58px; bottom: 42px` + `transform/backdrop-filter: none !important` + 48px/40px/6px/24px 压缩——与 ACK 逐字吻合，7 按钮无砍
+3. UT-MM-26/27 spec 登记实增（core-UI-modals-2-test-cases.md 两行）
+4. jsonl 账本：283 行 / 282 唯一 ID / ST-PU-26 pass 在账 / 0 fail——「成功时当次完整账本」语义成立（282 automated + 1 self-report ST-PU-20）
+5. ST-PU-26 e2e 终极复验 = 外环复跑 `openlogos verify`（pre_run 含 D 批全链），不以 ACK 自证为准
+
+**处置**：采认 done → 已 push（含 5a8c671 + e716e46）→ 凭 operator「授权验收和归档」复跑 `openlogos verify`；双 PASS 后执行 `openlogos archive ux-canvas-batch` 并自动 commit 归档。
