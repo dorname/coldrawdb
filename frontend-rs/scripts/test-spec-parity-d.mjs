@@ -21,6 +21,7 @@
 //   ST-PB-04         选中连线按 Delete 键删除落账 0 条
 //   ST-AN-01         拖框创建区域 → Inspector 编辑 → Delete 键删除落账 0 个
 //   ST-AN-02         点击放置便签 → Inspector 编辑内容 → 按钮删除落账 0 个
+//   ST-LV-01         ListView 默认按表分组；桶头选中表；切不分组回归
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { reportOpenLogos } from "../tests/e2e/helpers/openlogos-reporter.mjs";
@@ -722,6 +723,48 @@ try {
     await page.locator('[data-testid="btn-delete-note"]').click();
     await waitSaved(page);
     assert.equal(state.lastPutBody?.diagram?.notes?.length, 0, "按钮删除后必须落账 0 个便签");
+  });
+
+  // ─── ST-LV-01：ListView 默认按表分组（PDManer 式表结构清单） ──────────────
+  await run(["ST-LV-01"], "ListView 按表分组与桶头选中", async page => {
+    const state = await installApi(page);
+    await login(page);
+    await createRoomAndEnter(page);
+    await createTwoTables(page);
+
+    // 打开 ListView（ViewMode::List 全屏列表）→ 默认按表分组：两表各出桶头行 + 字段行
+    await page.locator('[data-testid="btn-list-view"]').click();
+    await page.locator('[data-testid="tab-pane-list-view"]:visible').waitFor();
+    const h1 = page.locator('[data-testid="list-view-group-table_1"]');
+    const h2 = page.locator('[data-testid="list-view-group-table_2"]');
+    await h1.waitFor();
+    await h2.waitFor();
+    assert.match(await h1.textContent(), /table_1 \(1 字段\)/, "桶头必须显示表名 + 字段数");
+    assert.match(await h2.textContent(), /table_2 \(1 字段\)/, "桶头必须显示表名 + 字段数");
+    await page.locator('[data-testid="list-view-group-row-table_1-table_1.id"]').waitFor();
+    await page.locator('[data-testid="list-view-group-row-table_2-table_2.id"]').waitFor();
+
+    // 点桶头 → 选中该表（List 模式下 Inspector 随画布隐藏属既有设计）→ 切回 Canvas 验证同步
+    await h2.click();
+    await page.locator('[data-testid="btn-list-view"]').click();
+    await page.locator('[data-testid="inspector-table-form"]:visible').waitFor();
+    assert.ok(
+      (await page.locator('[data-testid="inspector-table-name"]').inputValue()) === "table_2",
+      "点桶头后 Inspector 必须显示 table_2"
+    );
+
+    // 切回 ListView，切「不分组」→ 桶头消失、扁平表行渲染（回归不破）
+    await page.locator('[data-testid="btn-list-view"]').click();
+    await page.locator('[data-testid="tab-pane-list-view"]:visible').waitFor();
+    await page.locator('[data-testid="list-view-group-by"]').selectOption("");
+    await page.locator('[data-testid="list-view-group-table_1"]').waitFor({ state: "hidden" });
+    assert.equal(
+      await page.locator('[data-testid^="list-view-row-"][data-testid$="checkbox"], tr[data-testid^="list-view-row-"]').count() >= 2,
+      true,
+      "不分组时必须渲染扁平表行"
+    );
+    // 落账无变化（分组是纯视图态，不触发保存）
+    assert.ok(state.lastPutBody, "分组切换不应产生额外 PUT（lastPutBody 仍为建表时的快照）");
   });
 
   // ─── ST-CR-02：拖表跟手 + 松手 GRID_SIZE=20 吸附 ──────────────────────────

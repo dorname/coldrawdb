@@ -141,3 +141,5 @@
 | UT-MM-32 | 删除房间可见性纯函数测试（can_delete_room：owner → true；editor/viewer/空串 → false） | `editor_panels.rs::can_delete_room` |
 | UT-MM-33 | 点到贝塞尔连线命中检测纯函数测试（hit_test_reference 24 段折线近似阈值 8px；bezier_point 端点性质；dist_point_segment 垂距/延长线截断；point_near_bezier 中点命中/远离不命中） | `editor_render.rs::hit_test_reference` + `point_near_bezier` + `bezier_point` + `dist_point_segment` |
 | UT-MM-34 | Delete 键判定纯函数测试（is_delete_key：Delete/Backspace → true；普通键/Escape/空串 → false） | `editor_panels.rs::is_delete_key` |
+| UT-MM-35 | 按表分组纯函数测试（GroupByMode::ByTable：桶键=表名；桶序=tables 数组顺序；空表出桶 fields 为空；空输入 0 桶；桶内 (table_id, field_id) 二元组） | `editor_panels.rs::group_tables` |
+| ST-LV-01 | ListView 默认按表分组 e2e（打开 ListView 两表各出桶头行「表名 (N 字段)」+ 字段行；点桶头选中表 Inspector 同步；切「不分组」回归扁平表行；分组切换不产生额外 PUT） | `frontend-rs/scripts/test-spec-parity-d.mjs` |

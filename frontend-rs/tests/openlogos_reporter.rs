@@ -86,6 +86,7 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-MM-34", // p0-fix 定点 3: is_delete_key 纯函数（Delete/Backspace 命中；普通键/Escape/空串不命中）
     "UT-AREA-01", // p0-fix 定点 2: area_rect_from_drag 归一化 + <10px 不创建 + build_area 默认值 + hit_test_area 后创建优先
     "UT-NOTE-01", // p0-fix 定点 2: build_note 默认值 + hit_test_note 固定 180×100 命中
+    "UT-MM-35", // list-view-table-structure: group_tables ByTable 按表分桶（桶键=表名 / 桶序保持 / 空表出桶 / 空输入 0 桶）
     // core-PB-relationship
     "UT-PB-01",
     "UT-PB-02",

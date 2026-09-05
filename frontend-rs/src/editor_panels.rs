@@ -5841,9 +5841,11 @@ pub fn max_chars_for_column(key: &str, tables: &[Table]) -> u32 {
 /// - BySchema 裁撤（条目 18 P2：Table 无 schema 字段，分组键 = table.id = 一组一行 = 伪分组）
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum GroupByMode {
-    #[default]
     None,
     ByTag,
+    /// list-view-table-structure：按表分组（PDManer 式表结构清单），默认模式
+    #[default]
+    ByTable,
 }
 
 /// ux-canvas-batch 批次4 步骤 4 (条目 26)：分组桶统一输出形状
@@ -5872,6 +5874,16 @@ pub fn group_tables(tables: &[Table], mode: GroupByMode) -> Vec<Bucket> {
                 }
             }
             vec![Bucket { key: "_flat".to_string(), fields }]
+        }
+        GroupByMode::ByTable => {
+            // list-view-table-structure：按表分桶（桶键 = 表名；空表也出桶；桶序 = tables 数组顺序）
+            tables
+                .iter()
+                .map(|t| Bucket {
+                    key: t.name.clone(),
+                    fields: t.fields.iter().map(|f| (t.id.clone(), f.id.clone())).collect(),
+                })
+                .collect()
         }
         GroupByMode::ByTag => {
             // 按 tag 分桶（空 tag → "(empty)" 兜底）
@@ -6116,10 +6128,12 @@ pub fn ListView(
                             let v = event_target_value(&ev);
                             list_view_state.group_by.set(match v.as_str() {
                                 "ByTag" => GroupByMode::ByTag,
+                                "ByTable" => GroupByMode::ByTable,
                                 _ => GroupByMode::None,
                             });
                         }
                     >
+                        <option value="ByTable" selected=true>按表分组</option>
                         <option value="">不分组</option>
                         <option value="ByTag">按字段 tag 分组</option>
                     </select>
@@ -6395,6 +6409,7 @@ pub fn ListView(
                                     }).flatten().collect()
                                 }
                                 GroupByMode::None => Vec::new(), // 走下方既有 sorted.into_iter().map() 路径
+                                GroupByMode::ByTable => Vec::new(), // 走下方第二 match 的实际渲染分支
                             };
                             let table_rows = sorted.into_iter().map(|table| {
                                 let table_id = table.id.clone();
@@ -6455,7 +6470,7 @@ pub fn ListView(
                             // ux-canvas-batch 批次4 步骤 5 (条目 27): 桶渲染优先（ByTag）或表行（None）
                             let mode = list_view_state.group_by.get();
                             match mode {
-                                GroupByMode::ByTag => {
+                                GroupByMode::ByTag | GroupByMode::ByTable => {
                                     // 重算 buckets（闭包内 group_tables 已在 sorted.into_iter().map 之前算过 bucket_views）
                                     let tables_now = store.tables.get();
                                     let sorted_now = sort_tables(
@@ -6468,13 +6483,30 @@ pub fn ListView(
                                         list_view_state.sort_column.get(),
                                         list_view_state.sort_direction.get(),
                                     );
-                                    let buckets_now = group_tables(&sorted_now, GroupByMode::ByTag);
+                                    let buckets_now = group_tables(&sorted_now, mode);
                                     buckets_now.into_iter().flat_map(|bucket| {
                                         let key = bucket.key.clone();
                                         let field_count = bucket.fields.len();
                                         let bucket_key = bucket.key.clone();
+                                        // list-view-table-structure：ByTable 桶头可点击 → 选中该表 + Inspector 同步
+                                        let table_id = if mode == GroupByMode::ByTable {
+                                            sorted_now
+                                                .iter()
+                                                .find(|t| t.name == key)
+                                                .map(|t| t.id.clone())
+                                                .unwrap_or_default()
+                                        } else {
+                                            String::new()
+                                        };
+                                        let on_select = on_select_table.clone();
                                         let header = view! {
-                                            <tr data-testid={format!("list-view-group-{}", key.clone())} class="cdb-list-view-group-header">
+                                            <tr data-testid={format!("list-view-group-{}", key.clone())} class="cdb-list-view-group-header"
+                                                on:click=move |_| {
+                                                    if !table_id.is_empty() {
+                                                        on_select(Some(table_id.clone()));
+                                                    }
+                                                }
+                                            >
                                                 <td colspan="5">{format!("{} ({} 字段)", key, field_count)}</td>
                                             </tr>
                                         };
@@ -13251,5 +13283,37 @@ mod tests_ut_mm_28 {
             let _: String = b.key.clone();
             let _: Vec<(String, String)> = b.fields.clone();
         }
+    }
+
+    // ─── UT-MM-35 — list-view-table-structure：ByTable 按表分桶 ────────────
+
+    /// UT-MM-35: ByTable 桶键=表名 / 桶序保持 tables 顺序 / 空表出桶（fields 为空）
+    #[test]
+    fn test_group_tables_by_table_ut_mm_35() {
+        let tables = vec![
+            make_table_with_tagged_fields("t1", vec![
+                make_field_with_tag("a", "INT", ""),
+                make_field_with_tag("b", "VARCHAR", ""),
+            ]),
+            make_table_with_tagged_fields("t2", vec![]), // 空表
+            make_table_with_tagged_fields("t3", vec![make_field_with_tag("c", "INT", "")]),
+        ];
+        let buckets = group_tables(&tables, GroupByMode::ByTable);
+        assert_eq!(buckets.len(), 3, "UT-MM-35: 3 表（含空表）= 3 桶");
+        // 桶键 = 表名（make_table_with_tagged_fields 的 name == id）
+        assert_eq!(buckets[0].key, "t1");
+        assert_eq!(buckets[1].key, "t2", "UT-MM-35: 桶序必须保持 tables 数组顺序");
+        assert_eq!(buckets[2].key, "t3");
+        assert_eq!(buckets[0].fields.len(), 2);
+        assert_eq!(
+            buckets[0].fields[0],
+            ("t1".to_string(), "fid_a".to_string()),
+            "UT-MM-35: 桶内字段为 (table_id, field_id) 二元组"
+        );
+        assert!(buckets[1].fields.is_empty(), "UT-MM-35: 空表出桶且 fields 为空");
+        assert_eq!(buckets[2].fields.len(), 1);
+        // 空输入 = 0 桶（与 ByTag 一致，区别于 None 的 _flat 单桶）
+        let empty: Vec<Table> = Vec::new();
+        assert_eq!(group_tables(&empty, GroupByMode::ByTable).len(), 0, "UT-MM-35: 空输入 = 0 桶");
     }
 }
