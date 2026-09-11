@@ -19,7 +19,8 @@ set -e
 DURATION_SEC=${DURATION_SEC:-2400}  # 40 min default (sanity); use 14400 for full 4h
 BASE_URL="${BASE_URL:-http://127.0.0.1:6666}"
 SOAK_LOG="${SOAK_LOG:-/tmp/soak-4h.log}"
-RESULTS="${RESULTS:-/home/kyle/coldrawdb/docs/phase4/perf/soak-4h.txt}"
+RESULTS="${RESULTS:-perf-results/soak-4h.txt}"
+mkdir -p "$(dirname "$RESULTS")"
 RETRY_COUNT=0
 MAX_RETRIES=1
 

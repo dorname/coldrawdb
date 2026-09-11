@@ -5,14 +5,14 @@
 //   2) cd backend && COLDRAWDB_STATIC_DIR=$(pwd)/../frontend-rs/dist cargo run --release --bin backend
 //   3) node scripts/capture-readme-screenshot.mjs   （在 frontend-rs/ 下执行）
 //
-// 产物：docs/assets/app-editor.png（1600×900 @2x，暗色主题编辑器界面）
+// 产物：仓库根 app-editor.png（1600×900 @2x，暗色主题编辑器界面）
 import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { applyPlaywrightBrowserEnv } from "./resolve-playwright-browsers.mjs";
 
 const BASE = process.env.CAPTURE_BASE_URL || "http://127.0.0.1:3000";
-const OUT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../docs/assets");
+const OUT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const OUT_FILE = path.join(OUT_DIR, "app-editor.png");
 const EMAIL = `shot-${Date.now()}@coldrawdb.local`;
 const PASSWORD = "Shot#2026-Pw";

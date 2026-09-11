@@ -1,7 +1,7 @@
 <div align="center">
     <h1>coldrawdb</h1>
     <p><b>自托管、浏览器端的数据库 ER 图设计工具</b><br>产品灵感源自 drawDB 与 PDManer，代码为纯 Rust 自研</p>
-    <img width="700" style="border-radius:5px;" alt="coldrawdb 协作编辑器界面（暗色主题）" src="docs/assets/app-editor.png?v=2">
+    <img width="700" style="border-radius:5px;" alt="coldrawdb 协作编辑器界面（暗色主题）" src="app-editor.png?v=2">
 </div>
 
 ## 简介
@@ -38,7 +38,7 @@ coldrawdb 是一个纯 Rust 实现的数据库实体关系（DBER）编辑器：
 | 测试 | `cargo test`（UT/ST）+ `wasm-pack test --chrome` + Playwright E2E |
 | CI | GitHub Actions：`build.yml`（cargo build + trunk build）与 `docker.yml`（镜像构建） |
 
-架构详情见 [`docs/phase4/architecture.mmd`](docs/phase4/architecture.mmd) 与 [架构概览](logos/resources/prd/3-technical-plan/1-architecture/core-01-architecture-overview.md)。
+架构详情见 [架构概览](logos/resources/prd/3-technical-plan/1-architecture/core-01-architecture-overview.md)。
 
 ## 快速开始
 
@@ -184,8 +184,6 @@ openlogos change <slug>   # 创建变更提案（修改源码前必须）
 
 | 文档 | 说明 |
 |---|---|
-| [`docs/MILESTONE_V1_INITIAL.md`](docs/MILESTONE_V1_INITIAL.md) | V1 里程碑总览 |
-| [`docs/phase0/` ~ `docs/phase4/`](docs/) | 各阶段过程文档与收官报告 |
 | [`logos/logos-project.yaml`](logos/logos-project.yaml) | OpenLogos 资源索引（所有规格文档入口） |
 | [`RUST_WEB_REFACTOR_PLAN.md`](RUST_WEB_REFACTOR_PLAN.md) | React → Rust Web 重构计划 |
 | [`logos/resources/scenario/`](logos/resources/scenario/) | 端到端 API 编排测试定义 |

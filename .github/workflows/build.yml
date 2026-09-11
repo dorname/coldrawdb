@@ -71,10 +71,6 @@ jobs:
         npx playwright install --with-deps chromium
         npx playwright test || true
 
-    - name: Render architecture.mmd -> architecture.svg (best-effort, docs quality)
-      continue-on-error: true
-      run: npx -p @mermaid-js/mermaid-cli mmdc -i docs/phase4/architecture.mmd -o docs/phase4/architecture.svg || true
-
     - name: Module dependency gate (ast-grep + cargo-modules)
       run: bash frontend-rs/scripts/check_module_deps.sh
 
@@ -144,7 +140,7 @@ jobs:
         const fps = JSON.parse(fs.readFileSync('perf-results/fps.json', 'utf8'));
         const heap = JSON.parse(fs.readFileSync('perf-results/heap.json', 'utf8'));
         const results = { timestamp: new Date().toISOString(), tti, fps, heap };
-        // Baseline thresholds from docs/phase4/perf/
+        // Baseline thresholds from Phase 4 perf measurements (raw artifacts in git history)
         const BASELINE_TTI_P95 = 3500, TTI_THRESHOLD = BASELINE_TTI_P95 * 1.1;
         const BASELINE_HEAP_P95 = 95, HEAP_THRESHOLD = BASELINE_HEAP_P95 * 1.2;
         const BASELINE_FPS_P95_MS = 22;
@@ -161,7 +157,7 @@ jobs:
           'AC-24 FPS: actual=' + (fps.p95 || 'N/A') + 'fps threshold=' + BASELINE_FPS_P95_MS + 'fps pass=' + results.comparison.fps.pass,
           'AC-25 Heap: actual=' + (heap.usedMB || 'N/A') + 'MB threshold=' + HEAP_THRESHOLD + 'MB pass=' + results.comparison.heap.pass
         ];
-        fs.writeFileSync('docs/phase4/perf/perf-w3-actual.txt', lines.join('\n') + '\n');
+        fs.writeFileSync('perf-results/perf-w3-actual.txt', lines.join('\n') + '\n');
         console.log(JSON.stringify(results.comparison, null, 2));
         "
 
