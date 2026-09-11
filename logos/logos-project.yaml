@@ -1,6 +1,6 @@
 project:
   name: "coldrawdb"
-  description: "自托管、浏览器端的数据库 ER 图设计工具（Rust Web 重写版 drawdb）"
+  description: "自托管、浏览器端的数据库 ER 图设计工具（灵感源自 drawDB 与 PDManer 的纯 Rust 自研）"
   methodology: "OpenLogos"
 
 tech_stack:

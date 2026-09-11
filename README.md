@@ -1,124 +1,95 @@
 <div align="center">
-  <sup>Special thanks to:</sup>
-  <br>
-  <a href="https://www.warp.dev/drawdb/" target="_blank">
-    <img alt="Warp sponsorship" width="280" src="https://github.com/user-attachments/assets/c7f141e7-9751-407d-bb0e-d6f2c487b34f">
-    <br>
-    <b>Next-gen AI-powered intelligent terminal for all platforms</b>
-  </a>
+    <h1>coldrawdb</h1>
+    <p><b>自托管、浏览器端的数据库 ER 图设计工具</b><br>产品灵感源自 drawDB 与 PDManer，代码为纯 Rust 自研</p>
+    <img width="700" style="border-radius:5px;" alt="coldrawdb 界面预览" src="drawdb.png">
 </div>
 
-<br/>
-<br/>
+## 简介
 
-<div align="center">
-    <img width="64" alt="drawdb logo" src="./src/assets/icon-dark.png">
-    <h1>drawDB</h1>
-</div>
+coldrawdb 是一个纯 Rust 实现的数据库实体关系（DBER）编辑器：前端以 WASM + Leptos 在浏览器中自绘 Canvas 画布，后端以 actix-web + SQLite 提供图表持久化、SQL/DBML 导入导出、多引擎 DDL 生成，并逐步扩展用户鉴权、实时协作与 AI 客户端（MCP）接入能力。
 
-<h3 align="center">Free, simple, and intuitive database schema editor and SQL generator.</h3>
+核心特性：
 
-<div align="center" style="margin-bottom:12px;">
-    <a href="https://drawdb.app/" style="display: flex; align-items: center;">
-        <img src="https://img.shields.io/badge/Start%20building-grey" alt="drawDB"/>
-    </a>
-    <a href="https://discord.gg/BrjZgNrmR6" style="display: flex; align-items: center;">
-        <img src="https://img.shields.io/discord/1196658537208758412.svg?label=Join%20the%20Discord&logo=discord" alt="Discord"/>
-    </a>
-    <a href="https://x.com/drawDB_" style="display: flex; align-items: center;">
-        <img src="https://img.shields.io/badge/Follow%20us%20on%20X-blue?logo=X" alt="Follow us on X"/>
-    </a>
-</div>
+- **可视化 ER 编辑器**：表 / 字段 / 关系 / 索引 / 枚举 / 自定义类型 / 区域 / 备注 / 待办，9 类对象自由拖拽连线
+- **多引擎 SQL 与 DBML**：7 种引擎的 DDL 生成与导入（MySQL / PostgreSQL / SQLite 等），JSON 全量导入导出
+- **修订号乐观锁**：图表保存携带 `expected_revision`，并发冲突返回 409，不静默覆盖
+- **协作与鉴权（V2，后端已就绪）**：注册 / 登录 / Token 续期（JWT + Argon2）、协作房间与邀请、WebSocket OT 实时协作
+- **MCP 服务（S06，实现中）**：本地 stdio adapter，让 Claude / Codex / Cursor / OpenCode 直接管理图表
+- **数据字典（S07）**：代码映射字典 CRUD、字段绑定、Markdown 导出
+- **暗色模式**：`--cdb-*` 设计 token 体系驱动的 Light / Dark 全局主题
 
-<h3 align="center"><img width="700" style="border-radius:5px;" alt="demo" src="drawdb.png"></h3>
+## 技术栈
 
-DrawDB is a robust and user-friendly database entity relationship (DBER) editor right in your browser. Build diagrams with a few clicks, export sql scripts, customize your editor, and more without creating an account. See the full set of features [here](https://drawdb.app/).
+> 前端为纯 Rust（WASM）实现，全仓库无 React / Node 前端构建链。
 
-## Tech Stack
+| 层 | 技术 |
+|---|---|
+| 前端 | **Rust + Leptos 0.5（CSR）+ WASM**，`frontend-rs/` crate，4 个逻辑模块：data_access / core / panels / render |
+| 前端构建 | `trunk`（WASM bundler） |
+| 渲染 | HTML5 `<canvas>` 自绘 + 贝塞尔连线，Leptos signals 细粒度响应式 |
+| 设计系统 | `--cdb-*` 设计 token（13 类约 100 个）+ SVG 图标库 + 8 类核心组件 + 动效 token |
+| 代码视图 | Monaco Editor + DBML 语法 |
+| 后端 | **Rust + actix-web 4 + tokio**，`backend/` crate，默认 `127.0.0.1:3000` |
+| 持久化 | SQLite（WAL 模式）+ SeaORM 0.12，8 个幂等迁移（`backend/migrations/`） |
+| 鉴权 | JWT（`jsonwebtoken`）+ Argon2 密码散列 + refresh token |
+| 协作 | actix-web-actors WebSocket + OT（Operation Transform） |
+| MCP | `mcp-server/` 独立 crate，stdio transport，仅调用 diagram HTTP API |
+| 部署 | 多阶段 Dockerfile（静态服务 + SPA 回源）+ docker-compose（nginx:80 反代 + 每日 SQLite 备份侧车） |
+| 测试 | `cargo test`（UT/ST）+ `wasm-pack test --chrome` + Playwright E2E |
+| CI | GitHub Actions：`build.yml`（cargo build + trunk build）与 `docker.yml`（镜像构建） |
 
-> **Phase 4 起**前端从 React 完全替换为 Rust Web（WASM）。
+架构详情见 [`docs/phase4/architecture.mmd`](docs/phase4/architecture.mmd) 与 [架构概览](logos/resources/prd/3-technical-plan/1-architecture/core-01-architecture-overview.md)。
 
-| Layer | Tech |
-|-------|------|
-| Frontend | **Rust + Leptos 0.5 + WASM**（`frontend-rs/` crate，4 modules：data_access / core / panels / render） |
-| Bundler | `trunk`（WASM bundler） |
-| State | Leptos signals / `create_store` 细粒度响应式（`features=["csr"]`） |
-| Rendering | HTML5 `<canvas>` + 贝塞尔连线（自渲染，无 vDOM diff） |
-| Design System | `--cdb-*` 设计 token 体系（13 类 ~100 个）+ SVG 图标库 + 8 类核心组件（redesign-phase-e E1–E3） |
-| Layout (V2) | AppBar + ToolRail + Inspector + ModalRoot + IO Drawer（6 层 z-index 体系，redesign-phase-a/b/c） |
-| Code Editor | Monaco Editor + DBML setup + 复制按钮（E4 替代 V1 `<textarea readonly>`） |
-| Theme | Light / Dark 全局切换（`core-0b-dark-mode.md`） |
-| Backend | **Rust + actix-web 4**（`backend/`，端口 `127.0.0.1:3000`） |
-| Persistence | SQLite（`backend/db.sqlite`，11 张表，WAL 模式）+ SeaORM |
-| API | REST v1（`/api/v1/diagrams/*` 5 端点 + `/api/v1/bridge/*` 5 端点），含 409 revision 冲突语义 |
-| E2E | `wasm-pack test --chrome` + Playwright（CI 强制） |
-| CI | GitHub Actions：`cargo build --release` + `trunk build` + `mmdc` 渲染 + ast-grep module gate |
+## 快速开始
 
-架构图：[`docs/phase4/architecture.mmd`](docs/phase4/architecture.mmd)（4 modules + 单向依赖）；V2 布局与设计系统详见 `logos/resources/reference/core-baseline-reference.md`。
+### 前置要求
 
-## Getting Started
+- Rust stable（建议经 [rustup](https://rustup.rs/) 安装）
+- `trunk`：`cargo install --locked trunk`
+- `wasm32-unknown-unknown` target（`rustup target add wasm32-unknown-unknown`）
+- 可选：`wasm-pack`（前端集成测试）、Playwright + Chromium（E2E）
 
-> **Phase 4 完成**：React 前端已**完全下线**并替换为 Rust Web（WASM + Leptos）。
-> 后端保持 Rust + actix-web + SQLite；前端重建为 `frontend-rs/` crate。
-> 里程碑总览见 `docs/MILESTONE_V1_INITIAL.md`；Phase 4 收官报告见 `docs/phase4/PHASE4_DONE.md`。
+无需 Node.js / npm。
 
-### Prerequisites
+### 方式一：一键启动脚本
 
-- Rust stable (建议通过 `rustup` 安装)
-- Cargo
-- `trunk`（WASM bundler：`cargo install --locked trunk`）
-- 可选：`wasm-pack`（集成测试用）
-- 可选：Playwright + Chromium（E2E + perf 测量用）
+```bash
+./scripts/start-local.sh   # 启动后端 + 前端（可用 COLDRAWDB_BACKEND_PORT / COLDRAWDB_FRONTEND_PORT 改端口）
+./scripts/stop-local.sh    # 停止
+```
 
-不需要 Node.js / npm — Phase 4 起所有前端构建走 Rust 工具链。
+日志写入 `logs/`。
 
-### Local Development
+### 方式二：手动启动
 
-#### 1) 启动后端（Rust + SQLite）
-
-后端默认监听 `127.0.0.1:3000`，配置文件为 `backend/config.toml`。
+**1) 启动后端**（Rust + SQLite，默认 `127.0.0.1:3000`，配置见 `backend/config.toml`）：
 
 ```bash
 cd backend
-cargo run --release
+cargo run --release   # 性能测量必须使用 release 模式
 ```
 
-> 性能与 §8 指标测量**必须**使用 release 模式（plan W3-2）；debug build 跑 P95 不可信。
+首次启动会执行 `backend/init.sql` 基线建表，再按序执行 `backend/migrations/*.up.sql`（幂等，版本记录在 `schema_migrations` 表）。
 
-首次启动说明：
-- `init` 会读取 `backend/config.toml`。
-- 若数据库不存在或未初始化，会先执行 `backend/init.sql` 基线建表。
-- 然后自动执行 `backend/migrations/*.up.sql`（幂等，版本记录在 `schema_migrations`）。
-
-后端健康检查：
+健康检查（无 DB 依赖）：
 
 ```bash
-curl http://127.0.0.1:3000/
-# 预期返回: Hello, world!
+curl http://127.0.0.1:3000/api/v1/diagrams/health
 ```
 
-#### 2) 启动前端（Rust Web + Leptos + WASM + trunk）
-
-在新的终端窗口中执行：
+**2) 启动前端**（新终端）：
 
 ```bash
 cd frontend-rs
-trunk serve --port 8080
+trunk serve --port 8080   # 访问 http://localhost:8080
 ```
 
-默认访问地址：`http://localhost:8080`
+前后端联调说明：无代理层，前端经 `fetch` 直连 `127.0.0.1:3000`，CORS 由后端 `actix-cors` 管理（dev 全开）。数据流：`editor-data-access` → `editor-core`（1s debounce）→ `editor-panels` / `editor-render`。
 
-前后端联调说明（Phase 4 起）：
-- **无前端代理**：`vite.config.js` 已删除；frontend-rs 通过 `fetch` 直连 `127.0.0.1:3000`。
-  CORS 由后端 `actix-cors` 配置（dev 环境全开）。
-- 后端核心接口位于 `/api/v1/*`（diagrams v1 CRUD + 409 revision 冲突语义）。
-- 数据流：`editor-data-access` → `editor-core` (debounce 1s) → `editor-panels` /
-  `editor-render`（Leptos signals 细粒度更新）。
-
-#### 3) 常用后端接口快速验证
+**3) 接口快速验证**：
 
 ```bash
-# 创建 diagram
+# 创建图表
 curl -X POST http://127.0.0.1:3000/api/v1/diagrams \
   -H 'Content-Type: application/json' \
   -d '{"name":"demo","engine":"mysql"}'
@@ -127,69 +98,108 @@ curl -X POST http://127.0.0.1:3000/api/v1/diagrams \
 curl http://127.0.0.1:3000/api/v1/bridge/config
 ```
 
-### Build
-
-后端构建（release）：
+### 构建
 
 ```bash
-cd backend
-cargo build --release
+# 后端 release
+cd backend && cargo build --release
+
+# 前端 release（trunk 0.21.x 需显式关闭 wasm-opt，见 frontend-rs/Trunk.toml 注释）
+cd frontend-rs && trunk build --release --no-wasm-opt
+# 产物：frontend-rs/dist/
 ```
 
-前端构建（trunk release）：
+## Docker 部署
+
+单容器：
 
 ```bash
-cd frontend-rs
-trunk build --release
-# 产物：frontend-rs/dist/index.html + pkg/frontend_rs.wasm + pkg/frontend_rs.js
+docker build -t coldrawdb .
+docker run -p 3000:3000 -v ./data:/data coldrawdb
 ```
 
-### Docker Build
+staging 组合（推荐，含 nginx 反代与每日备份）：
 
 ```bash
-docker build -t drawdb .
-docker run -p 3000:80 drawdb
+docker compose up -d --build
 ```
 
-If you wish to work with sharing, set up [server](https://github.com/drawdb-io/drawdb-server) and environment variables according to `.env.sample`. This is not required unless you want to share files.
+- `nginx`（80 端口）反代至 `coldrawdb`（3000 端口），静态资源 + SPA 回源
+- SQLite 数据落盘 `./data/`，日志落盘 `./logs/`
+- `backup` 侧车每日打包 `./data/` 至 `./backups/`
+- 健康检查：`GET /api/v1/diagrams/health`（30s 间隔，自动重启）
 
-## Project Status & Recent Archives
+## API 概览
 
-> **当前状态**：coldrawdb 处于 `core` 模块 `launched` 生命周期；活跃变更 `align-unified-prototype-and-add-mcp` 已完成规格合并，代码分批实现中。
+生产后端路由（`/api/v1` 前缀）：
 
-现行 HTML 评审入口只有 `core-01-editor-prototype.html`。S01/S02 生产前后端已实现；S03/S04/S05 的 auth、rooms、collab REST/DB/WS 与测试已实现，生产前端登录、房间和 WS/OT/presence 尚未接入。
-
-### MCP（规划/实现中）
-
-S06 计划通过本地 stdio MCP 服务支持 Claude、Codex、Cursor 和 OpenCode，MVP 提供 7 个图表 CRUD/导入/导出工具，不包含 Streamable HTTP。
-
-- [S06 产品需求](logos/resources/prd/1-product-requirements/core-S06-mcp-service-requirements.md)
-- [S06 功能设计](logos/resources/prd/2-product-design/1-feature-specs/core-S06-mcp-service-design.md)
-- [MCP 工具契约](logos/resources/api/mcp-tools.yaml)
-- [S06 测试用例](logos/resources/test/core-S06-test-cases.md)
-- [MCP 构建与四客户端配置](mcp-server/README.md)
-
-### 最近归档变更（2026-06）
-
-| 提案 slug | 类型 | 关键产出 |
+| 分组 | 端点数 | 说明 |
 |---|---|---|
-| `add-frontend-completeness` | B1–B5 五批次 | styles + top menu/toolbar shell + 7-Tab 侧栏 + 5 个核心模态 + 撤销/重做快捷键 |
-| `fix-modal-overlay-blocking` | 修复 | ModalRoot 遮罩 + canvas testid + CORS + e2e 修正 |
-| `fix-add-frontend-stub-leftover` | 修复 | save handler stubs + selection id wiring + e2e 5/5 |
-| `add-local-run-scripts` | 工具 | `scripts/start-local.sh` + `stop-local.sh` 一键启动 |
-| `remove-debug-smoke-artifact` | 清理 | 移除 debug 残留 smoke 产物 |
-| `wire-editor-canvas` | 重构 | 接线画布到 editor core |
-| `redesign-phase-a-layout` | 重构 | V2 布局（AppBar + ToolRail + Inspector + ModalRoot）+ 6 层 z-index |
-| `redesign-phase-b-relationship` | 重构 | 关系工具栏 + Tooltip/Popover |
-| `redesign-phase-c-import-export` | 重构 | IO 抽屉（替代 V1 Import 模态） |
-| `redesign-phase-d-command-code` | 重构 | Command Palette + Code View 规格（已被 E4 Monaco 升级版覆盖） |
-| `redesign-phase-e-design-system-migration` | 重构 | E1–E6 设计系统迁移（tokens / icons / components / Monaco / dark mode / motion） |
+| diagrams | 5 | 图表 CRUD + health（含 409 revision 冲突语义） |
+| bridge | 5 | SQL / DBML / JSON 导入导出（7 引擎） |
+| auth | 5 | register / login / refresh / logout / me |
+| rooms | 11 | 房间 / 邀请 / 成员生命周期 |
+| collab | 2 + 1 WS | collab head / ops REST + WebSocket OT 帧协议 |
 
-> 完整归档索引见 `logos/changes/archive/`（15 个已归档提案）。
+另有遗留的 `/diagrams/*` 路由单列兼容。API 规格见 [`logos/resources/api/`](logos/resources/api/)（auth.yaml / rooms.yaml / collab.yaml / mcp-tools.yaml）。
 
-### 下一步建议
+## MCP 服务（AI 客户端接入）
+
+`coldrawdb-mcp` 是本地 stdio adapter，支持 Claude、Codex、Cursor、OpenCode 四类客户端，MVP 提供 7 个工具：
+
+- 读取：`list_diagrams` / `get_diagram` / `export_schema`
+- 写入：`create_diagram` / `update_diagram`（携带 `expected_revision`，409 返回 `REVISION_CONFLICT`）/ `delete_diagram`（`destructiveHint` + 本地 confirm 双重约束）/ `import_schema`
 
 ```bash
-openlogos next     # 查看下一步推荐
-openlogos status   # 查看完整项目状态
+./scripts/build-mcp.sh   # 产物：mcp-server/target/release/coldrawdb-mcp
 ```
+
+必需环境变量 `COLDRAWDB_BASE_URL`；四客户端配置模板见 `mcp-server/examples/`。完整说明见 [`mcp-server/README.md`](mcp-server/README.md)。
+
+## 项目状态
+
+项目遵循 OpenLogos 方法论管理，场景状态（详见 [`logos/logos-project.yaml`](logos/logos-project.yaml)）：
+
+| 场景 | 名称 | 状态 |
+|---|---|---|
+| S01 | 编辑并保存图表 | ✅ launched |
+| S02 | 加载分享链接图表 | ✅ launched |
+| S03 | 用户注册 / 登录 / Token 续期 | 🚧 后端已实现，前端接入中 |
+| S04 | 创建/加入协作房间 | 🚧 后端已实现，前端接入中 |
+| S05 | OT 实时协作 | 🚧 后端已实现，前端接入中 |
+| S06 | AI 客户端通过 MCP 管理图表 | 🚧 实现中（MVP 7 工具，仅 stdio） |
+| S07 | 管理数据字典并绑定字段 | 🚧 实现中 |
+
+唯一现行 HTML 评审原型：`logos/resources/prd/2-product-design/2-page-design/core-01-editor-prototype.html`。
+
+### 常用命令
+
+```bash
+openlogos status   # 查看项目阶段进度
+openlogos next     # 查看下一步建议
+openlogos change <slug>   # 创建变更提案（修改源码前必须）
+```
+
+## 文档索引
+
+| 文档 | 说明 |
+|---|---|
+| [`docs/MILESTONE_V1_INITIAL.md`](docs/MILESTONE_V1_INITIAL.md) | V1 里程碑总览 |
+| [`docs/phase0/` ~ `docs/phase4/`](docs/) | 各阶段过程文档与收官报告 |
+| [`logos/logos-project.yaml`](logos/logos-project.yaml) | OpenLogos 资源索引（所有规格文档入口） |
+| [`RUST_WEB_REFACTOR_PLAN.md`](RUST_WEB_REFACTOR_PLAN.md) | React → Rust Web 重构计划 |
+| [`logos/resources/scenario/`](logos/resources/scenario/) | 端到端 API 编排测试定义 |
+| [`scripts/`](scripts/) | 本地启动 / MCP 构建 / 验证测试脚本 |
+
+## 致谢
+
+coldrawdb 的产品形态与交互设计深受以下两个优秀开源项目启发：
+
+- [drawDB](https://github.com/drawdb-io/drawdb) —— 浏览器端数据库实体关系（DBER）编辑器
+- [PDManer 元数建模](https://gitee.com/robergroup/pdmaner) —— 跨平台关系数据库建模工具
+
+coldrawdb 仅在**产品理念层面**借鉴二者；**全部代码均为纯 Rust 自研，未使用、未移植、未衍生上述任何项目的源代码**，与二者的代码库不存在派生关系。感谢两个项目的作者与社区带来的设计启发。
+
+## 许可证
+
+[MIT](LICENSE)
