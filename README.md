@@ -1,6 +1,6 @@
 <div align="center">
     <h1>coldrawdb</h1>
-    <p><b>自托管、浏览器端的数据库 ER 图设计工具</b><br>产品灵感源自 drawDB 与 PDManer，代码为纯 Rust 自研</p>
+    <p><b>自托管、浏览器端的数据库 ER 图设计工具</b><br>产品理念借鉴 drawDB 与 PDManer，开发中参考 drawDB 源码对齐，代码为纯 Rust 重新实现</p>
     <img width="700" style="border-radius:5px;" alt="coldrawdb 协作编辑器界面（暗色主题）" src="app-editor.png?v=2">
 </div>
 
@@ -196,7 +196,7 @@ coldrawdb 的产品形态与交互设计深受以下两个优秀开源项目启�
 - [drawDB](https://github.com/drawdb-io/drawdb) —— 浏览器端数据库实体关系（DBER）编辑器
 - [PDManer 元数建模](https://gitee.com/robergroup/pdmaner) —— 跨平台关系数据库建模工具
 
-coldrawdb 仅在**产品理念层面**借鉴二者；**全部代码均为纯 Rust 自研，未使用、未移植、未衍生上述任何项目的源代码**，与二者的代码库不存在派生关系。感谢两个项目的作者与社区带来的设计启发。
+coldrawdb 在整体产品理念上借鉴二者，开发过程中参考了 drawDB 的源码作为能力对齐参照，但未直接复用、未引用其任何代码；**全部代码均为纯 Rust 重新实现**，与二者的代码库不存在派生关系。感谢两个项目的作者与社区带来的设计启发。
 
 ## 许可证
 
