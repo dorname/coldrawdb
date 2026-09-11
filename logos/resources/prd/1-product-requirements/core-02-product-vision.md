@@ -1,6 +1,6 @@
 ### 1.1 产品定位
 
-**coldrawdb** 是一款**自托管、浏览器端**的数据库 ER 图设计工具。产品灵感源自 drawDB 与 PDManer 两个优秀的开源建模工具；**全部代码均为纯 Rust 自研**，未使用、未移植、未衍生任何上游项目的源代码，与二者的代码库不存在派生关系。
+**coldrawdb** 是一款**自托管、浏览器端**的数据库 ER 图设计工具。整体产品理念借鉴 drawDB 与 PDManer 两个优秀的开源建模工具；开发过程中参考了 drawDB 的源码作为能力对齐参照，但未直接复用、未引用其任何代码。**全部代码均为纯 Rust 重新实现**，与二者的代码库不存在派生关系。
 
 **一句话定位**：让数据库设计者无需账号、无需联网、无需客户端安装，即可在浏览器中完成 ER 图的全生命周期管理（设计 → 导入 → 导出 → 持久化 → 分享）。
 
@@ -21,7 +21,6 @@
 | G4 | 7 引擎 SQL 导入导出 | MySQL / PostgreSQL / SQLite / MariaDB / MSSQL / OracleSQL / Generic |
 | G5 | 部署零运维 | Docker 单文件 + GitHub Actions CI green |
 | G6 | 11 张表可读写无错 | init.sql + database_design.json 双轨对齐 |
-
 
 ### 1.3 目标用户画像
 
