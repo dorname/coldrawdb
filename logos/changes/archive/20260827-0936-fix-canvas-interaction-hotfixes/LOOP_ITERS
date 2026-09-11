@@ -1,0 +1,5 @@
+{"iter":1,"node":"verify","result":"fail","module":"core","timestamp":"2026-08-27T09:46:00Z","reason":"沙箱只读 workspace 导致 jsonl truncate 失败"}
+{"iter":2,"node":"verify","result":"fail","module":"core","timestamp":"2026-08-27T10:30:00Z","reason":"沙箱内 reporter 写副本 jsonl，沙箱销毁后丢失"}
+{"iter":3,"node":"verify","result":"fail","module":"core","timestamp":"2026-08-27T11:50:00Z","reason":"ST-CR-02 拖表超时 + ST-S02-SHARE-VS-AUTH 回归"}
+{"iter":4,"node":"verify","result":"pass","module":"core","timestamp":"2026-08-27T12:15:00Z","note":"Coverage 100% / 244 pass / 0 fail / 22 skip / Gate 3.6 PASS"}
+{"iter":1,"node":"smoke","result":"pass","module":"core","timestamp":"2026-08-27T12:20:00Z","note":"6/6 / Gate 3.8 PASS"}

@@ -1,0 +1,36 @@
+# Delta: api/bridge.yaml
+
+> 提案：fix-dbimport-save-and-pg-schema
+
+## MODIFIED — components.schemas.ImportConnectRequest
+
+`ImportConnectRequest` 新增可选 `schema` 字段（仅 `engine=postgres` 时生效）：
+
+```yaml
+    ImportConnectRequest:
+      type: object
+      required: [engine, source]
+      properties:
+        engine:
+          type: string
+          enum: [sqlite, postgres]
+          description: "Target database engine"
+        source:
+          type: string
+          minLength: 1
+          description: "SQLite: absolute file path on the server host; PostgreSQL: connection string"
+        schema:
+          type: string
+          minLength: 1
+          description: "PostgreSQL only: schema to introspect; defaults to 'public' when omitted. Ignored for sqlite."
+```
+
+## MODIFIED — path: /api/v1/bridge/import/connect（description 补充）
+
+`operationId: importFromConnection` 的 `description` 末尾追加一段：
+
+```yaml
+        For PostgreSQL, the optional `schema` field scopes introspection to a
+        single schema (default `public`); tables/columns/PKs/FKs are read from
+        that schema only, so same-named tables in other schemas never leak in.
+```

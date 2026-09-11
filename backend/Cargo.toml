@@ -1,0 +1,40 @@
+[package]
+name = "backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+actix-web = "4.4"
+actix-cors = "0.7"
+# feat-docker-compose-deploy：单容器静态文件服务 + SPA 回源（core-01 部署方案 §4/§12.3）
+actix-files = "0.6"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+once_cell = "1.19"
+thiserror = "1.0"
+sea-orm = { version = "0.12", features = ["runtime-tokio-rustls", "sqlx-sqlite", "macros", "with-chrono", "with-json", "with-rust_decimal", "with-uuid"] }
+tokio = { version = "1.0", features = ["full"] }
+lazy_static = "1.4"
+rs-snowflake = "0.6.0"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }
+itertools = "0.14.0"
+argon2 = "0.5"
+jsonwebtoken = "9"
+uuid = { version = "1", features = ["v4"] }
+sha2 = "0.10"
+hex = "0.4"
+rand = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+actix-web-actors = "4"
+actix = "0.13"
+actix-rt = "2"
+actix-test = "0.1"
+actix-http = "3"
+actix-service = "2"
+futures-util = "0.3"
+# feat-db-connect-import-and-ddl-realdb-verify：连接数据库 introspection（core-03 §13）
+sqlx = { version = "0.7", default-features = false, features = ["runtime-tokio-rustls", "sqlite", "postgres"] }
+
+[dev-dependencies]

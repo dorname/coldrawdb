@@ -1,0 +1,34 @@
+# Delta: core-01-editor-prototype.html
+
+> 提案：feat-db-connect-import-and-ddl-realdb-verify
+
+**merge 时对原型 HTML 做两处修改**（生产对齐原型时的参照）：
+
+## MODIFIED — 导入抽屉格式 Tab 新增「数据库」来源（renderDrawer 导入分支）
+
+1. 格式 Tab 数组由 `["sql","dbml","json"]` 扩为 `["sql","dbml","json","database"]`，标签映射 `{sql:"SQL",dbml:"DBML",json:"JSON",database:"数据库"}`。
+
+2. 导入抽屉 body：`format==="database"` 时渲染数据库连接面板（替换 textarea 区块）：
+
+```html
+<div class="field"><label class="field-label">数据库引擎</label>
+  <select class="input" id="import-db-engine" data-testid="import-db-engine">
+    <option value="sqlite">SQLite（文件路径）</option>
+    <option value="postgres">PostgreSQL（连接串）</option>
+  </select></div>
+<div class="field"><label class="field-label">连接信息</label>
+  <input class="input" id="import-db-source" data-testid="import-db-source" placeholder="/path/to/app.db 或 postgres://user:pass@host:5432/db"></div>
+<button class="btn" data-action="import-db-connect" data-testid="import-db-connect">${icon("plug","icon--sm")}连接并解析</button>
+<span class="tag" data-testid="import-parse-summary">${state.dbConnected?"已连接 · 检测到 2 张表":"未连接"}</span>
+```
+
+（无 `plug` 图标时用 `activity` 或纯文字，原型 icons 集内任选现有项。）
+
+3. 新增 `import-db-connect` action（原型模拟 introspection）：`state.dbConnected=true; state.format="database"; render();`；`import-submit` 行为不变（沿用原型既有导入模拟）。`database` Tab 下隐藏文件拖放 dropzone。
+
+## ADDED — 原型验收锚点
+
+- 打开导入抽屉 → 第 4 个 Tab「数据库」可切换；引擎下拉含 SQLite/PostgreSQL 两项；「连接并解析」点击后摘要变为「已连接 · 检测到 2 张表」。
+- testid 锚点：`import-db-engine` / `import-db-source` / `import-db-connect`（生产同 testid，见 core-01d §4.1）。
+
+> 改完 script 后必须 `node --check` 验证语法（历史教训：字符类正则未闭合曾导致全原型脚本挂掉）。

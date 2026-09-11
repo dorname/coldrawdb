@@ -1,0 +1,57 @@
+# Logs
+logs
+*.log
+*.pid
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+./node_modules
+.specstory/*
+backend/.specstory/*
+backend/target/*
+mcp-server/target/
+backend/.cursor*
+backend/*.lock
+backend/*.sqlite
+.cursor*
+./package-lock.json
+
+# Phase 4 W4-2 rollback backups (keep in repo)
+!backups/phase4-pre-rollback-*.sqlite
+
+# OMC private working directory (interview/plan/handoffs/state)
+.omc/
+
+# Rust Web frontend build artifacts
+frontend-rs/target/
+frontend-rs/dist/
+frontend-rs/.trunk/
+
+# Accidentally tracked debug script (untracked by change remove-debug-smoke-artifact)
+frontend-rs/scripts/debug-smoke.mjs
+
+# OLP 黑板:分支无关的工作文件,不入库(防跨分支裂脑)
+.octos/OUTER_LOOP_REVIEW.md
+
+# octos 本地会话工作区元数据（与 .octos/ 同属性）
+.octos-workspace.toml
+# 根级 cargo 构建产物
+/target/

@@ -1,0 +1,92 @@
+# Delta: core-01-editor-prototype.html
+
+> 列表视图重设计为「左侧表树 + 右侧单表字段网格」（listview-tree-master-detail，方案 A）。
+> 字段行 10 列行内编辑结构、`list-field-*` data-change 处理器、`parseFieldType`/`composeFieldType` 均不变。
+
+## MODIFIED — state 初始化（新增表树状态）
+
+`state` 字面量追加两个字段（`listSel:null,` 之后）：
+
+```js
+      listTable:null,listTreeSearch:"",
+```
+
+- `listTable`：当前树选中表 id（null 时回落首张表）
+- `listTreeSearch`：表树搜索关键字
+
+## ADDED — 表树样式（紧随 `.list-view-table tr.is-selected ...` 规则之后）
+
+```css
+    .list-view-body{display:grid;grid-template-columns:230px 1fr;min-height:0}
+    .list-tree{border-right:1px solid var(--line);display:grid;grid-template-rows:auto 1fr;min-height:0}
+    .list-tree-search{padding:10px;border-bottom:1px solid var(--line)}
+    .list-tree-nodes{overflow:auto;padding:6px;display:flex;flex-direction:column;gap:2px}
+    .list-tree-node{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:7px 10px;border-radius:8px;background:transparent;color:var(--text-2);cursor:pointer;font-size:12px;text-align:left;border:0}
+    .list-tree-node:hover{background:var(--brand-soft)}
+    .list-tree-node.is-active{background:var(--brand-soft);color:var(--text);box-shadow:inset 2px 0 0 var(--brand)}
+    .list-view-title{padding:12px 14px 0}
+```
+
+## REMOVED — 组头行样式
+
+删除 `.list-view-group-header td{...}` 规则（组头行机制随全量堆叠网格一并移除）。
+
+## MODIFIED — renderListView（重构为表树 + 单表网格）
+
+整函数替换为：
+
+```js
+    function renderListView() {
+      const tables=state.diagram.tables;
+      const q=(state.listTreeSearch||"").toLowerCase();
+      const shown=q?tables.filter(t=>t.name.toLowerCase().includes(q)):tables;
+      const cur=tables.find(t=>t.id===state.listTable)||tables[0]||null;
+      const sel=state.listSel||{};
+      const baseTypes=typesForDatabase(state.diagram.database);
+      const hasSelField=!!(sel.table&&sel.field);
+      const tree=`<aside class="list-tree" data-testid="list-tree"><div class="list-tree-search"><input id="list-tree-search" class="input" placeholder="搜索表…" data-input="list-tree-search" data-testid="list-tree-search" value="${esc(state.listTreeSearch||"")}"></div><div class="list-tree-nodes">${shown.length?shown.map(t=>`<button class="list-tree-node ${cur&&t.id===cur.id?"is-active":""}" data-action="list-tree-select" data-id="${t.id}" data-testid="list-tree-node-${t.name}"><span>${esc(t.name)}</span><span class="tag">${t.fields.length} 字段</span></button>`).join(""):`<div class="empty-inspector"><strong>无匹配表</strong><p>换个关键字试试。</p></div>`}</div></aside>`;
+      const grid=cur?`<div class="list-view-scroll"><div class="list-view-title"><strong>${esc(cur.name)}（${cur.fields.length} 字段）</strong></div><table class="list-view-table"><thead><tr><th>字段代码</th><th>显示名称</th><th>主键</th><th>不为空</th><th>唯一</th><th>自增</th><th>数据类型</th><th>长度</th><th>小数位</th><th>说明</th></tr></thead><tbody>${cur.fields.map(f=>{const p=parseFieldType(f.type);const isSel=hasSelField&&sel.table===cur.id&&sel.field===f.id;const lenOn=p.base==="VARCHAR",scaleOn=p.base==="DECIMAL"||p.base==="NUMERIC";return `<tr class="${isSel?"is-selected":""}" data-testid="list-view-row-${cur.id}-${f.id}" data-action="list-select-field" data-table="${cur.id}" data-field="${f.id}"><td><input class="input" data-change="list-field-name" data-table="${cur.id}" data-field="${f.id}" value="${esc(f.name)}"></td><td><input class="input" data-change="list-field-comment" data-table="${cur.id}" data-field="${f.id}" value="${esc(f.comment||"")}"></td><td><input type="checkbox" data-change="list-field-pk" data-table="${cur.id}" data-field="${f.id}" ${f.pk?"checked":""}></td><td><input type="checkbox" data-change="list-field-nn" data-table="${cur.id}" data-field="${f.id}" ${f.nn?"checked":""}></td><td><input type="checkbox" data-change="list-field-uq" data-table="${cur.id}" data-field="${f.id}" ${f.uq?"checked":""}></td><td><input type="checkbox" data-change="list-field-auto" data-table="${cur.id}" data-field="${f.id}" ${f.auto?"checked":""}></td><td><select class="select" data-change="list-field-type" data-table="${cur.id}" data-field="${f.id}">${[p.base,...baseTypes].filter((v,i,a)=>a.indexOf(v)===i).map(bt=>`<option ${bt===p.base?"selected":""}>${bt}</option>`).join("")}</select></td><td><input class="input" style="width:56px" data-change="list-field-len" data-table="${cur.id}" data-field="${f.id}" value="${esc(p.len)}" ${lenOn?"":"disabled"}></td><td><input class="input" style="width:56px" data-change="list-field-scale" data-table="${cur.id}" data-field="${f.id}" value="${esc(p.scale)}" ${scaleOn?"":"disabled"}></td><td><input class="input" data-change="list-field-tag" data-table="${cur.id}" data-field="${f.id}" value="${esc(f.tag||"")}"></td></tr>`}).join("")}</tbody></table></div>`:`<div class="list-view-scroll"><div class="empty-inspector"><span class="brand-mark">${icon("table","icon--lg")}</span><strong>暂无数据表</strong><p>在画布上创建表后，这里会按表展示字段明细。</p></div></div>`;
+      return `<section class="list-view-panel" data-testid="list-view-panel"><header class="code-toolbar"><strong>列表视图 · ${tables.length} 张表</strong><span class="tag tag--brand">字段明细编辑</span><span class="appbar-spacer"></span><button class="btn btn--sm" data-action="list-add-field" data-testid="list-add-field" ${cur?"":"disabled"}>${icon("plus","icon--sm")}增字段</button><button class="btn btn--sm" data-action="list-del-field" data-testid="list-del-field" ${hasSelField?"":"disabled"}>${icon("trash","icon--sm")}删字段</button><button class="btn btn--sm" data-action="list-move-up" data-testid="list-move-up" ${hasSelField?"":"disabled"}>↑上移</button><button class="btn btn--sm" data-action="list-move-down" data-testid="list-move-down" ${hasSelField?"":"disabled"}>↓下移</button><button class="btn btn--sm" data-action="toggle-list" data-testid="btn-view-canvas">${icon("close","icon--sm")}返回画布</button></header><div class="list-view-body">${tree}${grid}</div></section>`;
+    }
+```
+
+要点：
+
+- 左树：搜索框（`data-input="list-tree-search"`）按表名小写包含过滤；节点 testid 契约 `list-tree-node-<table_name>`；当前表 `is-active` 高亮；搜索无命中出树内空态
+- 右网格：只渲染 `cur` 单表字段行；`cur` 解析 = `listTable` 命中 || 首张表 || null（当前表被删除后自动回落首表）
+- 网格标题行 `表名（N 字段）` 承接原组头行的信息展示
+- 字段行结构/testid（`list-view-row-<table_id>-<field_id>`）与列定义完全不变
+
+## REMOVED — data-action 处理器 `list-select-table`
+
+组头行点击处理器删除（组头行不复存在），由 `list-tree-select` 取代。
+
+## ADDED — data-action 处理器 `list-tree-select`（单击选中 / 双击跳画布）
+
+在 click 委托的 action 分支中新增（利用 `event.detail===2` 识别双击，无需新增 dblclick 监听）：
+
+```js
+      else if(action==="list-tree-select"){state.listTable=id;state.listSel=null;state.selected={type:"table",id};if(event.detail===2){state.listView=false;state.inspector=true;}render();}
+```
+
+语义：单击 → 树选中该表（右侧网格切换 + Inspector 同源选中），清空字段行选中态；双击 → 切回画布并选中该表（对齐原组头双击语义）。
+
+## MODIFIED — data-action 处理器 `list-select-field`（追加双击跳画布）
+
+```js
+      else if(action==="list-select-field"){state.listSel={table:node.dataset.table,field:node.dataset.field};if(event.detail===2){state.selected={type:"table",id:node.dataset.table};state.listView=false;state.inspector=true;}render();}
+```
+
+## MODIFIED — data-action 处理器 `list-add-field`（目标改为树选中表）
+
+```js
+      else if(action==="list-add-field"){const tid=state.listTable||state.diagram.tables[0]?.id;const t=state.diagram.tables.find(x=>x.id===tid);if(t)commit("新增字段",()=>{const nf={id:uid("f"),name:"new_field",type:composeFieldType(typesForDatabase(state.diagram.database)[0],"",""),pk:false,nn:false,uq:false,auto:false,comment:"",tag:""};t.fields.push(nf);state.listSel={table:t.id,field:nf.id};},"plus");}
+```
+
+## MODIFIED — input 委托（新增表树搜索分支）
+
+```js
+    app.addEventListener("input",event=>{if(event.target.dataset.input==="command"){state.commandQuery=event.target.value;const value=state.commandQuery;render();requestAnimationFrame(()=>{$("#command-input").value=value;$("#command-input").focus();});}else if(event.target.dataset.input==="list-tree-search"){state.listTreeSearch=event.target.value;const value=state.listTreeSearch;render();requestAnimationFrame(()=>{const el=$("#list-tree-search");el.value=value;el.focus();el.setSelectionRange(value.length,value.length);});}});
+```
+
+（与 command 搜索同款「render 后回填 + 聚焦 + 光标置尾」模式，避免击键丢焦点。）

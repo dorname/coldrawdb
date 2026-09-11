@@ -1,0 +1,17 @@
+
+> frontend-rs@1.0.0 test:spec-parity-d
+> node scripts/test-spec-parity-d.mjs
+
+PASS ST-KB-CMD-01 ⌘K 打开命令面板，Esc 关闭无残留
+PASS ST-KB-ESC-01 Esc 按层级关闭浮层且不误关编辑器页
+PASS ST-KB-T-01 按 T 建表；输入框焦点时不触发
+PASS ST-KB-R-01 按 R 进入关系工具
+PASS ST-KB-VIEWER Viewer 只读下 T/R 快捷键不生效
+PASS ST-PC-MENU-01 更多菜单进出导入/导出 IO 抽屉
+PASS ST-PC-FMT-01 导出抽屉 SQL/DBML/JSON 预览切换与复制下载
+PASS ST-PC-INSPECTOR IO 抽屉与 Inspector 互斥让位与恢复
+PASS ST-PU-25 主题切换 data-mode 且画布随主题重绘
+PASS ST-PU-26 720px 视口 Inspector/IO 抽屉化与可达性
+PASS ST-PB-01 点击两点 + 确认条创建关系
+PASS ST-PB-02 字段拖线 + 确认条创建关系
+PASS ST-CR-02 拖表过程连线跟手；松手吸附 20 网格

@@ -1,0 +1,133 @@
+## MODIFIED — 填 tech_stack + 新增 scenarios / external_dependencies / resource_index
+
+> 模块：core | 提案：fill-baseline-gaps
+> 路径：`logos/logos-project.yaml`
+> 策略：
+> 1. `tech_stack: {}` → 填入 11 项技术选型（与 `core-01-architecture-overview.md` §6 一致）
+> 2. 新增 `scenarios` 字段（S01~S05 五条），锚定 `core-00-scenario-overview.md`
+> 3. 新增 `external_dependencies` 字段（明示 V1 空数组）
+> 4. 新增 `resource_index` 字段（18 条 baseline 文档索引，便于 AI Agent 发现）
+> 5. `modules[]` 与 `deployment_gates` / `conventions` 保持不变
+
+project:
+  name: "coldrawdb"
+  description: "自托管、浏览器端的数据库 ER 图设计工具（Rust Web 重写版 drawdb）"
+  methodology: "OpenLogos"
+
+tech_stack:
+  frontend_language: "Rust + Leptos 0.x"
+  frontend_build: "trunk"
+  frontend_rendering: "HTML5 Canvas（自绘）"
+  backend_language: "Rust + actix-web 4"
+  backend_runtime: "tokio"
+  database: "SQLite（WAL 模式）"
+  orm: "SeaORM"
+  serialization: "serde + JSON"
+  config: "TOML"
+  logging: "tracing + tracing-subscriber"
+  testing: "cargo test（unit + integration）"
+  cors: "actix-cors（strict 模式）"
+
+scenario_counter:
+  next_id: 6
+
+scenarios:
+  - id: S01
+    name: 编辑并保存图表
+    status: launched
+    priority: P0
+    version: V1
+  - id: S02
+    name: 加载分享链接图表
+    status: launched
+    priority: P1
+    version: V1
+  - id: S03
+    name: 用户注册 / 登录 / Token 续期
+    status: planned
+    priority: P2
+    version: V2
+  - id: S04
+    name: 创建/加入协作房间
+    status: planned
+    priority: P2
+    version: V2
+  - id: S05
+    name: OT 实时协作
+    status: planned
+    priority: P2
+    version: V2
+
+external_dependencies: []
+
+modules:
+  - id: core
+    name: 核心功能
+    lifecycle: launched
+    bootstrap: adopted
+    skip_phases: [api, database, scenario]
+    deployment_required: true
+
+deployment_gates:
+  core:
+    deployment_required: true
+    smoke_required: true
+    environments:
+      - staging
+
+resource_index:
+  # Phase 1 — 需求文档
+  - path: logos/resources/prd/1-product-requirements/core-00-scenario-overview.md
+    desc: 场景总览（S01~S05 全量），含场景索引、图谱、文档映射。涉及场景编号与 Phase 1/2/3 衔接时必读。
+  - path: logos/resources/prd/1-product-requirements/core-01-requirements.md
+    desc: V1 产品需求（US/FR/NFR + 场景总览 + 约束与边界 + 验收）。涉及需求追溯、FR 编号、NFR 度量时必读。
+  - path: logos/resources/prd/1-product-requirements/core-02-product-vision.md
+    desc: 产品背景与目标（定位 / 用户画像 / 成功指标）。涉及产品定位、launch gate、目标用户时必读。
+  - path: logos/resources/prd/1-product-requirements/core-03-pain-points.md
+    desc: 用户痛点分析（P01~P04 因果链）。涉及痛点溯源、场景关联锚点时必读。
+  - path: logos/resources/prd/1-product-requirements/core-04-scenario-detail.md
+    desc: 核心场景详述（S01/S02 GIVEN/WHEN/THEN）。涉及 V1 场景验收条件时必读。
+
+  # Phase 2 — 产品设计（17 份功能规格 + 1 份原型）
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-00-information-architecture.md
+    desc: 信息架构（顶层布局 / 路由 / 模块）。涉及页面结构、UI 层 z-index 时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-01-editor-canvas.md
+    desc: 编辑器画布总规格（9 类对象 + 11 个交互手势）。涉及画布渲染、性能预算时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-01a-table-and-field.md
+    desc: 表与字段编辑规格（CAP-CANVAS-01/02）。涉及表/字段交互时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-01b-relationship.md
+    desc: 关系编辑规格（CAP-CANVAS-03）。涉及关系连线/端点编辑时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-01c-index-enum-custom-type.md
+    desc: 索引 / 枚举 / 自定义类型规格（CAP-CANVAS-04/07/08）。涉及索引/枚举编辑时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-01d-import-export.md
+    desc: 导入/导出 IO 抽屉规格（redesign-phase-c）。涉及 IO 抽屉交互时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-02-diagram-persistence.md
+    desc: 图表持久化规格（diagram CRUD + revision 乐观锁）。涉及 409 冲突处理时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-03-bridge-io.md
+    desc: 桥接层 IO 规格（7 引擎 SQL + DBML + JSON）。涉及导入导出能力时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-04-side-panel-tabs.md
+    desc: 侧栏 7 Tab + 搜索/筛选规格。涉及侧栏交互时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-05-top-menu-modals.md
+    desc: AppBar + 6 模态规格（New/Open/Share/Rename/Settings/Confirm）。涉及顶栏/模态交互时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-07-design-tokens.md
+    desc: 设计 token 体系（13 类约 100 个 `--cdb-*` CSS 变量）。涉及样式取值时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-08-icon-library.md
+    desc: SVG 图标库规格。涉及图标选型/命名时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-09-core-components.md
+    desc: 8 类核心组件规格（Button/Modal/Dropdown/Tooltip/Popover/Tag/Collapse/SideSheet）。涉及组件复用时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-0a-code-editor.md
+    desc: Monaco 代码编辑器 + DBML setup 规格（E4）。涉及代码编辑场景时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-0b-dark-mode.md
+    desc: 暗色模式规格（`<html data-mode="light|dark">`）。涉及主题切换时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-0c-motion.md
+    desc: 动效 token + 过渡/微交互规格。涉及动效取值时必读。
+  - path: logos/resources/prd/2-product-design/2-page-design/core-01-editor-prototype.html
+    desc: 编辑器 HTML 原型。涉及页面布局参考时必读。
+
+  # Phase 3-0 — 技术架构
+  - path: logos/resources/prd/3-technical-plan/1-architecture/core-01-architecture-overview.md
+    desc: 系统架构概要（系统上下文 / 前端 4 模块 / 后端 11 子模块 / 11 张表 / 数据流 / 技术选型 / 非功能约束 / 外部依赖）。涉及技术栈、模块边界、性能预算时必读。
+
+conventions:
+  - "遵循 OpenLogos 三层推进模型（Why → What → How）"
+  - "每次变更必须先创建 logos/changes/ 变更提案"

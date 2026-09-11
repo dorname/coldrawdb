@@ -1,0 +1,65 @@
+<!--
+  Delta — core-01-editor-prototype.html (fix-listview-grid-and-room-dbtype)
+  merge 操作：
+  1. MODIFIED：create-room 模态（state.layer === "create-room" 分支）在「关联 diagram」字段后
+     追加「数据库引擎」字段——仅当 diagram 选择「新建空白模型」时展示，
+     data-testid="create-room-database"，选项 Generic / MySQL / PostgreSQL，默认 Generic。
+  2. ADDED：AppBar（data-testid="app-bar"）diagram-title 左侧追加引擎下拉
+     data-testid="app-bar-database-select"（Generic / MySQL / PostgreSQL），
+     切换即改 state.diagram.database，Inspector 字段类型下拉按引擎过滤
+     （MySQL 组含 DATETIME 无 SERIAL；PostgreSQL 组含 SERIAL/TIMESTAMP）。
+  3. ADDED：新建图模态「数据库引擎」字段 data-testid="new-diagram-database"，行为同操作 1。
+  4. ADDED：列表视图演示——AppBar 视图切换追加「列表」入口 data-testid="btn-view-list"，
+     进入后以全屏面板 data-testid="list-view-panel" 按表分组展示
+     表名/字段数/类型/索引清单（PDManer 式），双击行跳回画布并选中该表；
+     空表时显示空态提示而非空白。
+-->
+
+<!-- 操作 1 MODIFIED 片段：create-room 模态追加引擎字段（插入在 id="room-diagram" 字段之后） -->
+<div class="field" id="room-database-field" data-testid="create-room-database-field" hidden>
+  <label for="room-database">数据库引擎（仅新建空白模型时可选）</label>
+  <select class="select" id="room-database" data-testid="create-room-database">
+    <option value="generic" selected>Generic · 通用类型</option>
+    <option value="mysql">MySQL</option>
+    <option value="postgresql">PostgreSQL</option>
+  </select>
+  <p class="field-hint">字段类型清单随引擎过滤，建图后即定口径</p>
+</div>
+<script>
+  // 联动：diagram 选「新建空白模型」时露出引擎字段
+  document.getElementById("room-diagram").addEventListener("change", (e) => {
+    document.getElementById("room-database-field").hidden =
+      e.target.value !== "新建空白模型";
+  });
+</script>
+
+<!-- 操作 2 ADDED 片段：AppBar 引擎下拉（插入在 diagram-title 左侧） -->
+<select class="select select--sm" data-testid="app-bar-database-select"
+        aria-label="数据库引擎" title="数据库引擎（字段类型按引擎过滤）">
+  <option value="generic">Generic</option>
+  <option value="mysql">MySQL</option>
+  <option value="postgresql">PostgreSQL</option>
+</select>
+
+<!-- 操作 4 ADDED 片段：列表视图全屏面板（List 模式替代画布区渲染） -->
+<section class="list-view-panel glass" data-testid="list-view-panel">
+  <div class="list-view-filters" data-testid="list-view-filters">
+    <input class="input" data-testid="list-view-filter-query"
+           placeholder="按名称模糊匹配（表名/字段名/类型）">
+  </div>
+  <table class="list-view-table">
+    <thead>
+      <tr><th></th><th>表名</th><th>字段数</th><th>类型</th><th>索引</th></tr>
+    </thead>
+    <tbody>
+      <!-- 按表分组：桶头行 data-testid="list-view-group-{表名}" + 字段行 -->
+      <tr class="list-view-group-header" data-testid="list-view-group-users">
+        <td colspan="5">users（5 字段）</td>
+      </tr>
+      <tr data-testid="list-view-row-users">
+        <td><input type="checkbox" data-testid="list-view-row-checkbox-users"></td>
+        <td>users</td><td>5</td><td>BIGINT</td><td>有</td>
+      </tr>
+    </tbody>
+  </table>
+</section>

@@ -1,0 +1,83 @@
+# Delta: api/bridge.yaml
+
+> 提案：feat-db-connect-import-and-ddl-realdb-verify
+
+## ADDED — path: /api/v1/bridge/import/connect
+
+在 `paths:` 下追加（紧随 `/api/v1/bridge/import/local` 相关路径之后）：
+
+```yaml
+  /api/v1/bridge/import/connect:
+    post:
+      summary: Introspect a real database and return dialect DDL
+      description: |
+        Connects to a user-supplied database (SQLite file path on the server host,
+        or a PostgreSQL connection string), introspects its schema, and returns
+        dialect DDL text plus the table count. The frontend feeds the DDL into the
+        local merge pipeline (parse_sql_import_tables -> merge_import_into_store).
+        Requires the standard auth middleware (Bearer).
+      operationId: importFromConnection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportConnectRequest'
+      responses:
+        '200':
+          description: "Introspection succeeded (tables may be 0 with empty ddl)"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResp'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ImportConnectData'
+        '400':
+          description: "Validation error (unsupported engine or empty source)"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErr'
+        '502':
+          description: "Connection failed (file missing / unreachable / auth failed)"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErr'
+```
+
+## ADDED — components/schemas: ImportConnectRequest / ImportConnectData
+
+在 `components.schemas` 下追加：
+
+```yaml
+    ImportConnectRequest:
+      type: object
+      required: [engine, source]
+      properties:
+        engine:
+          type: string
+          enum: [sqlite, postgres]
+          description: "Target database engine"
+        source:
+          type: string
+          minLength: 1
+          description: "SQLite: absolute file path on the server host; PostgreSQL: connection string"
+    ImportConnectData:
+      type: object
+      required: [engine, tables, ddl]
+      properties:
+        engine:
+          type: string
+          enum: [sqlite, postgres]
+        tables:
+          type: integer
+          minimum: 0
+          description: "Number of business tables introspected (0 => ddl is empty string)"
+        ddl:
+          type: string
+          description: "Dialect DDL text (CREATE TABLE statements incl. PK/FK)"
+```

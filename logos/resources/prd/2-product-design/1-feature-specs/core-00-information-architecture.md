@@ -1,0 +1,399 @@
+# 信息架构（V1）
+
+## 现行信息架构定位（V1 编辑器 + V2 工作空间）
+
+
+## 0. 现行页面状态（产品主路径）
+
+唯一现行主原型：`core-01-editor-prototype.html`。生产前端与规格必须以以下页面状态为准：
+
+| 状态 ID | 视图 | `data-testid` | 前置 | 下一跳 |
+|---|---|---|---|---|
+| `auth` | 登录 / 注册 | `login-form` / `register-form` | 未登录 | `rooms` |
+| `rooms` | 房间与最近项目 | `rooms-list-page` | 已登录 | `room-editor` / `invite` |
+| `invite` | 邀请预览 / 失效 | `invite-accept-page` | 邀请 token | `room-editor` 或停留失效 |
+| `room-editor` | 协作 ER 编辑器 | `room-editor-page` | 房间成员 | 可回 `rooms` |
+| `share-readonly` | 匿名只读分享 | （S02 画布只读） | `?share=` | 不强制登录 |
+
+```text
+auth ──登录成功──→ rooms ──创建/打开/接受邀请──→ room-editor
+                      ▲                              │
+                      └──────── room-badge / 退出 ────┘
+?share= ──────────→ share-readonly（旁路，不被鉴权阻断）
+```
+
+历史 Landing → 空白 `/editor` 不再作为默认主路径。
+
+## 1. 顶层布局（Workspace）
+
+```
++---------------------------------------------------------------+
+| EditorHeader（顶部菜单：新建/打开/导入/导出/撤销/重做/分享）   |
++--------+-------------------------------------+----------------+
+|        |                                     |                |
+|        |                                     |                |
+|        |        EditorCanvas                  |   Editor       |
+| Control|   （Table / Area / Note /            |   SidePanel    |
+| Panel  |    Relationship / Canvas）           |   (右)         |
+| (左)   |                                     |                |
+|        |                                     |                |
++--------+-------------------------------------+----------------+
+| SaveState指示 + revision 状态 + 撤销/重做栈深度                |
++---------------------------------------------------------------+
+```
+
+## 2. 路由
+
+| 路由 / 状态 | 页面 | 实现要求 | 备注 |
+|---|---|---|---|
+| `/login` · `/register`（或同壳 `auth`） | 鉴权 | S03；已登录应进入 rooms | 主原型同壳切换，生产可用真实路由 |
+| `/rooms` | 房间列表 | S04；需登录 | `rooms-list-page` |
+| `/invite/:token` | 邀请 | S04；需登录后接受 | 过期无加入按钮 |
+| `/rooms/:id/editor` 或等价 room-editor | 协作编辑器 | S01+S04+S05 | `room-editor-page` |
+| `/?share=<id>` | 匿名只读 | S02 | 不被鉴权拦截 |
+| `/templates` 等 | — | 仍不做 | 与既有 Out of Scope 一致 |
+
+## 3. 4 模块前端（Phase 4 架构）
+
+```
+┌─────────────────────────────────────────┐
+│           frontend-rs crate             │
+│  (Leptos 0.x + WASM + trunk)            │
+├─────────────────────────────────────────┤
+│  lib.rs                                 │
+│  └── mount_to_body + 模块组合           │
+├─────────────────────────────────────────┤
+│  editor_data_access（无依赖）           │
+│  └── HTTP 客户端（diagrams/bridge）     │
+│        + debounce 1s 自动保存          │
+├─────────────────────────────────────────┤
+│  editor_core（依赖 data_access）         │
+│  └── 状态机（diagram / undo / redo）     │
+├─────────────────────────────────────────┤
+│  editor_panels（依赖 core）              │
+│  └── 侧栏（Tables / Areas / Notes ...）  │
+├─────────────────────────────────────────┤
+│  editor_render（依赖 core）              │
+│  └── Canvas 渲染（Table/Field/连线）    │
+└─────────────────────────────────────────┘
+```
+
+**数据流**：`editor-data-access` → `editor-core` (debounce 1s) → `editor-panels` / `editor-render`（Leptos signals 细粒度更新）
+
+**模块边界**：
+- `editor_data_access` → 唯一可发起 HTTP 请求的模块
+- `editor_core` → 唯一持有 diagram 主状态的模块
+- `editor_panels` / `editor_render` → 只读消费 core 的 signals
+
+## 4. 11 子模块后端
+
+```
+backend/src/
+├── main.rs            # actix-web 入口
+├── init.rs            # 配置加载 + DB 初始化 + migration
+├── diagrams_v1.rs     # /api/v1/diagrams/* 5 端点
+├── phase3_bridge.rs   # /api/v1/bridge/* 5 端点
+├── areas/             # 区域实体 + repository
+├── diagrams/          # diagram 实体 + repository
+├── fields/            # 字段实体 + repository
+├── indices/           # 索引实体 + repository
+├── notes/             # 便签实体 + repository
+├── references/        # 关系实体 + repository
+├── tables/            # 表实体 + repository
+├── todos/             # task 实体 + repository
+├── common/            # 共享类型（error / id / timestamp）
+├── entity/            # ORM 实体
+├── error/             # 错误类型 + IntoResponse
+└── repository/        # 数据访问抽象层
+```
+
+**7 个领域实体子模块**（`areas / diagrams / fields / indices / notes / references / tables`）对应 drawdb 主分支的 7 大画布对象（CAP-CANVAS-01..07）。
+
+**4 个支撑子模块**（`todos / common / entity / error / repository`）提供横切关注点。
+
+## 5. 11 张数据表（V1）
+
+| 表名 | 用途 | drawdb 等价 |
+|---|---|---|
+| `task` | todo（待办） | drawdb `task` 模板对象 |
+| `diagram` | 主表 | ✅ 1:1 |
+| `diagram_link` | diagram 关联 | drawdb `diagram_link` |
+| `table` | 表 | ✅ 1:1 |
+| `field` | 字段 | ✅ 1:1 |
+| `table_link` | 表关联 | drawdb `table_link` |
+| `indice` | 索引 | ✅ 1:1 |
+| `indice_link` | 索引关联 | drawdb `indice_link` |
+| `reference` | 关系 | drawdb `relationships` |
+| `area` | 区域 | drawdb `subjectAreas` |
+| `note` | 便签 | drawdb `notes` |
+
+> 11 张表名（`task` 用复数时为 todos，但 init.sql 中表名是单数 `task`）逐一对齐 drawdb 主分支 + `database_design.json` 样本。详细 DDL 见 `deltas/database/coldrawdb-v1.sql`。
+
+## 6. 路由层 ↔ 实体层映射
+
+| API 端点 | 调用 entity |
+|---|---|
+| `POST /api/v1/diagrams` | `diagrams` + `tables` + `fields` + `references` + `indices` + `areas` + `notes` + `diagram_link` + `table_link` + `indice_link` |
+| `GET /api/v1/diagrams/{id}` | 同上（读） |
+| `PUT /api/v1/diagrams/{id}` | 同上（写，含 revision 乐观锁） |
+| `DELETE /api/v1/diagrams/{id}` | 同上（级联删除） |
+| `POST /api/v1/diagrams/import` | 同上（从 JSON 导入） |
+| `GET /api/v1/bridge/import/local/logs` | `todos`（导入日志 = task 实体） |
+| `POST /api/v1/bridge/import/local/retry/{id}` | `todos`（重试 task） |
+| `GET /api/v1/bridge/config` | `entity`（配置单例） |
+| `PUT /api/v1/bridge/config` | `entity`（配置单例） |
+| `POST /api/v1/bridge/import/local` | `todos` + 所有画布实体（导入图） |
+
+## 编辑器壳层级与锚点（与主原型一致）
+
+| 区域 | `data-testid` | 说明 |
+|---|---|---|
+| AppBar | `app-bar` | 撤销/重做、标题、房间徽章、保存态、presence、邀请、代码、更多、用户菜单 |
+| ToolRail | `tool-rail` | 建表、关系、搜索/命令等 |
+| Canvas | `editor-canvas` | 表/关系/区域/便签/远端光标/连接 Banner |
+| Inspector | `inspector` | 选中对象属性；可折叠 |
+| StatusBar | `status-bar` | `ws-status`、`ot-rev`、缩放、角色 |
+| 成员抽屉 | `room-members-panel` | 成员与角色 |
+| IO 抽屉 | 导入/导出入口经更多菜单 | 见 IO 规格 |
+| Command Palette | `command-palette` | ⌘K / Ctrl+K |
+| Code View | `code-view-modal` | SQL/DBML/JSON |
+
+层级 L0～L6 玻璃态规则以既有 §10.4 为准；响应式三档以 §10.5 为准。
+
+## 7. 对齐参考源
+
+- drawdb §2.1 顶层布局、§4 路由
+- `docs/phase4/PHASE4_DONE.md`
+- `docs/phase4/architecture.mmd`
+- `docs/phase4/module-mapping.md`
+- `backend/src/` 实际目录
+- `docs/drawdb-capability-checklist.md` §3 状态管理
+
+## 8. V2 增量：IO 抽屉（Phase C）
+
+> 模块：core | 提案：redesign-phase-c-import-export | 最后更新：2026-06-14
+
+> 导入来源（feat-db-connect-import-and-ddl-realdb-verify）：ImportDrawer 格式 Tab 由 SQL/DBML/JSON 扩展为 SQL/DBML/JSON/数据库；「数据库」来源经 `POST /api/v1/bridge/import/connect` introspect 真实库返回 DDL，合入画布复用本地合并管道，不产生新页面/新路由。
+
+### 9.1 主体栅格（含 IO 抽屉）
+
+```css
+.cdb-main {
+  display: grid;
+  grid-template-columns: 48px 1fr auto auto;
+  /* ToolRail | Canvas | Inspector? | IoDrawer? */
+}
+```
+
+| 状态 | grid-template-columns |
+|------|------------------------|
+| 默认（Inspector 开） | `48px 1fr 320px 0` |
+| Inspector 折叠 | `48px 1fr 0 0` |
+| IO 抽屉开 | `48px 1fr 0 400px`（Inspector 强制折叠） |
+
+### 9.2 z-index
+
+| 层级 | Phase C 内容 |
+|------|--------------|
+| L3 | Inspector **或** IoDrawer（互斥，同层） |
+| L4 | 模态（New / 冲突）— IO 抽屉不升级至 L4 |
+
+### 9.3 Phase 边界更新
+
+| 能力 | Phase C |
+|------|---------|
+| 导入/导出侧边抽屉 | ✅ |
+| SQL/DBML 全屏视图 | ❌（Phase D） |
+| 连接数据库导入（SQLite/PG introspection → 本地合并） | ✅（feat-db-connect-import-and-ddl-realdb-verify，见 core-03 §13 / core-01d §4.4） |
+
+
+---
+# Delta — core-00-information-architecture.md（修改）
+
+> merge 时按 MODIFIED 标记合并到 `logos/resources/prd/2-product-design/1-feature-specs/core-00-information-architecture.md`
+
+## 1 顶层布局 V2（E1 增量）
+
+> 模块：core | 提案：redesign-phase-e-design-system-migration（E1）
+> 对齐 `core-07-design-tokens.md` §13 z-index 体系
+
+**merge 时替换** `core-00-information-architecture.md` 当前 §1 顶层布局段，更新为：
+
+### §1 顶层布局（V2 — E1 z-index 扩展）
+
+```
++---------------------------------------------------------------+
+| AppBar（48px, --cdb-z-app-bar=20）                            |
+|  项目名 / 保存状态 / 导入 / 导出 / 撤销 / 重做 / 分享 / 主题  |
++--------+-------------------------------------+----------------+
+|        |                                     |                |
+| Tool   |                                     |                |
+| Rail   |        EditorCanvas                  |  Inspector     |
+| 48px   |   （Table / Area / Note /            |  (L3, --cdb-z- |
+| (--cdb |    Relationship / Canvas）           |   inspector=30)│
+| -z-    |                                     |                |
+| side-  |                                     |                |
+| rail=  |                                     |                |
+| 25)    |                                     |                |
+|        |                                     |                |
++--------+-------------------------------------+----------------+
+| StatusBar（28px, --cdb-z-app-bar）                            |
++---------------------------------------------------------------+
+```
+
+### §1.1 AppBar 信息架构（R4）
+
+| 分区 | 职责 | 用户心智 |
+|---|---|---|
+| 品牌区 | 项目身份 + 编辑历史 + 标题 | 「我在编辑哪个 diagram」 |
+| 状态区 | 保存/sync 单一 Chip | 「数据是否安全」 |
+| 操作区 | 协作（分享）+ 视图（代码）+ 低频 IO/主题 | 「对外动作 vs 工具设置」 |
+
+AppBar ASCII（R4）：
+
+```
+| [← 空间] Logo Undo Redo [Title________] | ● 已保存 · rev:5 |     [分享][<>][⋯] |
+```
+
+> 房间上下文时品牌区最左侧出现「← 空间」返回按钮（`btn-back-to-rooms`，见 `core-S04-room-lifecycle-design.md` S04.4）；品牌区名称元素（room-badge / diagram 标题）超长一律 ellipsis 缩略 + `title` 悬停全文，不挤压状态区与操作区。
+
+StatusBar 保留缩放/计数/Inspector 折叠；**不再**重复 `revision-display`。
+
+**z-index 层级（来自 `core-07-design-tokens.md` §13）**：
+
+| 层级 | Token | 值 | 内容 |
+|---|---|---|---|
+| L0 | `--cdb-z-base` | 1 | 默认 |
+| L1 | `--cdb-z-canvas-overlay` | 10 | 画布选中框、连线 hover |
+| L2 | `--cdb-z-app-bar` | 20 | AppBar、StatusBar |
+| L2.5 | `--cdb-z-side-rail` | 25 | Tool Rail 悬浮按钮 |
+| L3 | `--cdb-z-inspector` / `--cdb-z-drawer` | 30 | Inspector 抽屉 / IO 抽屉（互斥） |
+| L4 | `--cdb-z-tooltip` | 40 | Tooltip |
+| L4.5 | `--cdb-z-popover` | 45 | Popover、Dropdown |
+| L5 | `--cdb-z-modal` | 50 | Modal、Command Palette（E4） |
+| L6 | `--cdb-z-notification` | 60 | Toast |
+
+**E1 增量**：新增 L4–L6 三层（Tooltip / Popover / Modal / Notification），原 V1 §1 无浮层与模态的层级说明。
+
+## 3 4 模块前端（E1 增量：暗色模式 token 接口预留）
+
+> 模块：core | 提案：redesign-phase-e-design-system-migration（E1）
+> 对齐 `core-07-design-tokens.md` §14 / §15 主题切换接口
+
+**merge 时替换** `core-00-information-architecture.md` 当前 §3 "4 模块前端（Phase 4 架构）" 段，更新为：
+
+### §3 4 模块前端（Phase 4 架构，E1 增量主题接口）
+
+```
+┌─────────────────────────────────────────┐
+│           frontend-rs crate             │
+│  (Leptos 0.x + WASM + trunk)            │
+├─────────────────────────────────────────┤
+│  lib.rs                                 │
+│  ├── mount_to_body                      │
+│  ├── <html data-mode="light|dark"> 主题  │
+│  └── 监听 prefers-color-scheme          │
+├─────────────────────────────────────────┤
+│  editor_data_access（无依赖）           │
+│  └── HTTP 客户端（diagrams/bridge）     │
+│        + debounce 1s 自动保存          │
+├─────────────────────────────────────────┤
+│  editor_core（依赖 data_access）         │
+│  └── 状态机（diagram / undo / redo）     │
+├─────────────────────────────────────────┤
+│  editor_panels（依赖 core）              │
+│  └── 侧栏（Tables / Areas / Notes ...）  │
+├─────────────────────────────────────────┤
+│  editor_render（依赖 core）              │
+│  └── Canvas 渲染（Table/Field/连线）    │
+├─────────────────────────────────────────┤
+│  styles.css（E1：~100 token）            │
+│  ├── :root { --cdb-* }                  │
+│  ├── [data-mode="dark"] { --cdb-* 覆盖 }│ ← E5 填充具体值
+│  └── prefers-color-scheme: dark 媒体查询│ ← E5 接入
+└─────────────────────────────────────────┘
+```
+
+**主题切换接口**（E1 定义接口，E5 填充实现）：
+
+| 接口 | 类型 | 来源 | 实现阶段 |
+|---|---|---|---|
+| `<html data-mode="light\|dark">` | DOM 属性 | `core-07-design-tokens.md` §15 | E1 预留 |
+| `prefers-color-scheme: dark` | 媒体查询 | 同上 | E5 接入 |
+| `localStorage["cdb-mode"]` | 持久化 | 同上 | E5 实现 |
+
+E1 阶段 `lib.rs` 不实现主题切换逻辑，**仅在 mount 时设置 `<html data-mode="light">` 作为初始值**。E5 阶段补全 JS 切换 + 持久化 + 媒体查询监听。
+
+## 10. S01～S05 唯一主原型
+
+### 10.1 唯一入口
+
+`core-01-editor-prototype.html` 是产品设计评审的唯一主原型。它以一个独立 HTML 文件承载 S01～S05 的页面、样式、SVG 图标、演示数据与交互逻辑，断网直接打开即可运行。
+
+`core-03-auth-prototype.html`、`core-04-collab-prototype.html`、`core-05-ot-collab-prototype.html` 仅保留为对应阶段的历史设计参考；新增功能与视觉变更不再分别维护到这些文件，避免状态模型和设计语言再次分叉。
+
+### 10.2 单文件约束
+
+| 资源 | 约束 |
+|---|---|
+| CSS | 仅允许主 HTML 内的 `<style>`；不得引用 `core-00-prototype-shared.css` |
+| JavaScript | 仅允许主 HTML 内的 `<script>`；不得引用外部脚本或模块 |
+| 图标 | 使用内联 SVG symbol；不得用 emoji 充当功能图标 |
+| 字体与图片 | 使用系统字体与 CSS 图形；不得依赖 CDN 或远程 URL |
+| 数据与网络 | 使用确定性模拟数据；不得发起真实 HTTP、WebSocket 或遥测请求 |
+| 状态 | 一个轻量 store 统一驱动路由、编辑命令、权限、浮层、保存与协作状态 |
+
+### 10.3 页面状态流
+
+```text
+[登录/注册]
+     │ 登录成功 / 演示进入
+     ▼
+[房间与最近项目]
+     ├── 创建房间 ───────────────┐
+     ├── 打开已有房间 ───────────┤
+     ├── 删除房间（owner，卡片入口）│  ← fix-overflow-menu-room-delete-listview-io 新增
+     └── 接受邀请 ───────────────┤
+                                  ▼
+                        [协作 ER 编辑器]
+                         ├── 编辑/关系/撤销/保存
+                         ├── 导入/导出/代码/分享（列表视图同入口可用）
+                         ├── 成员/角色/邀请
+                         └── OT/presence/重连模拟
+```
+
+> IA 注记（fix-overflow-menu-room-delete-listview-io）：
+> - 房间卡片删除入口（owner 可见）：`room-card-delete-{id}` + 确认模态 `modal-delete-room-list`，语义见 `core-S04-room-lifecycle-design.md` §2.4 补充。
+> - ListView 工具条 IO 入口：`list-btn-import` / `list-btn-export`，与画布态 IO 抽屉同一面板，见 `core-04-side-panel-tabs.md` §10.5 与 `core-01d-import-export.md` §4.5。
+> - AppBar 溢出菜单视口边界保护：小视口下菜单体内滚动不裁切，见 `core-05-top-menu-modals.md` §1.1 补充。
+
+所有视图必须在同一 DOM 应用壳内切换，不刷新页面。浏览器地址仅作为原型状态提示，不要求真实路由服务。
+
+### 10.4 编辑器层级
+
+| 层级 | 内容 | 玻璃态规则 |
+|---|---|---|
+| L0 | 渐变背景、画布网格 | 不使用 blur，保证性能与坐标清晰 |
+| L1 | 表、关系、区域、便签、远端选区 | 半透明实体卡片，选中态保持实线高对比 |
+| L2 | AppBar、ToolRail、StatusBar | `backdrop-filter` + 细描边；提供不支持 blur 时的实色回退 |
+| L3 | Inspector、IO/成员/Activity SideSheet | 更高不透明度，确保表单可读性 |
+| L4 | Tooltip、Popover、Command Palette | 阴影与描边共同区分，不只依赖透明度 |
+| L5 | Modal + overlay | 焦点与 Escape 行为清晰；关闭后 overlay 必须从 DOM/交互树退出 |
+| L6 | Toast、连接 Banner | 不遮挡主操作，状态色同时配文字和图标 |
+
+### 10.5 响应式行为
+
+- `≥ 1180px`：ToolRail + Canvas + Inspector 同屏，协作控制台以右侧 SideSheet 展示。
+- `760px～1179px`：Inspector 默认折叠为抽屉，AppBar 次要动作收入更多菜单。
+- `< 760px`：保留画布与底部快捷操作；ToolRail 横向化，Inspector/成员/IO 均以全高抽屉展示。
+- 任何宽度下，登录、进入房间、创建表、邀请成员、角色切换、断线恢复和导出均必须可达。
+
+### 10.6 原型与生产边界
+
+主原型用于验证信息架构、状态反馈和交互连贯性。界面中的登录、HTTP、WebSocket、OT transform、剪贴板和文件下载可由本地模拟器驱动；所有模拟入口必须标注「演示」或「模拟」。
+
+**状态表述约定**：
+
+- 不得因主原型可演示而将 S03～S05 标为全栈完成。
+- 当前准确表述：后端已实现；生产前端 API/页面流已部分接入；相对主原型的结构/视觉/交互逐项对齐，以本提案规格为合同，由下一变更 `implement-unified-prototype-spec-parity` 实现与验收。
+- `core-03/04/05-*-prototype.html` 仅历史参考，不作为验收入口。

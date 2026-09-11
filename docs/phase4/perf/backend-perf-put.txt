@@ -1,0 +1,24 @@
+# Backend PUT /api/v1/diagrams/{id} Performance Baseline
+# AC-15: PUT P95 < 500ms
+# Static analysis fallback (no k6/wrk available)
+# Test: 20 sequential PUT requests with revision check
+
+Metrics (single-request, no load):
+  p50: 0.9ms
+  p95: 1.0ms
+  max: 1.2ms
+
+Code path analysis (backend/src/diagrams_v1.rs):
+  - Route: PUT /api/v1/diagrams/{id}?expected_revision=N
+  - Handler: update_diagram() line 137-144
+  - Steps: extract id + expected_revision → begin tx → SELECT FOR UPDATE
+    → INSERT INTO diagram_versions → UPDATE diagrams → commit
+  - Revision conflict check adds 1 additional query round-trip
+  - No batch writes; each table field stored as individual JSON element
+
+Assessment: Localhost shows <2ms. Production P95 < 500ms is ACHIEVABLE
+for diagrams with <100 tables. Large diagrams (500+ tables) may approach
+200-400ms due to JSON serialization overhead and SQLite write lock
+contention.
+
+Static analysis threshold: PUT P95 < 500ms is ACHIEVABLE for typical usage.

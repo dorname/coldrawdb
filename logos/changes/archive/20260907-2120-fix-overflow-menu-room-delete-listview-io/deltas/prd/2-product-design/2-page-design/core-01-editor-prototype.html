@@ -1,0 +1,39 @@
+# Delta: core-01-editor-prototype.html
+
+> 提案：fix-overflow-menu-room-delete-listview-io
+
+**merge 时对原型 HTML 做三处修改**（生产对齐原型时的参照）：
+
+## MODIFIED — 更多菜单 popover 视口边界保护（`.popover` 样式 + renderMoreMenu）
+
+1. `.popover` 样式补边界保护：
+
+```css
+.popover{...原有属性...;max-height:calc(100vh - 80px);overflow-y:auto;max-width:calc(100vw - 16px)}
+```
+
+2. 小视口下菜单项全部可经滚动到达（原型验收：720×480 视口打开更多菜单，popover bounding box 完整落在视口内，滚动可达末项「命令面板」）。
+
+## MODIFIED — 房间列表页卡片删除入口（renderRooms room-card）
+
+3. `renderRooms()` 的 `room-card` 模板内、卡片右上角追加 owner 可见删除按钮（`item.role === "owner"` 才渲染）：
+
+```html
+${item.role==="owner"?`<button class="btn btn--ghost btn--icon room-card-del" data-action="delete-room-card" data-room="${item.id}" data-testid="room-card-delete-${item.id}" title="删除房间" aria-label="删除${esc(item.name)}">${icon("trash","icon--sm")}</button>`:""}
+```
+
+配套样式 `.room-card-del{position:absolute;top:12px;right:12px;opacity:0;transition:.18s}.room-card:hover .room-card-del,.room-card-del:focus-visible{opacity:1}`。
+
+4. 新增 `delete-room-card` action：拦截冒泡（不触发 `enter-room`），弹确认模态 `modal-delete-room-list`（标题「删除房间」，正文含房间名 +「Diagram 保留，仅解除房间关联」，确认 `btn-confirm-delete-room-list` danger / 取消）；确认 → 原型内从 `state.rooms` 移除该卡片 + Toast「已删除房间」。
+
+## MODIFIED — ListView 工具条 IO 入口（renderListView header）
+
+5. `renderListView()` 的 header 工具条内、「返回画布」按钮之前插入：
+
+```html
+<button class="btn btn--sm" data-action="open-drawer" data-drawer="import" data-testid="list-btn-import">${icon("upload","icon--sm")}导入</button><button class="btn btn--sm" data-action="open-drawer" data-drawer="export" data-testid="list-btn-export">${icon("download","icon--sm")}导出</button>
+```
+
+导入/导出打开既有 IO 抽屉（原型已支持抽屉叠加在 list-view-panel 之上）；只读语境不适用（原型无 viewer 导入禁用演示，生产按 core-04 §10.5 执行）。
+
+> 改完 script 后必须 `node --check` 验证语法（历史教训：字符类正则未闭合曾导致全原型脚本挂掉）。

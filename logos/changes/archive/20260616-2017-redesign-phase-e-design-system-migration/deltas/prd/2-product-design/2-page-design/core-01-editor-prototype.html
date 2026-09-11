@@ -1,0 +1,96 @@
+<!--
+  Delta — core-01-editor-prototype.html (Phase E / E3)
+  merge 操作（追加到现有 Phase A/B/C delta 之后）：
+  1. MODIFIED：.cdb-app-bar 按钮全部替换为 E2 SVG icon（保留 cdb-* class 占位）
+  2. MODIFIED：.cdb-main Inspector 抽屉按钮组从 emoji 改为 E3 Button + E2 icon
+  3. MODIFIED：Issues 折叠条带改用 E3 Collapse + E3 Tag
+  4. MODIFIED：CDB token 引用全部从硬编码 hex 改为 var(--cdb-*)
+  5. ADDED：.cdb-monaco-container 占位容器（供 E4 CodeView 演示）
+  6. ADDED：data-mode="dark" 示例态（E5 预留）
+-->
+<style>
+  /* E1 token 扩展（demo） */
+  :root {
+    --cdb-color-primary: #175e7a;
+    --cdb-color-primary-hover: #134c63;
+    --cdb-color-primary-soft: #e6f1f5;
+    --cdb-color-text-0: #1f2937;
+    --cdb-color-text-2: #6b7280;
+    --cdb-color-border: #e5e7eb;
+    --cdb-color-bg-0: #ffffff;
+    --cdb-color-bg-3: #f3f4f6;
+    --cdb-color-warning: #f59e0b;
+    --cdb-color-warning-soft: #fef3c7;
+    --cdb-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --cdb-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+    --cdb-radius-sm: 4px;
+    --cdb-radius-md: 6px;
+    --cdb-radius-lg: 8px;
+    --cdb-z-modal: 50;
+  }
+  /* E5 dark mode demo（占位） */
+  [data-mode="dark"] {
+    --cdb-color-bg-0: #16161a;
+    --cdb-color-text-0: #f9fafb;
+  }
+</style>
+
+<!-- E3 AppBar：按钮全部用 E2 SVG icon + E3 Button class -->
+<header class="cdb-app-bar">
+  <button class="cdb-btn cdb-btn--tertiary" data-testid="btn-undo">
+    <svg width="16" height="16" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M9 14 L4 9 L9 4 M4 9 L15 9 A7 7 0 0 1 22 16 A7 7 0 0 1 15 23 L8 23" />
+    </svg>
+    <span>撤销</span>
+  </button>
+  <button class="cdb-btn cdb-btn--tertiary" data-testid="btn-redo">
+    <svg width="16" height="16" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M17 14 L22 9 L17 4 M22 9 L11 9 A7 7 0 0 0 4 16 A7 7 0 0 0 11 23 L18 23" />
+    </svg>
+    <span>重做</span>
+  </button>
+  <input class="cdb-diagram-title" value="my_schema" />
+  <button class="cdb-btn cdb-btn--primary" data-testid="btn-save">
+    <svg width="16" height="16" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M4 2 L18 2 L22 6 L22 22 L4 22 Z M8 2 L8 10 L18 10 L18 2 M8 14 L18 14" />
+    </svg>
+    <span>保存</span>
+  </button>
+  <!-- E4 增量：btn-code-view -->
+  <button class="cdb-btn cdb-btn--secondary" data-testid="btn-code-view">
+    <svg width="16" height="16" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M9 7 L4 13 L9 19 M17 7 L22 13 L17 19 M14 5 L12 21" />
+    </svg>
+    <span>代码</span>
+  </button>
+  <!-- E5 增量：theme toggle -->
+  <button class="cdb-btn cdb-btn--tertiary" data-testid="btn-theme-toggle">
+    <svg width="16" height="16" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5">
+      <circle cx="13" cy="13" r="5" />
+      <path d="M13 2 L13 5 M13 21 L13 24 M2 13 L5 13 M21 13 L24 13 M5 5 L7 7 M19 19 L21 21 M5 21 L7 19 M19 7 L21 5" />
+    </svg>
+  </button>
+</header>
+
+<!-- E3 Issues Collapse -->
+<section class="cdb-issues" data-testid="cdb-issues-collapse">
+  <div class="cdb-collapse-header">
+    <span class="cdb-tag cdb-tag--warning" data-testid="issues-badge">5</span>
+    <span>问题</span>
+  </div>
+</section>
+
+<!-- E3 Inspector 抽屉用 E3 Button -->
+<aside class="cdb-side-panel cdb-side-panel--right" data-testid="inspector">
+  <button class="cdb-btn cdb-btn--warning" data-testid="btn-delete-selected">
+    <svg width="14" height="14" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M5 7 L21 7 M9 7 L9 4 L17 4 L17 7 M7 7 L7 22 L19 22 L19 7" />
+    </svg>
+    <span>删除</span>
+  </button>
+</aside>
+
+<!-- E4 增量：Code View 容器占位（E4 实装 Monaco） -->
+<div class="cdb-monaco-container" data-testid="code-view" hidden>
+  <textarea class="cdb-code-view-fallback" readonly><!-- E4 实装后由 Monaco 接管 --></textarea>
+</div>

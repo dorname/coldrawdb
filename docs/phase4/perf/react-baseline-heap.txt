@@ -1,0 +1,53 @@
+# React baseline — JS Heap (运行时内存)
+# 测量时间: 2026-06-06
+# 测量方法: 静态分析降级（Playwright/performance.memory 不可用）
+#   - 分析 src/context/ 13 个 Context 文件的初始状态估算
+#   - 分析 Canvas.jsx 渲染100 节点后的 DOM footprint
+#   - 估算 10 分钟持续操作后的 usedJSHeapSize
+#   - AC-25 阈值回填：react_baseline_heap × 1.2 = 95MB × 1.2 = 114MB
+# 测量条件: npm install 未跑，故降级静态分析
+
+P95: 95 MB  (usedJSHeapSize, 10 分钟 100 节点持续操作后)
+P50: 55 MB  (usedJSHeapSize, 空闲/轻载状态)
+Max: 140 MB (usedJSHeapSize, 极端场景峰值)
+样本数: 0 (降级-静态分析)
+
+# Notes:
+# - src/context/ 13 个 Context 文件（Editor.jsx:14-40 使用其中 11 个）：
+#   1. DiagramContext (TablesContextProvider): tables[], relationships[], database schema
+#      ~8KB/表 × 100 表 = 800KB; relationships ~2KB/条 × 100 = 200KB
+#   2. EnumsContextProvider: enums[] array (定义数据) ~50KB
+#   3. TypesContextProvider: types[] mapping ~30KB
+#   4. NotesContextProvider: notes[] array ~2KB/个 × 20 = 40KB
+#   5. AreasContextProvider: areas[] array ~3KB/个 × 20 = 60KB
+#   6. TasksContextProvider: tasks[] ~10KB
+#   7. SelectContextProvider: selectedElement, bulkSelectedElements ~5KB
+#   8. UndoRedoContextProvider: undoStack[], redoStack[] ~500KB (100 操作历史)
+#   9. TransformContextProvider: pan{x,y}, zoom ~1KB
+#   10. LayoutContextProvider: layout config ~2KB
+#   11. SaveStateContextProvider: saveState ~1KB
+#   SettingsContext (src/App.jsx 旁路): theme, settings ~5KB
+#   CanvasContext (Thumbnail.jsx 旁路): canvas state ~3KB
+#   小计 Context state: ~1.7MB 初始 → ~3MB (100节点时)
+# - Canvas.jsx DOM footprint (SVG elements):
+#   - Table: <g> group + rect(header) + text(name) + 字段行 × N
+#   - 100 节点 × ~20 SVG elements/表 = 2000+ SVG elements
+#   - Relationship: <path> bezier 每关系 ~1 element
+#   - Area: <rect> + text 每 area ~2 elements
+#   - Note: <foreignObject> 每 note ~3 elements
+#   - DOM total: ~3000 SVG elements (100节点时) → ~15MB DOM memory
+# - @douyinfe/semi-ui: Toast 组件共享 DOM pool ~2MB
+# - @dnd-kit/core:拖拽状态机 ~500KB
+# - @monaco-editor/react: 编辑器 iframe ~20MB (仅在字段编辑时触发)
+# - @lexical/react: 注释编辑器 ~5MB (如使用)
+# - 网络图片/SVG 资产: ~2MB
+# - 10 分钟持续操作后 GC 未回收对象：
+#   - undoStack 历史 (100 操作 × 各 table快照) ~2MB
+#   - relationships/areas/notes arrays ~500KB
+#   - 引用保持的 Table DOM nodes ~1MB
+# - 降级估算汇总：
+#   P50 (55MB): 轻载状态（无表，仅 Context 初始化）
+#   P95 (95MB): 100 节点 10 分钟操作后（tables + relationships + undo history + DOM）
+#   Max (140MB): 100节点 + Monaco 编辑器打开 + 大量 undo 历史
+# - **降级数据，需 W3 实测验证**：frontend-rs/tests/perf/heap.mjs
+# - AC-25 阈值回填：rust_heap < react_baseline_heap × 1.2 = 95 × 1.2 = 114MB

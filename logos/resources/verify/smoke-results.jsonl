@@ -1,0 +1,18 @@
+{"id":"SMOKE-core-01","status":"pass","duration_ms":14,"timestamp":"2026-08-27T13:46:49Z","scenario":"smoke","note":"backend health proxy (4xx on /non-existent is healthy) (http=404)"}
+{"id":"SMOKE-core-02","status":"pass","duration_ms":46,"timestamp":"2026-08-27T13:46:49Z","scenario":"smoke","note":"create/read/update/delete"}
+{"id":"SMOKE-core-03","status":"pass","duration_ms":32,"timestamp":"2026-08-27T13:46:49Z","scenario":"smoke","note":"POST /api/v1/bridge/import/local (SQL via payload) (http=200)"}
+{"id":"SMOKE-core-04","status":"pass","duration_ms":13,"timestamp":"2026-08-27T13:46:49Z","scenario":"smoke","note":"frontend index.html available (http=200)"}
+{"id":"SMOKE-core-05","status":"pass","duration_ms":13,"timestamp":"2026-08-27T13:46:49Z","scenario":"smoke","note":"GET /api/v1/bridge/config (DB-backed) (http=200)"}
+{"id":"SMOKE-core-06","status":"pass","duration_ms":2030,"timestamp":"2026-08-27T13:46:51Z","scenario":"smoke","note":"local start-local.sh + stop-local.sh round-trip"}
+{"id":"SMOKE-core-01","status":"fail","duration_ms":0,"timestamp":"2026-09-10T17:05:16Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-02","status":"fail","duration_ms":0,"timestamp":"2026-09-10T17:05:16Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-03","status":"fail","duration_ms":0,"timestamp":"2026-09-10T17:05:16Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-04","status":"fail","duration_ms":0,"timestamp":"2026-09-10T17:05:16Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-05","status":"fail","duration_ms":0,"timestamp":"2026-09-10T17:05:16Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-06","status":"fail","duration_ms":0,"timestamp":"2026-09-10T17:05:16Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-01","status":"pass","duration_ms":12,"timestamp":"2026-09-10T17:08:44Z","scenario":"smoke","note":"backend health proxy (4xx on /non-existent is healthy) (http=404)"}
+{"id":"SMOKE-core-02","status":"pass","duration_ms":66,"timestamp":"2026-09-10T17:08:45Z","scenario":"smoke","note":"create/read/update/delete"}
+{"id":"SMOKE-core-03","status":"pass","duration_ms":105,"timestamp":"2026-09-10T17:08:45Z","scenario":"smoke","note":"POST /api/v1/bridge/import/local (SQL via payload) (http=200)"}
+{"id":"SMOKE-core-04","status":"pass","duration_ms":12,"timestamp":"2026-09-10T17:08:45Z","scenario":"smoke","note":"frontend index.html available (http=200)"}
+{"id":"SMOKE-core-05","status":"pass","duration_ms":12,"timestamp":"2026-09-10T17:08:45Z","scenario":"smoke","note":"GET /api/v1/bridge/config (DB-backed) (http=200)"}
+{"id":"SMOKE-core-06","status":"pass","duration_ms":2014,"timestamp":"2026-09-10T17:08:47Z","scenario":"smoke","note":"local start-local.sh + stop-local.sh round-trip"}

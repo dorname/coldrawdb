@@ -1,0 +1,25 @@
+# Delta: rooms.yaml
+
+> 提案：fix-canvas-zoom-invite-comment-resize（问题 2：协作邀请链接无效）
+
+## MODIFIED — components.schemas.InviteCreatedResponse
+
+```yaml
+    InviteCreatedResponse:
+      type: object
+      required: [inviteUrl, token, role, expiresAt]
+      properties:
+        inviteUrl:
+          type: string
+          format: uri
+          description: "Frontend invite URL: {public_base_url}/invite/{token}. public_base_url = PUBLIC_BASE_URL env config if set, else derived from the request Host header + scheme (Forwarded / X-Forwarded-Proto take precedence, non-default port preserved). Must be a publicly reachable absolute URL; hardcoded localhost / 127.0.0.1 / port-less placeholders are forbidden."
+          example: https://staging.coldrawdb.example.com/invite/AbCdEfGhIjKlMnOp
+        token:
+          type: string
+          description: Raw token segment for client-side copy
+        role:
+          $ref: '#/components/schemas/InviteRole'
+        expiresAt:
+          type: string
+          format: date-time
+```

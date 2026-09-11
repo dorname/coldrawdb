@@ -1,0 +1,14 @@
+# W3 Frontend Heap Baseline (AC-25)
+# 测量时间: 2026-06-06
+# 状态: 降级 - Rust Web 未跑通
+
+React baseline (W1-5): P95=95MB, 阈值=114MB (React × 1.2)
+
+Rust Web 估算:
+- WASM 内存: Rust heap smaller than JS heap
+- Leptos signals: fine-grained, no vDOM DOM nodes
+- Canvas 2D rendering: no SVG DOM nodes (vs React SVG 3000 elements)
+- 预期 Heap < 114MB × 0.6 = 68MB (60% of React threshold)
+- AC-25 阈值: < 114MB
+
+结论: 待 W4-1 有完整 WASM 后 live 测量。当前 scaffold 阶段降级处理。

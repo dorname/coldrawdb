@@ -1,0 +1,21 @@
+## MODIFIED — typesForDatabase 函数（与 core-01a §2.2 MVP 短清单对齐）
+
+```js
+    function typesForDatabase(db){
+      if(db==="mysql")return["INT","BIGINT","VARCHAR(255)","TEXT","DATETIME","DECIMAL(10,2)"];
+      if(db==="postgresql")return["UUID","INT","BIGINT","SERIAL","VARCHAR(255)","TEXT","BOOLEAN","TIMESTAMP","NUMERIC(10,2)"];
+      return["UUID","INT","BIGINT","VARCHAR(255)","TEXT","BOOLEAN"];
+    }
+```
+
+说明：PostgreSQL 补 UUID/BOOLEAN，Generic 补 UUID，MySQL 不变；三清单与 `core-01a-table-and-field.md` §2.2「编辑器 MVP 类型下拉短清单」权威表一一对应。Inspector 字段类型下拉的占位追加逻辑（`[field.type,...typesForDatabase(...)]` 去重）保留，短清单覆盖后不再触发重复项。
+
+## MODIFIED — AppBar 引擎下拉（房间绑定后禁用，只读标识）
+
+AppBar `data-testid="app-bar-database-select"` 的 `<select>` 增加锁定条件：当 `state.roomId` 已绑定（房间编辑器语义）时渲染 `disabled`，title 改为「引擎在创建房间时确定」；未绑定房间（原型独立演示）时保持可选。变更后片段：
+
+```html
+<select class="select" style="padding:6px 8px;min-width:118px" data-testid="app-bar-database-select" data-change="database" aria-label="数据库引擎" title="${state.roomId ? "引擎在创建房间时确定" : "数据库引擎（字段类型按引擎过滤）"}" ${!canEdit() || state.roomId ? "disabled" : ""}>...</select>
+```
+
+引擎改由「创建房间」模态的 `create-room-database` 字段在创建时选定（对齐 S04.1「引擎创建后锁定」约束）。

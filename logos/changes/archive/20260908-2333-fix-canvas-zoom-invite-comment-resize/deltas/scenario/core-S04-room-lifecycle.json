@@ -1,0 +1,45 @@
+# Delta: core-S04-room-lifecycle.json
+
+> 提案：fix-canvas-zoom-invite-comment-resize（问题 2：协作邀请链接无效）
+
+## MODIFIED — step 6（Owner 创建 editor 邀请）断言
+
+step 6 的 `expect.json` 中 `inviteUrl` 断言由「仅 `{ "type": "string" }`」改为「类型 + 正则匹配 + 硬编码排除」，并新增 `invite_url` 提取供后续步骤引用。修改后 step 6 完整内容：
+
+```json
+    {
+      "step_id": 6,
+      "name": "Owner 创建 editor 邀请",
+      "alignment_step": "S04.2 §4 Step 3–11",
+      "method": "POST",
+      "path": "/api/v1/rooms/${room_id}/invites",
+      "request": {
+        "headers": {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer ${owner_token}"
+        },
+        "body": {
+          "role": "editor"
+        }
+      },
+      "expect": {
+        "status": 201,
+        "json": {
+          "token": { "type": "string" },
+          "role": { "equals": "editor" },
+          "inviteUrl": {
+            "type": "string",
+            "matches": "^[a-z][a-z0-9+.-]*://[^/]+(:[0-9]+)?/invite/[A-Za-z0-9_-]+$",
+            "not_contains": ["localhost", "127.0.0.1"]
+          },
+          "expiresAt": { "type": "string" }
+        }
+      },
+      "extract": {
+        "invite_token": "$.token",
+        "invite_url": "$.inviteUrl"
+      }
+    }
+```
+
+> 说明：`matches` 要求 invite_url 为 `{scheme}://{host}(:{port})?/invite/{token}` 形式的完整 URL（host 与编排 `base_url` 一致，含非默认端口）；`not_contains` 断言不含硬编码 localhost / 127.0.0.1。这两个 matcher 沿该 JSON 既有单键断言对象风格扩展为多键组合。

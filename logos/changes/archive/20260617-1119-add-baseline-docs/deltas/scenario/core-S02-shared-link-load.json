@@ -1,0 +1,233 @@
+## MODIFIED — 顶部元数据剥离
+
+> 模块：core | 提案：add-baseline-docs
+> 路径：`logos/resources/scenario/core-S02-shared-link-load.json`
+> 策略：移除 JSON 体内 `"proposal": "add-baseline-docs"` 字段，保留 `scenario_id` / `steps` / `preconditions` 等全部业务字段不变。
+
+{
+  "scenario_id": "core-S02",
+  "scenario_name": "分享链接加载",
+  "module": "core",
+  "description": "E2E API 编排：A 创建 diagram → A 编辑保存 → B 通过链接 GET 加载 → 验证 A 与 B 数据一致",
+  "alignment": "core-S02-load-shared-diagram.md",
+  "version": "1.0.0",
+  "base_url": "http://localhost:3000",
+  "preconditions": [
+    "后端服务运行中",
+    "数据库为干净状态"
+  ],
+  "variables": {},
+  "steps": [
+    {
+      "step_id": 1,
+      "name": "A 创建 diagram（含 1 张表）",
+      "method": "POST",
+      "path": "/api/v1/diagrams",
+      "request": {
+        "headers": { "Content-Type": "application/json" },
+        "body": {
+          "title": "Shared Diagram",
+          "tables": [
+            {
+              "id": "shared-t1",
+              "name": "users",
+              "x": 100,
+              "y": 100,
+              "comment": "",
+              "fields": [
+                { "id": "sf1", "name": "id", "type": "INT", "primary": true, "increment": true, "notNull": true, "unique": false },
+                { "id": "sf2", "name": "name", "type": "VARCHAR(255)", "primary": false, "notNull": true, "unique": false }
+              ]
+            }
+          ],
+          "references": [],
+          "areas": [
+            {
+              "id": "sa1",
+              "name": "User Area",
+              "x": 50,
+              "y": 50,
+              "width": 300,
+              "height": 200,
+              "color": "#e0f2fe"
+            }
+          ],
+          "notes": [
+            {
+              "id": "sn1",
+              "x": 200,
+              "y": 200,
+              "content": "Test note",
+              "color": "#fef3c7"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 201,
+        "json": {
+          "id": { "type": "uuid" },
+          "title": { "equals": "Shared Diagram" },
+          "revision": { "equals": 0 }
+        }
+      },
+      "extract": {
+        "diagram_id": "$.id"
+      }
+    },
+    {
+      "step_id": 2,
+      "name": "A 编辑保存（增 1 字段）",
+      "method": "PUT",
+      "path": "/api/v1/diagrams/${diagram_id}",
+      "request": {
+        "headers": { "Content-Type": "application/json" },
+        "body": {
+          "title": "Shared Diagram",
+          "revision": 0,
+          "tables": [
+            {
+              "id": "shared-t1",
+              "name": "users",
+              "x": 100,
+              "y": 100,
+              "comment": "",
+              "fields": [
+                { "id": "sf1", "name": "id", "type": "INT", "primary": true, "increment": true, "notNull": true, "unique": false },
+                { "id": "sf2", "name": "name", "type": "VARCHAR(255)", "primary": false, "notNull": true, "unique": false },
+                { "id": "sf3", "name": "email", "type": "VARCHAR(255)", "primary": false, "notNull": false, "unique": true }
+              ]
+            }
+          ],
+          "references": [],
+          "areas": [
+            {
+              "id": "sa1",
+              "name": "User Area",
+              "x": 50,
+              "y": 50,
+              "width": 300,
+              "height": 200,
+              "color": "#e0f2fe"
+            }
+          ],
+          "notes": [
+            {
+              "id": "sn1",
+              "x": 200,
+              "y": 200,
+              "content": "Test note",
+              "color": "#fef3c7"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "status": 200,
+        "json": {
+          "revision": { "equals": 1 },
+          "tables": {
+            "length": 1,
+            "0": {
+              "fields": { "length": 3 }
+            }
+          }
+        }
+      }
+    },
+    {
+      "step_id": 3,
+      "name": "B 通过分享链接 GET 加载（模拟浏览器）",
+      "method": "GET",
+      "path": "/api/v1/diagrams/${diagram_id}",
+      "request": {
+        "headers": {
+          "User-Agent": "Mozilla/5.0 (compatible; Browser B)"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "json": {
+          "id": { "equals": "${diagram_id}" },
+          "title": { "equals": "Shared Diagram" },
+          "revision": { "equals": 1 },
+          "tables": {
+            "length": 1,
+            "0": {
+              "name": { "equals": "users" },
+              "fields": { "length": 3 }
+            }
+          },
+          "areas": { "length": 1 },
+          "notes": { "length": 1 }
+        }
+      }
+    },
+    {
+      "step_id": 4,
+      "name": "B 验证数据一致性（与 A 提交一致）",
+      "method": "GET",
+      "path": "/api/v1/diagrams/${diagram_id}",
+      "request": {},
+      "expect": {
+        "status": 200,
+        "json": {
+          "tables": {
+            "0": {
+              "fields": {
+                "0": { "name": { "equals": "id" } },
+                "1": { "name": { "equals": "name" } },
+                "2": { "name": { "equals": "email" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "step_id": 5,
+      "name": "B 加载不存在的 diagram → 404",
+      "method": "GET",
+      "path": "/api/v1/diagrams/00000000-0000-0000-0000-000000000000",
+      "request": {},
+      "expect": {
+        "status": 404,
+        "json": {
+          "error": { "equals": "not_found" }
+        }
+      }
+    },
+    {
+      "step_id": 6,
+      "name": "B 加载无效 UUID → 400",
+      "method": "GET",
+      "path": "/api/v1/diagrams/not-a-valid-uuid",
+      "request": {},
+      "expect": {
+        "status": 400,
+        "json": {
+          "error": { "equals": "invalid_id" }
+        }
+      }
+    },
+    {
+      "step_id": 7,
+      "name": "A 清理：DELETE diagram",
+      "method": "DELETE",
+      "path": "/api/v1/diagrams/${diagram_id}",
+      "request": {},
+      "expect": {
+        "status": 204
+      }
+    }
+  ],
+  "postconditions": [
+    "数据库中 ${diagram_id} 相关行已全部清理"
+  ],
+  "expected_outcome": {
+    "total_steps": 7,
+    "expected_pass": 7,
+    "tolerance": "0 failures"
+  }
+}
+

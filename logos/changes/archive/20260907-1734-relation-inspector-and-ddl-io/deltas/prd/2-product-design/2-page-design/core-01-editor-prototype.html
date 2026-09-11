@@ -1,0 +1,78 @@
+# Delta: core-01-editor-prototype.html
+
+> relation-inspector-and-ddl-io：DDL 导入列级解析 + SQL 导出补全。
+> 说明：关系连线点击弹模态为生产端行为，主原型本就无此模态（`.relation-layer` pointer-events:none，连线不接收点击），项 1 原型无需变更，此处仅记录确认。
+
+## MODIFIED — importModel（SQL 导入升级为列级 DDL 解析）
+
+整函数替换为：
+
+```js
+    function parseDdl(source){
+      const tables=[];const fks=[];
+      const re=/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["'`\[]?([\w一-龥]+)["'`\[\]]?\s*\(([\s\S]*?)\)\s*;/gi;
+      let m;
+      while((m=re.exec(source))){
+        const name=m[1],body=m[2];
+        const parts=[];let depth=0,cur="";
+        for(const ch of body){if(ch==="(")depth++;else if(ch===")")depth--;if(ch===","&&depth===0){parts.push(cur);cur="";}else cur+=ch;}
+        if(cur.trim())parts.push(cur);
+        const fields=[];const tablePks=[];
+        for(const raw of parts){
+          const line=raw.trim();if(!line)continue;
+          const up=line.toUpperCase();
+          if(up.startsWith("PRIMARY KEY")){const c=line.match(/\(([^)]+)\)/);if(c)c[1].split(",").forEach(x=>tablePks.push(x.trim().replace(/["'`\[\]]/g,"")));continue;}
+          const fkM=line.match(/FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+["'`\[]?([\w一-龥]+)["'`\[\]]?\s*\(([^)]+)\)/i);
+          if(fkM){fks.push({table:name,col:fkM[1].trim().replace(/["'`\[\]]/g,""),refTable:fkM[2],refCol:fkM[3].trim().replace(/["'`\[\]]/g,"")});continue;}
+          if(/^(CONSTRAINT|UNIQUE\s*\(|KEY\s|INDEX\s|CHECK\s*\()/i.test(line))continue;
+          const cm=line.match(/^["'`\[]?([\w一-龥]+)["'`\[\]]?\s+([A-Za-z]+\s*(?:\(\s*\d+(?:\s*,\s*\d+)?\s*\))?)([\s\S]*)$/);
+          if(!cm)continue;
+          const col=cm[1],type=cm[2].replace(/\s+/g,"").toUpperCase(),rest=cm[3].toUpperCase();
+          const refM=cm[3].match(/REFERENCES\s+["'`\[]?([\w一-龥]+)["'`\[\]]?\s*\(([^)]+)\)/i);
+          if(refM)fks.push({table:name,col,refTable:refM[1],refCol:refM[2].trim().replace(/["'`\[\]]/g,"")});
+          const comM=cm[3].match(/COMMENT\s+'([^']*)'/i);
+          fields.push({name:col,type,pk:/PRIMARY\s+KEY/.test(rest),nn:/NOT\s+NULL/.test(rest),uq:/\bUNIQUE\b/.test(rest)&&!/PRIMARY\s+KEY/.test(rest),auto:/AUTO_INCREMENT/.test(rest)||/^(BIG)?SERIAL/.test(type),comment:comM?comM[1]:"",tag:""});
+        }
+        tablePks.forEach(cn=>{const f=fields.find(x=>x.name===cn);if(f)f.pk=true;});
+        if(fields.length)tables.push({name,fields});
+      }
+      return{tables,fks};
+    }
+    function importModel(){
+      const source=$("#import-source")?.value||"";
+      const {tables:parsed,fks}=parseDdl(source);
+      if(!parsed.length){toast("未检测到数据表","请输入包含 CREATE TABLE 的 SQL。","error");return;}
+      const fresh=parsed.filter(p=>!state.diagram.tables.some(t=>t.name===p.name));
+      if(!fresh.length){toast("无需重复导入","检测到的数据表已全部存在。","error");return;}
+      state.drawer=null;
+      commit(`从 SQL 导入了 ${fresh.length} 张表`,()=>{
+        const nameToTable={};
+        fresh.forEach((p,index)=>{
+          const id=p.name.replace(/[^a-zA-Z0-9_一-龥]/g,"_").toLowerCase()+"-"+(Date.now()+index).toString().slice(-4);
+          const t={id,name:p.name,x:180+state.diagram.tables.length*55,y:145+state.diagram.tables.length*35,color:"rgba(79,209,197,.18)",fields:p.fields.map((f,i)=>({id:`${id}-f${i+1}`,...f}))};
+          state.diagram.tables.push(t);nameToTable[p.name]=t;state.selected={type:"table",id};
+        });
+        // REFERENCES / FOREIGN KEY → 关系连线（端到端列名解析到字段 id）
+        fks.forEach(fk=>{
+          const from=nameToTable[fk.table],to=nameToTable[fk.refTable]||state.diagram.tables.find(t=>t.name===fk.refTable);
+          const ff=from?.fields.find(f=>f.name===fk.col),tf=to?.fields.find(f=>f.name===fk.refCol);
+          if(from&&to&&ff&&tf)state.diagram.relations.push({id:uid("rel"),fromTable:from.id,fromField:ff.id,toTable:to.id,toField:tf.id});
+        });
+      },"upload");
+      toast("导入完成",`已创建 ${fresh.length} 张表${fks.length?`，含 ${fks.length} 条外键关系`:""}。`);
+    }
+```
+
+口径与生产 `parse_sql_import_tables` 一致（core-01d §4.4）：列名/类型整串/列级 PK/NOT NULL/UNIQUE/AUTO_INCREMENT（SERIAL 系→自增）/COMMENT；表级联合 PRIMARY KEY；表级与列级 REFERENCES → 关系连线；引号/方括号规范化；非 CREATE TABLE 语句跳过。原型字段模型无 `default` 列，DEFAULT 值不入原型（生产保留）。
+
+## MODIFIED — exportContent（SQL 分支补全自增/COMMENT/FK）
+
+SQL return 行替换为：
+
+```js
+      return state.diagram.tables.map(table=>{
+        const cols=table.fields.map(field=>`  ${field.name} ${field.type}${field.pk?" PRIMARY KEY":""}${field.nn&&!field.pk?" NOT NULL":""}${field.uq&&!field.pk?" UNIQUE":""}${field.auto?" AUTO_INCREMENT":""}${field.comment?` COMMENT '${field.comment}'`:""}`);
+        const fks=state.diagram.relations.filter(r=>r.fromTable===table.id).map(r=>{const t=state.diagram.tables.find(x=>x.id===r.toTable),ff=table.fields.find(x=>x.id===r.fromField),tf=t?.fields.find(x=>x.id===r.toField);return ff&&tf&&t?`  FOREIGN KEY (${ff.name}) REFERENCES ${t.name}(${tf.name})`:null}).filter(Boolean);
+        return `CREATE TABLE ${table.name} (\n${[...cols,...fks].join(",\n")}\n);`;
+      }).join("\n\n");
+```

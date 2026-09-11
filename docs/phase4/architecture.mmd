@@ -1,0 +1,8 @@
+graph TD
+    editor_core[editor_core<br/>状态·命令栈·debounce]
+    editor_render[editor_render<br/>画布·表·连线]
+    editor_panels[editor_panels<br/>左/右/顶面板]
+    editor_data_access[editor_data_access<br/>API 客户端·409]
+    editor_render --> editor_core
+    editor_panels --> editor_core
+    editor_data_access --> editor_core

@@ -1,0 +1,51 @@
+# Delta — core-01-editor-prototype.html（分隔条交互 + 表注释展示）
+
+> 提案：fix-canvas-zoom-invite-comment-resize（问题4：布局面板可拖动调整 / 表注释展示）
+> 目标主文档：`logos/resources/prd/2-product-design/2-page-design/core-01-editor-prototype.html`
+> 本 delta 为 markdown 说明格式，记录原型相对主文档的 ADDED 规格；其余缩放相关内容由同提案其他 delta 负责。
+
+## ADDED — 分隔条交互
+
+### A.1 结构
+
+主原型 `.workspace` 三列网格（`grid-template-columns: var(--rail) minmax(0,1fr) var(--inspector)`，--rail:64px / --inspector:330px）与 ListView `.list-view-body`（`grid-template-columns: 230px 1fr`）各增一条 6px 分隔条：
+
+| 实例 | 插入位置 | data-testid | 拖动目标 |
+|---|---|---|---|
+| Inspector 分隔条 | `.workspace` 中画布列与 Inspector 列之间（Inspector 左缘） | `splitter-inspector` | 直写 CSS 变量 `--inspector` |
+| ListView 树列分隔条 | `.list-view-body` 中树列与明细列之间（树列右缘） | `splitter-list-tree` | 直写 `.list-view-body` 内联 `grid-template-columns` |
+
+### A.2 交互
+
+1. 分隔条宽 6px，`cursor: col-resize`，默认透明叠于两列间隙；hover 或拖动中显示品牌色高亮。
+2. `pointerdown` → `set_pointer_capture`；`pointermove` 实时改写目标宽度（直写内联样式 / CSS 变量，**不触发整树 re-render**）；`pointerup` 结束并持久化。
+3. 双击分隔条复位默认宽度（Inspector 330px / 树列 230px）。
+4. 拖动开始时给 `.workspace` 加 `is-resizing` class（`transition: none`）禁用 `.inspector` 的 `.22s` 过渡与网格过渡，结束时移除。
+
+### A.3 钳制与持久化
+
+1. Inspector 宽度钳制 240–520px，且不超过 `视口宽度 - 200px`；树列钳制 160–420px。
+2. 持久化 key：`cdb.prototype.inspector.width` / `cdb.prototype.list-tree.width`；加载时合法值直写变量，非法/缺失回落默认。
+3. 生效断点：仅 ≥1024px 渲染分隔条；原型现有 `@media(max-width:1179px)`（Inspector 绝对覆盖层）与 `@media(max-width:760px)`（全屏抽屉）下分隔条 `display:none`。
+
+### A.4 主视图重建纪律
+
+拖动全程只改样式变量/内联 style，**不得调用 `render()` 重建 `#app`**（沿用 ST-PU-19 不变量）；画布尺寸跟随由既有 RAF `clientWidth/clientHeight` 比对机制覆盖。
+
+## ADDED — 表注释展示
+
+### B.1 表树节点注释
+
+ListView 表树节点（`.list-tree-node`，现行结构为「表名 + 字段计数 tag」）增加表注释展示：
+
+1. 表对象带非空 `comment` 时，节点内表名下方/右侧追加注释名称文本（小字、弱化色，省略号截断）。
+2. 无注释的表**不占位**、不渲染占位符。
+3. 注释编辑入口见 B.2；树节点注释随 `state.diagram.tables[].comment` 即时更新（随既有 `render()` 路径刷新即可）。
+
+### B.2 Inspector 数据表 section 注释输入
+
+Inspector「数据表」section（`data-testid="inspector"` 内现行「名称 / 强调色」字段组）增加注释编辑输入：
+
+1. 在「名称」字段后插入「注释」输入框：`data-change="table-comment"`、`data-id="${table.id}"`，绑定当前表 `comment`（空值显示空串）。
+2. 变更路径与既有 `table-name` 一致：走统一 commit（活动记录 + 自动保存链），Viewer 只读态 `disabled`。
+3. 注释变更后 ListView 树节点（B.1）与 SQL 导出 `COMMENT '...'` 子句（既有导出已含）同步反映。

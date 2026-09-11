@@ -1,0 +1,36 @@
+# Delta: core-01-editor-prototype.html
+
+> 提案：fix-dict-save-and-layout
+
+**merge 时对原型 HTML 做两处修改**（生产对齐原型时的参照）：
+
+## MODIFIED — 字典抽屉与 Inspector / IO 抽屉互斥（open-drawer / close-drawer / toggle-inspector / select-table action + state）
+
+1. `state` 新增 `inspectorBeforeDict:null` 缓存字段（存放打开字典抽屉前的 `state.inspector` 值）。
+2. `open-drawer` action（`data-drawer="dicts"` 时）：先缓存 `inspectorBeforeDict = state.inspector`，再 `state.inspector=false`、`state.drawer="dicts"`；若已有 IO 抽屉（`state.drawer==="import"/"export"`）打开，直接覆盖 `state.drawer`（后开者关先开者）。
+3. `close-drawer` action：若关闭的是 dicts 抽屉且 `inspectorBeforeDict!==null`，恢复 `state.inspector=inspectorBeforeDict` 并置缓存为 `null`；再次点击 `toolrail-dicts`（toggle 关闭）走同一恢复路径。
+4. Inspector 打开的入口（`select-table`、`toggle-inspector` 等置 `state.inspector=true` 的 action）：同时 `state.drawer=null`、`inspectorBeforeDict=null`（缓存失效不恢复）。
+5. 验收口径：任意时刻右侧最多一个浮层；开字典抽屉后 Inspector 网格列收起（`workspace.is-inspector-closed`），关闭后恢复原状，无重叠。
+
+## MODIFIED — 列表视图字典区块（renderListView tree + grid）
+
+6. `renderListView()` 的 `tree`（`.list-tree`）内、表节点列表下方追加「数据字典」分组：
+
+```html
+<div class="list-tree-group">数据字典</div>
+${(state.diagram.dictionaries||[]).length
+  ? state.diagram.dictionaries.map(d=>`<button class="list-tree-node ${state.listDict===d.id?"is-active":""}" data-action="list-dict-select" data-id="${d.id}" data-testid="list-tree-dict-${d.id}"><span class="list-tree-node-main"><span>${esc(d.name)}（${esc(d.code)}）</span></span><span class="tag">${d.items.length} 项${refCount(d.code)?` · 引用 ${refCount(d.code)}`:""}</span></button>`).join("")
+  : `<div class="list-tree-empty">暂无数据字典</div>`}
+```
+
+7. `state` 新增 `listDict:null`；`list-dict-select` action：`state.listDict=id` 且 `state.listTable=null`（与表选中互斥）；`list-tree-select` 反向清空 `state.listDict`。树搜索框仅过滤表节点，字典分组恒显。
+8. `grid` 区：`state.listDict` 命中时渲染**只读**字典明细替代字段网格——标题 `名称（编码）` + 说明 + 映射摘要 Tag（`1=男 2=女`，超 4 项折叠 `共 N 项`）+ 字典项表格（`值 | 含义` 两列，按 `sort` 升序）+ 「在字典面板中编辑」按钮：
+
+```html
+<button class="btn btn--sm" data-action="list-dict-edit" data-testid="list-dict-edit">${icon("book","icon--sm")}在字典面板中编辑</button>
+```
+
+`list-dict-edit` action：复用第 2 条的打开逻辑直接打开 dicts 抽屉（不切回画布，抽屉浮层叠加于 list-view-panel 之上）。
+9. 配套样式（追加到 `.list-tree-*` 规则族附近）：`.list-tree-group{padding:10px 14px 4px;font-size:10px;font-weight:850;color:var(--text-3);letter-spacing:.12em;text-transform:uppercase}`；`.list-tree-empty{padding:6px 14px;font-size:11px;color:var(--text-3)}`。
+
+> 改完 script 后必须 `node --check` 验证语法（历史教训：字符类正则未闭合曾导致全原型脚本挂掉）。

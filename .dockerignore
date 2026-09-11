@@ -1,0 +1,22 @@
+# Docker 构建上下文裁剪（feat-docker-compose-deploy 重写）
+# 镜像只需要 frontend-rs（Cargo.toml/Cargo.lock/index.html/Trunk.toml/src）与 backend/ 全部
+.git
+**/target
+**/node_modules
+frontend-rs/dist
+frontend-rs/test-results
+frontend-rs/logos
+data
+logs
+backups
+logos
+docs
+.github
+scripts
+mcp-server
+*.md
+*.log
+.env
+tmp
+temp
+.DS_Store

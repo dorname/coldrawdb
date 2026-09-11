@@ -1,0 +1,383 @@
+# Delta — core-01-editor-prototype.html
+# 模块：core | 提案：redesign-phase-a-layout
+# merge 目标：`logos/resources/prd/2-product-design/2-page-design/core-01-editor-prototype.html`
+# 说明：本节为完整 HTML 文件，merge 时**整文件替换**主文档。
+
+## MODIFIED — 完整页面（V2 / Phase A 布局原型）
+
+> **整文件替换** `logos/resources/prd/2-product-design/2-page-design/core-01-editor-prototype.html`。
+> 本原型展示 Phase A 目标布局：单行 AppBar + Tool Rail + Canvas + Inspector + StatusBar。
+
+```html
+<!DOCTYPE html>
+<!--
+  MODIFIED — 编辑器主页面 HTML 原型 V2
+  模块：core | 提案：redesign-phase-a-layout
+  路径：logos/resources/prd/2-product-design/2-page-design/core-01-editor-prototype.html
+  Phase A：单行 AppBar + Tool Rail + 可折叠 Inspector + 空白引导
+-->
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <title>coldrawdb — Editor Prototype V2 (Phase A)</title>
+  <style>
+    :root {
+      --cdb-color-primary: #175e7a;
+      --cdb-color-primary-hover: #134c63;
+      --cdb-color-primary-bg: #e6f1f5;
+      --cdb-color-success: #10b981;
+      --cdb-color-warning: #f59e0b;
+      --cdb-color-error: #ef4444;
+      --cdb-color-text: #1f2937;
+      --cdb-color-text-muted: #6b7280;
+      --cdb-color-border: #e5e7eb;
+      --cdb-color-bg: #ffffff;
+      --cdb-color-bg-subtle: #f9fafb;
+      --cdb-color-bg-canvas: #f3f4f6;
+      --cdb-space-1: 4px; --cdb-space-2: 8px; --cdb-space-3: 12px;
+      --cdb-space-4: 16px; --cdb-space-6: 24px; --cdb-space-8: 32px;
+      --cdb-text-xs: 11px; --cdb-text-sm: 12px; --cdb-text-base: 14px;
+      --cdb-text-lg: 16px; --cdb-text-xl: 18px;
+      --cdb-radius-sm: 4px; --cdb-radius-md: 6px; --cdb-radius-lg: 8px;
+      --cdb-shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+      --cdb-shadow-md: 0 4px 6px rgba(0,0,0,0.07);
+      --cdb-shadow-lg: 0 10px 15px rgba(0,0,0,0.1);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: var(--cdb-color-text);
+      background: var(--cdb-color-bg-canvas);
+      font-size: var(--cdb-text-base);
+      height: 100vh; overflow: hidden;
+    }
+
+    /* === V2 App layout === */
+    .cdb-app {
+      display: grid;
+      grid-template-rows: 48px 1fr 28px;
+      height: 100vh;
+    }
+    .cdb-main {
+      display: grid;
+      grid-template-columns: 48px 1fr 320px;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .cdb-main.cdb-is-inspector-collapsed {
+      grid-template-columns: 48px 1fr 0;
+    }
+
+    /* === AppBar === */
+    .cdb-app-bar {
+      background: var(--cdb-color-bg);
+      border-bottom: 1px solid var(--cdb-color-border);
+      box-shadow: var(--cdb-shadow-sm);
+      padding: 0 var(--cdb-space-4);
+      display: flex;
+      align-items: center;
+      gap: var(--cdb-space-3);
+      height: 48px;
+    }
+    .cdb-logo-mark {
+      width: 28px; height: 28px; border-radius: var(--cdb-radius-md);
+      background: var(--cdb-color-primary); color: white;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: var(--cdb-text-sm); font-weight: 700;
+    }
+    .cdb-diagram-title {
+      font-weight: 600; padding: var(--cdb-space-1) var(--cdb-space-2);
+      border: 1px solid transparent; border-radius: var(--cdb-radius-sm);
+      cursor: text;
+    }
+    .cdb-diagram-title:hover { border-color: var(--cdb-color-border); }
+    .cdb-save-state { font-size: var(--cdb-text-sm); color: var(--cdb-color-success); }
+    .cdb-app-bar__spacer { flex: 1; }
+    .cdb-btn {
+      background: var(--cdb-color-bg); color: var(--cdb-color-text);
+      border: 1px solid var(--cdb-color-border);
+      padding: var(--cdb-space-1) var(--cdb-space-3);
+      border-radius: var(--cdb-radius-sm); cursor: pointer;
+      font-size: var(--cdb-text-sm);
+    }
+    .cdb-btn:hover { background: var(--cdb-color-bg-subtle); }
+    .cdb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .cdb-btn--icon { padding: var(--cdb-space-1) var(--cdb-space-2); }
+    .cdb-menu-item {
+      padding: var(--cdb-space-1) var(--cdb-space-2);
+      font-size: var(--cdb-text-sm); cursor: pointer;
+      border-radius: var(--cdb-radius-sm);
+    }
+    .cdb-menu-item:hover { background: var(--cdb-color-bg-subtle); }
+
+    /* === Tool Rail === */
+    .cdb-tool-rail {
+      background: var(--cdb-color-bg);
+      border-right: 1px solid var(--cdb-color-border);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: var(--cdb-space-2) 0;
+      gap: var(--cdb-space-1);
+    }
+    .cdb-tool-btn {
+      width: 36px; height: 36px;
+      border: 1px solid transparent;
+      border-radius: var(--cdb-radius-sm);
+      background: transparent;
+      cursor: pointer;
+      font-size: 16px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .cdb-tool-btn:hover { background: var(--cdb-color-bg-subtle); }
+    .cdb-tool-btn.cdb-is-active {
+      background: var(--cdb-color-primary-bg);
+      border-color: var(--cdb-color-primary);
+      color: var(--cdb-color-primary);
+    }
+    .cdb-tool-rail__divider {
+      width: 28px; height: 1px;
+      background: var(--cdb-color-border);
+      margin: var(--cdb-space-1) 0;
+    }
+    .cdb-issues-badge {
+      width: 36px; height: 36px;
+      border-radius: var(--cdb-radius-sm);
+      background: #fef2f2;
+      color: var(--cdb-color-error);
+      font-size: var(--cdb-text-xs);
+      font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+    }
+
+    /* === Canvas === */
+    .cdb-canvas-wrap {
+      position: relative;
+      background: var(--cdb-color-bg-canvas);
+      overflow: hidden;
+      background-image:
+        linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+    .cdb-empty-guide {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--cdb-color-bg);
+      border-radius: var(--cdb-radius-lg);
+      box-shadow: var(--cdb-shadow-lg);
+      padding: var(--cdb-space-8);
+      text-align: center;
+      z-index: 2;
+    }
+    .cdb-empty-guide h2 {
+      font-size: var(--cdb-text-lg);
+      margin-bottom: var(--cdb-space-4);
+    }
+    .cdb-empty-guide .cdb-btn { margin: var(--cdb-space-2); }
+    .cdb-table-card {
+      position: absolute;
+      background: var(--cdb-color-bg);
+      border: 1px solid #d1d5db;
+      border-radius: var(--cdb-radius-md);
+      min-width: 200px;
+      box-shadow: var(--cdb-shadow-sm);
+    }
+    .cdb-table-card.cdb-is-selected {
+      border-color: var(--cdb-color-primary);
+      box-shadow: 0 0 0 2px var(--cdb-color-primary-bg);
+    }
+    .cdb-table-header {
+      background: var(--cdb-color-primary); color: white;
+      padding: var(--cdb-space-2);
+      font-weight: 600; font-size: var(--cdb-text-sm);
+      border-radius: var(--cdb-radius-md) var(--cdb-radius-md) 0 0;
+    }
+    .cdb-field-row {
+      padding: var(--cdb-space-1) var(--cdb-space-2);
+      font-size: var(--cdb-text-sm);
+      border-bottom: 1px solid var(--cdb-color-bg-subtle);
+      display: flex; justify-content: space-between;
+      cursor: pointer;
+    }
+    .cdb-field-row.cdb-is-selected { background: var(--cdb-color-primary-bg); }
+    .cdb-field-pk { color: var(--cdb-color-warning); font-weight: 600; }
+    .cdb-floating-controls {
+      position: absolute; bottom: var(--cdb-space-4); right: var(--cdb-space-4);
+      display: flex; gap: var(--cdb-space-1);
+      background: var(--cdb-color-bg);
+      border: 1px solid var(--cdb-color-border);
+      border-radius: var(--cdb-radius-md);
+      padding: var(--cdb-space-1);
+      box-shadow: var(--cdb-shadow-md);
+    }
+
+    /* === Inspector === */
+    .cdb-inspector {
+      background: var(--cdb-color-bg);
+      border-left: 1px solid var(--cdb-color-border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .cdb-inspector__header {
+      padding: var(--cdb-space-3) var(--cdb-space-4);
+      border-bottom: 1px solid var(--cdb-color-border);
+      font-weight: 600;
+      font-size: var(--cdb-text-sm);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .cdb-inspector__body {
+      flex: 1;
+      overflow-y: auto;
+      padding: var(--cdb-space-4);
+    }
+    .cdb-form-group {
+      margin-bottom: var(--cdb-space-3);
+    }
+    .cdb-form-group label {
+      display: block;
+      font-size: var(--cdb-text-xs);
+      color: var(--cdb-color-text-muted);
+      margin-bottom: var(--cdb-space-1);
+    }
+    .cdb-form-group input, .cdb-form-group select {
+      width: 100%;
+      padding: var(--cdb-space-1) var(--cdb-space-2);
+      border: 1px solid var(--cdb-color-border);
+      border-radius: var(--cdb-radius-sm);
+      font-size: var(--cdb-text-sm);
+    }
+    .cdb-checkbox-row {
+      display: flex; gap: var(--cdb-space-3);
+      font-size: var(--cdb-text-sm);
+      margin: var(--cdb-space-3) 0;
+    }
+
+    /* === StatusBar === */
+    .cdb-status-bar {
+      background: var(--cdb-color-bg);
+      border-top: 1px solid var(--cdb-color-border);
+      padding: 0 var(--cdb-space-4);
+      height: 28px;
+      display: flex;
+      align-items: center;
+      gap: var(--cdb-space-4);
+      font-size: var(--cdb-text-xs);
+      color: var(--cdb-color-text-muted);
+    }
+    .cdb-status-bar__spacer { flex: 1; }
+    .cdb-rev-tag {
+      font-size: var(--cdb-text-xs);
+      color: var(--cdb-color-text-muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="cdb-app">
+    <!-- AppBar -->
+    <header class="cdb-app-bar" data-testid="app-bar">
+      <span class="cdb-logo-mark">C</span>
+      <span class="cdb-diagram-title" data-testid="diagram-title">电商 ER 图</span>
+      <span class="cdb-save-state" data-testid="save-state">● 已保存 · 2分钟前</span>
+      <button class="cdb-btn" data-testid="btn-import" disabled title="导入功能即将推出">导入</button>
+      <button class="cdb-btn" data-testid="btn-export">导出 ▾</button>
+      <button class="cdb-btn cdb-btn--icon" data-testid="btn-undo" title="撤销">↶</button>
+      <button class="cdb-btn cdb-btn--icon" data-testid="btn-redo" title="重做">↷</button>
+      <button class="cdb-btn" data-testid="btn-share">分享</button>
+      <span class="cdb-app-bar__spacer"></span>
+      <span class="cdb-menu-item">File ▾</span>
+      <span class="cdb-menu-item">Edit ▾</span>
+      <span class="cdb-menu-item">View ▾</span>
+      <span class="cdb-menu-item">Help ▾</span>
+      <button class="cdb-btn cdb-btn--icon" data-testid="btn-settings" title="设置">⚙</button>
+    </header>
+
+    <div class="cdb-main">
+      <!-- Tool Rail -->
+      <nav class="cdb-tool-rail" data-testid="tool-rail">
+        <button class="cdb-tool-btn cdb-is-active" title="选择" data-testid="tool-select">↖</button>
+        <button class="cdb-tool-btn" title="新建" data-testid="tool-new-menu">⊕</button>
+        <button class="cdb-tool-btn" title="关系工具 (Phase B)" data-testid="tool-relationship">🔗</button>
+        <button class="cdb-tool-btn" title="平移" data-testid="tool-pan">✋</button>
+        <div class="cdb-tool-rail__divider"></div>
+        <div class="cdb-issues-badge" title="3 个问题" data-testid="tool-issues-badge">3</div>
+      </nav>
+
+      <!-- Canvas -->
+      <main class="cdb-canvas-wrap" data-testid="editor-canvas">
+        <!-- 空白引导（零表时显示；本原型同时展示供评审） -->
+        <div class="cdb-empty-guide" data-testid="canvas-empty-guide" style="display:none;">
+          <h2>开始设计你的数据库</h2>
+          <button class="cdb-btn" data-testid="guide-create-table">+ 创建第一张表</button>
+          <button class="cdb-btn" disabled>↑ 导入 SQL</button>
+        </div>
+
+        <div class="cdb-table-card cdb-is-selected" style="top:80px; left:120px;">
+          <div class="cdb-table-header">users</div>
+          <div class="cdb-field-row cdb-is-selected"><span class="cdb-field-pk">id</span><span>INT</span></div>
+          <div class="cdb-field-row"><span>email</span><span>VARCHAR(255)</span></div>
+        </div>
+        <div class="cdb-table-card" style="top:240px; left:400px;">
+          <div class="cdb-table-header">orders</div>
+          <div class="cdb-field-row"><span class="cdb-field-pk">id</span><span>INT</span></div>
+          <div class="cdb-field-row"><span>user_id</span><span>INT</span></div>
+        </div>
+
+        <div class="cdb-floating-controls" data-testid="floating-controls">
+          <button class="cdb-btn cdb-btn--icon">−</button>
+          <span style="font-size:12px;padding:0 4px;">100%</span>
+          <button class="cdb-btn cdb-btn--icon">+</button>
+        </div>
+      </main>
+
+      <!-- Inspector -->
+      <aside class="cdb-inspector" data-testid="inspector-panel">
+        <div class="cdb-inspector__header">
+          <span>字段：id</span>
+          <button class="cdb-btn cdb-btn--icon" data-testid="btn-inspector-close">×</button>
+        </div>
+        <div class="cdb-inspector__body">
+          <div class="cdb-form-group">
+            <label>名称</label>
+            <input value="id" data-testid="inspector-field-name" />
+          </div>
+          <div class="cdb-form-group">
+            <label>类型</label>
+            <select data-testid="inspector-field-type"><option>INT</option><option>VARCHAR</option></select>
+          </div>
+          <div class="cdb-checkbox-row">
+            <label><input type="checkbox" checked data-testid="inspector-field-pk" /> 主键</label>
+            <label><input type="checkbox" /> 唯一</label>
+            <label><input type="checkbox" checked /> 非空</label>
+            <label><input type="checkbox" checked /> 自增</label>
+          </div>
+          <div class="cdb-form-group">
+            <label>默认值</label>
+            <input placeholder="" />
+          </div>
+          <div class="cdb-form-group">
+            <label>注释</label>
+            <input placeholder="" />
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- StatusBar -->
+    <footer class="cdb-status-bar" data-testid="status-bar">
+      <span>缩放 100%</span>
+      <span>2 张表 / 1 条关系</span>
+      <span>db: generic</span>
+      <span class="cdb-rev-tag" data-testid="revision-display">rev: 5</span>
+      <span class="cdb-status-bar__spacer"></span>
+      <button class="cdb-btn cdb-btn--icon" data-testid="btn-inspector-toggle" title="折叠 Inspector">◀</button>
+    </footer>
+  </div>
+</body>
+</html>
+```

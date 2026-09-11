@@ -1,0 +1,180 @@
+# Delta: api/rooms.yaml
+
+> 提案：feat-room-recycle-bin-dropdown-and-db-export
+
+## MODIFIED — path: /api/v1/rooms (get)
+
+`GET /api/v1/rooms` 的 `get` 操作整体替换为（新增 `archived` 查询参数，其余不变）：
+
+```yaml
+    get:
+      summary: List rooms for current user
+      description: |
+        返回当前用户作为成员的 room 列表（`/rooms` 页面）。
+        默认仅含 active room（`archived_at IS NULL`）。
+        `archived=true` 时返回回收站：当前用户作为 **owner** 的已归档 room 列表，
+        按 `archived_at` 倒序；非 owner 的归档房间不出现在回收站。
+      operationId: listRooms
+      tags: [rooms]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: archived
+          in: query
+          required: false
+          description: "true 时返回回收站（已归档且本人为 owner 的房间）；缺省或 false 返回 active 房间"
+          schema:
+            type: boolean
+            default: false
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/OffsetParam'
+      responses:
+        '200':
+          description: Room list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+```
+
+## ADDED — path: /api/v1/rooms/{roomId}/restore
+
+在 `paths:` 下追加：
+
+```yaml
+  /api/v1/rooms/{roomId}/restore:
+    parameters:
+      - $ref: '#/components/parameters/RoomId'
+    post:
+      summary: Restore an archived room from recycle bin
+      description: |
+        Owner only。清除 `room.archived_at`，房间回到 active 列表，diagram 与 room 恢复绑定。
+        若该 diagram 已绑定其他 active room（部分唯一索引 `idx_room_diagram_active` 冲突）返回 409。
+      operationId: restoreRoom
+      tags: [rooms]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Room restored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Only owner may restore room
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: FORBIDDEN
+                message: 仅房间 owner 可恢复房间
+        '404':
+          description: Room not found or not archived
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: ROOM_NOT_FOUND
+                message: 房间不存在或不在回收站
+        '409':
+          description: Diagram already bound to another active room
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomDiagramTakenError'
+              example:
+                code: ROOM_DIAGRAM_TAKEN
+                message: 该 diagram 已在其他协作房间中，无法恢复
+                existingRoomId: 550e8400-e29b-41d4-a716-446655440000
+        '500':
+          $ref: '#/components/responses/InternalError'
+```
+
+## ADDED — path: /api/v1/rooms/{roomId}/permanent
+
+在 `paths:` 下追加：
+
+```yaml
+  /api/v1/rooms/{roomId}/permanent:
+    parameters:
+      - $ref: '#/components/parameters/RoomId'
+    delete:
+      summary: Permanently delete an archived room (hard delete)
+      description: |
+        Owner only，且房间须处于已归档（回收站）状态——active 房间须先经 `DELETE /rooms/{id}` 归档，
+        防止绕过回收站误删。
+        物理删除 room 行；`room_member` / `room_invite` 经 `ON DELETE CASCADE` 级联删除；
+        **diagram 数据保留**（不删 diagram 及其表/关系）。
+      operationId: permanentlyDeleteRoom
+      tags: [rooms]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Room permanently deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Only owner may permanently delete room
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: FORBIDDEN
+                message: 仅房间 owner 可彻底删除房间
+        '404':
+          description: Room not found or not archived
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: ROOM_NOT_FOUND
+                message: 房间不存在或不在回收站
+        '500':
+          $ref: '#/components/responses/InternalError'
+```
+
+## MODIFIED — components/schemas: RoomSummary
+
+`RoomSummary` 增加可空 `archivedAt` 字段（回收站列表展示归档时间；active 列表中为 null）：
+
+```yaml
+    RoomSummary:
+      type: object
+      required: [id, name, diagramId, diagramTitle, myRole, memberCount, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        diagramId:
+          type: string
+          format: uuid
+        diagramTitle:
+          type: string
+        myRole:
+          $ref: '#/components/schemas/RoomRole'
+        memberCount:
+          type: integer
+          minimum: 1
+        updatedAt:
+          type: string
+          format: date-time
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "归档时间；仅 archived=true 列表非空"
+```

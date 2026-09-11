@@ -1,0 +1,212 @@
+project:
+  name: "coldrawdb"
+  description: "自托管、浏览器端的数据库 ER 图设计工具（Rust Web 重写版 drawdb）"
+  methodology: "OpenLogos"
+
+tech_stack:
+  frontend_language: "Rust + Leptos 0.x"
+  frontend_build: "trunk"
+  frontend_rendering: "HTML5 Canvas（自绘）"
+  backend_language: "Rust + actix-web 4"
+  backend_runtime: "tokio"
+  database: "SQLite（WAL 模式）"
+  orm: "SeaORM"
+  serialization: "serde + JSON"
+  config: "TOML"
+  logging: "tracing + tracing-subscriber"
+  testing: "cargo test（unit + integration）"
+  cors: "actix-cors（strict 模式）"
+
+scenario_counter:
+  next_id: 8
+
+scenarios:
+  - id: S01
+    name: 编辑并保存图表
+    status: launched
+    priority: P0
+    version: V1
+  - id: S02
+    name: 加载分享链接图表
+    status: launched
+    priority: P1
+    version: V1
+  - id: S03
+    name: 用户注册 / 登录 / Token 续期
+    status: in-progress
+    priority: P2
+    version: V2
+  - id: S04
+    name: 创建/加入协作房间
+    status: in-progress
+    priority: P2
+    version: V2
+  - id: S05
+    name: OT 实时协作
+    status: in-progress
+    priority: P2
+    version: V2
+  - id: S06
+    name: AI 客户端通过 MCP 管理数据库图表
+    status: in-progress
+    priority: P1
+    version: V3
+  - id: S07
+    name: 管理数据字典并绑定字段
+    status: in-progress
+    priority: P1
+    version: V3
+
+external_dependencies: []
+
+modules:
+  - id: core
+    name: 核心功能
+    lifecycle: launched
+    bootstrap: adopted
+    skip_phases: [api, database, scenario]
+    deployment_required: true
+
+deployment_gates:
+  core:
+    deployment_required: true
+    smoke_required: true
+    environments:
+      - staging
+
+resource_index:
+  # Phase 1 — 需求文档
+  - path: logos/resources/prd/1-product-requirements/core-00-scenario-overview.md
+    desc: 场景总览（S01~S05 全量），含场景索引、图谱、文档映射。涉及场景编号与 Phase 1/2/3 衔接时必读。
+  - path: logos/resources/prd/1-product-requirements/core-01-requirements.md
+    desc: V1 产品需求（US/FR/NFR + 场景总览 + 约束与边界 + 验收）。涉及需求追溯、FR 编号、NFR 度量时必读。
+  - path: logos/resources/prd/1-product-requirements/core-02-product-vision.md
+    desc: 产品背景与目标（定位 / 用户画像 / 成功指标）。涉及产品定位、launch gate、目标用户时必读。
+  - path: logos/resources/prd/1-product-requirements/core-03-pain-points.md
+    desc: 用户痛点分析（P01~P04 因果链）。涉及痛点溯源、场景关联锚点时必读。
+  - path: logos/resources/prd/1-product-requirements/core-04-scenario-detail.md
+    desc: 核心场景详述（S01/S02 GIVEN/WHEN/THEN）。涉及 V1 场景验收条件时必读。
+  - path: logos/resources/prd/1-product-requirements/core-S06-mcp-service-requirements.md
+    desc: S06 MCP 产品需求、用户故事、FR/NFR、安全边界与验收。
+
+  # Phase 2 — 产品设计（17 份功能规格 + 1 份原型）
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-00-information-architecture.md
+    desc: 信息架构（顶层布局 / 路由 / 模块）。涉及页面结构、UI 层 z-index 时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-01-editor-canvas.md
+    desc: 编辑器画布总规格（9 类对象 + 11 个交互手势）。涉及画布渲染、性能预算时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-01a-table-and-field.md
+    desc: 表与字段编辑规格（CAP-CANVAS-01/02）。涉及表/字段交互时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-01b-relationship.md
+    desc: 关系编辑规格（CAP-CANVAS-03）。涉及关系连线/端点编辑时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-01c-index-enum-custom-type.md
+    desc: 索引 / 枚举 / 自定义类型规格（CAP-CANVAS-04/07/08）。涉及索引/枚举编辑时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-01d-import-export.md
+    desc: 导入/导出 IO 抽屉规格（redesign-phase-c）。涉及 IO 抽屉交互时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-02-diagram-persistence.md
+    desc: 图表持久化规格（diagram CRUD + revision 乐观锁）。涉及 409 冲突处理时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-03-bridge-io.md
+    desc: 桥接层 IO 规格（7 引擎 SQL + DBML + JSON）。涉及导入导出能力时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-04-side-panel-tabs.md
+    desc: 侧栏 7 Tab + 搜索/筛选规格。涉及侧栏交互时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-05-top-menu-modals.md
+    desc: AppBar + 6 模态规格（New/Open/Share/Rename/Settings/Confirm）。涉及顶栏/模态交互时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-07-design-tokens.md
+    desc: 设计 token 体系（13 类约 100 个 `--cdb-*` CSS 变量）。涉及样式取值时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-08-icon-library.md
+    desc: SVG 图标库规格。涉及图标选型/命名时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-09-core-components.md
+    desc: 8 类核心组件规格（Button/Modal/Dropdown/Tooltip/Popover/Tag/Collapse/SideSheet）。涉及组件复用时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-0a-code-editor.md
+    desc: Monaco 代码编辑器 + DBML setup 规格（E4）。涉及代码编辑场景时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-0b-dark-mode.md
+    desc: 暗色模式规格（`<html data-mode="light|dark">`）。涉及主题切换时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-0c-motion.md
+    desc: 动效 token + 过渡/微交互规格。涉及动效取值时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-S01-edit-and-save-design.md
+    desc: S01 编辑并保存图表交互设计（自动保存 / Inspector / 409 冲突）。涉及 S01 页面交互、验收条件细化时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-S02-load-shared-diagram-design.md
+    desc: S02 加载分享链接图表交互设计（Share 模态 / ?share= URL）。涉及 S02 分享加载、错误分支时必读。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-S03-user-auth-design.md
+    desc: S03 用户注册/登录/Token 续期交互设计（JWT + refresh + user-menu）。涉及 V2 鉴权、S04/S05 前置时必读。
+  - path: logos/resources/prd/2-product-design/2-page-design/core-03-auth-prototype.html
+    desc: S03 历史鉴权原型，仅供差异参考；现行唯一评审入口为 core-01-editor-prototype.html，不作为验收入口。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-S04-room-lifecycle-design.md
+    desc: S04 创建/加入协作房间交互设计（角色/邀请/成员管理）。涉及 V2 房间生命周期、S05 前置时必读。
+  - path: logos/resources/prd/2-product-design/2-page-design/core-04-collab-prototype.html
+    desc: S04 历史房间原型，存在未绑定演示控件；现行唯一评审入口为 core-01-editor-prototype.html，不作为验收入口。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-S05-ot-collab-design.md
+    desc: S05 OT 实时协作交互设计（WS/presence/远端 op/重连）。涉及 V2 collab-server、与 S01 409 差异时必读。
+  - path: logos/resources/prd/2-product-design/2-page-design/core-05-ot-collab-prototype.html
+    desc: S05 历史 OT 原型，存在未绑定 ToolRail 控件；现行唯一评审入口为 core-01-editor-prototype.html，不作为验收入口。
+  - path: logos/resources/prd/2-product-design/2-page-design/core-00-prototype-shared.css
+    desc: HTML 原型共享样式（token / 图标 / focus / 暗色模式 / reduced-motion）。5 个原型页面共用，修改视觉基线时必读。
+  - path: logos/resources/prd/2-product-design/2-page-design/core-01-editor-prototype.html
+    desc: S01～S05 唯一现行 HTML 可交互主原型；断网单文件运行，包含鉴权、房间、编辑器与 OT 模拟器。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-S06-mcp-service-design.md
+    desc: S06 MCP stdio 生命周期、七个工具、错误体验与四客户端配置。
+  - path: logos/resources/prd/2-product-design/1-feature-specs/core-01e-data-dictionary.md
+    desc: S07 数据字典规格（代码映射字典 CRUD / 字典项 value-label / 字段绑定 / Markdown 导出）。涉及字典管理、字段 dict_code 绑定时必读。
+
+  # Phase 3-0 — 技术架构
+  - path: logos/resources/prd/3-technical-plan/1-architecture/core-01-architecture-overview.md
+    desc: 系统架构概要（系统上下文 / 前端 4 模块 / 后端 11 子模块 / 11 张表 / 数据流 / 技术选型 / 非功能约束 / 外部依赖）。涉及技术栈、模块边界、性能预算时必读。
+
+  # Phase 3-2 — API 规格（V2 增量）
+  - path: logos/resources/api/auth.yaml
+    desc: S03 鉴权 API 规格（OpenAPI 3.x，5 端点 register/login/refresh/logout/me）。涉及 JWT/Cookie 认证、错误码设计时必读。
+  - path: logos/resources/api/rooms.yaml
+    desc: S04 协作房间 API 规格（OpenAPI 3.x，11 端点 room/invite/member CRUD）。涉及房间生命周期、邀请链接、成员权限时必读。
+  - path: logos/resources/api/collab.yaml
+    desc: S05 OT 协作 API 规格（WebSocket 帧协议 + collab head/ops REST + checkpoint 头约定）。涉及 collab-server、WS 客户端实现时必读。
+
+  # Phase 3-2 — 数据库（V2 增量）
+  - path: logos/resources/database/coldrawdb-v2-auth.sql
+    desc: V2 鉴权 DDL（user + auth_token）。涉及 S03 用户表、refresh token 存储时必读。
+  - path: logos/resources/database/coldrawdb-v2-rooms.sql
+    desc: V2 协作房间 DDL（room + room_member + room_invite）。涉及 S04 房间/成员/邀请表结构时必读。
+  - path: logos/resources/database/coldrawdb-v2-collab.sql
+    desc: V2 OT 协作 DDL（operation + operation_log + room_collab_head）。涉及 S05 collab-server 持久化时必读。
+
+  # Phase 3-1 — 场景建模（本次新增）
+  - path: logos/resources/prd/3-technical-plan/2-scenario-implementation/core-00-scenario-overview.md
+    desc: Phase 3 技术实现状态总览（V1 ✅ / V2 deferred 场景地图 + 依赖关系 + 场景索引）。涉及 Phase 3 Step 1 完成度、API 推导、跨场景依赖时必读。
+  - path: logos/resources/prd/3-technical-plan/2-scenario-implementation/core-S01-edit-and-save-diagram.md
+    desc: S01 编辑并保存图表场景时序图（含 Mermaid + 步骤详解 + 错误处理 + 性能资源 + 测试映射 + V1 边界）。涉及 S01 实现细节、API 设计、异常分支时必读。
+  - path: logos/resources/prd/3-technical-plan/2-scenario-implementation/core-S02-load-shared-diagram.md
+    desc: S02 加载分享链接图表场景时序图（含 Mermaid + 步骤详解 + 错误处理 + 性能资源 + 与 S01 对比）。涉及 S02 实现细节、API 设计、异常分支时必读。
+  - path: logos/resources/prd/3-technical-plan/2-scenario-implementation/core-S03-user-auth.md
+    desc: S03 用户鉴权场景时序图（注册/登录/refresh/logout + JWT/Argon2 + 异常用例 + API 推导）。涉及 V2 鉴权 API/DB 设计时必读。
+  - path: logos/resources/prd/3-technical-plan/2-scenario-implementation/core-S04-room-lifecycle.md
+    desc: S04 协作房间场景时序图（创建/邀请/接受/成员管理 + 角色权限 + API 推导）。涉及 V2 rooms API/DB 设计时必读。
+  - path: logos/resources/prd/3-technical-plan/2-scenario-implementation/core-S05-ot-collab.md
+    desc: S05 OT 实时协作场景时序图（WS 连接/op 广播/OT 合并/重连 sync/checkpoint + WS 协议推导）。涉及 collab-server、S05 API 设计时必读。
+  - path: logos/resources/prd/3-technical-plan/2-scenario-implementation/core-S06-ai-client-mcp.md
+    desc: S06 initialize、读写、revision 冲突与删除审批时序图。
+  - path: logos/resources/prd/3-technical-plan/2-scenario-implementation/core-S07-data-dictionary.md
+    desc: S07 数据字典时序图（字典 CRUD/字段绑定/级联删除/Markdown 导出 + 异常用例 + JSON schema 增量）。涉及字典实现、快照持久化口径时必读。
+
+  # Phase 3-2 — MCP 工具契约
+  - path: logos/resources/api/mcp-tools.yaml
+    desc: S06 MCP 七工具 JSON Schema、annotations、错误映射与安全不变量。
+
+  # Phase 3-4b — API 编排测试（API 项目）
+  - path: logos/resources/scenario/core-S01-diagram-save.json
+    desc: S01 编辑保存 E2E API 编排测试（7 步 POST/PUT/GET/DELETE 链路，含 409 冲突覆盖）。涉及 S01 端到端验证、test-orchestrator 编排时必读。
+  - path: logos/resources/scenario/core-S02-shared-link-load.json
+    desc: S02 分享加载 E2E API 编排测试。涉及 S02 端到端验证、test-orchestrator 编排时必读。
+  - path: logos/resources/scenario/core-S04-room-lifecycle.json
+    desc: S04 协作房间 E2E API 编排测试（注册→room→邀请→accept→409→清理，17 步）。涉及 S04 端到端验证时必读。
+  - path: logos/resources/scenario/core-S05-ot-collab.json
+    desc: S05 OT 协作 E2E 编排测试（HTTP+WebSocket 混合，25 步：connect/op/remote_op/sync/READ_ONLY）。涉及 collab-server 验收时必读。
+  - path: logos/resources/scenario/core-S06-mcp-service.json
+    desc: S06 MCP stdio 端到端编排定义。
+
+  # Phase 3-4a — S06 测试
+  - path: logos/resources/test/core-S06-test-cases.md
+    desc: S06 MCP UT/ST、四客户端兼容与 OpenLogos reporter 契约。
+  - path: logos/resources/test/core-S07-test-cases.md
+    desc: S07 数据字典 UT/ST（CRUD/绑定/级联/导出/兼容/只读）与 reporter 契约。
+
+conventions:
+  - "遵循 OpenLogos 三层推进模型（Why → What → How）"
+  - "每次变更必须先创建 logos/changes/ 变更提案"

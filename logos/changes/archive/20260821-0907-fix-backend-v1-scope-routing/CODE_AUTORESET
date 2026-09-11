@@ -1,0 +1,1 @@
+{"ts":"2026-08-20T16:21:26.911Z","trigger":"merge","old_code":"## [code] 代码实现\n- [ ] 修改 `backend/src/main.rs`：合并 5 个重复 `/api/v1` scope 为单一 scope，新增 `api_v1_routes` 统一配置函数\n- [ ] 重新编译后端 `cargo build --release`（smoke 用例 `SMOKE-core-07` 作为路由可达性的实际验证）"}

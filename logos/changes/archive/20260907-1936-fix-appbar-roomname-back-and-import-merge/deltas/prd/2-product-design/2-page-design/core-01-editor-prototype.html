@@ -1,0 +1,19 @@
+# Delta: core-01-editor-prototype.html
+
+> 提案：fix-appbar-roomname-back-and-import-merge
+
+## MODIFIED — 编辑器 AppBar（renderEditor appbar 段）
+
+**merge 时对原型 HTML 做三处修改**（生产对齐原型时的参照）：
+
+1. **显性返回入口**：`<header class="appbar">` 内、brand 之前插入（仅房间上下文 `state.roomId` 时渲染）：
+
+```html
+${state.roomId?`<button class="btn btn--ghost" data-action="go-rooms" data-testid="btn-back-to-rooms" title="返回空间列表">${icon("back","icon--sm")}空间</button>`:""}
+```
+
+2. **diagram-title 悬停全文**：`<input class="diagram-title">` 加 `title="${esc(state.diagram.title)}"`
+
+3. **room-badge 悬停全文**：`<button class="btn btn--ghost room-badge">` 加 `title="${esc(currentRoom.name)}（点击返回房间列表）"`
+
+> 说明：`.room-badge` 缩略 CSS（max-width 190px + strong ellipsis）原型已具备，本次仅补 title；`importModel` 本地合并语义与提案一致，无需改行为。若 `icon("back")` 图标不存在，用现有左箭头/返回图标代替。

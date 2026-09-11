@@ -1,0 +1,7 @@
+## ADDED — 位置：### 5.6 渲染性能预算（V1.1）性能需求表末尾（R-PERF-06 行之后）
+
+| R-PERF-07 | 表卡体精灵缓存：`draw_table` 拆为「卡体（投影/渐变/文字）」与「选中环（每帧活画）」。卡体按 `(表内容指纹, 主题, 真实 dpr, zoom 分档)` 缓存到离屏 canvas，拖动/平移期间每帧仅 `drawImage` 位块传输；指纹变更（编辑落账）才重光栅。zoom 分档 `k ∈ {1, 2}`（zoom≤1 取 1，否则取 2），sprite 比例 `s = 真实dpr × k`——backing 分辨率与主画布有效 dpr 解耦（位块传输按世界坐标 dw/dh 绘制，R-PERF-10 降采样时由 CTM 自然缩小），拖拽起止的有效 dpr 切换不触发全量精灵重渲染。zoom > 2（`SPRITE_CACHE_MAX_ZOOM`）回退活画。指纹为 FNV-1a（表名/颜色/宽度/最小高/字段名/类型/主键 + 主题 + dpr×100 + 分档），坐标不进指纹 |
+| R-PERF-08 | 渲染 effect 的 DOM 写守护：`follow_path` / `rubber_d` 信号与 `data-follow-path` 属性仅在值变化时写入（与上一帧字符串比较，`dom_write_guard` 纯函数），消除每帧 Leptos SVG 更新与属性序列化空转 |
+| R-PERF-09 | endpoint_drag 空写守卫：关系端点拖动中最近字段 id 未变化时不调 `store.references.set`，避免每 pointermove 整 Vec 落账 + 订阅者通知 |
+| R-PERF-10 | 拖拽降采样渲染：任意拖拽活跃（`drag_state.is_some()`，含表/关系/便签/区域/框选/平移）期间有效 dpr 压到 `DRAG_RENDER_DPR_CAP = 1.0`（`capped_drag_dpr` 纯函数），松手后下一帧恢复全分辨率。绘制路径（backing store 换算 / CTM / clear_rect）统一经 `effective_device_pixel_ratio()` 读取 thread_local `RENDER_DPR`，保证同源一致；宿主单测无窗口时 fallback 1.0。精灵缓存例外：恒用真实 dpr（见 R-PERF-07），避免边界帧全量重光栅 |
+| R-PERF-11 | 表拖拽幽灵层（drag ghost overlay）：无关系线的表被拖时，主画布在拖拽期间**零重绘**——被拖表改由绝对定位的小 canvas（`data-testid="drag-ghost"`，卡体 sprite + outline 选中环）经 CSS `transform: translate()` 移动，pointermove 只改 transform（合成器-only），主画布每帧损伤区域缩到表卡大小。准入判定 `table_has_references`（有关系线的表线条需跟随，回退 R-PERF-10 逐帧路径）；拖拽中 zoom/pan 变化（wheel）时撤除幽灵层回退逐帧路径；pointerup / pointercancel / drag_state 置 None 的任一退出路径撤除幽灵层（`Drop` 兜底移除 DOM 节点）。幽灵层创建当帧重绘一次主画布以「抠出」被拖表（`draw_canvas` 的 `ghost_skip` 参数跳过该表） |

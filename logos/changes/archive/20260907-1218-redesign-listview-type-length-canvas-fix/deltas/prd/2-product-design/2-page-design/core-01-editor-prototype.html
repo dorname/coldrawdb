@@ -1,0 +1,67 @@
+## MODIFIED — typesForDatabase 函数（改基类型清单，对齐 core-01a §2.2 参数化口径）
+
+```js
+    function typesForDatabase(db){
+      if(db==="mysql")return["INT","BIGINT","VARCHAR","TEXT","DATETIME","DECIMAL"];
+      if(db==="postgresql")return["UUID","INT","BIGINT","SERIAL","VARCHAR","TEXT","BOOLEAN","TIMESTAMP","NUMERIC"];
+      return["UUID","INT","BIGINT","VARCHAR","TEXT","BOOLEAN"];
+    }
+```
+
+## ADDED — parseFieldType / composeFieldType 助手（参数化解析/合成）
+
+紧随 typesForDatabase 之后新增：
+
+```js
+    function parseFieldType(t){
+      const m=/^([A-Z]+)(?:\((\d+)(?:,(\d+))?\))?$/.exec(t||"");
+      return m?{base:m[1],len:m[2]||"",scale:m[3]||""}:{base:t||"",len:"",scale:""};
+    }
+    function composeFieldType(base,len,scale){
+      if(base==="VARCHAR")return`VARCHAR(${len||255})`;
+      if(base==="DECIMAL"||base==="NUMERIC")return`${base}(${len||10},${scale||2})`;
+      return base;
+    }
+```
+
+## MODIFIED — renderListView（重设计为 PDManer 式字段明细编辑网格）
+
+整函数替换为：
+
+```js
+    function renderListView() {
+      const tables=state.diagram.tables;
+      const sel=state.listSel||{};
+      const baseTypes=typesForDatabase(state.diagram.database);
+      const hasSelTable=!!sel.table, hasSelField=!!(sel.table&&sel.field);
+      return `<section class="list-view-panel" data-testid="list-view-panel"><header class="code-toolbar"><strong>列表视图 · ${tables.length} 张表</strong><span class="tag tag--brand">字段明细编辑</span><span class="appbar-spacer"></span><button class="btn btn--sm" data-action="list-add-field" data-testid="list-add-field" ${hasSelTable?"":"disabled"}>${icon("plus","icon--sm")}增字段</button><button class="btn btn--sm" data-action="list-del-field" data-testid="list-del-field" ${hasSelField?"":"disabled"}>${icon("trash","icon--sm")}删字段</button><button class="btn btn--sm" data-action="list-move-up" data-testid="list-move-up" ${hasSelField?"":"disabled"}>↑上移</button><button class="btn btn--sm" data-action="list-move-down" data-testid="list-move-down" ${hasSelField?"":"disabled"}>↓下移</button><button class="btn btn--sm" data-action="toggle-list" data-testid="btn-view-canvas">${icon("close","icon--sm")}返回画布</button></header><div class="list-view-scroll">${tables.length?`<table class="list-view-table"><thead><tr><th>字段代码</th><th>显示名称</th><th>主键</th><th>不为空</th><th>唯一</th><th>自增</th><th>数据类型</th><th>长度</th><th>小数位</th><th>说明</th></tr></thead><tbody>${tables.map(t=>`<tr class="list-view-group-header" data-testid="list-view-group-${t.id}" data-action="list-select-table" data-id="${t.id}"><td colspan="10">${esc(t.name)}（${t.fields.length} 字段）</td></tr>${t.fields.map(f=>{const p=parseFieldType(f.type);const isSel=hasSelField&&sel.field===f.id;const lenOn=p.base==="VARCHAR",scaleOn=p.base==="DECIMAL"||p.base==="NUMERIC";return `<tr class="${isSel?"is-selected":""}" data-testid="list-view-row-${t.id}-${f.id}" data-action="list-select-field" data-table="${t.id}" data-field="${f.id}"><td><input class="input" data-change="list-field-name" data-table="${t.id}" data-field="${f.id}" value="${esc(f.name)}"></td><td><input class="input" data-change="list-field-comment" data-table="${t.id}" data-field="${f.id}" value="${esc(f.comment||"")}"></td><td><input type="checkbox" data-change="list-field-pk" data-table="${t.id}" data-field="${f.id}" ${f.pk?"checked":""}></td><td><input type="checkbox" data-change="list-field-nn" data-table="${t.id}" data-field="${f.id}" ${f.nn?"checked":""}></td><td><input type="checkbox" data-change="list-field-uq" data-table="${t.id}" data-field="${f.id}" ${f.uq?"checked":""}></td><td><input type="checkbox" data-change="list-field-auto" data-table="${t.id}" data-field="${f.id}" ${f.auto?"checked":""}></td><td><select class="select" data-change="list-field-type" data-table="${t.id}" data-field="${f.id}">${[p.base,...baseTypes].filter((v,i,a)=>a.indexOf(v)===i).map(bt=>`<option ${bt===p.base?"selected":""}>${bt}</option>`).join("")}</select></td><td><input class="input" style="width:56px" data-change="list-field-len" data-table="${t.id}" data-field="${f.id}" value="${esc(p.len)}" ${lenOn?"":"disabled"}></td><td><input class="input" style="width:56px" data-change="list-field-scale" data-table="${t.id}" data-field="${f.id}" value="${esc(p.scale)}" ${scaleOn?"":"disabled"}></td><td><input class="input" data-change="list-field-tag" data-table="${t.id}" data-field="${f.id}" value="${esc(f.tag||"")}"></td></tr>`}).join("")}`).join("")}</tbody></table>`:`<div class="empty-inspector"><span class="brand-mark">${icon("table","icon--lg")}</span><strong>暂无数据表</strong><p>在画布上创建表后，这里会按表分组展示字段明细。</p></div>`}</div></section>`;
+    }
+```
+
+## ADDED — 列表视图编辑的状态与处理器
+
+1. state 增加 `listSel:null`（{table, field} 选中字段行）。
+2. data-change 处理器新增（文本类 blur 触发既有 change 通路，统一走 `commit(...)` 落账）：
+
+```js
+      const listEdit=(tableId,fieldId,fn)=>commit("编辑字段",()=>{const t=state.diagram.tables.find(x=>x.id===tableId);const f=t&&t.fields.find(x=>x.id===fieldId);if(f)fn(f,t);});
+      // list-field-name → f.name=v；list-field-comment → f.comment=v；list-field-tag → f.tag=v
+      // list-field-pk/nn/uq/auto → f[pk/nn/uq/auto]=checkbox.checked
+      // list-field-type → {const p=parseFieldType(f.type);f.type=composeFieldType(v,p.len,p.scale);}
+      // list-field-len → {const p=parseFieldType(f.type);f.type=composeFieldType(p.base,v,p.scale);}
+      // list-field-scale → {const p=parseFieldType(f.type);f.type=composeFieldType(p.base,p.len,v);}
+```
+
+3. data-action 处理器新增：
+   - `list-select-field` → `state.listSel={table,field}`（行高亮；不触发 commit）
+   - `list-add-field` → 在 `state.listSel.table`（缺省首张表）末尾 `commit("新增字段",...)` 追加 `{id:uid("f"),name:"new_field",type:composeFieldType(typesForDatabase(state.diagram.database)[0],"",""),pk:false,nn:false,uq:false,auto:false,comment:"",tag:""}`，并选中该行
+   - `list-del-field` → `commit("删除字段",...)` 移除 `state.listSel.field`，清空 listSel（可撤销）
+   - `list-move-up` / `list-move-down` → `commit("移动字段",...)` 字段在表内 index±1（越界不动）
+
+## MODIFIED — Inspector 字段类型下拉（适配基类型 + 参数保留）
+
+Inspector 字段卡片类型 `<select data-change="field-type">`：options 改为基类型比对——`${[parseFieldType(field.type).base,...typesForDatabase(state.diagram.database)].filter((v,i,a)=>a.indexOf(v)===i).map(type=>\`<option ${type===parseFieldType(field.type).base?"selected":""}>\${type}</option>\`).join("")}`；`field-type` change 处理器由直接赋值改为 `f.type=composeFieldType(v,parseFieldType(f.type).len,parseFieldType(f.type).scale)`（切基类型保留已配参数，缺省由 compose 补齐）。
+
+## MODIFIED — 样式补充
+
+`.list-view-table` 网格增加：行内 `.input/.select` 紧凑样式（padding:4px 6px）、`tr.is-selected` 高亮（左侧 2px 主题色边条 + 浅色底）、组头行 `td[colspan]` 背景区分；复选框列居中窄列。

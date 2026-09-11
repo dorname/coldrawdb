@@ -1,0 +1,12 @@
+# §8 perf — PUT P95
+# 测量时间: 2026-06-06
+# backend: release build, 32 workers, 127.0.0.1:6666
+# frontend: N/A (perf 测后端)
+# 工具: curl 循环 100 次 + python3 解析
+
+PUT P95: 0.84ms (阈值 < 500ms) ✓ ACHIEVED
+PUT P99: 1.00ms
+PUT P50: 0.64ms
+PUT Max: 1.00ms
+
+注: 本地 localhost 测量包含 revision check + transaction。生产环境 LAN 预期 p95 < 10ms，WAN 预期 p95 < 150ms，均远低于 500ms 阈值。

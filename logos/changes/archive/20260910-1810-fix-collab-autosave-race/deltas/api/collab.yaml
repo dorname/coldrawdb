@@ -1,0 +1,49 @@
+# Delta: collab.yaml（fix-collab-autosave-race · 方案 B 服务端物化单写者）
+
+## REMOVED — x-collab-checkpoint
+
+移除原因：协作持久化架构改为「op 落库即物化」（见 ADDED x-collab-materialization）。
+房间内写只走 WS op 通道，客户端全量快照 PUT（checkpoint）协议整体废弃；
+`PUT /api/v1/diagrams/{id}` 对 room 绑定 diagram 一律返回 409 USE_OP_CHANNEL，
+`X-Room-Id` / `X-Collab-Server-Rev` / `X-Collab-Snapshot-Hash` 头不再有消费者。
+
+## ADDED — x-collab-materialization
+
+```yaml
+x-collab-materialization:
+  description: |
+    S05.5（fix-collab-autosave-race 改写）— 房间内唯一事实源为服务端维护的 JSON 文档
+    （room_collab_head.doc_json，前端 Diagram JSON 形状），单写者、单方向数据流：
+    - op 落库即物化：append_op 事务内对 doc_json 做幂等 apply
+      （table/field/reference/area/note × create/update/delete，共 15 种；
+      table.create 的 changes 携带含字段全量表 JSON；table.update 合并除 fields 外所有键；
+      field.* 依 parentId 定位父表字段数组；其余扁平集合按 id upsert/delete）。
+    - doc_json 为 NULL（从未物化）时，首个 op 落库前从关系存储 load_diagram 初始化
+      （保真度与现行 GET 一致）。
+    - GET /api/v1/diagrams/{id}：diagram 绑定活跃 room 且已物化 → 返回 doc_json
+      （revision 注入当前 head server_rev）；否则走关系存储（非房间图行为不变）。
+    - PUT /api/v1/diagrams/{id}：diagram 绑定活跃 room → 409 USE_OP_CHANNEL；
+      写只走 WS op 通道。
+  invariants:
+    - op log 与 doc_json 恒一致（同事务），不存在快照/日志交错窗口
+    - 任何时刻全量加载（首连 / 刷新 / SYNC_GAP_TOO_LARGE 重载）读到 op log 一致状态
+    - viewer 只读语义不变（READ_ONLY）；非房间 diagram 的 S01/S02 保存路径不变
+```
+
+## ADDED — fields.reorder（第 16 种 op，字段换序 · verify 修复轮补充）
+
+背景：D 批 ST-SP-LIST-02 暴露 op 模型缺口——EntitySnapshot 以 id 为键，
+「字段换序」（同 id 集合、仅顺序变化）产生空 diff，无任何 op 上行，
+物化文档字段顺序永不更新。补齐第 16 种 op：
+
+```yaml
+# components/schemas/CollabOpType enum 追加：
+- fields.reorder
+```
+
+- **语义**：`targetId` = 表 id；`changes.fieldIds` = 该表字段 id 的**全量目标序**。
+- **物化规则**：按 `fieldIds` 顺序重排 `table.fields`；列表外的既有字段保持原相对序
+  追加到末尾（防御：op 与本地状态短暂分叉时仍收敛）；列表中不存在的 id 忽略。幂等。
+- **产出时机**：前端 diff 检测到同一表（非整表 create/delete）字段 id 序列变化时，
+  在 field create/update/delete 之后追加（同窗口增删+换序合并时仍收敛到目标序）。
+- `x-collab-materialization` description 中「共 15 种」相应改为「共 16 种（含 fields.reorder）」。

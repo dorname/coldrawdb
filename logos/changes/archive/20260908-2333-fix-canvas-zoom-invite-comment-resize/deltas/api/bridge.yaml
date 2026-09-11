@@ -1,0 +1,133 @@
+# Delta: bridge.yaml
+
+> 模块：core | 提案：fix-canvas-zoom-invite-comment-resize（问题3：数据库导入注释丢失 + 注释展示）
+
+`/api/v1/bridge/import/connect` 响应由 `{ engine, tables, ddl }`（DDL 文本）改为 `{ engine, table_count, tables }`（结构化表数组，含表/列 comment），前端复用 JSON 导入路径消费。
+
+## MODIFIED — paths（/api/v1/bridge/import/connect）
+
+```yaml
+  /api/v1/bridge/import/connect:
+    post:
+      summary: Introspect a real database and return structured tables JSON
+      description: |
+        Connects to a user-supplied database (SQLite file path on the server host,
+        or a PostgreSQL connection string), introspects its schema, and returns
+        structured table objects (persistence-JSON compatible, including table
+        and column comments) plus the table count. The frontend consumes the
+        tables array via the JSON import pipeline (parse_json_import_tables or a
+        light adapter); no DDL text round-trip is involved.
+        Requires the standard auth middleware (Bearer).
+        For PostgreSQL, the optional `schema` field scopes introspection to a
+        single schema (default `public`); tables/columns/PKs/FKs/comments are
+        read from that schema only, so same-named tables in other schemas never
+        leak in. Table comments come from obj_description(); column comments
+        from col_description(). SQLite has no COMMENT syntax: comment fields
+        are always empty strings (engine limitation, not an error).
+      operationId: importFromConnection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportConnectRequest'
+      responses:
+        '200':
+          description: "Introspection succeeded (tables may be empty with table_count 0)"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResp'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ImportConnectData'
+        '400':
+          description: "Validation error (unsupported engine or empty source)"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErr'
+        '502':
+          description: "Connection failed (file missing / unreachable / auth failed)"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErr'
+```
+
+## MODIFIED — components/schemas/ImportConnectData
+
+```yaml
+    ImportConnectData:
+      type: object
+      required: [engine, table_count, tables]
+      properties:
+        engine:
+          type: string
+          enum: [sqlite, postgres]
+        table_count:
+          type: integer
+          minimum: 0
+          description: "Number of business tables introspected (0 => tables is empty array)"
+        tables:
+          type: array
+          items:
+            $ref: '#/components/schemas/IntrospectedTable'
+```
+
+## REMOVED — components/schemas/ImportConnectData.ddl
+
+旧 `ddl` 字段（`type: string`，"Dialect DDL text (CREATE TABLE statements incl. PK/FK)"）与旧整数 `tables` 计数字段一并移除，由 `tables` 数组 / `table_count` 取代。
+
+## ADDED — components/schemas/IntrospectedTable / IntrospectedColumn
+
+```yaml
+    IntrospectedTable:
+      type: object
+      required: [name, fields]
+      properties:
+        name:
+          type: string
+          description: "Table name (unquoted identifier)"
+        comment:
+          type: string
+          description: "Table comment (PG obj_description); empty string when absent or SQLite"
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/IntrospectedColumn'
+    IntrospectedColumn:
+      type: object
+      required: [name, type]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          description: "Dialect type string, normalized (e.g. character varying(n) -> VARCHAR(n))"
+        primary:
+          type: boolean
+          description: "Part of primary key (each column of a composite PK is true)"
+          default: false
+        unique:
+          type: boolean
+          default: false
+        not_null:
+          type: boolean
+          default: false
+        increment:
+          type: boolean
+          default: false
+        default:
+          type: string
+          description: "Column default expression; empty string when absent"
+          default: ""
+        comment:
+          type: string
+          description: "Column comment (PG col_description); empty string when absent or SQLite"
+          default: ""
+```
+
+兼容性说明：响应结构变更属本提案刻意破坏（BREAKING）——前端数据库 Tab 与本提案同步改造（`core-01d` §4.4 第 3.5 条）；`export/execute` 端点请求体仍含 `ddl` 字符串，不受本变更影响。

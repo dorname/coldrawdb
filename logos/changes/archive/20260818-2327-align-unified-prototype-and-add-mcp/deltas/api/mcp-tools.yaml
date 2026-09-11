@@ -1,0 +1,369 @@
+schema_version: "1.0"
+proposal: align-unified-prototype-and-add-mcp
+scenario: S06
+protocol:
+  name: Model Context Protocol
+  transport: stdio
+  version_strategy: negotiate
+server:
+  name: coldrawdb-mcp
+  title: coldrawdb MCP
+  instructions: >-
+    仅操作 COLDRAWDB_BASE_URL 指向的 coldrawdb。修改前先读取最新 revision；
+    delete_diagram 具有破坏性并需用户批准；禁止把本服务用于任意 SQL、文件或 HTTP 访问。
+
+configuration:
+  COLDRAWDB_BASE_URL:
+    required: true
+    type: string
+    format: uri
+    allowed_schemes: [http, https]
+  COLDRAWDB_ACCESS_TOKEN:
+    required: false
+    type: string
+    secret: true
+  COLDRAWDB_REQUEST_TIMEOUT_SECS:
+    required: false
+    type: integer
+    minimum: 1
+    maximum: 120
+    default: 30
+
+tools:
+  - name: list_diagrams
+    title: 列出图表
+    description: 返回 coldrawdb 中最近的图表摘要，默认最多 100 条。
+    upstream:
+      method: GET
+      path: /diagrams/queryAll
+      compatibility: legacy
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      idempotentHint: true
+      openWorldHint: false
+    inputSchema:
+      type: object
+      additionalProperties: false
+      properties:
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 100
+        query:
+          type: string
+          maxLength: 64
+          description: adapter 侧按名称大小写不敏感过滤
+    outputSchema:
+      type: object
+      required: [items, count]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/schemas/DiagramSummary"
+        count:
+          type: integer
+          minimum: 0
+
+  - name: get_diagram
+    title: 获取图表
+    description: 按 id 获取完整 diagram 和 revision。
+    upstream:
+      method: GET
+      path: /api/v1/diagrams/{id}
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      idempotentHint: true
+      openWorldHint: false
+    inputSchema:
+      $ref: "#/schemas/DiagramIdInput"
+    outputSchema:
+      $ref: "#/schemas/DiagramResult"
+
+  - name: create_diagram
+    title: 创建图表
+    description: 创建空 diagram；复杂初始 schema 应使用 import_schema。
+    upstream:
+      method: POST
+      path: /api/v1/diagrams
+      request_shape: '{"name": string, "database"?: string}'
+    annotations:
+      readOnlyHint: false
+      destructiveHint: false
+      idempotentHint: false
+      openWorldHint: false
+    inputSchema:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        database:
+          type: string
+          minLength: 1
+          maxLength: 64
+    outputSchema:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+          minLength: 1
+
+  - name: update_diagram
+    title: 更新图表
+    description: 使用 expected_revision 全量保存 diagram；409 时不自动覆盖。
+    upstream:
+      method: PUT
+      path: /api/v1/diagrams/{id}
+      request_shape: '{"expected_revision": integer, "diagram": object}'
+    annotations:
+      readOnlyHint: false
+      destructiveHint: false
+      idempotentHint: false
+      openWorldHint: false
+    inputSchema:
+      type: object
+      additionalProperties: false
+      required: [id, expected_revision, diagram]
+      properties:
+        id:
+          type: string
+          minLength: 1
+        expected_revision:
+          type: integer
+          minimum: 0
+        diagram:
+          $ref: "#/schemas/Diagram"
+    outputSchema:
+      type: object
+      required: [id, revision]
+      properties:
+        id:
+          type: string
+        revision:
+          type: integer
+          minimum: 1
+
+  - name: delete_diagram
+    title: 删除图表
+    description: 软删除 diagram；客户端必须先获得用户批准，参数 confirm 还必须为 true。
+    upstream:
+      method: DELETE
+      path: /api/v1/diagrams/{id}
+      current_behavior: 当前后端对不存在 id 也返回成功，adapter 不虚构 NOT_FOUND
+    annotations:
+      readOnlyHint: false
+      destructiveHint: true
+      idempotentHint: true
+      openWorldHint: false
+    inputSchema:
+      type: object
+      additionalProperties: false
+      required: [id, confirm]
+      properties:
+        id:
+          type: string
+          minLength: 1
+        confirm:
+          const: true
+    outputSchema:
+      type: object
+      required: [id, deleted]
+      properties:
+        id:
+          type: string
+        deleted:
+          const: true
+
+  - name: import_schema
+    title: 导入 Schema
+    description: 将 drawdb JSON object 导入为新 diagram。
+    upstream:
+      method: POST
+      path: /api/v1/diagrams/import
+      request_shape: '{"source"?: string, "payload": object}'
+    annotations:
+      readOnlyHint: false
+      destructiveHint: false
+      idempotentHint: false
+      openWorldHint: false
+    inputSchema:
+      type: object
+      additionalProperties: false
+      required: [format, payload]
+      properties:
+        format:
+          const: drawdb_json
+        source:
+          type: string
+          maxLength: 64
+          default: mcp
+        payload:
+          type: object
+    outputSchema:
+      type: object
+      required: [diagram_id, imported_tables, imported_fields, warnings]
+      properties:
+        diagram_id:
+          type: string
+        imported_tables:
+          type: integer
+          minimum: 0
+        imported_fields:
+          type: integer
+          minimum: 0
+        warnings:
+          type: array
+          items:
+            type: string
+
+  - name: export_schema
+    title: 导出 Schema
+    description: 读取完整 diagram，并在本地确定性导出 JSON、DBML 或 SQL。
+    upstream:
+      method: GET
+      path: /api/v1/diagrams/{id}
+      post_process: pure_serializer
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      idempotentHint: true
+      openWorldHint: false
+    inputSchema:
+      type: object
+      additionalProperties: false
+      required: [id, format]
+      properties:
+        id:
+          type: string
+          minLength: 1
+        format:
+          enum: [json, dbml, mysql, postgresql, sqlite, mariadb, mssql, oracle, generic]
+    outputSchema:
+      type: object
+      required: [diagram_id, revision, format, mime_type, content]
+      properties:
+        diagram_id:
+          type: string
+        revision:
+          type: integer
+          minimum: 0
+        format:
+          type: string
+        mime_type:
+          type: string
+        content:
+          type: string
+
+schemas:
+  DiagramIdInput:
+    type: object
+    additionalProperties: false
+    required: [id]
+    properties:
+      id:
+        type: string
+        minLength: 1
+  DiagramSummary:
+    type: object
+    required: [id, name]
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      database:
+        type: [string, "null"]
+      revision:
+        type: integer
+        minimum: 0
+      updated_at:
+        type: [string, "null"]
+  DiagramResult:
+    type: object
+    required: [diagram]
+    properties:
+      diagram:
+        $ref: "#/schemas/Diagram"
+  Diagram:
+    type: object
+    required: [id, name]
+    additionalProperties: true
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      database:
+        type: [string, "null"]
+      revision:
+        type: integer
+        minimum: 0
+      tables:
+        type: array
+        items:
+          type: object
+      references:
+        type: array
+        items:
+          type: object
+      areas:
+        type: array
+        items:
+          type: object
+      notes:
+        type: array
+        items:
+          type: object
+  ToolError:
+    type: object
+    required: [code, message, retryable]
+    properties:
+      code:
+        enum:
+          - CONFIG_INVALID
+          - VALIDATION_ERROR
+          - UNAUTHENTICATED
+          - PERMISSION_DENIED
+          - NOT_FOUND
+          - REVISION_CONFLICT
+          - UPSTREAM_TIMEOUT
+          - UPSTREAM_UNAVAILABLE
+          - UPSTREAM_ERROR
+          - INTERNAL_ERROR
+      message:
+        type: string
+      retryable:
+        type: boolean
+      request_id:
+        type: string
+      details:
+        type: object
+        additionalProperties: true
+
+error_mapping:
+  local_validation: VALIDATION_ERROR
+  network_connect: UPSTREAM_UNAVAILABLE
+  network_timeout: UPSTREAM_TIMEOUT
+  http_400: VALIDATION_ERROR
+  http_401: UNAUTHENTICATED
+  http_403: PERMISSION_DENIED
+  http_404: NOT_FOUND
+  http_409: REVISION_CONFLICT
+  http_422: VALIDATION_ERROR
+  http_5xx: UPSTREAM_ERROR
+
+security_invariants:
+  - 不直接访问 SQLite 或 SeaORM
+  - 不提供任意 SQL、shell、文件或通用 HTTP 工具
+  - stdout 仅写 MCP 帧，日志仅写 stderr
+  - Authorization、Cookie、Token 在日志和 reporter 中必须脱敏
+  - 写工具不自动重试，409 不自动覆盖
+

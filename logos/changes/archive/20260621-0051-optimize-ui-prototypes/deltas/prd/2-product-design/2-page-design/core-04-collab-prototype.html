@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-mode="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>coldrawdb S04 协作房间原型</title>
+  <link rel="stylesheet" href="core-00-prototype-shared.css" />
+  <style>
+    :root {
+      --cdb-color-primary: #175e7a;
+      --cdb-color-primary-hover: #134c63;
+      --cdb-color-primary-soft: #e6f1f5;
+      --cdb-color-primary-on: #ffffff;
+      --cdb-color-text: #1f2937;
+      --cdb-color-text-muted: #6b7280;
+      --cdb-color-border: #e5e7eb;
+      --cdb-color-bg: #ffffff;
+      --cdb-color-bg-subtle: #f9fafb;
+      --cdb-color-bg-canvas: #f3f4f6;
+      --cdb-color-success: #10b981;
+      --cdb-color-warning: #f59e0b;
+      --cdb-color-error: #ef4444;
+      --cdb-color-info: #3b82f6;
+      --cdb-color-info-soft: #dbeafe;
+      --cdb-color-bg-overlay: rgba(0,0,0,.45);
+      --cdb-shadow-sm: 0 1px 3px rgba(0,0,0,.06);
+      --cdb-shadow-md: 0 4px 12px rgba(0,0,0,.08);
+      --cdb-shadow-lg: 0 10px 24px rgba(0,0,0,.1);
+      --cdb-radius-sm: 4px;
+      --cdb-radius-md: 8px;
+      --cdb-z-modal: 50;
+      --cdb-z-sidesheet: 40;
+    }
+    [data-mode="dark"] {
+      --cdb-color-text: #f9fafb;
+      --cdb-color-text-muted: #9ca3af;
+      --cdb-color-border: #374151;
+      --cdb-color-bg: #16161a;
+      --cdb-color-bg-subtle: #1f2937;
+      --cdb-color-bg-canvas: #111827;
+      --cdb-color-primary-soft: #1e3a47;
+    }
+    body { background: var(--cdb-color-bg-subtle); min-height: 100vh; }
+    .cdb-view { display: none; min-height: 100vh; }
+    .cdb-view.is-active { display: flex; flex-direction: column; }
+    .cdb-topbar {
+      height: 48px; padding: 0 16px; display: flex; align-items: center; gap: 12px;
+      background: var(--cdb-color-bg); border-bottom: 1px solid var(--cdb-color-border);
+      box-shadow: var(--cdb-shadow-sm);
+    }
+    .cdb-logo { width: 28px; height: 28px; border-radius: 4px; background: var(--cdb-color-primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+    .cdb-spacer { flex: 1; }
+    .cdb-btn {
+      padding: 6px 12px; border: 1px solid var(--cdb-color-border); border-radius: var(--cdb-radius-sm);
+      background: var(--cdb-color-bg); font-size: 13px; color: var(--cdb-color-text);
+    }
+    .cdb-btn:hover { background: var(--cdb-color-bg-subtle); }
+    .cdb-btn--primary { background: var(--cdb-color-primary); color: #fff; border-color: var(--cdb-color-primary); }
+    .cdb-btn--primary:hover { background: var(--cdb-color-primary-hover); }
+    .cdb-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .cdb-tag {
+      display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600;
+    }
+    .cdb-tag--owner { background: var(--cdb-color-primary-soft); color: var(--cdb-color-primary); }
+    .cdb-tag--editor { background: var(--cdb-color-info-soft); color: var(--cdb-color-info); }
+    .cdb-tag--viewer { background: var(--cdb-color-bg-subtle); color: var(--cdb-color-text-muted); border: 1px solid var(--cdb-color-border); }
+    .cdb-room-badge {
+      padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+      background: var(--cdb-color-primary-soft); color: var(--cdb-color-primary);
+      border: 1px solid var(--cdb-color-primary);
+    }
+    .cdb-presence { display: flex; align-items: center; }
+    .cdb-presence .cdb-av {
+      width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--cdb-color-bg);
+      margin-left: -8px; display: flex; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 700; background: var(--cdb-color-info-soft); color: var(--cdb-color-info);
+    }
+    .cdb-presence .cdb-av:first-child { margin-left: 0; }
+    .cdb-presence .cdb-more { margin-left: 4px; font-size: 11px; color: var(--cdb-color-text-muted); }
+
+    /* Room list */
+    .cdb-page { flex: 1; padding: 24px; max-width: 960px; margin: 0 auto; width: 100%; }
+    .cdb-page h1 { font-size: 22px; margin-bottom: 4px; }
+    .cdb-page .sub { color: var(--cdb-color-text-muted); font-size: 13px; margin-bottom: 20px; }
+    .cdb-room-grid { display: grid; gap: 12px; }
+    .cdb-room-card {
+      padding: 16px; background: var(--cdb-color-bg); border: 1px solid var(--cdb-color-border);
+      border-radius: var(--cdb-radius-md); display: flex; align-items: center; gap: 12px; cursor: pointer;
+    }
+    .cdb-room-card:hover { box-shadow: var(--cdb-shadow-md); border-color: var(--cdb-color-primary); }
+    .cdb-room-card__icon {
+      width: 40px; height: 40px; border-radius: var(--cdb-radius-md);
+      background: var(--cdb-color-primary-soft); color: var(--cdb-color-primary);
+      display: flex; align-items: center; justify-content: center; font-weight: 700;
+    }
+    .cdb-room-card__meta { flex: 1; }
+    .cdb-room-card__meta strong { display: block; font-size: 14px; }
+    .cdb-room-card__meta span { font-size: 12px; color: var(--cdb-color-text-muted); }
+
+    /* Editor in room */
+    .cdb-editor { flex: 1; display: grid; grid-template-columns: 48px 1fr 280px; min-height: 0; }
+    .cdb-tool-rail { border-right: 1px solid var(--cdb-color-border); background: var(--cdb-color-bg); display: flex; flex-direction: column; align-items: center; padding: 8px 0; gap: 4px; }
+    .cdb-tool-btn { width: 36px; height: 36px; border: 1px solid transparent; border-radius: 4px; background: transparent; }
+    .cdb-tool-btn:disabled { opacity: .35; cursor: not-allowed; }
+    .cdb-canvas { background: var(--cdb-color-bg-canvas); position: relative; }
+    .cdb-table-mock {
+      position: absolute; left: 60px; top: 50px; width: 180px;
+      background: var(--cdb-color-bg); border: 1px solid var(--cdb-color-border);
+      border-radius: 6px; box-shadow: var(--cdb-shadow-md);
+    }
+    .cdb-table-mock__h { padding: 8px 10px; background: var(--cdb-color-primary); color: #fff; font-size: 12px; font-weight: 600; border-radius: 5px 5px 0 0; }
+    .cdb-table-mock__r { padding: 6px 10px; font-size: 11px; border-top: 1px solid var(--cdb-color-border); }
+    .cdb-members-col {
+      border-left: 1px solid var(--cdb-color-border); background: var(--cdb-color-bg);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .cdb-members-col__h { padding: 12px; border-bottom: 1px solid var(--cdb-color-border); font-weight: 600; font-size: 13px; }
+    .cdb-member-row {
+      padding: 10px 12px; display: flex; align-items: center; gap: 8px;
+      border-bottom: 1px solid var(--cdb-color-border); font-size: 13px;
+    }
+    .cdb-member-row .cdb-av { width: 28px; height: 28px; border-radius: 50%; background: var(--cdb-color-primary-soft); color: var(--cdb-color-primary); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+    .cdb-member-row select { margin-left: auto; font-size: 11px; padding: 2px 4px; }
+    .cdb-status-bar {
+      height: 28px; padding: 0 16px; display: flex; align-items: center; gap: 16px;
+      font-size: 11px; color: var(--cdb-color-text-muted); border-top: 1px solid var(--cdb-color-border);
+      background: var(--cdb-color-bg);
+    }
+    .cdb-status-bar.is-readonly { color: var(--cdb-color-warning); }
+
+    /* Invite accept */
+    .cdb-invite-page { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .cdb-invite-card {
+      width: min(420px, 100%); padding: 32px; background: var(--cdb-color-bg);
+      border: 1px solid var(--cdb-color-border); border-radius: var(--cdb-radius-md);
+      box-shadow: var(--cdb-shadow-lg); text-align: center;
+    }
+    .cdb-invite-card h2 { margin-bottom: 8px; }
+    .cdb-invite-card p { font-size: 14px; color: var(--cdb-color-text-muted); margin-bottom: 20px; line-height: 1.5; }
+    .cdb-invite-card.is-expired { opacity: .85; }
+    .cdb-invite-card.is-expired .cdb-btn--primary { display: none; }
+
+    /* Modal */
+    .cdb-modal-overlay {
+      position: fixed; inset: 0; background: var(--cdb-color-bg-overlay);
+      display: none; align-items: center; justify-content: center; z-index: var(--cdb-z-modal);
+    }
+    .cdb-modal-overlay.is-open { display: flex; }
+    .cdb-modal {
+      width: min(440px, 92vw); background: var(--cdb-color-bg);
+      border-radius: var(--cdb-radius-md); box-shadow: var(--cdb-shadow-lg);
+    }
+    .cdb-modal__h { padding: 16px; border-bottom: 1px solid var(--cdb-color-border); font-weight: 600; display: flex; justify-content: space-between; }
+    .cdb-modal__b { padding: 16px; }
+    .cdb-modal__f { padding: 12px 16px; border-top: 1px solid var(--cdb-color-border); display: flex; justify-content: flex-end; gap: 8px; }
+    .cdb-field { margin-bottom: 12px; }
+    .cdb-field label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+    .cdb-field input, .cdb-field select { width: 100%; padding: 8px 10px; border: 1px solid var(--cdb-color-border); border-radius: var(--cdb-radius-sm); background: var(--cdb-color-bg); }
+    .cdb-demo-nav {
+      position: fixed; bottom: 16px; left: 16px; display: flex; flex-wrap: wrap; gap: 6px; z-index: 60;
+    }
+    .cdb-demo-nav button { padding: 6px 10px; font-size: 11px; border: 1px solid var(--cdb-color-border); border-radius: 4px; background: var(--cdb-color-bg); }
+    .cdb-toast {
+      position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%);
+      padding: 10px 16px; background: var(--cdb-color-text); color: var(--cdb-color-bg);
+      border-radius: 6px; font-size: 13px; opacity: 0; transition: opacity .2s; z-index: 70;
+    }
+    .cdb-toast.is-visible { opacity: .95; }
+  </style>
+</head>
+<body>
+  <!-- ① 房间列表 -->
+  <div class="cdb-view is-active" id="view-rooms" data-testid="rooms-list-page">
+    <header class="cdb-topbar">
+      <div class="cdb-logo">C</div>
+      <strong>协作房间</strong>
+      <span class="cdb-tag cdb-tag--editor" style="margin-left:8px;">已登录 · Demo</span>
+      <span class="cdb-spacer"></span>
+      <button type="button" class="cdb-btn cdb-btn--primary" data-testid="btn-create-room" id="btn-create-room">创建房间</button>
+    </header>
+    <main class="cdb-page">
+      <h1>我的协作房间</h1>
+      <p class="sub">依赖 S03 鉴权 · 同一 diagram 团队评审入口（P03）</p>
+      <div class="cdb-room-grid" data-testid="room-list">
+        <div class="cdb-room-card" data-room="评审周会" data-testid="room-card-1">
+          <div class="cdb-room-card__icon">评</div>
+          <div class="cdb-room-card__meta">
+            <strong>评审周会</strong>
+            <span>电商 ER 图 · 3 成员 · 你是 Owner</span>
+          </div>
+          <span class="cdb-tag cdb-tag--owner">owner</span>
+        </div>
+        <div class="cdb-room-card" data-room="架构对齐" data-testid="room-card-2">
+          <div class="cdb-room-card__icon">架</div>
+          <div class="cdb-room-card__meta">
+            <strong>架构对齐</strong>
+            <span>订单 schema · 5 成员 · Editor</span>
+          </div>
+          <span class="cdb-tag cdb-tag--editor">editor</span>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ② 房间内编辑器 -->
+  <div class="cdb-view" id="view-editor" data-testid="room-editor-page">
+    <header class="cdb-topbar">
+      <div class="cdb-logo">C</div>
+      <span class="cdb-room-badge" data-testid="room-badge" id="room-badge">评审周会</span>
+      <input value="电商 ER 图" style="border:1px solid transparent;padding:4px 8px;border-radius:4px;font-weight:600;font-size:14px;background:transparent;" />
+      <div class="cdb-presence" data-testid="room-presence">
+        <span class="cdb-av">D</span>
+        <span class="cdb-av">A</span>
+        <span class="cdb-av">L</span>
+        <span class="cdb-more">+2</span>
+      </div>
+      <button type="button" class="cdb-btn cdb-btn--primary" data-testid="btn-invite" id="btn-invite">邀请</button>
+      <span class="cdb-spacer"></span>
+      <button type="button" class="cdb-btn" data-testid="btn-members-toggle" id="btn-members-toggle">成员</button>
+      <span class="cdb-tag cdb-tag--owner" id="my-role-tag">owner</span>
+    </header>
+    <div class="cdb-editor">
+      <nav class="cdb-tool-rail" data-testid="tool-rail">
+        <button type="button" class="cdb-tool-btn" title="选择" aria-label="选择">
+          <span class="cdb-icon"><svg viewBox="0 0 24 24"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg></span>
+        </button>
+        <button type="button" class="cdb-tool-btn" id="tool-add" title="新建" aria-label="新建表">
+          <span class="cdb-icon"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg></span>
+        </button>
+        <button type="button" class="cdb-tool-btn" id="tool-rel" title="关系" aria-label="关系">
+          <span class="cdb-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+        </button>
+      </nav>
+      <main class="cdb-canvas" data-testid="editor-canvas">
+        <div class="cdb-table-mock">
+          <div class="cdb-table-mock__h">users</div>
+          <div class="cdb-table-mock__r">id · BIGINT</div>
+          <div class="cdb-table-mock__r">email · VARCHAR</div>
+        </div>
+      </main>
+      <aside class="cdb-members-col" data-testid="room-members-panel" id="members-panel">
+        <div class="cdb-members-col__h">成员 (3)</div>
+        <div class="cdb-member-row" data-testid="member-row-owner">
+          <span class="cdb-av">D</span> Demo 用户 <span class="cdb-tag cdb-tag--owner" style="margin-left:auto;">owner</span>
+        </div>
+        <div class="cdb-member-row" data-testid="member-row-1">
+          <span class="cdb-av">A</span> Alice
+          <select data-testid="member-role-select"><option selected>editor</option><option>viewer</option></select>
+          <button type="button" class="cdb-btn" style="padding:2px 6px;font-size:10px;" data-testid="btn-remove-member">移除</button>
+        </div>
+        <div class="cdb-member-row" data-testid="member-row-2">
+          <span class="cdb-av">B</span> Bob
+          <select data-testid="member-role-select"><option>editor</option><option selected>viewer</option></select>
+          <button type="button" class="cdb-btn" style="padding:2px 6px;font-size:10px;">移除</button>
+        </div>
+      </aside>
+    </div>
+    <footer class="cdb-status-bar" data-testid="status-bar" id="status-bar">
+      <span>room: r-001</span><span>2 张表</span><span id="save-hint">自动保存已启用</span>
+    </footer>
+  </div>
+
+  <!-- ③ 接受邀请 -->
+  <div class="cdb-view" id="view-invite" data-testid="invite-accept-page">
+    <header class="cdb-topbar"><div class="cdb-logo">C</div><strong>接受邀请</strong></header>
+    <div class="cdb-invite-page">
+      <div class="cdb-invite-card" id="invite-card" data-testid="invite-card">
+        <h2>加入「评审周会」</h2>
+        <p>Diagram：<strong>电商 ER 图</strong><br/>邀请人：Demo 用户 · 角色：<span class="cdb-tag cdb-tag--editor">editor</span></p>
+        <button type="button" class="cdb-btn cdb-btn--primary" style="width:100%;" data-testid="btn-accept-invite" id="btn-accept-invite">加入房间</button>
+        <p style="margin-top:16px;font-size:12px;color:var(--cdb-color-text-muted);" id="invite-expired-msg" hidden>邀请已失效，请联系房间 Owner 重新发送</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Room Modal -->
+  <div class="cdb-modal-overlay" id="modal-create" data-testid="modal-create-room">
+    <div class="cdb-modal">
+      <div class="cdb-modal__h"><span>创建协作房间</span><button type="button" class="cdb-btn" data-close="modal-create">×</button></div>
+      <div class="cdb-modal__b">
+        <div class="cdb-field"><label>房间名称</label><input data-testid="create-room-name" id="create-room-name" value="评审周会" /></div>
+        <div class="cdb-field"><label>绑定 Diagram</label><select data-testid="create-room-diagram"><option>电商 ER 图 (d-abc)</option><option>订单 schema</option></select></div>
+        <div class="cdb-field"><label>邀请默认角色</label><select><option>editor</option><option>viewer</option></select></div>
+      </div>
+      <div class="cdb-modal__f">
+        <button type="button" class="cdb-btn" data-close="modal-create">取消</button>
+        <button type="button" class="cdb-btn cdb-btn--primary" data-testid="create-room-submit" id="create-room-submit">创建并进入</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Invite Modal -->
+  <div class="cdb-modal-overlay" id="modal-invite" data-testid="modal-invite">
+    <div class="cdb-modal">
+      <div class="cdb-modal__h"><span>邀请成员</span><button type="button" class="cdb-btn" data-close="modal-invite">×</button></div>
+      <div class="cdb-modal__b">
+        <div class="cdb-field"><label>角色</label><select data-testid="invite-role"><option value="editor">editor · 可编辑</option><option value="viewer">viewer · 只读</option></select></div>
+        <div class="cdb-field"><label>邀请链接</label><input readonly data-testid="invite-url" id="invite-url" value="https://coldrawdb.example.com/invite/tok-demo-7d" /></div>
+        <p style="font-size:11px;color:var(--cdb-color-text-muted);">7 天内有效 · 被邀请人须先登录（S03）</p>
+      </div>
+      <div class="cdb-modal__f">
+        <button type="button" class="cdb-btn" data-close="modal-invite">关闭</button>
+        <button type="button" class="cdb-btn cdb-btn--primary" data-testid="btn-copy-invite" id="btn-copy-invite">复制链接</button>
+      </div>
+    </div>
+  </div>
+
+  <nav class="cdb-demo-nav" aria-label="原型演示导航">
+    <button type="button" data-goto="rooms">房间列表</button>
+    <button type="button" data-goto="editor">房间编辑器</button>
+    <button type="button" data-goto="invite">接受邀请</button>
+    <button type="button" id="demo-viewer">Viewer 视角</button>
+    <button type="button" id="demo-expired">过期邀请</button>
+  </nav>
+  <div class="cdb-toast" id="toast"></div>
+
+  <script>
+    const views = {
+      rooms: document.getElementById('view-rooms'),
+      editor: document.getElementById('view-editor'),
+      invite: document.getElementById('view-invite'),
+    };
+    let isViewer = false;
+
+    function showView(name) {
+      Object.values(views).forEach(v => v.classList.remove('is-active'));
+      views[name].classList.add('is-active');
+    }
+    function openModal(id) { document.getElementById(id).classList.add('is-open'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('is-open'); }
+    function toast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('is-visible');
+      setTimeout(() => t.classList.remove('is-visible'), 2200);
+    }
+
+    function applyViewerMode(on) {
+      isViewer = on;
+      document.getElementById('btn-invite').disabled = on;
+      document.getElementById('tool-add').disabled = on;
+      document.getElementById('tool-rel').disabled = on;
+      document.getElementById('my-role-tag').textContent = on ? 'viewer' : 'owner';
+      document.getElementById('my-role-tag').className = 'cdb-tag ' + (on ? 'cdb-tag--viewer' : 'cdb-tag--owner');
+      const bar = document.getElementById('status-bar');
+      document.getElementById('save-hint').textContent = on ? '只读 · 查看者' : '自动保存已启用';
+      bar.classList.toggle('is-readonly', on);
+    }
+
+    document.getElementById('btn-create-room').onclick = () => openModal('modal-create');
+    document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => closeModal(b.dataset.close));
+    document.getElementById('create-room-submit').onclick = () => {
+      const name = document.getElementById('create-room-name').value.trim();
+      document.getElementById('room-badge').textContent = name;
+      closeModal('modal-create');
+      applyViewerMode(false);
+      showView('editor');
+      toast('房间已创建');
+    };
+    document.querySelectorAll('.cdb-room-card').forEach(card => {
+      card.onclick = () => {
+        document.getElementById('room-badge').textContent = card.dataset.room;
+        applyViewerMode(false);
+        showView('editor');
+      };
+    });
+    document.getElementById('btn-invite').onclick = () => openModal('modal-invite');
+    document.getElementById('btn-copy-invite').onclick = () => { toast('邀请链接已复制'); closeModal('modal-invite'); };
+    document.getElementById('btn-accept-invite').onclick = () => {
+      applyViewerMode(false);
+      showView('editor');
+      toast('已加入房间');
+    };
+    document.querySelector('[data-testid="btn-remove-member"]')?.addEventListener('click', () => {
+      document.querySelector('[data-testid="member-row-1"]').remove();
+      toast('已移除成员 Alice');
+    });
+    document.querySelectorAll('[data-goto]').forEach(b => b.onclick = () => showView(b.dataset.goto));
+    document.getElementById('demo-viewer').onclick = () => { showView('editor'); applyViewerMode(true); };
+    document.getElementById('demo-expired').onclick = () => {
+      showView('invite');
+      document.getElementById('invite-card').classList.add('is-expired');
+      document.getElementById('invite-expired-msg').hidden = false;
+    };
+  </script>
+</body>
+</html>

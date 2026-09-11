@@ -1,0 +1,160 @@
+<!--
+  Delta — core-01-editor-prototype.html (Phase C)
+  merge 操作：
+  1. MODIFIED：btn-import 移除 disabled；guide-import-sql 移除 disabled
+  2. ADDED：.cdb-io-drawer 样式与 ImportDrawer 示例节点（见下方 <style> 与 <aside class="cdb-io-drawer">）
+  3. MODIFIED：.cdb-main 增加 cdb-has-io-drawer 示例态（Inspector 隐藏，IO 抽屉显示）
+-->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>coldrawdb Editor Prototype — Phase C IO Drawer</title>
+  <style>
+    :root {
+      --cdb-color-primary: #175e7a;
+      --cdb-color-primary-bg: #e6f1f5;
+      --cdb-color-border: #e5e7eb;
+      --cdb-color-bg: #fff;
+      --cdb-color-bg-canvas: #f3f4f6;
+      --cdb-color-text: #1f2937;
+      --cdb-color-text-muted: #6b7280;
+      --cdb-space-2: 8px;
+      --cdb-space-3: 12px;
+      --cdb-space-4: 16px;
+      --cdb-radius-sm: 4px;
+      --cdb-radius-md: 8px;
+      --cdb-text-sm: 13px;
+      --cdb-text-xs: 11px;
+      --cdb-shadow-md: 0 4px 12px rgba(0,0,0,.08);
+    }
+    * { box-sizing: border-box; margin: 0; }
+    body { font-family: system-ui, sans-serif; color: var(--cdb-color-text); }
+    .cdb-app { display: grid; grid-template-rows: 48px 1fr 28px; height: 100vh; }
+    .cdb-app-bar {
+      display: flex; align-items: center; gap: var(--cdb-space-3);
+      padding: 0 var(--cdb-space-4); border-bottom: 1px solid var(--cdb-color-border);
+    }
+    .cdb-btn {
+      padding: 6px 12px; border: 1px solid var(--cdb-color-border);
+      border-radius: var(--cdb-radius-sm); background: var(--cdb-color-bg);
+      font-size: var(--cdb-text-sm); cursor: pointer;
+    }
+    .cdb-btn--primary { background: var(--cdb-color-primary); color: #fff; border-color: var(--cdb-color-primary); }
+    .cdb-main {
+      display: grid;
+      grid-template-columns: 48px 1fr 0 400px; /* Phase C: IO drawer open, Inspector collapsed */
+      min-height: 0;
+    }
+    .cdb-tool-rail {
+      width: 48px; border-right: 1px solid var(--cdb-color-border);
+      display: flex; flex-direction: column; align-items: center; padding: var(--cdb-space-2) 0; gap: var(--cdb-space-2);
+    }
+    .cdb-canvas-wrap {
+      background: var(--cdb-color-bg-canvas); position: relative; overflow: hidden;
+    }
+    /* Phase C — IO Drawer */
+    .cdb-io-drawer {
+      border-left: 1px solid var(--cdb-color-border);
+      background: var(--cdb-color-bg);
+      display: flex; flex-direction: column;
+      font-size: var(--cdb-text-sm);
+    }
+    .cdb-io-drawer__header {
+      padding: var(--cdb-space-3) var(--cdb-space-4);
+      border-bottom: 1px solid var(--cdb-color-border);
+      display: flex; justify-content: space-between; align-items: center;
+      font-weight: 600;
+    }
+    .cdb-io-drawer__body { flex: 1; overflow-y: auto; padding: var(--cdb-space-4); }
+    .cdb-format-tabs { display: flex; gap: var(--cdb-space-2); margin-bottom: var(--cdb-space-3); }
+    .cdb-format-tabs button {
+      padding: 4px 10px; border: 1px solid var(--cdb-color-border);
+      border-radius: var(--cdb-radius-sm); background: var(--cdb-color-bg); cursor: pointer;
+    }
+    .cdb-format-tabs button.cdb-is-active {
+      background: var(--cdb-color-primary-bg); border-color: var(--cdb-color-primary); color: var(--cdb-color-primary);
+    }
+    .cdb-io-textarea {
+      width: 100%; min-height: 160px; padding: var(--cdb-space-3);
+      border: 1px solid var(--cdb-color-border); border-radius: var(--cdb-radius-sm);
+      font-family: ui-monospace, monospace; font-size: var(--cdb-text-xs);
+    }
+    .cdb-parse-summary {
+      margin: var(--cdb-space-3) 0; color: var(--cdb-color-text-muted); font-size: var(--cdb-text-xs);
+    }
+    .cdb-io-drawer__footer {
+      padding: var(--cdb-space-3) var(--cdb-space-4);
+      border-top: 1px solid var(--cdb-color-border);
+      display: flex; justify-content: flex-end; gap: var(--cdb-space-2);
+    }
+    .cdb-status-bar {
+      border-top: 1px solid var(--cdb-color-border); padding: 0 var(--cdb-space-4);
+      height: 28px; display: flex; align-items: center; gap: var(--cdb-space-4);
+      font-size: var(--cdb-text-xs); color: var(--cdb-color-text-muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="cdb-app">
+    <header class="cdb-app-bar" data-testid="app-bar">
+      <strong>C</strong>
+      <span data-testid="diagram-title">电商 ER 图</span>
+      <span>● 已保存</span>
+      <!-- Phase C: 导入已启用 -->
+      <button class="cdb-btn" data-testid="btn-import">导入</button>
+      <button class="cdb-btn" data-testid="btn-export">导出 ▾</button>
+      <button class="cdb-btn cdb-btn--primary" data-testid="btn-share">分享</button>
+    </header>
+
+    <div class="cdb-main cdb-has-io-drawer">
+      <nav class="cdb-tool-rail" data-testid="tool-rail">
+        <button title="选择">↖</button>
+        <button title="新建">⊕</button>
+        <button title="关系">🔗</button>
+      </nav>
+
+      <main class="cdb-canvas-wrap" data-testid="editor-canvas">
+        <p style="padding:24px;color:var(--cdb-color-text-muted);">画布区域（Inspector 已折叠）</p>
+      </main>
+
+      <!-- Inspector 折叠（width 0） -->
+
+      <!-- Phase C: Import Drawer -->
+      <aside class="cdb-io-drawer" data-testid="import-drawer">
+        <div class="cdb-io-drawer__header">
+          <span>导入</span>
+          <button class="cdb-btn" data-testid="import-cancel">×</button>
+        </div>
+        <div class="cdb-io-drawer__body">
+          <div class="cdb-format-tabs" data-testid="import-format-tabs">
+            <button class="cdb-is-active">SQL</button>
+            <button>DBML</button>
+            <button>JSON</button>
+          </div>
+          <label style="font-size:var(--cdb-text-xs);color:var(--cdb-color-text-muted);">数据库引擎</label>
+          <select data-testid="import-engine-select" style="width:100%;margin:4px 0 12px;padding:6px;">
+            <option>generic</option>
+            <option>mysql</option>
+            <option>postgresql</option>
+          </select>
+          <textarea class="cdb-io-textarea" data-testid="import-textarea" placeholder="粘贴 SQL 或拖放 .sql 文件">CREATE TABLE users (
+  id INT PRIMARY KEY
+);</textarea>
+          <p class="cdb-parse-summary" data-testid="import-parse-summary">解析摘要：1 条语句</p>
+        </div>
+        <div class="cdb-io-drawer__footer">
+          <button class="cdb-btn" data-testid="import-cancel-btn">取消</button>
+          <button class="cdb-btn cdb-btn--primary" data-testid="import-submit">导入并打开 ▶</button>
+        </div>
+      </aside>
+    </div>
+
+    <footer class="cdb-status-bar" data-testid="status-bar">
+      <span>缩放 100%</span>
+      <span>0 张表 / 0 条关系</span>
+      <span data-testid="revision-display">rev: 1</span>
+    </footer>
+  </div>
+</body>
+</html>

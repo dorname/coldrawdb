@@ -1,0 +1,150 @@
+{
+  "scenario_id": "core-S06",
+  "scenario_name": "AI 客户端通过 MCP 管理数据库图表",
+  "module": "core",
+  "description": "MCP stdio 编排：initialize → tools/list → list/create/get/update/export → stale revision 409 → import/delete",
+  "alignment": "core-S06-ai-client-mcp.md",
+  "version": "1.0.0",
+  "transport": "mcp-stdio",
+  "server": {
+    "command": "${COLDRAWDB_MCP_BIN}",
+    "args": [],
+    "env": {
+      "COLDRAWDB_BASE_URL": "${COLDRAWDB_BASE_URL}",
+      "COLDRAWDB_ACCESS_TOKEN": "${COLDRAWDB_ACCESS_TOKEN}"
+    },
+    "stdout_policy": "jsonrpc-only",
+    "stderr_policy": "redacted-logs"
+  },
+  "preconditions": [
+    "coldrawdb backend 使用隔离测试数据库并运行",
+    "COLDRAWDB_MCP_BIN 指向 release 或 test 构建的可执行文件",
+    "测试完成后清理所创建和导入的 diagram"
+  ],
+  "variables": {
+    "diagram_name": "S06 MCP Orchestration",
+    "import_name": "S06 MCP Imported"
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "method": "initialize",
+      "params": {
+        "protocolVersion": "latest-supported",
+        "capabilities": {},
+        "clientInfo": { "name": "openlogos-orchestrator", "version": "1.0.0" }
+      },
+      "expect": {
+        "serverInfo.name": { "equals": "coldrawdb-mcp" },
+        "capabilities.tools": { "type": "object" }
+      }
+    },
+    {
+      "step_id": 2,
+      "method": "notifications/initialized",
+      "params": {}
+    },
+    {
+      "step_id": 3,
+      "method": "tools/list",
+      "expect": {
+        "tools": { "length": 7 },
+        "tool:delete_diagram.annotations.destructiveHint": { "equals": true },
+        "tool:get_diagram.annotations.readOnlyHint": { "equals": true }
+      }
+    },
+    {
+      "step_id": 4,
+      "method": "tools/call",
+      "tool": "list_diagrams",
+      "arguments": { "limit": 100 },
+      "expect": { "isError": false }
+    },
+    {
+      "step_id": 5,
+      "method": "tools/call",
+      "tool": "create_diagram",
+      "arguments": { "name": "${diagram_name}", "database": "postgresql" },
+      "expect": { "isError": false },
+      "extract": { "diagram_id": "$.structuredContent.id" }
+    },
+    {
+      "step_id": 6,
+      "method": "tools/call",
+      "tool": "get_diagram",
+      "arguments": { "id": "${diagram_id}" },
+      "expect": {
+        "structuredContent.diagram.id": { "equals": "${diagram_id}" },
+        "structuredContent.diagram.revision": { "equals": 0 }
+      },
+      "extract": { "diagram": "$.structuredContent.diagram" }
+    },
+    {
+      "step_id": 7,
+      "method": "tools/call",
+      "tool": "update_diagram",
+      "arguments": {
+        "id": "${diagram_id}",
+        "expected_revision": 0,
+        "diagram": "${diagram}"
+      },
+      "expect": { "structuredContent.revision": { "equals": 1 } }
+    },
+    {
+      "step_id": 8,
+      "name": "过期 revision 不得覆盖",
+      "method": "tools/call",
+      "tool": "update_diagram",
+      "arguments": {
+        "id": "${diagram_id}",
+        "expected_revision": 0,
+        "diagram": "${diagram}"
+      },
+      "expect": {
+        "isError": true,
+        "structuredContent.code": { "equals": "REVISION_CONFLICT" },
+        "structuredContent.details.current_revision": { "equals": 1 }
+      }
+    },
+    {
+      "step_id": 9,
+      "method": "tools/call",
+      "tool": "export_schema",
+      "arguments": { "id": "${diagram_id}", "format": "json" },
+      "expect": {
+        "structuredContent.revision": { "equals": 1 },
+        "structuredContent.content": { "type": "string", "not_empty": true }
+      }
+    },
+    {
+      "step_id": 10,
+      "method": "tools/call",
+      "tool": "import_schema",
+      "arguments": {
+        "format": "drawdb_json",
+        "source": "mcp-orchestration",
+        "payload": { "name": "${import_name}", "tables": [], "references": [], "areas": [], "notes": [] }
+      },
+      "expect": { "structuredContent.diagram_id": { "type": "string" } },
+      "extract": { "imported_diagram_id": "$.structuredContent.diagram_id" }
+    },
+    {
+      "step_id": 11,
+      "method": "tools/call",
+      "tool": "delete_diagram",
+      "arguments": { "id": "${diagram_id}", "confirm": true },
+      "expect": { "structuredContent.deleted": { "equals": true } }
+    },
+    {
+      "step_id": 12,
+      "method": "tools/call",
+      "tool": "delete_diagram",
+      "arguments": { "id": "${imported_diagram_id}", "confirm": true },
+      "expect": { "structuredContent.deleted": { "equals": true } }
+    }
+  ],
+  "reporter": {
+    "output": "logos/resources/verify/test-results.jsonl",
+    "test_ids": ["ST-MCP-01", "ST-MCP-02", "ST-MCP-03", "ST-MCP-04", "ST-MCP-05"]
+  }
+}

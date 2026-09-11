@@ -1,0 +1,308 @@
+## MODIFIED — 对齐 phase3_bridge 实际契约
+
+> 模块：core | 提案：align-v1-api-completion
+> 路径：`logos/resources/api/bridge.yaml`
+> 策略：将 OpenAPI 规格与 `backend/src/phase3_bridge.rs` 及 `frontend-rs/src/editor_data_access.rs` 实际请求/响应字段对齐；移除旧的 SQL 格式导入 schema（`format`/`content`/`engine`）与 SQL 导出配置字段。
+
+openapi: 3.0.3
+info:
+  title: coldrawdb bridge API
+  description: |
+    V1 bridge API for local draft import, import log management, and bridge runtime configuration.
+
+    **Coverage**: 5 endpoints under `/api/v1/bridge/*`.
+    **Alignment**: 与 `backend/src/phase3_bridge.rs` 5 个路由 handler 一一对应.
+    **Storage**: `local_draft_import_log` 表存导入日志；`bridge_config` 表单例行配置.
+    **Envelope**: 成功响应统一为 `{ code: 0, data: T, request_id: string }`；错误为 `{ code, message, request_id, details? }`.
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000
+    description: Local dev
+  - url: https://staging.coldrawdb.example.com
+    description: Staging
+
+paths:
+  /api/v1/bridge/import/local:
+    post:
+      summary: Import a diagram from a local draft payload
+      description: |
+        Accepts a JSON object `payload` (diagram draft) and optional `source` tag.
+        Creates a diagram row, persists nested entities, and writes an import log entry.
+        Returns `200` with `log_id`, `diagram_id`, and `status`.
+      operationId: importLocalDraft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportLocalDraftRequest'
+      responses:
+        '200':
+          description: Import succeeded
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResp'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ImportLocalData'
+        '400':
+          description: "Validation error (e.g. payload must be object)"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErr'
+
+  /api/v1/bridge/import/local/logs:
+    get:
+      summary: List recent local draft import logs
+      description: |
+        Returns up to 100 import log entries ordered by `created_at` desc.
+        Optional `status` query filter.
+      operationId: listImportLogs
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, success, failed]
+      responses:
+        '200':
+          description: Import log list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResp'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ImportLogEntry'
+
+  /api/v1/bridge/import/local/retry/{id}:
+    parameters:
+      - $ref: '#/components/parameters/LogId'
+    post:
+      summary: Retry a failed import log entry
+      description: |
+        Re-reads stored payload from `local_draft_import_log`, creates a new diagram,
+        and updates the log row. Returns `404` when log id not found;
+        `400` when stored payload is invalid JSON or not an object.
+      operationId: retryImportLog
+      responses:
+        '200':
+          description: Retry succeeded
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResp'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RetryImportData'
+        '400':
+          description: Invalid stored payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErr'
+        '404':
+          description: Import log not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErr'
+
+  /api/v1/bridge/config:
+    get:
+      summary: Get bridge runtime configuration
+      description: |
+        Returns the singleton row from `bridge_config` (id=1).
+        Controls DB read/write preference and dual-write to local storage.
+      operationId: getBridgeConfig
+      responses:
+        '200':
+          description: Current bridge config
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResp'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/BridgeConfig'
+        '404':
+          description: Bridge config row not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErr'
+    put:
+      summary: Partially update bridge runtime configuration
+      description: |
+        Accepts optional boolean fields; omitted fields retain their current values.
+        Returns `{ updated: true }` on success.
+      operationId: updateBridgeConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BridgeConfigUpdate'
+      responses:
+        '200':
+          description: Config updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResp'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/BridgeConfigUpdateResult'
+
+components:
+  parameters:
+    LogId:
+      name: id
+      in: path
+      required: true
+      description: Import log id (string UUID from local_draft_import_log)
+      schema:
+        type: string
+
+  schemas:
+    ApiResp:
+      type: object
+      required: [code, data, request_id]
+      properties:
+        code:
+          type: integer
+          description: "0 on success"
+        data:
+          type: object
+          description: Endpoint-specific payload
+        request_id:
+          type: string
+
+    ApiErr:
+      type: object
+      required: [code, message, request_id]
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        request_id:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+    ImportLocalDraftRequest:
+      type: object
+      required: [payload]
+      properties:
+        source:
+          type: string
+          description: "Import origin tag; defaults to localStorage"
+          default: localStorage
+        payload:
+          type: object
+          description: Diagram draft JSON (must be object; typically includes name, tables, etc.)
+
+    ImportLocalData:
+      type: object
+      required: [log_id, diagram_id, status]
+      properties:
+        log_id:
+          type: string
+        diagram_id:
+          type: string
+        status:
+          type: string
+          enum: [success, failed, pending]
+
+    ImportLogEntry:
+      type: object
+      required: [id, status]
+      properties:
+        id:
+          type: string
+        source:
+          type: string
+          nullable: true
+        imported_diagram_id:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [pending, success, failed]
+        retry_count:
+          type: integer
+          format: int64
+          default: 0
+        error_message:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+          nullable: true
+
+    RetryImportData:
+      type: object
+      required: [id, status, retry_count]
+      properties:
+        id:
+          type: string
+          description: Import log id
+        status:
+          type: string
+          enum: [success, failed, pending]
+        retry_count:
+          type: integer
+          format: int64
+        diagram_id:
+          type: string
+          description: Newly created diagram id on successful retry
+
+    BridgeConfig:
+      type: object
+      required: [db_read_preferred, db_write_enabled, dual_write_local, updated_at]
+      properties:
+        db_read_preferred:
+          type: boolean
+        db_write_enabled:
+          type: boolean
+        dual_write_local:
+          type: boolean
+        updated_at:
+          type: string
+
+    BridgeConfigUpdate:
+      type: object
+      properties:
+        db_read_preferred:
+          type: boolean
+        db_write_enabled:
+          type: boolean
+        dual_write_local:
+          type: boolean
+
+    BridgeConfigUpdateResult:
+      type: object
+      required: [updated]
+      properties:
+        updated:
+          type: boolean

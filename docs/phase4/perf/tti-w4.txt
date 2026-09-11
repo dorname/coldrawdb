@@ -1,0 +1,16 @@
+# TTI (Time To Interactive) — W4 live measurement
+# Tool: frontend-rs/tests/perf/tti.mjs (Playwright + chromium)
+# Date: 2026-06-08
+# Sample size: 10 fresh page loads against trunk serve on :8080
+# Threshold: P95 < 3850ms (react_baseline_p95 * 1.1)
+
+results = {
+  status: ok
+  p50_ms: 99
+  p95_ms: 109
+  all_ms: [60, 97, 98, 98, 99, 99, 99, 99, 101, 109]
+  threshold_p95_ms: 3850
+  baseline_p95_ms: 3500
+  pass: true
+  buffer_pct: 97.2
+}

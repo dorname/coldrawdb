@@ -1,0 +1,57 @@
+# Delta — core-01-editor-prototype.html（S07 数据字典原型交互）
+
+> 目标：在主原型中补充数据字典的可评审交互——字典管理面板、Inspector 字段绑定、Markdown 导出预览。原型为体验事实来源；生产实现以 `core-01e-data-dictionary.md` 为准。
+
+## ADDED — 数据模型（state.diagram 扩展）
+
+```js
+// state.diagram 新增（缺省 []，旧数据兼容）：
+dictionaries: [
+  { id: "dict-yes-no", name: "是否", code: "yes_no", comment: "通用是/否",
+    items: [ { id: "di-0", value: "0", label: "否", sort: 0 }, { id: "di-1", value: "1", label: "是", sort: 1 } ] },
+  { id: "dict-gender", name: "性别", code: "gender", comment: "",
+    items: [ { id: "di-m", value: "1", label: "男", sort: 0 }, { id: "di-f", value: "2", label: "女", sort: 1 } ] }
+]
+// field 新增：dictCode: ""（软引用字典 code；空串 = 未绑定）
+// state 新增：dictPanel: false（字典面板开关）、dictSel: null（当前展开字典 id）
+```
+
+## ADDED — 字典管理面板（drawer 体系新增 "dicts"）
+
+- 入口：ToolRail 新增「字典」按钮 `data-action="open-drawer" data-drawer="dicts"` `data-testid="toolrail-dicts"`（图标 `book`，位于列表视图按钮之后）
+- 面板 `data-testid="dict-panel"`，复用 `.drawer` 样式：
+  - 头部：标题「数据字典」+ 字典计数；右上「导出」`dict-export`（无字典时 disabled，title「当前图表没有数据字典」）
+  - 列表 `dict-list`：每行 `dict-item-{id}` = 名称 + `code` tag + `N 项` + 引用计数 tag（`被 M 字段引用`）；行尾删除 `dict-del-{id}`
+  - 单击行展开详情：字典名/编码输入（`dict-name-{id}` / `dict-code-{id}`，blur 落账；编码冲突红标阻断）+ 字典项表格（`value | label` 行内编辑 + 行尾删除 + 底部「+ 添加项」`dict-item-add-{id}`）
+  - 底部「+ 新建字典」`dict-add`（默认 `dict_N` / `code_N`）
+- 删除被引用字典（M>0）：复用确认模态，文案「被 M 个字段引用，删除后这些字段的绑定将置空，是否继续？」；确认后所有 `dictCode === code` 的字段置空，与删除同一 `commit`（单次 undo）
+- Viewer（`!canEdit()`）：编辑/新建/删除 disabled；导出可用
+
+## MODIFIED — Inspector 字段卡（renderInspector）
+
+每张字段卡在注释输入下方追加字典绑定行：
+
+```html
+<select class="select" style="padding:6px 7px;margin-top:5px"
+        data-change="field-dict" data-table="${table.id}" data-field="${field.id}"
+        data-testid="inspector-field-dict-${field.id}" ${!canEdit()?"disabled":""}>
+  <option value="">（不绑定）</option>
+  ${state.diagram.dictionaries.map(d=>`<option value="${esc(d.code)}" ${field.dictCode===d.code?"selected":""}>${esc(d.name)}（${esc(d.code)}）</option>`).join("")}
+</select>
+<!-- 已绑定时追加映射摘要 Tag：1=男 2=女（>4 项折叠为「共 N 项」） -->
+```
+
+- `data-change="field-dict"` 处理：写 `field.dictCode` → `commit("绑定数据字典", ...)`（进 undo + schedule_save 同通路）
+- 摘要 Tag `data-testid="field-dict-tag-{field.id}"`：按 `sort` 序取字典项拼接 `value=label`
+
+## ADDED — Markdown 导出（exportContent 新增 "dict" 格式）
+
+- 导出抽屉 `drawer-tabs` 追加 `["dict","字典"]`；`exportContent("dict")` 生成 Markdown（三段：字典清单 / 字典明细 / 字段绑定关系，模板见 `core-01e-data-dictionary.md` §4）
+- 下载文件名 `data-dictionary-${state.diagram.name||"diagram"}.md`；复制/下载复用既有按钮
+- 无字典时预览区显示空态「当前图表没有数据字典」且下载禁用
+
+## ADDED — 原型演示数据与交互脚本
+
+- 预置上述两个字典；`users.status` 字段预绑 `yes_no`，`users.gender` 预绑 `gender`（展示摘要 Tag 与引用计数）
+- 动作处理新增：`dict-add` / `dict-del` / `dict-item-add` / `dict-item-del` / `dict-export`；`data-change` 新增 `dict-name` / `dict-code` / `dict-item-value` / `dict-item-label` / `field-dict`
+- 字典编辑动作均走 `commit(...)`（Activity + undo），远端模拟器不新增事件类型

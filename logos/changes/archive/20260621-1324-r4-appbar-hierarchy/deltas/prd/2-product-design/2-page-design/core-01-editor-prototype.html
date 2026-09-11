@@ -1,0 +1,9 @@
+## ADDED — R4 AppBar 三区结构（注释块，merge 时同步到 `<style>` 与 `<header>`）
+
+> R4 将 AppBar 划分为 `.cdb-app-bar__brand` / `__status` / `__actions`；保存状态合并为 `.cdb-status-chip`；导入/导出/主题迁入 `btn-more-menu` 溢出菜单。StatusBar 移除重复 `revision-display`。
+
+**merge 指引**：
+
+1. 在 inline `<style>` 追加 R4 类：`.cdb-app-bar__brand`、`.cdb-status-chip`、`.cdb-app-bar__overflow`
+2. 将 `<header class="cdb-app-bar">` 内结构改为：品牌区（Logo+Undo/Redo+Title）→ 状态 Chip → spacer → 操作区（Share+Code+More）
+3. 移除 AppBar 内独立 import/export/theme/inspector 按钮；StatusBar 保留 `btn-inspector-toggle`

@@ -1,0 +1,7 @@
+[mcp_servers.coldrawdb]
+command = "/ABS/PATH/coldrawdb-mcp"
+args = []
+env = { COLDRAWDB_BASE_URL = "http://localhost:3000" }
+startup_timeout_sec = 10
+tool_timeout_sec = 30
+default_tools_approval_mode = "writes"

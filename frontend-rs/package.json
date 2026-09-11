@@ -1,0 +1,26 @@
+{
+  "name": "frontend-rs",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:spec-parity-a": "node scripts/test-spec-parity-a.mjs",
+    "test:spec-parity-b": "node scripts/test-spec-parity-b.mjs",
+    "test:spec-parity-c": "node scripts/test-spec-parity-c.mjs",
+    "test:unified-prototype": "node scripts/test-unified-prototype.mjs && node scripts/test-unified-prototype-render.mjs",
+    "test:spec-parity-d": "node scripts/test-spec-parity-d.mjs",
+    "test:spec-parity-e": "node scripts/test-spec-parity-e.mjs",
+    "test:canvas-perf": "node scripts/test-canvas-perf.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "playwright": "^1.60.0"
+  }
+}

@@ -1,0 +1,13 @@
+# W3 Frontend FPS Baseline (AC-24)
+# 测量时间: 2026-06-06
+# 状态: 降级 - Rust Web 未跑通
+
+React baseline (W1-5): P95=22ms frame time (~45 FPS)
+
+Rust Web 估算:
+- Canvas 2D rendering (editor_render.rs): requestAnimationFrame throttling
+- editor-canvas component draws 100+ nodes at 60fps (spec §Canvas)
+- 无 vDOM diffing overhead → 预期帧时间更稳定
+- AC-24 阈值: P95 frame time ≤ React baseline (22ms)
+
+结论: 待 W4-1 有完整 WASM 后 live 测量。当前 scaffold 阶段降级处理。

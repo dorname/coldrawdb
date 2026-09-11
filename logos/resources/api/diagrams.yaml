@@ -1,0 +1,323 @@
+openapi: 3.0.3
+info:
+  title: coldrawdb diagrams v1 API
+  version: 1.1.0
+  description: |
+    与 backend/src/diagrams_v1.rs 和 diagram_persistence.rs 的实际实现对齐。
+    五个 /api/v1/diagrams* 端点统一使用 {code,data,request_id} envelope。
+    当前这些端点尚未挂接 S03 JWT middleware；不得把可选 Authorization header 描述为已生效的权限校验。
+servers:
+  - url: http://localhost:3000
+paths:
+  /api/v1/diagrams:
+    post:
+      operationId: createDiagram
+      summary: 创建空 diagram
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRequest'
+      responses:
+        '200':
+          description: 创建成功；实际实现不是 201，且只返回 id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateResponse'
+  /api/v1/diagrams/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: 当前实现使用雪花字符串 ID，不保证 UUID
+    get:
+      operationId: getDiagram
+      summary: 获取完整 diagram
+      description: |
+        S01/S02：从关系存储加载 diagram。
+        fix-collab-autosave-race：若 diagram 绑定活跃 room 且协作文档已物化
+        （room_collab_head.doc_json 非 NULL），直接返回物化文档
+        （与 op log 恒一致；revision 字段注入当前 head server_rev）。
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Diagram'
+        '404':
+          $ref: '#/components/responses/ApiError'
+    put:
+      operationId: saveDiagram
+      summary: 使用 revision 乐观锁全量保存
+      description: |
+        S01：expected_revision 乐观锁全量保存（非房间 diagram 行为不变）。
+        fix-collab-autosave-race：diagram 绑定活跃 room 时拒绝全量写——
+        409 USE_OP_CHANNEL（房间内写只走 WS op 通道，op 落库即物化）。
+        原 S05.5 checkpoint 头（X-Room-Id / X-Collab-Server-Rev）协议废弃。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveRequest'
+      responses:
+        '200':
+          description: 保存成功，revision 自增
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '404':
+          $ref: '#/components/responses/ApiError'
+        '409':
+          description: revision 冲突（details.current_revision 为服务端当前版本）| USE_OP_CHANNEL（room 绑定 diagram，写只走 WS op 通道）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      operationId: deleteDiagram
+      summary: 软删除 diagram
+      description: 当前实现执行 is_deleted=1；不存在的 id 也返回 200，后续若修正必须同步更新契约与测试。
+      responses:
+        '200':
+          description: 返回提交的 id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteResponse'
+  /api/v1/diagrams/import:
+    post:
+      operationId: importDiagram
+      summary: 导入 drawdb JSON object
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportRequest'
+      responses:
+        '200':
+          description: 导入成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+components:
+  responses:
+    ApiError:
+      description: API 错误
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    ApiResponse:
+      type: object
+      required: [code, data, request_id]
+      properties:
+        code:
+          type: integer
+          enum: [0]
+        data: {}
+        request_id:
+          type: string
+    ErrorResponse:
+      type: object
+      required: [code, message, request_id]
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        request_id:
+          type: string
+        details:
+          type: object
+          nullable: true
+          additionalProperties: true
+    CreateRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        database:
+          type: string
+          nullable: true
+    CreateResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [id]
+              properties:
+                id:
+                  type: string
+    SaveRequest:
+      type: object
+      required: [expected_revision, diagram]
+      additionalProperties: false
+      properties:
+        expected_revision:
+          type: integer
+          format: int64
+          minimum: 0
+        diagram:
+          $ref: '#/components/schemas/Diagram'
+    SaveResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [id, revision]
+              properties:
+                id:
+                  type: string
+                revision:
+                  type: integer
+                  format: int64
+    DeleteResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [id]
+              properties:
+                id:
+                  type: string
+    ImportRequest:
+      type: object
+      required: [payload]
+      additionalProperties: false
+      properties:
+        source:
+          type: string
+          nullable: true
+        payload:
+          type: object
+    ImportResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [diagram_id, imported_tables, imported_fields, warnings]
+              properties:
+                diagram_id:
+                  type: string
+                imported_tables:
+                  type: integer
+                imported_fields:
+                  type: integer
+                warnings:
+                  type: array
+                  items:
+                    type: string
+                source:
+                  type: string
+                  nullable: true
+    Diagram:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string }
+        name: { type: string, nullable: true }
+        database: { type: string, nullable: true }
+        pan: { type: string, nullable: true }
+        zoom: { type: string, nullable: true }
+        revision: { type: integer, format: int64, default: 0 }
+        tables:
+          type: array
+          items: { $ref: '#/components/schemas/Table' }
+        references:
+          type: array
+          items: { $ref: '#/components/schemas/Reference' }
+        areas:
+          type: array
+          items: { $ref: '#/components/schemas/Area' }
+        notes:
+          type: array
+          items: { $ref: '#/components/schemas/Note' }
+    Table:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        x: { type: number, format: double, default: 0 }
+        y: { type: number, format: double, default: 0 }
+        color: { type: string, default: '' }
+        comment: { type: string, default: '' }
+        fields:
+          type: array
+          items: { $ref: '#/components/schemas/Field' }
+    Field:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type_: { type: string, default: '' }
+        default: { type: string, default: '' }
+        check: { type: string, default: '' }
+        primary: { type: boolean, default: false }
+        unique: { type: boolean, default: false }
+        not_null: { type: boolean, default: false }
+        increment: { type: boolean, default: false }
+        comment: { type: string, default: '' }
+    Reference:
+      type: object
+      required: [id, start_table_id, end_table_id, start_field_id, end_field_id]
+      properties:
+        id: { type: string }
+        name: { type: string, default: '' }
+        start_table_id: { type: string }
+        end_table_id: { type: string }
+        start_field_id: { type: string }
+        end_field_id: { type: string }
+        type_: { type: string, default: '' }
+        on_delete: { type: string, default: '' }
+        on_update: { type: string, default: '' }
+    Area:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string }
+        x: { type: number, default: 0 }
+        y: { type: number, default: 0 }
+        width: { type: number, default: 0 }
+        height: { type: number, default: 0 }
+        color: { type: string, default: '' }
+        name: { type: string, default: '' }
+    Note:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string }
+        x: { type: number, default: 0 }
+        y: { type: number, default: 0 }
+        content: { type: string, default: '' }
+        color: { type: string, default: '' }

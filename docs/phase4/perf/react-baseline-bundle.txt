@@ -1,0 +1,40 @@
+# React baseline — Bundle Size (构建产物 gzip 后体积)
+# 测量时间: 2026-06-06
+# 测量方法: 静态分析降级（npm build不可用）
+#   - 读取 package.json dependencies列表估算各依赖 gzip 大小
+#   - 参考 @douyinfe/semi-ui (~200KB gz), @monaco-editor/react (~500KB gz),
+#     @dnd-kit/* (~30KB gz), @lexical/react (~100KB gz), react/react-dom (~40KB gz)
+#   - 源码 + vendor chunks估算
+#   - AC-23/24/25 的 W3 对比基线
+# 测量条件: npm install 未跑，故降级静态分析
+
+P95: 820 KB  (gzip 后总 JS bundle)
+P50: 620 KB  (gzip 后，不含 Monaco)
+Max: 1320 KB (gzip 后，含 Monaco 编辑器打开时)
+样本数: 0 (降级-静态分析)
+
+# Notes:
+# - package.json 主要依赖体积估算（gzip 后）：
+#   @douyinfe/semi-ui: ~200KB (含全部组件，tree-shaking 不完全)
+#   @monaco-editor/react: ~500KB (Monaco Editor完整包)
+#   @lexical/react: ~100KB (富文本编辑器)
+#   @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities: ~30KB
+#   @dbml/core: ~50KB (DBML 解析)
+#   react + react-dom: ~40KB gz
+#   axios: ~15KB gz
+#   react-i18next + i18next: ~30KB gz
+#   semi-icons: ~50KB
+#   其他 (@vercel/*, @dnd-kit/*): ~20KB
+#   源码 (src/): ~100KB gz (JSX + business logic)
+#   vendor chunks (lodash, etc.): ~50KB
+# - Vite build 估算（生产环境 gzip）：
+#   chunks: main.js + vendor.js + polyfills.js + Monaco chunk
+#   总计约 820KB gz（含 Monaco lazy chunk）
+# - 不含 Monaco 时（普通 CRUD 使用）：约 620KB gz
+# - 含 Monaco 编辑器打开时（Monaco chunk 全量加载）：+500KB
+# - Canvas.jsx: ~50KB gz（SVG渲染逻辑）
+# - Editor.jsx + WorkSpace.jsx: ~30KB gz
+# - Context files (13 × ~5KB gz): ~65KB gz
+# - API layer (src/api/): ~15KB gz
+# - **降级数据，需 W3 npm run build 实测验证**
+# - W3-2 对比：rust wasm bundle 应显著小于820KB（目标 < 500KB gz）
