@@ -6,7 +6,7 @@ on:
     tags:
       - "*"
     branches:
-      - drawdb-web
+      - main
   pull_request:
 
 concurrency:

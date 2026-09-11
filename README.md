@@ -1,7 +1,7 @@
 <div align="center">
     <h1>coldrawdb</h1>
     <p><b>自托管、浏览器端的数据库 ER 图设计工具</b><br>产品灵感源自 drawDB 与 PDManer，代码为纯 Rust 自研</p>
-    <img width="700" style="border-radius:5px;" alt="coldrawdb 界面预览" src="drawdb.png">
+    <img width="700" style="border-radius:5px;" alt="coldrawdb 协作编辑器界面（暗色主题）" src="docs/assets/app-editor.png">
 </div>
 
 ## 简介
