@@ -335,7 +335,8 @@ Table users {
 - drawdb `src/components/EditorSidePanel/IssuesTab/`
 - drawdb `src/components/DBMLEditor/`
 - coldrawdb `frontend-rs/src/editor_panels.rs`
-- `docs/drawdb-capability-checklist.md` §2.4
+- （历史）原 `docs/drawdb-capability-checklist.md` §2.4 已随提案 remove-legacy-docs 移除，内容可溯 git 历史
+
 
 ---
 # Delta — core-04-side-panel-tabs.md（修改）

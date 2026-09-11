@@ -328,7 +328,8 @@ V1 双行顶栏已在 Phase A 合并；E3 统一按钮视觉；**R4** 进一步�
 - drawdb `src/components/Modals/ConfigureCustomTypes/`
 - drawdb `src/components/Modals/Import/`
 - coldrawdb `frontend-rs/src/editor_panels.rs`（标题编辑器等）
-- `docs/drawdb-capability-checklist.md` §2.2
+- （历史）原 `docs/drawdb-capability-checklist.md` §2.2 已随提案 remove-legacy-docs 移除，内容可溯 git 历史
+
 ## 9.1 B4 测试 ID 索引（提案：add-frontend-completeness）
 
 > 模块：core | 提案：add-frontend-completeness

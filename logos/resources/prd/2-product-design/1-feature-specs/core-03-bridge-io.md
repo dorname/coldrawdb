@@ -199,7 +199,8 @@ drawdb 主分支提供以下能力，**coldrawdb V1 不实现**（明确标注�
 - `backend/src/phase3_bridge.rs`（5 端点 Rust 路由）
 - `backend/src/areas/`, `backend/src/diagrams/`, `backend/src/fields/`, `backend/src/notes/`, `backend/src/references/`, `backend/src/tables/`, `backend/src/indices/`（领域子模块）
 - `backend/src/todos/`（task 实体）
-- `docs/drawdb-capability-checklist.md` §1.6 / §1.7 / §1.8
+- （历史）原 `docs/drawdb-capability-checklist.md` §1.6 / §1.7 / §1.8 已随提案 remove-legacy-docs 移除，内容可溯 git 历史
+
 
 ## ADDED — §8 前端 IO 抽屉对接（Phase C）
 

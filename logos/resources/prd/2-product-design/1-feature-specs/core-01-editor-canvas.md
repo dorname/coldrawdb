@@ -308,7 +308,8 @@
 - drawdb `src/components/EditorCanvas/`（`Canvas.jsx` / `Table.jsx` / `Relationship.jsx` / `Area.jsx` / `Note.jsx`）
 - drawdb `src/hooks/{useCanvas,useTransform,useSelect}.js`
 - coldrawdb `frontend-rs/src/editor_render.rs`
-- `docs/drawdb-capability-checklist.md` §1.1 / §2.3
+- （历史）原 `docs/drawdb-capability-checklist.md` §1.1 / §2.3 已随提案 remove-legacy-docs 移除，内容可溯 git 历史
+
 
 ## 11. HiDPI 渲染基线（R-DPR）
 

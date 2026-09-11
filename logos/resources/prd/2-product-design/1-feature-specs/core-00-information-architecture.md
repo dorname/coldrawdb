@@ -163,11 +163,9 @@ backend/src/
 ## 7. 对齐参考源
 
 - drawdb §2.1 顶层布局、§4 路由
-- `docs/phase4/PHASE4_DONE.md`
-- `docs/phase4/architecture.mmd`
-- `docs/phase4/module-mapping.md`
 - `backend/src/` 实际目录
-- `docs/drawdb-capability-checklist.md` §3 状态管理
+- （历史）原 `docs/phase4/PHASE4_DONE.md`、`docs/phase4/architecture.mmd`、`docs/phase4/module-mapping.md`、`docs/drawdb-capability-checklist.md` §3 已随提案 remove-legacy-docs 移除，内容可溯 git 历史
+
 
 ## 8. V2 增量：IO 抽屉（Phase C）
 

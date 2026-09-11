@@ -15,12 +15,13 @@
 
 | 目标 | 衡量指标 | 验收方式 |
 |---|---|---|
-| G1 | drawdb 主分支能力对齐 | 能力清单 ✅ 行 100% 在 V1 中可演示（`docs/drawdb-capability-checklist.md` §6） |
+| G1 | drawdb 主分支能力对齐 | V1 收官时已核验（原能力清单已随提案 remove-legacy-docs 移除，内容可溯 git 历史） |
 | G2 | 编辑响应 P95 < 200ms | W4 perf 实测：100 张表 / 200 条关系 / 60fps |
 | G3 | 自动保存 1s debounce | PUT 触发；失败重试；409 弹冲突对话框 |
 | G4 | 7 引擎 SQL 导入导出 | MySQL / PostgreSQL / SQLite / MariaDB / MSSQL / OracleSQL / Generic |
 | G5 | 部署零运维 | Docker 单文件 + GitHub Actions CI green |
 | G6 | 11 张表可读写无错 | init.sql + database_design.json 双轨对齐 |
+
 
 ### 1.3 目标用户画像
 
@@ -53,7 +54,7 @@
 #### V1 launch gate（必须全部满足）
 
 - [ ] Phase 4 CI 全绿
-- [ ] drawdb 能力清单 ✅ 行 ≥ 95% 可演示
+- [x] drawdb 能力清单 ✅ 行 ≥ 95% 可演示（V1 收官时已核验；原清单已随提案 remove-legacy-docs 移除，内容可溯 git 历史）
 - [ ] P95 编辑响应 < 200ms（W4 perf 实测）
 - [ ] 11 张表可读写无错
 - [ ] 7 引擎 SQL 导入导出可演示

@@ -172,7 +172,8 @@ interface CustomType {
 - drawdb `src/data/datatypes.js`（引擎 → 类型映射）
 - drawdb `src/utils/exportSQL/...`（SQL 导出对账）
 - coldrawdb `frontend-rs/src/editor_panels.rs`（侧栏 EnumsTab 引用）
-- `docs/drawdb-capability-checklist.md` §1.4 / §1.7 / §1.8
+- （历史）原 `docs/drawdb-capability-checklist.md` §1.4 / §1.7 / §1.8 已随提案 remove-legacy-docs 移除，内容可溯 git 历史
+
 
 ---
 # Delta — core-01c-index-enum-custom-type.md（修改）

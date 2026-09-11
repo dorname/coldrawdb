@@ -352,9 +352,9 @@
 
 - 批次 1 全部 25 个 delta 文件
 - `RUST_WEB_REFACTOR_PLAN.md`
-- `docs/phase4/PHASE4_DONE.md`
-- `docs/drawdb-capability-checklist.md`
 - `backend/Cargo.toml` + `frontend-rs/Cargo.toml`
+- （历史）原 `docs/phase4/PHASE4_DONE.md`、`docs/drawdb-capability-checklist.md` 已随提案 remove-legacy-docs 移除，内容可溯 git 历史
+
 
 ## 13. 统一原型规格收口状态
 

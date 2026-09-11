@@ -393,8 +393,8 @@ V1 部署**不包含**：
 - `backend/Cargo.toml`（依赖版本）
 - `backend/init.sql`（11 张表 DDL）
 - `.github/workflows/ci.yml`（CI 配置，参考部署镜像构建）
-- `docs/phase4/PHASE4_DONE.md`（WASM 产物路径）
-- `docs/drawdb-capability-checklist.md` §5
+- （历史）原 `docs/phase4/PHASE4_DONE.md`（WASM 产物路径）、`docs/drawdb-capability-checklist.md` §5 已随提案 remove-legacy-docs 移除，内容可溯 git 历史
+
 
 ## MCP stdio 分发
 

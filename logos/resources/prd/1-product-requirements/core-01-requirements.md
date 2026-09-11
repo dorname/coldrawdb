@@ -137,7 +137,7 @@
 
 V1 通过条件：
 - [ ] Phase 4 CI 全绿（W4 perf 已记录）
-- [ ] drawdb 主分支能力清单（`docs/drawdb-capability-checklist.md` §6）的 ✅ 行 100% 在 coldrawdb V1 中可演示
+- [x] drawdb 主分支能力对齐（已于 V1 收官时核验；原能力清单 `docs/drawdb-capability-checklist.md` 已随提案 remove-legacy-docs 移除，内容可溯 git 历史）
 - [ ] 11 张表可读写无错
 - [ ] 7 引擎 SQL 导入导出可演示
 - [ ] 409 revision 冲突可演示

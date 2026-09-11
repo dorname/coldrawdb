@@ -160,5 +160,6 @@ V1 不实现实时协作；同一 diagram 同时被多个浏览器编辑会触�
 - `backend/src/tables/` + `backend/src/indices/`（含 table_link / indice_link 关联表）
 - `backend/init.sql`（11 张表 DDL）
 - `database_design.json`（字段命名对账）
-- `docs/drawdb-capability-checklist.md` §2.5
+- （历史）原 `docs/drawdb-capability-checklist.md` §2.5 已随提案 remove-legacy-docs 移除，内容可溯 git 历史
+
 
