@@ -80,7 +80,7 @@
   "verify": {
     "result_path": "logos/resources/verify/test-results.jsonl",
     "pre_run_command": "bash scripts/run-verify-tests.sh",
-    "sandbox_mode": "auto",
+    "sandbox_mode": "off",
     "sandbox_root": "/tmp",
     "sandbox_deny_workspace_write": false
   },
