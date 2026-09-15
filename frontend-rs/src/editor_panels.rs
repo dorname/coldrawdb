@@ -9912,8 +9912,10 @@ pub fn AppRoot(
     let palette_query: RwSignal<String> = create_rw_signal(String::new());
     let palette_highlight: RwSignal<usize> = create_rw_signal(0);
     let canvas_transform: RwSignal<Transform> = create_rw_signal(Transform::default());
-    // fix-remote-github-issues / #5：多表框选集合
+    // fix-remote-github-issues / #5：多表 / 便签 / 区域框选集合
     let selected_table_ids: RwSignal<Vec<String>> = create_rw_signal(Vec::new());
+    let selected_note_ids: RwSignal<Vec<String>> = create_rw_signal(Vec::new());
+    let selected_area_ids: RwSignal<Vec<String>> = create_rw_signal(Vec::new());
     // 主题信号提升到 AppRoot：Canvas 绘制 effect 需跟踪它以在主题切换时重绘调色板
     let theme_mode: RwSignal<String> = create_rw_signal(read_html_data_mode());
     let auth_session: RwSignal<Option<AuthSession>> = create_rw_signal(None);
@@ -12327,6 +12329,8 @@ pub fn AppRoot(
                         on_relation_drag_cancel=on_relation_drag_cancel
                         on_table_drop=on_table_drop
                         selected_table_ids=selected_table_ids
+                        selected_note_ids=selected_note_ids
+                        selected_area_ids=selected_area_ids
                         on_reference_pick=on_reference_pick
                         create_tool=create_tool
                         marquee_active=marquee_active

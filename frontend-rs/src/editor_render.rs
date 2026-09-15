@@ -523,6 +523,122 @@ pub fn selection_group_len(tables: &[String], notes: &[String], areas: &[String]
     tables.len() + notes.len() + areas.len()
 }
 
+/// #5：从选中 id 收集表起始坐标；空则 None。
+pub fn collect_table_starts(tables: &[Table], ids: &[String]) -> Option<Vec<(String, f64, f64)>> {
+    let v: Vec<_> = tables
+        .iter()
+        .filter(|t| ids.iter().any(|id| id == &t.id))
+        .map(|t| (t.id.clone(), t.x, t.y))
+        .collect();
+    if v.is_empty() {
+        None
+    } else {
+        Some(v)
+    }
+}
+
+/// #5：从选中 id 收集起始坐标；空则 None。
+pub fn collect_note_starts(notes: &[Note], ids: &[String]) -> Option<Vec<(String, f64, f64)>> {
+    let v: Vec<_> = notes
+        .iter()
+        .filter(|n| ids.iter().any(|id| id == &n.id))
+        .map(|n| (n.id.clone(), n.x, n.y))
+        .collect();
+    if v.is_empty() {
+        None
+    } else {
+        Some(v)
+    }
+}
+
+/// #5：从选中 id 收集区域起始坐标；空则 None。
+pub fn collect_area_starts(areas: &[Area], ids: &[String]) -> Option<Vec<(String, f64, f64)>> {
+    let v: Vec<_> = areas
+        .iter()
+        .filter(|a| ids.iter().any(|id| id == &a.id))
+        .map(|a| (a.id.clone(), a.x, a.y))
+        .collect();
+    if v.is_empty() {
+        None
+    } else {
+        Some(v)
+    }
+}
+
+/// #5：点击对象是否应启动整组拖动（自身在集合内且总选中 ≥2）。
+pub fn should_start_group_drag(
+    clicked_in_set: bool,
+    tables: &[String],
+    notes: &[String],
+    areas: &[String],
+) -> bool {
+    clicked_in_set && selection_group_len(tables, notes, areas) >= 2
+}
+
+/// #5：非 Shift / 非框选累加 / 非点中已选成员 → 单选重置，应清空其他类型多选。
+pub fn should_clear_cross_selection(
+    shift_key: bool,
+    marquee_tool: bool,
+    clicked_in_set: bool,
+) -> bool {
+    !shift_key && !marquee_tool && !clicked_in_set
+}
+
+/// #5：若应整组拖动则收集三类起始坐标，否则全 None。
+pub fn build_group_drag_starts(
+    tables: &[Table],
+    notes: &[Note],
+    areas: &[Area],
+    table_ids: &[String],
+    note_ids: &[String],
+    area_ids: &[String],
+    clicked_in_set: bool,
+) -> (
+    Option<Vec<(String, f64, f64)>>,
+    Option<Vec<(String, f64, f64)>>,
+    Option<Vec<(String, f64, f64)>>,
+) {
+    if !should_start_group_drag(clicked_in_set, table_ids, note_ids, area_ids) {
+        return (None, None, None);
+    }
+    (
+        collect_table_starts(tables, table_ids),
+        collect_note_starts(notes, note_ids),
+        collect_area_starts(areas, area_ids),
+    )
+}
+
+/// 对选中集合施加世界坐标位移（表 / 便签 / 区域）。
+pub fn translate_group_entities(
+    tables: &mut [Table],
+    notes: &mut [Note],
+    areas: &mut [Area],
+    table_starts: &[(String, f64, f64)],
+    note_starts: &[(String, f64, f64)],
+    area_starts: &[(String, f64, f64)],
+    ddx: f64,
+    ddy: f64,
+) {
+    for (tid, sx, sy) in table_starts {
+        if let Some(t) = tables.iter_mut().find(|t| &t.id == tid) {
+            t.x = sx + ddx;
+            t.y = sy + ddy;
+        }
+    }
+    for (nid, sx, sy) in note_starts {
+        if let Some(n) = notes.iter_mut().find(|n| &n.id == nid) {
+            n.x = sx + ddx;
+            n.y = sy + ddy;
+        }
+    }
+    for (aid, sx, sy) in area_starts {
+        if let Some(a) = areas.iter_mut().find(|a| &a.id == aid) {
+            a.x = sx + ddx;
+            a.y = sy + ddy;
+        }
+    }
+}
+
 /// 框选矩形与表 AABB 相交判定（世界坐标）。
 pub fn tables_in_marquee(tables: &[Table], x1: f64, y1: f64, x2: f64, y2: f64) -> Vec<String> {
     let min_x = x1.min(x2);
@@ -685,6 +801,9 @@ mod leptos_canvas {
         on_table_drop: Option<Box<dyn Fn() + 'static>>,
         /// fix-remote-github-issues / #5：多表选中集合（Shift 框选写入；拖动其中一张时整组平移）
         selected_table_ids: RwSignal<Vec<String>>,
+        /// #5：框选多选的便签 / 区域集合（与表一起整组拖动）
+        selected_note_ids: RwSignal<Vec<String>>,
+        selected_area_ids: RwSignal<Vec<String>>,
         /// relation-inspector-and-ddl-io：点击连线命中（返回 reference id）→ 选中 + Inspector（不再弹详情模态）
         on_reference_pick: Option<Box<dyn Fn(String) + 'static>>,
         /// p0-fix 定点 2：当前创建工具（Some → 十字光标 + 拖拽创建区域 / 点击放置便签）
@@ -903,6 +1022,8 @@ mod leptos_canvas {
             let sel_note = selected_note_id.with(|s| s.clone());
             // #5：订阅多选集合，框选/Shift 多选后重绘选中环
             let multi_sel = selected_table_ids.with(|ids| ids.clone());
+            let multi_notes = selected_note_ids.with(|ids| ids.clone());
+            let multi_areas = selected_area_ids.with(|ids| ids.clone());
             // R-PERF-11：幽灵层接管中的表 id（主画布跳过绘制）
             let ghost_skip = ghost.borrow().as_ref().map(|g| g.table_id.clone());
 
@@ -931,6 +1052,8 @@ mod leptos_canvas {
                                     presence,
                                     sel.as_deref(),
                                     &multi_sel,
+                                    &multi_notes,
+                                    &multi_areas,
                                     sel_ref.as_deref(),
                                     sel_area.as_deref(),
                                     sel_note.as_deref(),
@@ -1032,6 +1155,8 @@ mod leptos_canvas {
             let on_select = on_select.clone();
             let on_deselect = on_deselect.clone();
             let on_field_pick = on_field_pick.clone();
+            let on_note_pick = on_note_pick.clone();
+            let on_area_pick = on_area_pick.clone();
             let schedule_paint = schedule_paint.clone();
             let current_transform = current_transform.clone();
             move |ev: PointerEvent| {
@@ -1242,7 +1367,7 @@ mod leptos_canvas {
                     return;
                 }
                 // #5 / 便签·区域拖拽：
-                // 1) 已选中的区域：整区可拖（含表叠盖处）——「被选中后支持拖拽」
+                // 1) 已选中的区域：整区可拖（含表叠盖处）；若在多选集合内则整组拖
                 // 2) 便签在表之上；未选中区域仍可用标题栏拖动
                 if !read_only {
                     if let Some(sel_area) = selected_area_id.get_untracked() {
@@ -1257,15 +1382,47 @@ mod leptos_canvas {
                                 .find(|a| a.id == sel_area)
                                 .map(|a| (a.x, a.y))
                                 .unwrap_or((0.0, 0.0));
+                            let prev_areas = selected_area_ids.get_untracked();
+                            let in_set = prev_areas.iter().any(|x| x == &sel_area);
+                            let multi_areas = super::resolve_table_multi_on_pointerdown(
+                                ev.shift_key(),
+                                marquee_active.get_untracked(),
+                                &sel_area,
+                                &prev_areas,
+                            );
+                            selected_area_ids.set(multi_areas.clone());
+                            if super::should_clear_cross_selection(
+                                ev.shift_key(),
+                                marquee_active.get_untracked(),
+                                in_set,
+                            ) {
+                                selected_table_ids.set(Vec::new());
+                                selected_note_ids.set(Vec::new());
+                                selected_id.set(None);
+                                selected_note_id.set(None);
+                            }
+                            selected_area_id.set(Some(sel_area.clone()));
                             if let Some(cb) = on_area_pick.as_ref() {
                                 cb(sel_area.clone());
                             }
+                            let tables_sel = selected_table_ids.get_untracked();
+                            let notes_sel = selected_note_ids.get_untracked();
+                            let (multi_starts, multi_note_starts, multi_area_starts) =
+                                super::build_group_drag_starts(
+                                    &tables,
+                                    &store.notes.get_untracked(),
+                                    &store.areas.get_untracked(),
+                                    &tables_sel,
+                                    &notes_sel,
+                                    &multi_areas,
+                                    multi_areas.iter().any(|x| x == &sel_area),
+                                );
                             capture_pointer(&canvas, ev.pointer_id());
                             drag_state.set(Some(DragState {
                                 table_id: None,
-                                multi_starts: None,
-                                multi_note_starts: None,
-                                multi_area_starts: None,
+                                multi_starts,
+                                multi_note_starts,
+                                multi_area_starts,
                                 marquee_start: None,
                                 endpoint_drag: None,
                                 rel_drag: None,
@@ -1285,11 +1442,27 @@ mod leptos_canvas {
                     }
                     if let Some(note_id) = super::hit_test_note(&store.notes.get_untracked(), dx, dy)
                     {
-                        selected_id.set(None);
                         selected_ref_id.set(None);
-                        selected_area_id.set(None);
+                        let prev_notes = selected_note_ids.get_untracked();
+                        let in_set = prev_notes.iter().any(|x| x == &note_id);
+                        let multi_notes = super::resolve_table_multi_on_pointerdown(
+                            ev.shift_key(),
+                            marquee_active.get_untracked(),
+                            &note_id,
+                            &prev_notes,
+                        );
+                        selected_note_ids.set(multi_notes.clone());
                         selected_note_id.set(Some(note_id.clone()));
-                        selected_table_ids.set(Vec::new());
+                        if super::should_clear_cross_selection(
+                            ev.shift_key(),
+                            marquee_active.get_untracked(),
+                            in_set,
+                        ) {
+                            selected_table_ids.set(Vec::new());
+                            selected_area_ids.set(Vec::new());
+                            selected_id.set(None);
+                            selected_area_id.set(None);
+                        }
                         let (note_x, note_y) = store
                             .notes
                             .get_untracked()
@@ -1300,12 +1473,24 @@ mod leptos_canvas {
                         if let Some(cb) = on_note_pick.as_ref() {
                             cb(note_id.clone());
                         }
+                        let tables_sel = selected_table_ids.get_untracked();
+                        let areas_sel = selected_area_ids.get_untracked();
+                        let (multi_starts, multi_note_starts, multi_area_starts) =
+                            super::build_group_drag_starts(
+                                &tables,
+                                &store.notes.get_untracked(),
+                                &store.areas.get_untracked(),
+                                &tables_sel,
+                                &multi_notes,
+                                &areas_sel,
+                                multi_notes.iter().any(|x| x == &note_id),
+                            );
                         capture_pointer(&canvas, ev.pointer_id());
                         drag_state.set(Some(DragState {
                             table_id: None,
-                            multi_starts: None,
-                            multi_note_starts: None,
-                            multi_area_starts: None,
+                            multi_starts,
+                            multi_note_starts,
+                            multi_area_starts,
                             marquee_start: None,
                             endpoint_drag: None,
                             rel_drag: None,
@@ -1325,11 +1510,27 @@ mod leptos_canvas {
                     if let Some(area_id) =
                         super::hit_test_area_header(&store.areas.get_untracked(), dx, dy)
                     {
-                        selected_id.set(None);
                         selected_ref_id.set(None);
-                        selected_note_id.set(None);
+                        let prev_areas = selected_area_ids.get_untracked();
+                        let in_set = prev_areas.iter().any(|x| x == &area_id);
+                        let multi_areas = super::resolve_table_multi_on_pointerdown(
+                            ev.shift_key(),
+                            marquee_active.get_untracked(),
+                            &area_id,
+                            &prev_areas,
+                        );
+                        selected_area_ids.set(multi_areas.clone());
                         selected_area_id.set(Some(area_id.clone()));
-                        selected_table_ids.set(Vec::new());
+                        if super::should_clear_cross_selection(
+                            ev.shift_key(),
+                            marquee_active.get_untracked(),
+                            in_set,
+                        ) {
+                            selected_table_ids.set(Vec::new());
+                            selected_note_ids.set(Vec::new());
+                            selected_id.set(None);
+                            selected_note_id.set(None);
+                        }
                         let (area_x, area_y) = store
                             .areas
                             .get_untracked()
@@ -1340,12 +1541,24 @@ mod leptos_canvas {
                         if let Some(cb) = on_area_pick.as_ref() {
                             cb(area_id.clone());
                         }
+                        let tables_sel = selected_table_ids.get_untracked();
+                        let notes_sel = selected_note_ids.get_untracked();
+                        let (multi_starts, multi_note_starts, multi_area_starts) =
+                            super::build_group_drag_starts(
+                                &tables,
+                                &store.notes.get_untracked(),
+                                &store.areas.get_untracked(),
+                                &tables_sel,
+                                &notes_sel,
+                                &multi_areas,
+                                multi_areas.iter().any(|x| x == &area_id),
+                            );
                         capture_pointer(&canvas, ev.pointer_id());
                         drag_state.set(Some(DragState {
                             table_id: None,
-                            multi_starts: None,
-                            multi_note_starts: None,
-                            multi_area_starts: None,
+                            multi_starts,
+                            multi_note_starts,
+                            multi_area_starts,
                             marquee_start: None,
                             endpoint_drag: None,
                             rel_drag: None,
@@ -1368,8 +1581,6 @@ mod leptos_canvas {
                     let table_y = tables.iter().find(|t| t.id == id).map(|t| t.y).unwrap_or(0.0);
                     selected_id.set(Some(id.clone()));
                     selected_ref_id.set(None);
-                    selected_area_id.set(None);
-                    selected_note_id.set(None);
                     // 字段行（非 port）短按：选中字段；框选/Shift 手势下不抢选字段
                     if !ev.shift_key() && !marquee_active.get_untracked() {
                         if let Some((tid, fid)) = super::hit_test_field(&tables, dx, dy) {
@@ -1381,34 +1592,47 @@ mod leptos_canvas {
                         }
                     }
                     // #5：多选集合更新——点已选成员保持集合以整组拖动（勿因框选工具仍激活而 toggle）
+                    let prev_tables = selected_table_ids.get_untracked();
+                    let in_set = prev_tables.iter().any(|x| x == &id);
                     let multi = super::resolve_table_multi_on_pointerdown(
                         ev.shift_key(),
                         marquee_active.get_untracked(),
                         &id,
-                        &selected_table_ids.get_untracked(),
+                        &prev_tables,
                     );
                     selected_table_ids.set(multi.clone());
+                    if super::should_clear_cross_selection(
+                        ev.shift_key(),
+                        marquee_active.get_untracked(),
+                        in_set,
+                    ) {
+                        selected_note_ids.set(Vec::new());
+                        selected_area_ids.set(Vec::new());
+                        selected_area_id.set(None);
+                        selected_note_id.set(None);
+                    }
                     if let Some(cb) = on_select.as_ref() {
                         cb(id.clone());
                     }
                     capture_pointer(&canvas, ev.pointer_id());
                     live.borrow_mut().table_pos = None;
-                    let multi_starts = if multi.len() >= 2 && multi.iter().any(|x| x == &id) {
-                        Some(
-                            tables
-                                .iter()
-                                .filter(|t| multi.iter().any(|x| x == &t.id))
-                                .map(|t| (t.id.clone(), t.x, t.y))
-                                .collect::<Vec<_>>(),
-                        )
-                    } else {
-                        None
-                    };
+                    let notes_sel = selected_note_ids.get_untracked();
+                    let areas_sel = selected_area_ids.get_untracked();
+                    let (multi_starts, multi_note_starts, multi_area_starts) =
+                        super::build_group_drag_starts(
+                            &tables,
+                            &store.notes.get_untracked(),
+                            &store.areas.get_untracked(),
+                            &multi,
+                            &notes_sel,
+                            &areas_sel,
+                            multi.iter().any(|x| x == &id),
+                        );
                     drag_state.set(Some(DragState {
                         table_id: Some(id),
                         multi_starts,
-                        multi_note_starts: None,
-                        multi_area_starts: None,
+                        multi_note_starts,
+                        multi_area_starts,
                         marquee_start: None,
                         endpoint_drag: None,
                         rel_drag: None,
@@ -1524,6 +1748,8 @@ mod leptos_canvas {
                         !read_only && (ev.shift_key() || marquee_active.get_untracked());
                     let marquee_start = if use_marquee {
                         selected_table_ids.set(Vec::new());
+                        selected_note_ids.set(Vec::new());
+                        selected_area_ids.set(Vec::new());
                         Some((dx, dy))
                     } else {
                         None
@@ -1705,43 +1931,153 @@ mod leptos_canvas {
                 } else if let Some((note_id, start_x, start_y)) = &drag.note_drag {
                     // redesign-listview-type-length-canvas-fix：便签拖动中只写视觉层（ST-CR-NOTE-01：
                     // mousemove 不触发 PUT），松手才落账 store
-                    let new_x = start_x + dx / t_now.zoom;
-                    let new_y = start_y + dy / t_now.zoom;
-                    let mut visual = store.notes.get_untracked();
-                    if let Some(n) = visual.iter_mut().find(|n| n.id == *note_id) {
-                        n.x = new_x;
-                        n.y = new_y;
+                    // #5：若带多选 starts，整组平移
+                    let ddx = dx / t_now.zoom;
+                    let ddy = dy / t_now.zoom;
+                    if drag.multi_starts.is_some()
+                        || drag.multi_note_starts.is_some()
+                        || drag.multi_area_starts.is_some()
+                    {
+                        if let Some(starts) = &drag.multi_starts {
+                            let mut tables = store.tables.get_untracked();
+                            for (tid, sx, sy) in starts {
+                                if let Some(t) = tables.iter_mut().find(|t| &t.id == tid) {
+                                    t.x = sx + ddx;
+                                    t.y = sy + ddy;
+                                }
+                            }
+                            store.tables.set(tables);
+                        }
+                        let mut visual_notes = store.notes.get_untracked();
+                        if let Some(starts) = &drag.multi_note_starts {
+                            for (nid, sx, sy) in starts {
+                                if let Some(n) = visual_notes.iter_mut().find(|n| &n.id == nid) {
+                                    n.x = sx + ddx;
+                                    n.y = sy + ddy;
+                                }
+                            }
+                        } else if let Some(n) = visual_notes.iter_mut().find(|n| n.id == *note_id) {
+                            n.x = start_x + ddx;
+                            n.y = start_y + ddy;
+                        }
+                        live.borrow_mut().notes = Some(visual_notes);
+                        if let Some(starts) = &drag.multi_area_starts {
+                            let mut visual_areas = store.areas.get_untracked();
+                            for (aid, sx, sy) in starts {
+                                if let Some(a) = visual_areas.iter_mut().find(|a| &a.id == aid) {
+                                    a.x = sx + ddx;
+                                    a.y = sy + ddy;
+                                }
+                            }
+                            live.borrow_mut().areas = Some(visual_areas);
+                        }
+                        schedule_paint();
+                    } else {
+                        let new_x = start_x + ddx;
+                        let new_y = start_y + ddy;
+                        let mut visual = store.notes.get_untracked();
+                        if let Some(n) = visual.iter_mut().find(|n| n.id == *note_id) {
+                            n.x = new_x;
+                            n.y = new_y;
+                        }
+                        live.borrow_mut().notes = Some(visual);
+                        schedule_paint();
                     }
-                    live.borrow_mut().notes = Some(visual);
-                    schedule_paint();
                 } else if let Some((area_id, start_x, start_y)) = &drag.area_drag {
                     // redesign-listview-type-length-canvas-fix：区域拖动中只写视觉层（ST-CR-AREA-01）
-                    let new_x = start_x + dx / t_now.zoom;
-                    let new_y = start_y + dy / t_now.zoom;
-                    let mut visual = store.areas.get_untracked();
-                    if let Some(a) = visual.iter_mut().find(|a| a.id == *area_id) {
-                        a.x = new_x;
-                        a.y = new_y;
+                    let ddx = dx / t_now.zoom;
+                    let ddy = dy / t_now.zoom;
+                    if drag.multi_starts.is_some()
+                        || drag.multi_note_starts.is_some()
+                        || drag.multi_area_starts.is_some()
+                    {
+                        if let Some(starts) = &drag.multi_starts {
+                            let mut tables = store.tables.get_untracked();
+                            for (tid, sx, sy) in starts {
+                                if let Some(t) = tables.iter_mut().find(|t| &t.id == tid) {
+                                    t.x = sx + ddx;
+                                    t.y = sy + ddy;
+                                }
+                            }
+                            store.tables.set(tables);
+                        }
+                        if let Some(starts) = &drag.multi_note_starts {
+                            let mut visual_notes = store.notes.get_untracked();
+                            for (nid, sx, sy) in starts {
+                                if let Some(n) = visual_notes.iter_mut().find(|n| &n.id == nid) {
+                                    n.x = sx + ddx;
+                                    n.y = sy + ddy;
+                                }
+                            }
+                            live.borrow_mut().notes = Some(visual_notes);
+                        }
+                        let mut visual_areas = store.areas.get_untracked();
+                        if let Some(starts) = &drag.multi_area_starts {
+                            for (aid, sx, sy) in starts {
+                                if let Some(a) = visual_areas.iter_mut().find(|a| &a.id == aid) {
+                                    a.x = sx + ddx;
+                                    a.y = sy + ddy;
+                                }
+                            }
+                        } else if let Some(a) = visual_areas.iter_mut().find(|a| a.id == *area_id) {
+                            a.x = start_x + ddx;
+                            a.y = start_y + ddy;
+                        }
+                        live.borrow_mut().areas = Some(visual_areas);
+                        schedule_paint();
+                    } else {
+                        let new_x = start_x + ddx;
+                        let new_y = start_y + ddy;
+                        let mut visual = store.areas.get_untracked();
+                        if let Some(a) = visual.iter_mut().find(|a| a.id == *area_id) {
+                            a.x = new_x;
+                            a.y = new_y;
+                        }
+                        live.borrow_mut().areas = Some(visual);
+                        schedule_paint();
                     }
-                    live.borrow_mut().areas = Some(visual);
-                    schedule_paint();
                 } else if let Some(table_id) = &drag.table_id {
                     // R-PERF-04：拖动中只写 (id, x, y) 覆盖层——禁止整 Vec<Table> 深克隆
                     // （UT-CR-DRAG-01）；不量化网格（UT-CR-06），松手才落账 store
                     let new_x = drag.start_table_x + dx / t_now.zoom;
                     let new_y = drag.start_table_y + dy / t_now.zoom;
-                    if let Some(starts) = &drag.multi_starts {
-                        // #5：多表同步位移——直接写 store 坐标（视觉即时），松手再走落账通路
+                    if drag.multi_starts.is_some()
+                        || drag.multi_note_starts.is_some()
+                        || drag.multi_area_starts.is_some()
+                    {
+                        // #5：多选整组同步位移
                         let ddx = new_x - drag.start_table_x;
                         let ddy = new_y - drag.start_table_y;
-                        let mut tables = store.tables.get_untracked();
-                        for (tid, sx, sy) in starts {
-                            if let Some(t) = tables.iter_mut().find(|t| &t.id == tid) {
-                                t.x = sx + ddx;
-                                t.y = sy + ddy;
+                        if let Some(starts) = &drag.multi_starts {
+                            let mut tables = store.tables.get_untracked();
+                            for (tid, sx, sy) in starts {
+                                if let Some(t) = tables.iter_mut().find(|t| &t.id == tid) {
+                                    t.x = sx + ddx;
+                                    t.y = sy + ddy;
+                                }
                             }
+                            store.tables.set(tables);
                         }
-                        store.tables.set(tables);
+                        if let Some(starts) = &drag.multi_note_starts {
+                            let mut visual_notes = store.notes.get_untracked();
+                            for (nid, sx, sy) in starts {
+                                if let Some(n) = visual_notes.iter_mut().find(|n| &n.id == nid) {
+                                    n.x = sx + ddx;
+                                    n.y = sy + ddy;
+                                }
+                            }
+                            live.borrow_mut().notes = Some(visual_notes);
+                        }
+                        if let Some(starts) = &drag.multi_area_starts {
+                            let mut visual_areas = store.areas.get_untracked();
+                            for (aid, sx, sy) in starts {
+                                if let Some(a) = visual_areas.iter_mut().find(|a| &a.id == aid) {
+                                    a.x = sx + ddx;
+                                    a.y = sy + ddy;
+                                }
+                            }
+                            live.borrow_mut().areas = Some(visual_areas);
+                        }
                         live.borrow_mut().table_pos = Some((table_id.clone(), new_x, new_y));
                         schedule_paint();
                         return;
@@ -1819,6 +2155,9 @@ mod leptos_canvas {
             let on_table_drop = on_table_drop.clone();
             let on_area_create = on_area_create.clone();
             let on_note_create = on_note_create.clone();
+            let on_select = on_select.clone();
+            let on_note_pick = on_note_pick.clone();
+            let on_area_pick = on_area_pick.clone();
             let current_transform = current_transform.clone();
             move |ev: PointerEvent| {
                 let Some(drag) = drag_state.get_untracked() else {
@@ -1912,7 +2251,12 @@ mod leptos_canvas {
                     // redesign-listview-type-length-canvas-fix：便签松手落账（ST-CR-NOTE-01）
                     let dx = ev.client_x() as f64 - drag.start_mouse_x;
                     let dy = ev.client_y() as f64 - drag.start_mouse_y;
+                    let multi_starts = drag.multi_starts.clone();
+                    let multi_note_starts = drag.multi_note_starts.clone();
+                    let multi_area_starts = drag.multi_area_starts.clone();
                     live.borrow_mut().notes = None;
+                    live.borrow_mut().areas = None;
+                    live.borrow_mut().table_pos = None;
                     drag_state.set(None);
                     // 纯点击（位移 < 阈值）= 选中语义：不写回坐标、不触发持久化
                     if !super::is_relation_drag(dx, dy, super::DRAG_THRESHOLD) {
@@ -1921,12 +2265,60 @@ mod leptos_canvas {
                     }
                     let new_x = start_x + dx / t_now.zoom;
                     let new_y = start_y + dy / t_now.zoom;
-                    let mut notes = store.notes.get_untracked();
-                    if let Some(n) = notes.iter_mut().find(|n| n.id == note_id) {
-                        n.x = new_x;
-                        n.y = new_y;
+                    let (sx, sy) = super::snap_to_grid(new_x, new_y, super::GRID_SIZE);
+                    let ddx = sx - start_x;
+                    let ddy = sy - start_y;
+                    if multi_starts.is_some()
+                        || multi_note_starts.is_some()
+                        || multi_area_starts.is_some()
+                    {
+                        if let Some(starts) = multi_starts {
+                            let mut tables = store.tables.get_untracked();
+                            for (tid, ox, oy) in starts {
+                                let (nx, ny) =
+                                    super::snap_to_grid(ox + ddx, oy + ddy, super::GRID_SIZE);
+                                if let Some(table) = tables.iter_mut().find(|t| t.id == tid) {
+                                    table.x = nx;
+                                    table.y = ny;
+                                }
+                            }
+                            store.tables.set(tables);
+                        }
+                        let mut notes = store.notes.get_untracked();
+                        if let Some(starts) = multi_note_starts {
+                            for (nid, ox, oy) in starts {
+                                let (nx, ny) =
+                                    super::snap_to_grid(ox + ddx, oy + ddy, super::GRID_SIZE);
+                                if let Some(n) = notes.iter_mut().find(|n| n.id == nid) {
+                                    n.x = nx;
+                                    n.y = ny;
+                                }
+                            }
+                        } else if let Some(n) = notes.iter_mut().find(|n| n.id == note_id) {
+                            n.x = sx;
+                            n.y = sy;
+                        }
+                        store.notes.set(notes);
+                        if let Some(starts) = multi_area_starts {
+                            let mut areas = store.areas.get_untracked();
+                            for (aid, ox, oy) in starts {
+                                let (nx, ny) =
+                                    super::snap_to_grid(ox + ddx, oy + ddy, super::GRID_SIZE);
+                                if let Some(a) = areas.iter_mut().find(|a| a.id == aid) {
+                                    a.x = nx;
+                                    a.y = ny;
+                                }
+                            }
+                            store.areas.set(areas);
+                        }
+                    } else {
+                        let mut notes = store.notes.get_untracked();
+                        if let Some(n) = notes.iter_mut().find(|n| n.id == note_id) {
+                            n.x = sx;
+                            n.y = sy;
+                        }
+                        store.notes.set(notes);
                     }
-                    store.notes.set(notes);
                     // 复用表拖动落账通路（dirty + 协作 op + S01 保存链路 → PUT notes[0].x/y）
                     if let Some(cb) = on_table_drop.as_ref() {
                         cb();
@@ -1938,7 +2330,12 @@ mod leptos_canvas {
                     // redesign-listview-type-length-canvas-fix：区域松手落账（ST-CR-AREA-01，宽高不变）
                     let dx = ev.client_x() as f64 - drag.start_mouse_x;
                     let dy = ev.client_y() as f64 - drag.start_mouse_y;
+                    let multi_starts = drag.multi_starts.clone();
+                    let multi_note_starts = drag.multi_note_starts.clone();
+                    let multi_area_starts = drag.multi_area_starts.clone();
+                    live.borrow_mut().notes = None;
                     live.borrow_mut().areas = None;
+                    live.borrow_mut().table_pos = None;
                     drag_state.set(None);
                     if !super::is_relation_drag(dx, dy, super::DRAG_THRESHOLD) {
                         schedule_paint();
@@ -1946,12 +2343,60 @@ mod leptos_canvas {
                     }
                     let new_x = start_x + dx / t_now.zoom;
                     let new_y = start_y + dy / t_now.zoom;
-                    let mut areas = store.areas.get_untracked();
-                    if let Some(a) = areas.iter_mut().find(|a| a.id == area_id) {
-                        a.x = new_x;
-                        a.y = new_y;
+                    let (sx, sy) = super::snap_to_grid(new_x, new_y, super::GRID_SIZE);
+                    let ddx = sx - start_x;
+                    let ddy = sy - start_y;
+                    if multi_starts.is_some()
+                        || multi_note_starts.is_some()
+                        || multi_area_starts.is_some()
+                    {
+                        if let Some(starts) = multi_starts {
+                            let mut tables = store.tables.get_untracked();
+                            for (tid, ox, oy) in starts {
+                                let (nx, ny) =
+                                    super::snap_to_grid(ox + ddx, oy + ddy, super::GRID_SIZE);
+                                if let Some(table) = tables.iter_mut().find(|t| t.id == tid) {
+                                    table.x = nx;
+                                    table.y = ny;
+                                }
+                            }
+                            store.tables.set(tables);
+                        }
+                        if let Some(starts) = multi_note_starts {
+                            let mut notes = store.notes.get_untracked();
+                            for (nid, ox, oy) in starts {
+                                let (nx, ny) =
+                                    super::snap_to_grid(ox + ddx, oy + ddy, super::GRID_SIZE);
+                                if let Some(n) = notes.iter_mut().find(|n| n.id == nid) {
+                                    n.x = nx;
+                                    n.y = ny;
+                                }
+                            }
+                            store.notes.set(notes);
+                        }
+                        let mut areas = store.areas.get_untracked();
+                        if let Some(starts) = multi_area_starts {
+                            for (aid, ox, oy) in starts {
+                                let (nx, ny) =
+                                    super::snap_to_grid(ox + ddx, oy + ddy, super::GRID_SIZE);
+                                if let Some(a) = areas.iter_mut().find(|a| a.id == aid) {
+                                    a.x = nx;
+                                    a.y = ny;
+                                }
+                            }
+                        } else if let Some(a) = areas.iter_mut().find(|a| a.id == area_id) {
+                            a.x = sx;
+                            a.y = sy;
+                        }
+                        store.areas.set(areas);
+                    } else {
+                        let mut areas = store.areas.get_untracked();
+                        if let Some(a) = areas.iter_mut().find(|a| a.id == area_id) {
+                            a.x = sx;
+                            a.y = sy;
+                        }
+                        store.areas.set(areas);
                     }
-                    store.areas.set(areas);
                     if let Some(cb) = on_table_drop.as_ref() {
                         cb();
                     }
@@ -1962,10 +2407,14 @@ mod leptos_canvas {
                     let dx = ev.client_x() as f64 - drag.start_mouse_x;
                     let dy = ev.client_y() as f64 - drag.start_mouse_y;
                     live.borrow_mut().table_pos = None;
+                    live.borrow_mut().notes = None;
+                    live.borrow_mut().areas = None;
                     // R-PERF-11：先撤幽灵层再落账/重绘，保证渲染 effect 看到幽灵已清
                     // （Drop 自动从 DOM 移除节点）
                     ghost.borrow_mut().take();
                     let multi_starts = drag.multi_starts.clone();
+                    let multi_note_starts = drag.multi_note_starts.clone();
+                    let multi_area_starts = drag.multi_area_starts.clone();
                     drag_state.set(None);
                     // 纯点击（位移 < 4px）= 选中语义：不写回坐标、不触发持久化，仅重绘复位视觉
                     if !super::is_relation_drag(dx, dy, super::DRAG_THRESHOLD) {
@@ -1975,10 +2424,10 @@ mod leptos_canvas {
                     let new_x = drag.start_table_x + dx / t_now.zoom;
                     let new_y = drag.start_table_y + dy / t_now.zoom;
                     let (sx, sy) = super::snap_to_grid(new_x, new_y, super::GRID_SIZE);
+                    let ddx = sx - drag.start_table_x;
+                    let ddy = sy - drag.start_table_y;
                     let mut tables = store.tables.get_untracked();
                     if let Some(starts) = multi_starts {
-                        let ddx = sx - drag.start_table_x;
-                        let ddy = sy - drag.start_table_y;
                         for (tid, ox, oy) in starts {
                             let (nx, ny) =
                                 super::snap_to_grid(ox + ddx, oy + ddy, super::GRID_SIZE);
@@ -1992,6 +2441,30 @@ mod leptos_canvas {
                         table.y = sy;
                     }
                     store.tables.set(tables);
+                    if let Some(starts) = multi_note_starts {
+                        let mut notes = store.notes.get_untracked();
+                        for (nid, ox, oy) in starts {
+                            let (nx, ny) =
+                                super::snap_to_grid(ox + ddx, oy + ddy, super::GRID_SIZE);
+                            if let Some(n) = notes.iter_mut().find(|n| n.id == nid) {
+                                n.x = nx;
+                                n.y = ny;
+                            }
+                        }
+                        store.notes.set(notes);
+                    }
+                    if let Some(starts) = multi_area_starts {
+                        let mut areas = store.areas.get_untracked();
+                        for (aid, ox, oy) in starts {
+                            let (nx, ny) =
+                                super::snap_to_grid(ox + ddx, oy + ddy, super::GRID_SIZE);
+                            if let Some(a) = areas.iter_mut().find(|a| a.id == aid) {
+                                a.x = nx;
+                                a.y = ny;
+                            }
+                        }
+                        store.areas.set(areas);
+                    }
                     // D 批：松手吸附后必须通知持久化（S01 保存链路），否则拖表位置不落账
                     if let Some(cb) = on_table_drop.as_ref() {
                         cb();
@@ -2015,16 +2488,49 @@ mod leptos_canvas {
                     live.borrow_mut().marquee_preview = None;
                     rubber_d.set(None);
                     drag_state.set(None);
-                    let ids = super::tables_in_marquee(
+                    let table_ids = super::tables_in_marquee(
                         &store.tables.get_untracked(),
                         mx,
                         my,
                         diag_x,
                         diag_y,
                     );
-                    selected_table_ids.set(ids.clone());
-                    if let Some(first) = ids.first() {
+                    let note_ids = super::notes_in_marquee(
+                        &store.notes.get_untracked(),
+                        mx,
+                        my,
+                        diag_x,
+                        diag_y,
+                    );
+                    let area_ids = super::areas_in_marquee(
+                        &store.areas.get_untracked(),
+                        mx,
+                        my,
+                        diag_x,
+                        diag_y,
+                    );
+                    selected_table_ids.set(table_ids.clone());
+                    selected_note_ids.set(note_ids.clone());
+                    selected_area_ids.set(area_ids.clone());
+                    if let Some(first) = table_ids.first() {
                         selected_id.set(Some(first.clone()));
+                    } else {
+                        selected_id.set(None);
+                    }
+                    selected_note_id.set(note_ids.first().cloned());
+                    selected_area_id.set(area_ids.first().cloned());
+                    if let Some(nid) = note_ids.first() {
+                        if let Some(cb) = on_note_pick.as_ref() {
+                            cb(nid.clone());
+                        }
+                    } else if let Some(aid) = area_ids.first() {
+                        if let Some(cb) = on_area_pick.as_ref() {
+                            cb(aid.clone());
+                        }
+                    } else if let Some(tid) = table_ids.first() {
+                        if let Some(cb) = on_select.as_ref() {
+                            cb(tid.clone());
+                        }
                     }
                     schedule_paint();
                     return;
@@ -2404,6 +2910,9 @@ pub fn draw_canvas(
     selected_id: Option<&str>,
     // #5：多选 / 框选集合（集合内表均绘制选中环）
     selected_table_ids: &[String],
+    // #5：框选多选的便签 / 区域
+    selected_note_ids: &[String],
+    selected_area_ids: &[String],
     // p0-fix 定点 3：选中的关系连线 id（点击连线高亮）
     selected_ref_id: Option<&str>,
     // p0-fix 定点 2：选中的区域 / 便签 id（点击高亮 + Inspector 编辑）
@@ -2440,7 +2949,8 @@ pub fn draw_canvas(
     let _ = ctx.set_image_smoothing_enabled(true);
 
     for area in collect_visible_areas(areas, vp) {
-        draw_area(ctx, area, palette, selected_area_id == Some(area.id.as_str()));
+        let is_sel = table_visually_selected(area.id.as_str(), selected_area_id, selected_area_ids);
+        draw_area(ctx, area, palette, is_sel);
     }
 
     if let Some((x, y, w, h)) = area_preview {
@@ -2493,7 +3003,8 @@ pub fn draw_canvas(
     }
 
     for note in collect_visible_notes(notes, vp) {
-        draw_note(ctx, note, palette, selected_note_id == Some(note.id.as_str()));
+        let is_sel = table_visually_selected(note.id.as_str(), selected_note_id, selected_note_ids);
+        draw_note(ctx, note, palette, is_sel);
     }
 
     for presence in remote_presence {
@@ -3797,6 +4308,56 @@ mod tests {
         assert_eq!(notes, vec!["n1".to_string()]);
         let areas = areas_in_marquee(&[area], 0.0, 0.0, 100.0, 100.0);
         assert_eq!(areas, vec!["a1".to_string()]);
+    }
+
+    /// #5：框选便签+区域后点中任一成员应启动整组拖动 starts
+    #[test]
+    fn ut_cr_group_drag_note_and_area() {
+        let tables: Vec<Table> = vec![];
+        let notes = vec![Note {
+            id: "n1".into(),
+            x: 10.0,
+            y: 10.0,
+            content: String::new(),
+            color: String::new(),
+        }];
+        let areas = vec![Area {
+            id: "a1".into(),
+            x: 0.0,
+            y: 50.0,
+            width: 200.0,
+            height: 150.0,
+            color: "#3b82f6".into(),
+            name: "未命名区域".into(),
+        }];
+        let table_ids: Vec<String> = vec![];
+        let note_ids = vec!["n1".to_string()];
+        let area_ids = vec!["a1".to_string()];
+        assert!(should_start_group_drag(true, &table_ids, &note_ids, &area_ids));
+        let (ts, ns, as_) =
+            build_group_drag_starts(&tables, &notes, &areas, &table_ids, &note_ids, &area_ids, true);
+        assert!(ts.is_none());
+        assert_eq!(ns.as_ref().map(|v| v.len()), Some(1));
+        assert_eq!(as_.as_ref().map(|v| v.len()), Some(1));
+        let mut notes_m = notes.clone();
+        let mut areas_m = areas.clone();
+        let mut tables_m = tables.clone();
+        translate_group_entities(
+            &mut tables_m,
+            &mut notes_m,
+            &mut areas_m,
+            &[],
+            ns.as_ref().unwrap(),
+            as_.as_ref().unwrap(),
+            40.0,
+            20.0,
+        );
+        assert!((notes_m[0].x - 50.0).abs() < 1e-9);
+        assert!((notes_m[0].y - 30.0).abs() < 1e-9);
+        assert!((areas_m[0].x - 40.0).abs() < 1e-9);
+        assert!((areas_m[0].y - 70.0).abs() < 1e-9);
+        assert!(!should_clear_cross_selection(false, false, true));
+        assert!(should_clear_cross_selection(false, false, false));
     }
 
     /// UT-AREA-01: 拖框归一化 + <10px 不创建 + build_area 默认值 + hit_test_area
