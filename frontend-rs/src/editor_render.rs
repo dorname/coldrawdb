@@ -449,6 +449,35 @@ pub fn table_visually_selected(
         || multi_selected_ids.iter().any(|id| id == table_id)
 }
 
+/// #5：pointerdown 点表时如何更新多选集合。
+/// - Shift：切换成员
+/// - 点已在集合内的表：保持集合（供整组拖动；禁止因框选工具仍激活而 toggle 掉）
+/// - 框选工具 + 点未入选表：累加
+/// - 否则：重置为单选
+pub fn resolve_table_multi_on_pointerdown(
+    shift_key: bool,
+    marquee_tool: bool,
+    clicked_id: &str,
+    current_multi: &[String],
+) -> Vec<String> {
+    let mut multi = current_multi.to_vec();
+    let in_set = multi.iter().any(|x| x == clicked_id);
+    if shift_key {
+        if in_set {
+            multi.retain(|x| x != clicked_id);
+        } else {
+            multi.push(clicked_id.to_string());
+        }
+    } else if in_set {
+        // keep
+    } else if marquee_tool {
+        multi.push(clicked_id.to_string());
+    } else {
+        multi = vec![clicked_id.to_string()];
+    }
+    multi
+}
+
 /// 框选矩形与表 AABB 相交判定（世界坐标）。
 pub fn tables_in_marquee(tables: &[Table], x1: f64, y1: f64, x2: f64, y2: f64) -> Vec<String> {
     let min_x = x1.min(x2);
@@ -1169,21 +1198,14 @@ mod leptos_canvas {
                             }
                         }
                     }
-                    // Shift / 框选工具：累加多选；否则若点的不在集合内则重置为单选
-                    let mut multi = selected_table_ids.get_untracked();
-                    let multi_gesture =
-                        ev.shift_key() || marquee_active.get_untracked();
-                    if multi_gesture {
-                        if multi.iter().any(|x| x == &id) {
-                            multi.retain(|x| x != &id);
-                        } else {
-                            multi.push(id.clone());
-                        }
-                        selected_table_ids.set(multi.clone());
-                    } else if !multi.iter().any(|x| x == &id) {
-                        selected_table_ids.set(vec![id.clone()]);
-                        multi = vec![id.clone()];
-                    }
+                    // #5：多选集合更新——点已选成员保持集合以整组拖动（勿因框选工具仍激活而 toggle）
+                    let multi = super::resolve_table_multi_on_pointerdown(
+                        ev.shift_key(),
+                        marquee_active.get_untracked(),
+                        &id,
+                        &selected_table_ids.get_untracked(),
+                    );
+                    selected_table_ids.set(multi.clone());
                     if let Some(cb) = on_select.as_ref() {
                         cb(id.clone());
                     }
@@ -4199,6 +4221,27 @@ mod tests {
             table_visually_selected("x", Some("x"), &[]),
             "仅主选中时仍高亮"
         );
+    }
+
+    /// ST-CR-MULTI-01：框选后首次点已选表不得 toggle 掉，以便整组拖动
+    #[test]
+    fn ut_cr_multi_01_resolve_table_multi_on_pointerdown() {
+        let multi = vec!["a".to_string(), "b".to_string()];
+        // 框选工具仍激活 + 点已选成员 → 保持双选（修复「第一次只能拖一张」）
+        let kept = resolve_table_multi_on_pointerdown(false, true, "a", &multi);
+        assert_eq!(kept, multi, "点已选成员必须保持集合");
+        // 框选工具 + 点未选中 → 累加
+        let added = resolve_table_multi_on_pointerdown(false, true, "c", &multi);
+        assert_eq!(
+            added,
+            vec!["a".to_string(), "b".to_string(), "c".to_string()]
+        );
+        // 普通选择 + 点未选中 → 单选重置
+        let reset = resolve_table_multi_on_pointerdown(false, false, "c", &multi);
+        assert_eq!(reset, vec!["c".to_string()]);
+        // Shift 切换
+        let toggled = resolve_table_multi_on_pointerdown(true, false, "a", &multi);
+        assert_eq!(toggled, vec!["b".to_string()]);
     }
 
     /// ST-CR-MULTI-01 / #5：框选预览必须是归一化矩形，而非关系贝塞尔线

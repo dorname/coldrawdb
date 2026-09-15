@@ -16795,6 +16795,10 @@ CREATE INDEX idx_x ON users (id);";
             render.contains("marquee_preview") && render.contains("normalize_marquee_rect"),
             "ST-CR-MULTI-01: 框选预览必须是矩形通道，不得复用关系 rubber 画线"
         );
+        assert!(
+            render.contains("resolve_table_multi_on_pointerdown"),
+            "ST-CR-MULTI-01: 点已选成员须保持多选集合（首次整组拖）"
+        );
     }
 
     /// UT-S04-18：compose 注入 PUBLIC_BASE_URL，且默认非裸 :3000
