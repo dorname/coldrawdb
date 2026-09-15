@@ -575,6 +575,26 @@ pub fn should_start_group_drag(
     clicked_in_set && selection_group_len(tables, notes, areas) >= 2
 }
 
+/// #5：画布 CSS cursor——创建/框选工具空闲为十字；拖实体/平移为 grabbing；否则空串走 CSS grab。
+pub fn canvas_cursor_css(
+    create_tool_active: bool,
+    marquee_tool_active: bool,
+    dragging_entity: bool,
+    dragging_pan: bool,
+    dragging_marquee_or_create_or_rel: bool,
+) -> &'static str {
+    if dragging_entity || dragging_pan {
+        return "grabbing";
+    }
+    if dragging_marquee_or_create_or_rel {
+        return "crosshair";
+    }
+    if create_tool_active || marquee_tool_active {
+        return "crosshair";
+    }
+    ""
+}
+
 /// #5：非 Shift / 非框选累加 / 非点中已选成员 → 单选重置，应清空其他类型多选。
 pub fn should_clear_cross_selection(
     shift_key: bool,
@@ -1121,13 +1141,38 @@ mod leptos_canvas {
         }
         {
             create_effect(move |_| {
-                let active = create_tool.get().is_some() || marquee_active.get();
+                let drag = drag_state.get();
+                let create_on = create_tool.get().is_some();
+                let marquee_on = marquee_active.get();
+                let (dragging_entity, dragging_pan, dragging_tool) = match &drag {
+                    Some(d) => {
+                        let entity = d.table_id.is_some()
+                            || d.note_drag.is_some()
+                            || d.area_drag.is_some()
+                            || d.endpoint_drag.is_some();
+                        let toolish = d.marquee_start.is_some()
+                            || d.create_drag.is_some()
+                            || d.rel_drag.is_some();
+                        let pan = !entity
+                            && !toolish
+                            && d.multi_starts.is_none()
+                            && d.multi_note_starts.is_none()
+                            && d.multi_area_starts.is_none();
+                        (entity, pan, toolish)
+                    }
+                    None => (false, false, false),
+                };
+                let cursor = super::canvas_cursor_css(
+                    create_on,
+                    marquee_on,
+                    dragging_entity,
+                    dragging_pan,
+                    dragging_tool,
+                );
                 if let Some(canvas) = canvas_ref.get() {
                     let ws: &web_sys::HtmlCanvasElement = &canvas;
                     let el: &web_sys::HtmlElement = ws.unchecked_ref();
-                    let _ = el
-                        .style()
-                        .set_property("cursor", if active { "crosshair" } else { "" });
+                    let _ = el.style().set_property("cursor", cursor);
                 }
             });
         }
@@ -4358,6 +4403,36 @@ mod tests {
         assert!((areas_m[0].y - 70.0).abs() < 1e-9);
         assert!(!should_clear_cross_selection(false, false, true));
         assert!(should_clear_cross_selection(false, false, false));
+    }
+
+    /// #5：拖动实体用 grabbing；框选工具空闲才是 crosshair；默认空串走 CSS grab
+    #[test]
+    fn ut_cr_canvas_cursor_css() {
+        assert_eq!(
+            canvas_cursor_css(false, true, true, false, false),
+            "grabbing",
+            "框选工具下拖表仍为 grabbing"
+        );
+        assert_eq!(
+            canvas_cursor_css(false, true, false, true, false),
+            "grabbing",
+            "平移为 grabbing"
+        );
+        assert_eq!(
+            canvas_cursor_css(false, true, false, false, true),
+            "crosshair",
+            "正在拉框选矩形为 crosshair"
+        );
+        assert_eq!(
+            canvas_cursor_css(false, true, false, false, false),
+            "crosshair",
+            "框选工具空闲为 crosshair"
+        );
+        assert_eq!(
+            canvas_cursor_css(false, false, false, false, false),
+            "",
+            "默认小手由 CSS grab 提供"
+        );
     }
 
     /// UT-AREA-01: 拖框归一化 + <10px 不创建 + build_area 默认值 + hit_test_area

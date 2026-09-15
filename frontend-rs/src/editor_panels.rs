@@ -32,7 +32,8 @@ use crate::splitter::{Splitter, SplitterKind};
 use crate::icons::{
     IconAdd, IconAddArea, IconAddNote, IconAddTable, IconArrowLeft, IconBox, IconChevronLeft, IconChevronRight,
     IconClose, IconDelete, IconEnum, IconExport, IconImport, IconKey, IconMinus, IconMoon, IconMore,
-    IconActivity, IconEye, IconEyeOff, IconLogo, IconRedo, IconRefresh, IconRelationship, IconSelect,
+    IconActivity, IconEye, IconEyeOff, IconLogo, IconPan, IconRedo, IconRefresh, IconRelationship,
+    IconSelect,
     IconSearch, IconSettings, IconShare, IconSun, IconType, IconUndo, IconUsers, IconWarning,
 };
 use leptos::*;
@@ -334,8 +335,15 @@ pub fn setup_escape_layer_handler(
             room_panel_visible.set(false);
             return;
         }
-        // L8 关系工具模式（对齐主原型 Esc 退出 relationMode；拖拽中的取消由 Canvas 监听处理）
-        if active_tool.get_untracked() == ActiveTool::Relationship {
+        // L8 关系 / 框选 / 创建工具（对齐主原型 Esc 退出工具态；拖拽中的取消由 Canvas 监听处理）
+        if matches!(
+            active_tool.get_untracked(),
+            ActiveTool::Relationship
+                | ActiveTool::Marquee
+                | ActiveTool::NewArea
+                | ActiveTool::NewNote
+                | ActiveTool::Pan
+        ) {
             rel_tool_state.set(RelToolState::Idle);
             active_tool.set(ActiveTool::Select);
             return;
@@ -5219,6 +5227,21 @@ pub fn ToolRail(
             </button>
             <button
                 class="cdb-tool-btn"
+                class:cdb-is-active=move || {
+                    matches!(active_tool.get(), ActiveTool::Select | ActiveTool::Pan)
+                }
+                data-testid="tool-pan"
+                on:click=move |_| {
+                    // 小手 / 平移：空白拖动画布；退出框选 / 创建 / 关系工具
+                    rel_tool_state.set(RelToolState::Idle);
+                    active_tool.set(ActiveTool::Select);
+                }
+            >
+                <IconBox size="md"><IconPan /></IconBox>
+                <span class="cdb-tool-tip">"平移画布 "</span>
+            </button>
+            <button
+                class="cdb-tool-btn"
                 class:cdb-is-active=move || active_tool.get() == ActiveTool::Marquee
                 data-testid="tool-marquee"
                 disabled=rel_disabled
@@ -5226,9 +5249,13 @@ pub fn ToolRail(
                     if rel_disabled() {
                         return;
                     }
-                    // #5：框选工具——空白拖框多选，无需按住 Shift
+                    // #5：框选工具——空白拖框多选；再点一次切回小手
                     rel_tool_state.set(RelToolState::Idle);
-                    active_tool.set(ActiveTool::Marquee);
+                    if active_tool.get_untracked() == ActiveTool::Marquee {
+                        active_tool.set(ActiveTool::Select);
+                    } else {
+                        active_tool.set(ActiveTool::Marquee);
+                    }
                 }
             >
                 <IconBox size="md"><IconSelect /></IconBox>
@@ -16796,12 +16823,20 @@ CREATE INDEX idx_x ON users (id);";
             "ST-CR-MULTI-01: ToolRail 必须提供框选工具按钮"
         );
         assert!(
+            src.contains("tool-pan") && src.contains("IconPan"),
+            "ST-CR-MULTI-01: ToolRail 必须提供小手/平移以退出框选"
+        );
+        assert!(
             render.contains("marquee_preview") && render.contains("normalize_marquee_rect"),
             "ST-CR-MULTI-01: 框选预览必须是矩形通道，不得复用关系 rubber 画线"
         );
         assert!(
             render.contains("resolve_table_multi_on_pointerdown"),
             "ST-CR-MULTI-01: 点已选成员须保持多选集合（首次整组拖）"
+        );
+        assert!(
+            render.contains("canvas_cursor_css"),
+            "ST-CR-MULTI-01: 拖实体时 cursor 不得锁死 crosshair"
         );
     }
 
