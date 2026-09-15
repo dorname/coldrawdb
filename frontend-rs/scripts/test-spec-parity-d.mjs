@@ -16,6 +16,8 @@
 //   ST-CR-02         拖表过程连线路径跟手；松手后表坐标为 GRID_SIZE=20 的倍数
 //   ST-PB-01         关系工具点击两点直接落账（p0-fix 定点 3：确认条已删除）
 //   ST-PB-02         关系工具拖线（≥4px + rubber-band）直接落账（p0-fix 定点 3）
+//   ST-PB-05         Idle 字段连接点拖连（无需关系工具）
+//   ST-CR-MULTI-01   框选多表后整组拖动
 // p0-fix 定点 3 新增：
 //   ST-PB-03         点击连线选中 + Inspector 详情/删除（不弹详情模态）
 //   ST-PB-04         选中连线 Delete / Backspace 双键删除落账 0 条
@@ -1289,6 +1291,89 @@ try {
     await page.locator('[data-testid="inspector-reference-form"]:visible').waitFor();
     await waitSaved(page);
     assert.equal(state.lastPutBody?.diagram?.references?.length, 1, "拖线松开后必须直接落账 1 条关系");
+  });
+
+  // ─── ST-PB-05：Idle 下字段连接点拖连（无需关系工具，fix-remote-github-issues #3） ──
+  await run(["ST-PB-05"], "不点关系工具即可字段拖连", async page => {
+    const state = await installApi(page);
+    await login(page);
+    await createRoomAndEnter(page);
+    await createTwoTables(page);
+
+    const header = await canvasPoint(page, TABLE2_HEADER);
+    await page.mouse.move(header.x, header.y);
+    await page.mouse.down();
+    await page.mouse.move(header.x + 300, header.y + 100, { steps: 5 });
+    await page.mouse.up();
+    await waitSaved(page);
+    await waitForCanvasStable(page);
+
+    // 不按 R、不点 tool-relationship
+    assert.equal(await page.locator('[data-testid="rel-tool-hint"]').count(), 0, "Idle 下不得出现关系工具提示");
+    const from = await canvasPoint(page, TABLE1_PORT_END);
+    const to = await canvasPoint(page, TABLE2_FIELD_AFTER_NUDGE);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2, { steps: 4 });
+    const rubber = page.locator('[data-testid="rel-rubber-band"]');
+    await page.waitForTimeout(150);
+    assert.equal(await rubber.getAttribute("hidden"), null, "Idle 拖连也必须出现 rubber-band");
+    assert.notEqual((await rubber.getAttribute("d")) ?? "", "", "rubber-band 必须有路径");
+    await page.mouse.move(to.x, to.y, { steps: 2 });
+    await page.mouse.up();
+
+    await page.locator('[data-testid="inspector-reference-form"]:visible').waitFor();
+    await waitSaved(page);
+    assert.equal(state.lastPutBody?.diagram?.references?.length, 1, "Idle 拖连松开后必须落账 1 条关系");
+  });
+
+  // ─── ST-CR-MULTI-01：框选 ≥2 表后整组拖动（fix-remote-github-issues #5） ──
+  await run(["ST-CR-MULTI-01"], "框选后多表整组拖动", async page => {
+    const state = await installApi(page);
+    await login(page);
+    await createRoomAndEnter(page);
+    await createTwoTables(page);
+
+    // 拖开 table_2，避免默认重叠导致框选/命中歧义
+    const header2 = await canvasPoint(page, TABLE2_HEADER);
+    await page.mouse.move(header2.x, header2.y);
+    await page.mouse.down();
+    await page.mouse.move(header2.x + 300, header2.y + 100, { steps: 5 });
+    await page.mouse.up();
+    await waitSaved(page);
+    await waitForCanvasStable(page);
+
+    const before = state.lastPutBody?.diagram?.tables ?? [];
+    const t1Before = before.find(t => t.name === "table_1");
+    const t2Before = before.find(t => t.name === "table_2");
+    assert.ok(t1Before && t2Before, "框选前必须已有 table_1/table_2");
+
+    await page.locator('[data-testid="tool-marquee"]').click();
+    // 框选覆盖两表（世界坐标约 170,130 → 800,420）
+    const a = await canvasPoint(page, { x: 170, y: 130 });
+    const b = await canvasPoint(page, { x: 800, y: 420 });
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down();
+    await page.mouse.move(b.x, b.y, { steps: 6 });
+    await page.mouse.up();
+    await page.waitForTimeout(100);
+
+    // 拖 table_1 表头 → 两表同步位移
+    const h1 = await canvasPoint(page, { x: 295, y: 166.5 }); // table_1 表头中心
+    await page.mouse.move(h1.x, h1.y);
+    await page.mouse.down();
+    await page.mouse.move(h1.x + 80, h1.y + 60, { steps: 5 });
+    await page.mouse.up();
+    await waitSaved(page);
+
+    const after = state.lastPutBody?.diagram?.tables ?? [];
+    const t1After = after.find(t => t.name === "table_1");
+    const t2After = after.find(t => t.name === "table_2");
+    assert.ok(t1After && t2After, "整组拖动后 PUT 必须仍含两表");
+    assert.ok(t1After.x - t1Before.x >= 40, `table_1 x 应随拖动增加（${t1Before.x} → ${t1After.x}）`);
+    assert.ok(t2After.x - t2Before.x >= 40, `table_2 x 应同步增加（${t2Before.x} → ${t2After.x}）`);
+    assert.ok(t1After.y - t1Before.y >= 20, `table_1 y 应随拖动增加（${t1Before.y} → ${t1After.y}）`);
+    assert.ok(t2After.y - t2Before.y >= 20, `table_2 y 应同步增加（${t2Before.y} → ${t2After.y}）`);
   });
 
   // ─── ST-PB-03：点击连线选中 + Inspector 详情/删除（relation-inspector-and-ddl-io：不再弹模态） ──
