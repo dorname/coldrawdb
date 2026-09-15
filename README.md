@@ -147,6 +147,12 @@ PUBLIC_BASE_URL=http://192.168.1.10 docker compose up -d --build
 - `ghcr.io/<owner>/coldrawdb:latest`
 - 平台：`linux/amd64,linux/arm64`
 
+稳定版用户侧获取方式（三选一即可）：
+
+1. **Compose 源码构建**（上表推荐）：克隆 tag / 下载 Release 源码包后 `docker compose up -d --build`
+2. **GHCR 镜像**：`docker pull ghcr.io/dorname/coldrawdb:<tag>`
+3. **源码 zip**：Release 附件或本地 `git archive` 产物，解压后仍用方式 1
+
 拉取已发布镜像（标签以实际 Release 为准）示例：
 
 ```bash

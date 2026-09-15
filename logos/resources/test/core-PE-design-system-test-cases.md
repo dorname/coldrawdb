@@ -396,4 +396,3 @@ Design System：token / icon / 组件 / dark / motion，须与主原型壳层（
 |---|---|---|
 | UT-E5-02 | UT | 主题切换写入 `localStorage["cdb-mode"]` |
 | UT-E5-06 | UT | 冷启动从 `cdb-mode` 恢复 `data-mode` / theme_mode |
-| ST-PE-06 | ST | 暗色模式切换；含刷新后保持（本提案 ADDED） |
