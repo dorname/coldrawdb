@@ -12,6 +12,9 @@ services:
     environment:
       COLDRAWDB_DB_URL: "sqlite:///data/coldrawdb.db?mode=rwc"
       COLDRAWDB_LOG_LEVEL: "info"
+      # fix-remote-github-issues / UT-S04-18：邀请链接公开基址 = SPA 入口（nginx:80），
+      # 禁止默认裸后端 :3000。跨机部署时覆盖，如 PUBLIC_BASE_URL=http://192.168.20.106
+      PUBLIC_BASE_URL: "${PUBLIC_BASE_URL:-http://localhost}"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/v1/diagrams/health"]

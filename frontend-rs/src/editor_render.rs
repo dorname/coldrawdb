@@ -377,6 +377,70 @@ pub fn zoom_transform_at_anchor(t: &Transform, anchor_css: (f64, f64), factor: f
     }
 }
 
+/// UT-CR-FOCUS-01：将表聚焦到视口中心（已完全在视口内则保持 pan 不变）。
+/// `padding` 为 CSS 像素边距；`viewport_*` 为画布 CSS 尺寸。
+pub fn focus_transform(
+    table_x: f64,
+    table_y: f64,
+    table_w: f64,
+    table_h: f64,
+    viewport_w: f64,
+    viewport_h: f64,
+    t: &Transform,
+    padding: f64,
+) -> Transform {
+    let sx = table_x * t.zoom + t.pan_x;
+    let sy = table_y * t.zoom + t.pan_y;
+    let sw = table_w * t.zoom;
+    let sh = table_h * t.zoom;
+    let fully_visible = sx >= padding
+        && sy >= padding
+        && sx + sw <= viewport_w - padding
+        && sy + sh <= viewport_h - padding;
+    if fully_visible {
+        return Transform {
+            pan_x: t.pan_x,
+            pan_y: t.pan_y,
+            zoom: t.zoom,
+        };
+    }
+    let center_x = table_x + table_w / 2.0;
+    let center_y = table_y + table_h / 2.0;
+    Transform {
+        pan_x: viewport_w / 2.0 - center_x * t.zoom,
+        pan_y: viewport_h / 2.0 - center_y * t.zoom,
+        zoom: t.zoom,
+    }
+}
+
+/// UT-CR-MULTI-01：对选中表集合施加世界坐标位移；未选中表不变。
+pub fn translate_tables(tables: &mut [Table], ids: &[String], dx: f64, dy: f64) {
+    for table in tables.iter_mut() {
+        if ids.iter().any(|id| id == &table.id) {
+            table.x += dx;
+            table.y += dy;
+        }
+    }
+}
+
+/// 框选矩形与表 AABB 相交判定（世界坐标）。
+pub fn tables_in_marquee(tables: &[Table], x1: f64, y1: f64, x2: f64, y2: f64) -> Vec<String> {
+    let min_x = x1.min(x2);
+    let max_x = x1.max(x2);
+    let min_y = y1.min(y2);
+    let max_y = y1.max(y2);
+    tables
+        .iter()
+        .filter(|t| {
+            let (w, h) = compute_table_render_size(t);
+            let tx2 = t.x + w;
+            let ty2 = t.y + h;
+            t.x < max_x && tx2 > min_x && t.y < max_y && ty2 > min_y
+        })
+        .map(|t| t.id.clone())
+        .collect()
+}
+
 // R-PERF-05：工具栏 zoom 按钮（editor_panels，无 schedule_paint 句柄）经此钩子
 // 请求画布重绘；由 Canvas 组件挂载时注册（进程内单画布）。
 thread_local! {
@@ -407,6 +471,10 @@ struct RelFieldDrag {
 #[derive(Clone, Debug)]
 struct DragState {
     table_id: Option<String>,
+    /// 多表拖动：选中集合内各表起始世界坐标
+    multi_starts: Option<Vec<(String, f64, f64)>>,
+    /// Shift+空白拖：框选起点（世界坐标）
+    marquee_start: Option<(f64, f64)>,
     endpoint_drag: Option<(String, EndpointEnd)>, // (ref_id, end) when dragging an endpoint
     rel_drag: Option<RelFieldDrag>,
     // p0-fix 定点 2：区域框选/便签放置的创建拖拽
@@ -446,6 +514,8 @@ impl Default for DragState {
     fn default() -> Self {
         DragState {
             table_id: None,
+            multi_starts: None,
+            marquee_start: None,
             endpoint_drag: None,
             rel_drag: None,
             create_drag: None,
@@ -505,6 +575,8 @@ mod leptos_canvas {
         on_relation_drag_cancel: Option<Box<dyn Fn() + 'static>>,
         /// 表拖动松手（吸附写回 store 后）通知调用方持久化（D 批：dirty + schedule_save）
         on_table_drop: Option<Box<dyn Fn() + 'static>>,
+        /// fix-remote-github-issues / #5：多表选中集合（Shift 框选写入；拖动其中一张时整组平移）
+        selected_table_ids: RwSignal<Vec<String>>,
         /// relation-inspector-and-ddl-io：点击连线命中（返回 reference id）→ 选中 + Inspector（不再弹详情模态）
         on_reference_pick: Option<Box<dyn Fn(String) + 'static>>,
         /// p0-fix 定点 2：当前创建工具（Some → 十字光标 + 拖拽创建区域 / 点击放置便签）
@@ -892,6 +964,8 @@ mod leptos_canvas {
                         capture_pointer(&canvas, ev.pointer_id());
                         drag_state.set(Some(DragState {
                             table_id: None,
+                            multi_starts: None,
+                            marquee_start: None,
                             endpoint_drag: None,
                             rel_drag: Some(RelFieldDrag {
                                 start_table_id: tid,
@@ -918,6 +992,8 @@ mod leptos_canvas {
                     capture_pointer(&canvas, ev.pointer_id());
                     drag_state.set(Some(DragState {
                         table_id: None,
+                        multi_starts: None,
+                        marquee_start: None,
                         endpoint_drag: None,
                         rel_drag: None,
                         create_drag: None,
@@ -933,12 +1009,50 @@ mod leptos_canvas {
                     }));
                     return;
                 }
+                // fix-remote-github-issues / UT-PB-08：Idle 下也可从字段拖出建关系（无需先点关系工具）
+                // 位移 <4px 松手走 on_field_pick → 选中字段；≥4px 走落账建关系
+                if !read_only {
+                    if let Some((tid, fid)) = super::hit_test_field(&tables, dx, dy) {
+                        let (anchor_x, anchor_y) = tables
+                            .iter()
+                            .find(|t| t.id == tid)
+                            .map(|t| super::field_anchor_start(t, &fid))
+                            .unwrap_or((dx, dy));
+                        capture_pointer(&canvas, ev.pointer_id());
+                        drag_state.set(Some(DragState {
+                            table_id: None,
+                            multi_starts: None,
+                            marquee_start: None,
+                            endpoint_drag: None,
+                            rel_drag: Some(RelFieldDrag {
+                                start_table_id: tid,
+                                start_field_id: fid,
+                                anchor_x,
+                                anchor_y,
+                                moved: false,
+                            }),
+                            create_drag: None,
+                            note_drag: None,
+                            area_drag: None,
+                            pointer_id: ev.pointer_id(),
+                            start_mouse_x: ev.client_x() as f64,
+                            start_mouse_y: ev.client_y() as f64,
+                            start_pan_x: 0.0,
+                            start_pan_y: 0.0,
+                            start_table_x: 0.0,
+                            start_table_y: 0.0,
+                        }));
+                        return;
+                    }
+                }
                 if !read_only {
                     if let Some(tool) = create_tool.get_untracked() {
                         // p0-fix 定点 2：创建工具激活 → 整个画布都是创建热区，吞掉本次 pointerdown
                         capture_pointer(&canvas, ev.pointer_id());
                         drag_state.set(Some(DragState {
                             table_id: None,
+                            multi_starts: None,
+                            marquee_start: None,
                             endpoint_drag: None,
                             rel_drag: None,
                             create_drag: Some(CreateDrag {
@@ -966,6 +1080,8 @@ mod leptos_canvas {
                     capture_pointer(&canvas, ev.pointer_id());
                     drag_state.set(Some(DragState {
                         table_id: None,
+                        multi_starts: None,
+                        marquee_start: None,
                         endpoint_drag: Some((ref_id, end)),
                         rel_drag: None,
                         create_drag: None,
@@ -988,13 +1104,39 @@ mod leptos_canvas {
                     selected_ref_id.set(None);
                     selected_area_id.set(None);
                     selected_note_id.set(None);
+                    // Shift+点击表：累加多选；否则若点的不在集合内则重置为单选
+                    let mut multi = selected_table_ids.get_untracked();
+                    if ev.shift_key() {
+                        if multi.iter().any(|x| x == &id) {
+                            multi.retain(|x| x != &id);
+                        } else {
+                            multi.push(id.clone());
+                        }
+                        selected_table_ids.set(multi.clone());
+                    } else if !multi.iter().any(|x| x == &id) {
+                        selected_table_ids.set(vec![id.clone()]);
+                        multi = vec![id.clone()];
+                    }
                     if let Some(cb) = on_select.as_ref() {
                         cb(id.clone());
                     }
                     capture_pointer(&canvas, ev.pointer_id());
                     live.borrow_mut().table_pos = None;
+                    let multi_starts = if multi.len() >= 2 && multi.iter().any(|x| x == &id) {
+                        Some(
+                            tables
+                                .iter()
+                                .filter(|t| multi.iter().any(|x| x == &t.id))
+                                .map(|t| (t.id.clone(), t.x, t.y))
+                                .collect::<Vec<_>>(),
+                        )
+                    } else {
+                        None
+                    };
                     drag_state.set(Some(DragState {
                         table_id: Some(id),
+                        multi_starts,
+                        marquee_start: None,
                         endpoint_drag: None,
                         rel_drag: None,
                         create_drag: None,
@@ -1039,6 +1181,8 @@ mod leptos_canvas {
                     capture_pointer(&canvas, ev.pointer_id());
                     drag_state.set(Some(DragState {
                         table_id: None,
+                        multi_starts: None,
+                        marquee_start: None,
                         endpoint_drag: None,
                         rel_drag: None,
                         create_drag: None,
@@ -1073,6 +1217,8 @@ mod leptos_canvas {
                     capture_pointer(&canvas, ev.pointer_id());
                     drag_state.set(Some(DragState {
                         table_id: None,
+                        multi_starts: None,
+                        marquee_start: None,
                         endpoint_drag: None,
                         rel_drag: None,
                         create_drag: None,
@@ -1096,8 +1242,17 @@ mod leptos_canvas {
                         cb();
                     }
                     capture_pointer(&canvas, ev.pointer_id());
+                    // Shift+空白 = 框选多表；否则平移画布
+                    let marquee_start = if ev.shift_key() && !read_only {
+                        selected_table_ids.set(Vec::new());
+                        Some((dx, dy))
+                    } else {
+                        None
+                    };
                     drag_state.set(Some(DragState {
                         table_id: None,
+                        multi_starts: None,
+                        marquee_start,
                         endpoint_drag: None,
                         rel_drag: None,
                         create_drag: None,
@@ -1294,6 +1449,22 @@ mod leptos_canvas {
                     // （UT-CR-DRAG-01）；不量化网格（UT-CR-06），松手才落账 store
                     let new_x = drag.start_table_x + dx / t_now.zoom;
                     let new_y = drag.start_table_y + dy / t_now.zoom;
+                    if let Some(starts) = &drag.multi_starts {
+                        // #5：多表同步位移——直接写 store 坐标（视觉即时），松手再走落账通路
+                        let ddx = new_x - drag.start_table_x;
+                        let ddy = new_y - drag.start_table_y;
+                        let mut tables = store.tables.get_untracked();
+                        for (tid, sx, sy) in starts {
+                            if let Some(t) = tables.iter_mut().find(|t| &t.id == tid) {
+                                t.x = sx + ddx;
+                                t.y = sy + ddy;
+                            }
+                        }
+                        store.tables.set(tables);
+                        live.borrow_mut().table_pos = Some((table_id.clone(), new_x, new_y));
+                        schedule_paint();
+                        return;
+                    }
                     live.borrow_mut().table_pos = Some((table_id.clone(), new_x, new_y));
                     // R-PERF-11：无关系线的表走幽灵层——pointermove 只改 CSS transform，
                     // 主画布零重绘；有关系线回退逐帧重绘（线条需跟随）
@@ -1332,6 +1503,15 @@ mod leptos_canvas {
                         *ghost_g = None;
                     }
                     drop(ghost_g);
+                    schedule_paint();
+                } else if let Some((mx, my)) = drag.marquee_start {
+                    let (diag_x, diag_y) = screen_to_diagram(
+                        ev.client_x() as f64,
+                        ev.client_y() as f64,
+                        &canvas,
+                        &t_now,
+                    );
+                    live.borrow_mut().rubber = Some((mx, my, diag_x, diag_y));
                     schedule_paint();
                 } else {
                     // R-PERF-05：pan 与 wheel 共用 pending_transform 通道，rAF 合并落账——
@@ -1502,6 +1682,7 @@ mod leptos_canvas {
                     // R-PERF-11：先撤幽灵层再落账/重绘，保证渲染 effect 看到幽灵已清
                     // （Drop 自动从 DOM 移除节点）
                     ghost.borrow_mut().take();
+                    let multi_starts = drag.multi_starts.clone();
                     drag_state.set(None);
                     // 纯点击（位移 < 4px）= 选中语义：不写回坐标、不触发持久化，仅重绘复位视觉
                     if !super::is_relation_drag(dx, dy, super::DRAG_THRESHOLD) {
@@ -1512,7 +1693,18 @@ mod leptos_canvas {
                     let new_y = drag.start_table_y + dy / t_now.zoom;
                     let (sx, sy) = super::snap_to_grid(new_x, new_y, super::GRID_SIZE);
                     let mut tables = store.tables.get_untracked();
-                    if let Some(table) = tables.iter_mut().find(|t| t.id == table_id) {
+                    if let Some(starts) = multi_starts {
+                        let ddx = sx - drag.start_table_x;
+                        let ddy = sy - drag.start_table_y;
+                        for (tid, ox, oy) in starts {
+                            let (nx, ny) =
+                                super::snap_to_grid(ox + ddx, oy + ddy, super::GRID_SIZE);
+                            if let Some(table) = tables.iter_mut().find(|t| t.id == tid) {
+                                table.x = nx;
+                                table.y = ny;
+                            }
+                        }
+                    } else if let Some(table) = tables.iter_mut().find(|t| t.id == table_id) {
                         table.x = sx;
                         table.y = sy;
                     }
@@ -1521,6 +1713,33 @@ mod leptos_canvas {
                     if let Some(cb) = on_table_drop.as_ref() {
                         cb();
                     }
+                    return;
+                }
+
+                if let Some((mx, my)) = drag.marquee_start {
+                    let (diag_x, diag_y) = canvas
+                        .as_ref()
+                        .map(|c| {
+                            screen_to_diagram(
+                                ev.client_x() as f64,
+                                ev.client_y() as f64,
+                                c,
+                                &t_now,
+                            )
+                        })
+                        .unwrap_or((mx, my));
+                    live.borrow_mut().rubber = None;
+                    rubber_d.set(None);
+                    drag_state.set(None);
+                    let ids = super::tables_in_marquee(
+                        &store.tables.get_untracked(),
+                        mx,
+                        my,
+                        diag_x,
+                        diag_y,
+                    );
+                    selected_table_ids.set(ids);
+                    schedule_paint();
                     return;
                 }
 
@@ -3728,6 +3947,82 @@ mod tests {
         assert_eq!(l, (100.0 - 24.0) * 2.0 + 10.0, "UT-CR-GHOST-01: left 换算");
         assert_eq!(tp, (50.0 - 24.0) * 2.0 + 20.0, "UT-CR-GHOST-01: top 换算");
         assert_eq!(ghost_css_position(0.0, 0.0, 0.0, 0.0, 0.0, 1.0), (0.0, 0.0));
+    }
+
+    /// UT-CR-FOCUS-01 — focus_transform 使表进入视口
+    #[test]
+    fn ut_cr_focus_01_focus_transform() {
+        let t = Transform {
+            pan_x: 0.0,
+            pan_y: 0.0,
+            zoom: 1.0,
+        };
+        let next = focus_transform(2000.0, 2000.0, 230.0, 100.0, 800.0, 600.0, &t, 40.0);
+        let expect_pan_x = 400.0 - 2115.0;
+        assert!(
+            (next.pan_x - expect_pan_x).abs() < 1.0,
+            "UT-CR-FOCUS-01: pan_x={} expect≈{}",
+            next.pan_x,
+            expect_pan_x
+        );
+        assert_eq!(next.zoom, 1.0, "UT-CR-FOCUS-01: 默认不改 zoom");
+        let inside = focus_transform(100.0, 100.0, 100.0, 80.0, 800.0, 600.0, &t, 40.0);
+        assert_eq!(inside.pan_x, 0.0);
+        assert_eq!(inside.pan_y, 0.0);
+    }
+
+    /// UT-CR-MULTI-01 — 多表同步位移 + marquee 相交
+    #[test]
+    fn ut_cr_multi_01_translate_tables() {
+        let mut tables = vec![
+            Table {
+                id: "a".into(),
+                name: "a".into(),
+                x: 0.0,
+                y: 0.0,
+                color: String::new(),
+                comment: String::new(),
+                fields: Vec::new(),
+                indices: Vec::new(),
+                width: None,
+                min_height: None,
+            },
+            Table {
+                id: "b".into(),
+                name: "b".into(),
+                x: 100.0,
+                y: 50.0,
+                color: String::new(),
+                comment: String::new(),
+                fields: Vec::new(),
+                indices: Vec::new(),
+                width: None,
+                min_height: None,
+            },
+            Table {
+                id: "c".into(),
+                name: "c".into(),
+                x: 300.0,
+                y: 300.0,
+                color: String::new(),
+                comment: String::new(),
+                fields: Vec::new(),
+                indices: Vec::new(),
+                width: None,
+                min_height: None,
+            },
+        ];
+        let ids = vec!["a".into(), "b".into()];
+        translate_tables(&mut tables, &ids, 10.0, 20.0);
+        assert_eq!(tables[0].x, 10.0);
+        assert_eq!(tables[0].y, 20.0);
+        assert_eq!(tables[1].x, 110.0);
+        assert_eq!(tables[1].y, 70.0);
+        assert_eq!(tables[2].x, 300.0, "UT-CR-MULTI-01: 未选中不变");
+        assert_eq!(tables[2].y, 300.0);
+        let hit = tables_in_marquee(&tables, 0.0, 0.0, 150.0, 100.0);
+        assert!(hit.contains(&"a".to_string()) && hit.contains(&"b".to_string()));
+        assert!(!hit.contains(&"c".to_string()));
     }
 
     #[test]

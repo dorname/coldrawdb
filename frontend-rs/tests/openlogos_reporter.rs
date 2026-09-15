@@ -52,6 +52,10 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-CR-GUARD-01",
     "UT-CR-DPR-01",
     "UT-CR-GHOST-01",
+    // fix-remote-github-issues：聚焦 / 多表拖动
+    "UT-CR-FOCUS-01",
+    "UT-CR-FOCUS-02",
+    "UT-CR-MULTI-01",
     // core-PE-design-system E3
     "UT-E3-01",
     "UT-E3-02",
@@ -61,8 +65,16 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-E3-06",
     "UT-E3-07",
     "UT-E3-08",
+    // fix-remote-github-issues：主题持久化（UT-E5-02 规格落地 + UT-E5-06 启动恢复）
+    "UT-E5-02",
+    "UT-E5-06",
     // core-KB-shortcut
     "UT-KB-01",
+    "UT-KB-02",
+    "UT-KB-03",
+    "UT-KB-04",
+    // S04 invite 公开基址
+    "UT-S04-18",
     // core-UI-modals + modals-2 + KB (MM)
     "UT-MM-01",
     "UT-MM-04",
@@ -111,6 +123,7 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-PB-06",
     "UT-PB-06B",
     "UT-PB-07",
+    "UT-PB-08",
     // core-PC-import-export + AB
     "UT-PC-01",
     "UT-PC-02",

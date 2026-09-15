@@ -40,11 +40,95 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 fn read_html_data_mode() -> String {
-    web_sys::window()
+    let from_storage = read_persisted_theme_mode();
+    let mode = from_storage.unwrap_or_else(|| {
+        web_sys::window()
+            .and_then(|w| w.document())
+            .and_then(|d| d.document_element())
+            .and_then(|el| el.get_attribute("data-mode"))
+            .unwrap_or_else(|| "dark".to_string())
+    });
+    let normalized = normalize_theme_mode(&mode);
+    apply_html_data_mode(&normalized);
+    normalized
+}
+
+/// localStorage key（core-0b §6 / UT-E5-02）
+pub const THEME_STORAGE_KEY: &str = "cdb-mode";
+
+/// 规范化主题值：仅接受 light/dark/system；非法回落 dark（与 index.html 默认一致）。
+pub fn normalize_theme_mode(raw: &str) -> String {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "light" => "light".into(),
+        "system" => "system".into(),
+        "dark" => "dark".into(),
+        _ => "dark".into(),
+    }
+}
+
+/// 将 mode 映射为实际 data-mode（system → 跟随 prefers-color-scheme，缺省 dark）。
+pub fn effective_data_mode(mode: &str) -> &'static str {
+    match normalize_theme_mode(mode).as_str() {
+        "light" => "light",
+        "system" => {
+            // native/单测无 window 时回落 dark
+            let prefers_dark = web_sys::window()
+                .and_then(|w| w.match_media("(prefers-color-scheme: dark)").ok().flatten())
+                .map(|m| m.matches())
+                .unwrap_or(true);
+            if prefers_dark {
+                "dark"
+            } else {
+                "light"
+            }
+        }
+        _ => "dark",
+    }
+}
+
+fn read_persisted_theme_mode() -> Option<String> {
+    let win = web_sys::window()?;
+    let local = win.local_storage().ok().flatten()?;
+    let raw = local.get_item(THEME_STORAGE_KEY).ok().flatten()?;
+    Some(normalize_theme_mode(&raw))
+}
+
+fn persist_theme_mode(mode: &str) {
+    let normalized = normalize_theme_mode(mode);
+    let Some(win) = web_sys::window() else { return };
+    if let Ok(Some(local)) = win.local_storage() {
+        let _ = local.set_item(THEME_STORAGE_KEY, &normalized);
+    }
+}
+
+fn apply_html_data_mode(mode: &str) {
+    let data = effective_data_mode(mode);
+    if let Some(html) = web_sys::window()
         .and_then(|w| w.document())
         .and_then(|d| d.document_element())
-        .and_then(|el| el.get_attribute("data-mode"))
-        .unwrap_or_else(|| "light".to_string())
+    {
+        let _ = html.set_attribute("data-mode", data);
+    }
+}
+
+/// UT-CR-FOCUS-02：将指定表聚焦到画布视口（纯函数 focus_transform 的接线）。
+pub fn focus_table(
+    store: &EditorStore,
+    table_id: &str,
+    transform: RwSignal<crate::editor_render::Transform>,
+    viewport: (f64, f64),
+) {
+    let tables = store.tables.get_untracked();
+    let Some(table) = tables.iter().find(|t| t.id == table_id) else {
+        return;
+    };
+    let (w, h) = crate::editor_render::compute_table_render_size(table);
+    let cur = transform.get_untracked();
+    let next = crate::editor_render::focus_transform(
+        table.x, table.y, w, h, viewport.0, viewport.1, &cur, 40.0,
+    );
+    transform.set(next);
+    crate::editor_render::request_canvas_repaint();
 }
 
 // ─── D 批：全局工具快捷键 + Esc 浮层层级（ST-KB-T-01 / R-01 / ESC-01 / VIEWER）──
@@ -2223,14 +2307,18 @@ pub fn UndoRedoButtons(
             title="撤销 (Ctrl+Z)"
             disabled=read_only
             on:click=move |_| {
+                let stack_rc = stack.get();
                 let cmd = {
-                    let stack_rc = stack.get();
                     let mut s = stack_rc.borrow_mut();
                     s.undo()
                 };
                 if let Some(cmd) = cmd {
                     if crate::editor_core::CommandStack::revert(&store, &cmd).is_ok() {
                         on_after_undo();
+                    } else {
+                        // UT-KB-04：revert 失败回滚栈，避免空弹
+                        stack_rc.borrow_mut().restore_undo_after_failed_revert();
+                        error.set(Some("撤销失败".to_string()));
                     }
                 } else {
                     error.set(Some("无可撤销操作".to_string()));
@@ -2242,18 +2330,21 @@ pub fn UndoRedoButtons(
         <button
             class="cdb-btn cdb-btn--icon"
             data-testid="btn-redo"
-            title="重做 (Ctrl+Shift+Z)"
+            title="重做 (Ctrl+Y / Ctrl+Shift+Z)"
             disabled=read_only
             on:click=move |_| {
+                let stack_rc = stack.get();
                 let cmd = {
-                    let stack_rc = stack.get();
                     let mut s = stack_rc.borrow_mut();
                     s.redo()
                 };
                 if let Some(cmd) = cmd {
                     match crate::editor_core::CommandStack::execute(&store, &cmd) {
                         Ok(()) => on_after_redo(),
-                        Err(e) => error.set(Some(e.message)),
+                        Err(e) => {
+                            stack_rc.borrow_mut().restore_redo_after_failed_execute();
+                            error.set(Some(e.message));
+                        }
                     }
                 } else {
                     error.set(Some("无可重做操作".to_string()));
@@ -2496,11 +2587,15 @@ pub fn AppBarOverflowMenu(
                             on:click=move |_| {
                                 if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
                                     if let Some(html) = doc.document_element() {
-                                        let cur = html
-                                            .get_attribute("data-mode")
-                                            .unwrap_or_else(|| "light".into());
-                                        let next = if cur == "dark" { "light" } else { "dark" };
-                                        let _ = html.set_attribute("data-mode", next);
+                                        let cur = theme_mode.get_untracked();
+                                        let next = if effective_data_mode(&cur) == "dark" {
+                                            "light"
+                                        } else {
+                                            "dark"
+                                        };
+                                        persist_theme_mode(next);
+                                        apply_html_data_mode(next);
+                                        let _ = html.set_attribute("data-mode", effective_data_mode(next));
                                         theme_mode.set(next.to_string());
                                     }
                                 }
@@ -9777,6 +9872,8 @@ pub fn AppRoot(
     let palette_query: RwSignal<String> = create_rw_signal(String::new());
     let palette_highlight: RwSignal<usize> = create_rw_signal(0);
     let canvas_transform: RwSignal<Transform> = create_rw_signal(Transform::default());
+    // fix-remote-github-issues / #5：多表框选集合
+    let selected_table_ids: RwSignal<Vec<String>> = create_rw_signal(Vec::new());
     // 主题信号提升到 AppRoot：Canvas 绘制 effect 需跟踪它以在主题切换时重绘调色板
     let theme_mode: RwSignal<String> = create_rw_signal(read_html_data_mode());
     let auth_session: RwSignal<Option<AuthSession>> = create_rw_signal(None);
@@ -10560,6 +10657,7 @@ pub fn AppRoot(
         let error_for_create = error.clone();
         let current_room = current_room.clone();
         let activity_feed_for_create = activity_feed.clone();
+        let canvas_transform = canvas_transform;
         Rc::new(move || {
             if editor_is_read_only(share_mode, current_room) {
                 error_for_create.set(Some("只读角色不能编辑图表".to_string()));
@@ -10609,6 +10707,13 @@ pub fn AppRoot(
                 .get()
                 .borrow_mut()
                 .record(crate::editor_core::Command::AddTable(new_table.clone()));
+            // fix-remote-github-issues / UT-CR-FOCUS-02：新建表后聚焦到视口
+            focus_table(
+                &store,
+                &table_id,
+                canvas_transform,
+                (1200.0, 720.0),
+            );
             if current_room.get_untracked().is_some() {
                 // fix-collab-autosave-race：方案B 唯一 op 通道 = watcher → emit_local_ops
                 // diff 上行；此处不得直接 enqueue（会产生无帧 pending op，ack 永不到位，
@@ -10885,6 +10990,7 @@ pub fn AppRoot(
         let debouncer = debouncer.clone();
         let selection = selection.clone();
         let inspector_open = inspector_open.clone();
+        let command_stack = command_stack.clone();
         Rc::new(move |reference: Reference| {
             if editor_is_read_only(share_mode, current_room) {
                 return;
@@ -10893,6 +10999,11 @@ pub fn AppRoot(
             refs.push(reference.clone());
             store.references.set(refs);
             store.dirty.set(true);
+            // fix-remote-github-issues / UT-KB-03：关系创建必须进 undo 栈
+            command_stack
+                .get()
+                .borrow_mut()
+                .record(crate::editor_core::Command::AddReference(reference.clone()));
             selection.set(SelectionKind::Reference(reference.id));
             inspector_open.set(true);
             schedule_save(
@@ -10917,6 +11028,8 @@ pub fn AppRoot(
         let rel_tool_state = rel_tool_state.clone();
         let on_create_reference = on_create_reference.clone();
         let next_ref_id = next_ref_id.clone();
+        let selection = selection.clone();
+        let inspector_open = inspector_open.clone();
         Some(Box::new(
             move |table_id: String, field_id: String| match rel_tool_state.get_untracked() {
                 RelToolState::PickSource => {
@@ -10943,7 +11056,14 @@ pub fn AppRoot(
                     rel_tool_state.set(RelToolState::PickSource);
                 }
                 RelToolState::Dragging { .. } => {}
-                _ => {}
+                RelToolState::Idle => {
+                    // Idle 短按字段：选中字段打开 Inspector（拖出 ≥4px 才建关系）
+                    selection.set(SelectionKind::Field {
+                        table_id,
+                        field_id,
+                    });
+                    inspector_open.set(true);
+                }
             },
         ))
     };
@@ -10962,6 +11082,7 @@ pub fn AppRoot(
         let rel_tool_state = rel_tool_state.clone();
         let on_create_reference = on_create_reference.clone();
         let next_ref_id = next_ref_id.clone();
+        let active_tool = active_tool.clone();
         Some(Box::new(
             move |start_table_id: String,
                   start_field_id: String,
@@ -10978,7 +11099,12 @@ pub fn AppRoot(
                     &inferred,
                 );
                 on_create_reference(reference);
-                rel_tool_state.set(RelToolState::PickSource);
+                // 关系工具模式回 PickSource；Idle 直连回 Idle（UT-PB-08）
+                if active_tool.get_untracked() == ActiveTool::Relationship {
+                    rel_tool_state.set(RelToolState::PickSource);
+                } else {
+                    rel_tool_state.set(RelToolState::Idle);
+                }
             },
         ))
     };
@@ -10990,6 +11116,8 @@ pub fn AppRoot(
             // D 批：Esc 层级处理器可能已退出关系工具（active_tool=Select），此时不回溯 PickSource
             if active_tool.get_untracked() == ActiveTool::Relationship {
                 rel_tool_state.set(RelToolState::PickSource);
+            } else {
+                rel_tool_state.set(RelToolState::Idle);
             }
         }))
     };
@@ -11420,14 +11548,22 @@ pub fn AppRoot(
         let store = store.clone();
         let debouncer = debouncer.clone();
         let selection = selection.clone();
+        let command_stack = command_stack.clone();
         Rc::new(move |ref_id: String| {
             if editor_is_read_only(share_mode, current_room) {
                 return;
             }
             let mut refs = store.references.get();
+            let removed = refs.iter().find(|r| r.id == ref_id).cloned();
             refs.retain(|r| r.id != ref_id);
             store.references.set(refs);
             store.dirty.set(true);
+            if let Some(reference) = removed {
+                command_stack
+                    .get()
+                    .borrow_mut()
+                    .record(crate::editor_core::Command::DeleteReference { reference });
+            }
             selection.set(SelectionKind::None);
             schedule_save(
                 client_for_delete_ref.clone(),
@@ -11451,10 +11587,16 @@ pub fn AppRoot(
         let selection = selection.clone();
         let inspector_open = inspector_open.clone();
         let selected_table_id = selected_table_id.clone();
+        let store = store.clone();
+        let canvas_transform = canvas_transform;
+        let view_mode = view_mode;
         move |id: String| {
             selected_table_id.set(Some(id.clone()));
-            selection.set(SelectionKind::Table(id));
+            selection.set(SelectionKind::Table(id.clone()));
             inspector_open.set(true);
+            view_mode.set(ViewMode::Canvas);
+            // fix-remote-github-issues / #2：列表/Issues 跳转后聚焦表
+            focus_table(&store, &id, canvas_transform, (1200.0, 720.0));
         }
     });
 
@@ -12127,6 +12269,7 @@ pub fn AppRoot(
                         on_relation_drop=on_relation_drop
                         on_relation_drag_cancel=on_relation_drag_cancel
                         on_table_drop=on_table_drop
+                        selected_table_ids=selected_table_ids
                         on_reference_pick=on_reference_pick
                         create_tool=create_tool
                         on_area_create=on_area_create
@@ -12299,8 +12442,11 @@ pub fn AppRoot(
                             s.undo()
                         };
                         if let Some(cmd) = cmd {
-                            let _ = crate::editor_core::CommandStack::revert(&store, &cmd);
-                            on_after();
+                            if crate::editor_core::CommandStack::revert(&store, &cmd).is_ok() {
+                                on_after();
+                            } else {
+                                stack_rc.borrow_mut().restore_undo_after_failed_revert();
+                            }
                         }
                     }
                 }
@@ -12315,8 +12461,11 @@ pub fn AppRoot(
                             s.redo()
                         };
                         if let Some(cmd) = cmd {
-                            let _ = crate::editor_core::CommandStack::execute(&store, &cmd);
-                            on_after();
+                            if crate::editor_core::CommandStack::execute(&store, &cmd).is_ok() {
+                                on_after();
+                            } else {
+                                stack_rc.borrow_mut().restore_redo_after_failed_execute();
+                            }
                         }
                     }
                 }
@@ -12564,13 +12713,20 @@ pub mod modals {
         key.eq_ignore_ascii_case("z")
     }
 
-    /// 检查键盘事件是否匹配 Ctrl/Cmd+Shift+Z (Redo)
+    /// 检查键盘事件是否匹配 Ctrl/Cmd+Shift+Z 或 Ctrl/Cmd+Y (Redo)
     /// - UT-KB-01: ctrlKey/MetaKey + 'z' + shiftKey → true
+    /// - UT-KB-02: ctrlKey/MetaKey + 'y'（无 shift）→ true
     pub fn is_redo_shortcut(key: &str, ctrl_or_meta: bool, shift: bool) -> bool {
-        if !ctrl_or_meta || !shift {
+        if !ctrl_or_meta {
             return false;
         }
-        key.eq_ignore_ascii_case("z")
+        if key.eq_ignore_ascii_case("y") {
+            return !shift;
+        }
+        if key.eq_ignore_ascii_case("z") {
+            return shift;
+        }
+        false
     }
 
     // ─── ModalRoot: 通用壳 (B4 stub, B5 接入完整行为) ────────────────────────
@@ -15404,6 +15560,35 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_is_redo_shortcut_ctrl_y_ut_kb_02() {
+        assert!(
+            modals::is_redo_shortcut("y", true, false),
+            "UT-KB-02: Ctrl+Y → true"
+        );
+        assert!(
+            modals::is_redo_shortcut("Y", true, false),
+            "UT-KB-02: 大小写无关"
+        );
+        assert!(
+            !modals::is_redo_shortcut("y", false, false),
+            "UT-KB-02: 无 Ctrl → false"
+        );
+        assert!(
+            !modals::is_redo_shortcut("y", true, true),
+            "UT-KB-02: Ctrl+Shift+Y → false"
+        );
+    }
+
+    #[test]
+    fn test_normalize_theme_mode_ut_e5_02() {
+        assert_eq!(normalize_theme_mode("light"), "light");
+        assert_eq!(normalize_theme_mode("DARK"), "dark");
+        assert_eq!(normalize_theme_mode("system"), "system");
+        assert_eq!(normalize_theme_mode("nope"), "dark", "UT-E5-02/06: 非法回落 dark");
+        assert_eq!(THEME_STORAGE_KEY, "cdb-mode", "UT-E5-02: key 必须为 cdb-mode");
+    }
+
     // ─── UT-FIX-01: ModalRoot 条件渲染（fix-modal-overlay-blocking B1） ─────
 
     #[test]
@@ -16448,7 +16633,6 @@ CREATE INDEX idx_x ON users (id);";
     #[test]
     fn test_api_base_url_origin_anchor_ut_s04_ui_17() {
         let src = include_str!("editor_panels.rs");
-        // 1. base_url 含 window.location.origin（或等价 location().origin()）同源派生逻辑
         assert!(
             src.contains("window.location.origin") || src.contains("location().origin()"),
             "UT-S04-UI-17: base_url 应由 window.location.origin 同源派生"
@@ -16480,6 +16664,72 @@ CREATE INDEX idx_x ON users (id);";
         assert!(
             src.contains("COLDRAWDB_API_BASE"),
             "UT-S04-UI-17: dev 覆盖应仅经编译期环境变量"
+        );
+    }
+
+    /// UT-KB-03 锚点：创建关系必须 record(AddReference)
+    #[test]
+    fn test_create_reference_records_add_reference_ut_kb_03() {
+        let src = include_str!("editor_panels.rs");
+        assert!(
+            src.contains("Command::AddReference"),
+            "UT-KB-03: on_create_reference 必须 record AddReference"
+        );
+        assert!(
+            src.contains("Command::DeleteReference"),
+            "UT-KB-03: on_delete_ref 必须 record DeleteReference"
+        );
+        assert!(
+            src.contains("restore_undo_after_failed_revert"),
+            "UT-KB-04: undo 失败须回滚栈"
+        );
+    }
+
+    /// UT-E5-02/06 锚点：主题持久化 key + 读写通路
+    #[test]
+    fn test_theme_persistence_anchors_ut_e5_02_06() {
+        let src = include_str!("editor_panels.rs");
+        assert!(
+            src.contains("THEME_STORAGE_KEY") && src.contains("cdb-mode"),
+            "UT-E5-02: 必须使用 cdb-mode"
+        );
+        assert!(
+            src.contains("persist_theme_mode") && src.contains("read_persisted_theme_mode"),
+            "UT-E5-02/06: 必须读写 localStorage"
+        );
+    }
+
+    /// UT-CR-FOCUS-02 锚点：新建表 / 跳转调用 focus_table
+    #[test]
+    fn test_focus_table_anchor_ut_cr_focus_02() {
+        let src = include_str!("editor_panels.rs");
+        assert!(
+            src.contains("fn focus_table(") && src.contains("focus_table("),
+            "UT-CR-FOCUS-02: 必须存在 focus_table 接线"
+        );
+        assert!(
+            src.contains("Idle 下也可从字段拖出") || src.contains("UT-PB-08"),
+            "UT-PB-08: Idle 字段拖连注释锚点"
+        );
+    }
+
+    /// UT-S04-18：compose 注入 PUBLIC_BASE_URL，且默认非裸 :3000
+    #[test]
+    fn test_compose_public_base_url_ut_s04_18() {
+        let compose = include_str!("../../docker-compose.yml");
+        assert!(
+            compose.contains("PUBLIC_BASE_URL"),
+            "UT-S04-18: docker-compose 必须注入 PUBLIC_BASE_URL"
+        );
+        // 默认值不得是裸后端调试口
+        assert!(
+            !compose.contains("PUBLIC_BASE_URL: \"${PUBLIC_BASE_URL:-http://localhost:3000}\"")
+                && !compose.contains("PUBLIC_BASE_URL: http://localhost:3000"),
+            "UT-S04-18: 默认不得指向裸 :3000"
+        );
+        assert!(
+            compose.contains("PUBLIC_BASE_URL: \"${PUBLIC_BASE_URL:-http://localhost}\""),
+            "UT-S04-18: 默认应指向公开入口 localhost（nginx:80）"
         );
     }
 

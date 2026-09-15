@@ -413,8 +413,9 @@ pub enum Command {
         index: Option<usize>,
     },
     AddReference(Reference),
+    /// 删除关系：保留完整快照以便 undo 恢复（fix-remote-github-issues / UT-KB-03）
     DeleteReference {
-        reference_id: String,
+        reference: Reference,
     },
     ChangeType {
         field_id: String,
@@ -598,6 +599,13 @@ impl CommandStack {
         Some(cmd)
     }
 
+    /// UT-KB-04：`revert` 失败时把刚 pop 到 redo 的命令推回 undo，避免空弹。
+    pub fn restore_undo_after_failed_revert(&mut self) {
+        if let Some(cmd) = self.redo.pop() {
+            self.undo.push(cmd);
+        }
+    }
+
     /// Pop the most recent command from the redo stack and push it back onto the undo stack.
     ///
     /// B5: 底座实现 — 与 undo 对称，仅栈管理。
@@ -606,6 +614,21 @@ impl CommandStack {
         let cmd = self.redo.pop()?;
         self.undo.push(cmd.clone());
         Some(cmd)
+    }
+
+    /// UT-KB-04：`execute` 失败时把刚 pop 到 undo 的命令推回 redo。
+    pub fn restore_redo_after_failed_execute(&mut self) {
+        if let Some(cmd) = self.undo.pop() {
+            self.redo.push(cmd);
+        }
+    }
+
+    pub fn undo_len(&self) -> usize {
+        self.undo.len()
+    }
+
+    pub fn redo_len(&self) -> usize {
+        self.redo.len()
     }
 
     /// Apply a command to the store and push onto the undo stack.
@@ -668,14 +691,14 @@ impl CommandStack {
                 refs.push(reference.clone());
                 store.references.set(refs);
             }
-            Command::DeleteReference { reference_id } => {
+            Command::DeleteReference { reference } => {
                 let mut refs = store.references.get();
                 let before = refs.len();
-                refs.retain(|r| r.id != *reference_id);
+                refs.retain(|r| r.id != reference.id);
                 if refs.len() == before {
                     return Err(CoreError::new(format!(
                         "reference '{}' not found",
-                        reference_id
+                        reference.id
                     )));
                 }
                 store.references.set(refs);
@@ -745,8 +768,16 @@ impl CommandStack {
                 refs.retain(|r| r.id != reference.id);
                 store.references.set(refs);
             }
-            Command::DeleteReference { reference_id: _ } => {
-                return Err(CoreError::new("DeleteReference revert not supported in V1"));
+            Command::DeleteReference { reference } => {
+                let mut refs = store.references.get();
+                if refs.iter().any(|r| r.id == reference.id) {
+                    return Err(CoreError::new(format!(
+                        "reference id '{}' already exists",
+                        reference.id
+                    )));
+                }
+                refs.push(reference.clone());
+                store.references.set(refs);
             }
             Command::ChangeType { field_id: _, new_type: _ } => {
                 return Err(CoreError::new("ChangeType revert not supported in V1"));
@@ -788,8 +819,20 @@ impl CommandStack {
                 refs.push(reference.clone());
                 store.references.set(refs);
             }
-            Command::DeleteField { .. } | Command::DeleteReference { .. } | Command::ChangeType { .. } => {
+            Command::DeleteField { .. } | Command::ChangeType { .. } => {
                 return Err(CoreError::new("command not supported for execute-only path"));
+            }
+            Command::DeleteReference { reference } => {
+                let mut refs = store.references.get();
+                let before = refs.len();
+                refs.retain(|r| r.id != reference.id);
+                if refs.len() == before {
+                    return Err(CoreError::new(format!(
+                        "reference '{}' not found",
+                        reference.id
+                    )));
+                }
+                store.references.set(refs);
             }
             Command::DictSnapshot {
                 after,
@@ -1179,6 +1222,109 @@ mod tests {
         let mut stack = CommandStack::new();
         let popped = stack.redo();
         assert!(popped.is_none(), "UT-MM-16: 空 redo 栈应返回 None");
+    }
+
+    /// UT-KB-03：AddReference 进栈；undo 只撤关系不删表；redo 恢复关系
+    #[test]
+    fn test_add_reference_undo_redo_ut_kb_03() {
+        let store = EditorStore::new();
+        let mut stack = CommandStack::new();
+        let table_a = Table {
+            id: "ta".into(),
+            name: "a".into(),
+            x: 0.0,
+            y: 0.0,
+            color: "".into(),
+            comment: "".into(),
+            fields: vec![Field {
+                id: "fa".into(),
+                name: "id".into(),
+                type_: "UUID".into(),
+                default: String::new(),
+                check: String::new(),
+                primary: true,
+                unique: true,
+                not_null: true,
+                increment: false,
+                comment: String::new(),
+                tag: String::new(),
+                dict_code: String::new(),
+            }],
+            indices: Vec::new(),
+            width: None,
+            min_height: None,
+        };
+        let table_b = Table {
+            id: "tb".into(),
+            name: "b".into(),
+            x: 200.0,
+            y: 0.0,
+            color: "".into(),
+            comment: "".into(),
+            fields: vec![Field {
+                id: "fb".into(),
+                name: "id".into(),
+                type_: "UUID".into(),
+                default: String::new(),
+                check: String::new(),
+                primary: true,
+                unique: true,
+                not_null: true,
+                increment: false,
+                comment: String::new(),
+                tag: String::new(),
+                dict_code: String::new(),
+            }],
+            indices: Vec::new(),
+            width: None,
+            min_height: None,
+        };
+        CommandStack::apply(&store, &mut stack, Command::AddTable(table_a)).unwrap();
+        CommandStack::apply(&store, &mut stack, Command::AddTable(table_b)).unwrap();
+        assert_eq!(store.tables.get().len(), 2);
+        let reference = Reference {
+            id: "r1".into(),
+            name: "".into(),
+            start_table_id: "ta".into(),
+            start_field_id: "fa".into(),
+            end_table_id: "tb".into(),
+            end_field_id: "fb".into(),
+            type_: "one_to_many".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+        };
+        CommandStack::apply(&store, &mut stack, Command::AddReference(reference.clone())).unwrap();
+        assert_eq!(store.references.get().len(), 1, "UT-KB-03: 关系写入");
+        assert_eq!(stack.undo_len(), 3, "UT-KB-03: AddReference 进 undo 栈");
+
+        let cmd = stack.undo().expect("UT-KB-03: undo 弹出");
+        CommandStack::revert(&store, &cmd).expect("UT-KB-03: revert AddReference");
+        assert_eq!(store.references.get().len(), 0, "UT-KB-03: undo 后关系消失");
+        assert_eq!(store.tables.get().len(), 2, "UT-KB-03: undo 不得删表");
+
+        let cmd = stack.redo().expect("UT-KB-03: redo 弹出");
+        CommandStack::execute(&store, &cmd).expect("UT-KB-03: execute AddReference");
+        assert_eq!(store.references.get().len(), 1, "UT-KB-03: redo 恢复关系");
+        assert_eq!(store.tables.get().len(), 2, "UT-KB-03: redo 后表仍在");
+    }
+
+    /// UT-KB-04：revert 失败时栈可恢复
+    #[test]
+    fn test_restore_undo_after_failed_revert_ut_kb_04() {
+        let mut stack = CommandStack::new();
+        let cmd = Command::ChangeType {
+            field_id: "f".into(),
+            new_type: "INT".into(),
+        };
+        stack.record(cmd.clone());
+        let popped = stack.undo().unwrap();
+        assert_eq!(stack.undo_len(), 0);
+        assert_eq!(stack.redo_len(), 1);
+        // 模拟 revert 失败后回滚栈
+        stack.restore_undo_after_failed_revert();
+        assert_eq!(stack.undo_len(), 1, "UT-KB-04: 失败后 undo 恢复");
+        assert_eq!(stack.redo_len(), 0, "UT-KB-04: redo 清空对应项");
+        assert_eq!(stack.undo().unwrap(), popped);
     }
 
     #[test]
