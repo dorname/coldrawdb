@@ -123,12 +123,33 @@ pub fn focus_table(
         return;
     };
     let (w, h) = crate::editor_render::compute_table_render_size(table);
+    let viewport = resolve_canvas_viewport(viewport);
     let cur = transform.get_untracked();
     let next = crate::editor_render::focus_transform(
         table.x, table.y, w, h, viewport.0, viewport.1, &cur, 40.0,
     );
     transform.set(next);
     crate::editor_render::request_canvas_repaint();
+}
+
+/// 优先读取画布容器 CSS 尺寸，避免硬编码视口导致聚焦偏移。
+fn resolve_canvas_viewport(fallback: (f64, f64)) -> (f64, f64) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use wasm_bindgen::JsCast;
+        if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
+            if let Ok(Some(el)) = doc.query_selector("[data-testid=\"editor-canvas-container\"]") {
+                if let Ok(html) = el.dyn_into::<web_sys::HtmlElement>() {
+                    let w = f64::from(html.client_width());
+                    let h = f64::from(html.client_height());
+                    if w > 1.0 && h > 1.0 {
+                        return (w, h);
+                    }
+                }
+            }
+        }
+    }
+    fallback
 }
 
 // ─── D 批：全局工具快捷键 + Esc 浮层层级（ST-KB-T-01 / R-01 / ESC-01 / VIEWER）──
@@ -10037,12 +10058,16 @@ pub fn AppRoot(
     let on_select_table = {
         let selection = selection.clone();
         let inspector_open = inspector_open.clone();
+        let store = store.clone();
+        let canvas_transform = canvas_transform;
         Rc::new(move |id: Option<String>| {
             selected_table_id.set(id.clone());
             match id {
                 Some(tid) => {
-                    selection.set(SelectionKind::Table(tid));
+                    selection.set(SelectionKind::Table(tid.clone()));
                     inspector_open.set(true);
+                    // fix-remote-github-issues / #2：左侧 Tables 搜索/点击后聚焦
+                    focus_table(&store, &tid, canvas_transform, (1200.0, 720.0));
                 }
                 None => selection.set(SelectionKind::None),
             }
@@ -11951,10 +11976,18 @@ pub fn AppRoot(
     let on_palette_select = {
         let selection = selection.clone();
         let inspector_open = inspector_open.clone();
+        let store = store.clone();
+        let canvas_transform = canvas_transform;
+        let view_mode = view_mode;
         Callback::new(move |item: PaletteItem| match item.kind {
             crate::command_palette::PaletteKind::Table => {
-                selection.set(SelectionKind::Table(item.id));
+                let id = item.id.clone();
+                selection.set(SelectionKind::Table(id.clone()));
+                selected_table_id.set(Some(id.clone()));
                 inspector_open.set(true);
+                view_mode.set(ViewMode::Canvas);
+                // fix-remote-github-issues / #2：Command Palette / 搜索选表后聚焦
+                focus_table(&store, &id, canvas_transform, (1200.0, 720.0));
             }
             crate::command_palette::PaletteKind::Reference => {
                 selection.set(SelectionKind::Reference(item.id));
@@ -16699,7 +16732,7 @@ CREATE INDEX idx_x ON users (id);";
         );
     }
 
-    /// UT-CR-FOCUS-02 锚点：新建表 / 跳转调用 focus_table
+    /// UT-CR-FOCUS-02 锚点：新建表 / 搜索 / 列表跳转 / palette 均调用 focus_table
     #[test]
     fn test_focus_table_anchor_ut_cr_focus_02() {
         let src = include_str!("editor_panels.rs");
@@ -16708,8 +16741,22 @@ CREATE INDEX idx_x ON users (id);";
             "UT-CR-FOCUS-02: 必须存在 focus_table 接线"
         );
         assert!(
+            src.contains("左侧 Tables 搜索/点击后聚焦")
+                || src.contains("Command Palette / 搜索选表后聚焦"),
+            "UT-CR-FOCUS-02: 搜索与列表选表必须调用 focus_table"
+        );
+        assert!(
+            src.contains("列表/Issues 跳转后聚焦表") || src.contains("新建表后聚焦到视口"),
+            "UT-CR-FOCUS-02: 跳转/新建通路必须聚焦"
+        );
+        assert!(
             src.contains("Idle 下也可从字段拖出") || src.contains("UT-PB-08"),
             "UT-PB-08: Idle 字段拖连注释锚点"
+        );
+        let render = include_str!("editor_render.rs");
+        assert!(
+            render.contains("prefer_selection_over_field_rel"),
+            "ST-CR-MULTI-01: Shift/多选必须让路给框选与多表拖动"
         );
     }
 

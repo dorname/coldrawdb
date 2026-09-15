@@ -423,6 +423,20 @@ pub fn translate_tables(tables: &mut [Table], ids: &[String], dx: f64, dy: f64) 
     }
 }
 
+/// Idle 字段拖连 vs 框选/多表拖动：Shift 或「已多选集合内点中该表」时让路给选择手势。
+/// （修复 #5：Shift+拖被字段连线抢走；框选后拖表体又变成画线。）
+pub fn prefer_selection_over_field_rel(
+    shift_key: bool,
+    selected_table_ids: &[String],
+    field_table_id: &str,
+) -> bool {
+    if shift_key {
+        return true;
+    }
+    selected_table_ids.len() >= 2
+        && selected_table_ids.iter().any(|id| id == field_table_id)
+}
+
 /// 框选矩形与表 AABB 相交判定（世界坐标）。
 pub fn tables_in_marquee(tables: &[Table], x1: f64, y1: f64, x2: f64, y2: f64) -> Vec<String> {
     let min_x = x1.min(x2);
@@ -1011,38 +1025,46 @@ mod leptos_canvas {
                 }
                 // fix-remote-github-issues / UT-PB-08：Idle 下也可从字段拖出建关系（无需先点关系工具）
                 // 位移 <4px 松手走 on_field_pick → 选中字段；≥4px 走落账建关系
+                // #5：Shift 或已多选集合内拖动时让路给框选/多表拖（prefer_selection_over_field_rel）
                 if !read_only {
                     if let Some((tid, fid)) = super::hit_test_field(&tables, dx, dy) {
-                        let (anchor_x, anchor_y) = tables
-                            .iter()
-                            .find(|t| t.id == tid)
-                            .map(|t| super::field_anchor_start(t, &fid))
-                            .unwrap_or((dx, dy));
-                        capture_pointer(&canvas, ev.pointer_id());
-                        drag_state.set(Some(DragState {
-                            table_id: None,
-                            multi_starts: None,
-                            marquee_start: None,
-                            endpoint_drag: None,
-                            rel_drag: Some(RelFieldDrag {
-                                start_table_id: tid,
-                                start_field_id: fid,
-                                anchor_x,
-                                anchor_y,
-                                moved: false,
-                            }),
-                            create_drag: None,
-                            note_drag: None,
-                            area_drag: None,
-                            pointer_id: ev.pointer_id(),
-                            start_mouse_x: ev.client_x() as f64,
-                            start_mouse_y: ev.client_y() as f64,
-                            start_pan_x: 0.0,
-                            start_pan_y: 0.0,
-                            start_table_x: 0.0,
-                            start_table_y: 0.0,
-                        }));
-                        return;
+                        let multi = selected_table_ids.get_untracked();
+                        if !super::prefer_selection_over_field_rel(
+                            ev.shift_key(),
+                            &multi,
+                            &tid,
+                        ) {
+                            let (anchor_x, anchor_y) = tables
+                                .iter()
+                                .find(|t| t.id == tid)
+                                .map(|t| super::field_anchor_start(t, &fid))
+                                .unwrap_or((dx, dy));
+                            capture_pointer(&canvas, ev.pointer_id());
+                            drag_state.set(Some(DragState {
+                                table_id: None,
+                                multi_starts: None,
+                                marquee_start: None,
+                                endpoint_drag: None,
+                                rel_drag: Some(RelFieldDrag {
+                                    start_table_id: tid,
+                                    start_field_id: fid,
+                                    anchor_x,
+                                    anchor_y,
+                                    moved: false,
+                                }),
+                                create_drag: None,
+                                note_drag: None,
+                                area_drag: None,
+                                pointer_id: ev.pointer_id(),
+                                start_mouse_x: ev.client_x() as f64,
+                                start_mouse_y: ev.client_y() as f64,
+                                start_pan_x: 0.0,
+                                start_pan_y: 0.0,
+                                start_table_x: 0.0,
+                                start_table_y: 0.0,
+                            }));
+                            return;
+                        }
                     }
                 }
                 if !read_only {
@@ -3969,6 +3991,28 @@ mod tests {
         let inside = focus_transform(100.0, 100.0, 100.0, 80.0, 800.0, 600.0, &t, 40.0);
         assert_eq!(inside.pan_x, 0.0);
         assert_eq!(inside.pan_y, 0.0);
+    }
+
+    /// ST-CR-MULTI-01 辅助：Shift / 多选集合让路给选择手势，避免 Idle 字段连线抢走
+    #[test]
+    fn ut_cr_multi_01_prefer_selection_over_field_rel() {
+        let multi = vec!["a".into(), "b".into()];
+        assert!(
+            prefer_selection_over_field_rel(true, &[], "a"),
+            "ST-CR-MULTI-01: Shift 必须让路给框选/多选"
+        );
+        assert!(
+            prefer_selection_over_field_rel(false, &multi, "a"),
+            "ST-CR-MULTI-01: 已多选且点中集合内表 → 多表拖动优先"
+        );
+        assert!(
+            !prefer_selection_over_field_rel(false, &multi, "c"),
+            "ST-CR-MULTI-01: 点中未选中表仍可字段连线"
+        );
+        assert!(
+            !prefer_selection_over_field_rel(false, &["a".into()], "a"),
+            "ST-CR-MULTI-01: 单选不抢字段连线"
+        );
     }
 
     /// UT-CR-MULTI-01 — 多表同步位移 + marquee 相交
