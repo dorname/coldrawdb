@@ -16750,13 +16750,17 @@ CREATE INDEX idx_x ON users (id);";
             "UT-CR-FOCUS-02: 跳转/新建通路必须聚焦"
         );
         assert!(
-            src.contains("Idle 下也可从字段拖出") || src.contains("UT-PB-08"),
+            src.contains("Idle 下可从字段") || src.contains("UT-PB-08") || src.contains("连接点"),
             "UT-PB-08: Idle 字段拖连注释锚点"
         );
         let render = include_str!("editor_render.rs");
         assert!(
             render.contains("prefer_selection_over_field_rel"),
             "ST-CR-MULTI-01: Shift/多选必须让路给框选与多表拖动"
+        );
+        assert!(
+            render.contains("hit_test_field_port") && render.contains("FIELD_PORT_HIT_RADIUS"),
+            "UT-PB-08: 字段拖连必须走左右连接点"
         );
     }
 

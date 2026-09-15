@@ -19,6 +19,8 @@ use web_sys::{CanvasRenderingContext2d, MouseEvent, PointerEvent, WheelEvent};
 const TABLE_WIDTH: f64 = 230.0;
 const TABLE_HEADER_HEIGHT: f64 = 43.0;
 const FIELD_ROW_HEIGHT: f64 = 35.0;
+/// 字段左右连接点命中半径（世界坐标；#3 reopen：整行触发面过大，改为触发点）
+pub const FIELD_PORT_HIT_RADIUS: f64 = 10.0;
 /// 生产端网格尺寸：松手吸附 20px（core-CR-canvas-test-cases.md §1 合同；
 /// 主原型演示 GRID=12、点阵视觉 24px，均不得写成生产合同）。仅在 pointerup 时对齐，拖动中不量化。
 pub const GRID_SIZE: f64 = 20.0;
@@ -928,6 +930,7 @@ mod leptos_canvas {
             let live = live.clone();
             let on_select = on_select.clone();
             let on_deselect = on_deselect.clone();
+            let on_field_pick = on_field_pick.clone();
             let schedule_paint = schedule_paint.clone();
             let current_transform = current_transform.clone();
             move |ev: PointerEvent| {
@@ -969,11 +972,12 @@ mod leptos_canvas {
                     }
                 }
                 if rel_tool_active.get_untracked() {
-                    if let Some((tid, fid)) = super::hit_test_field(&tables, dx, dy) {
+                    // #3 reopen：仅左右连接点起拖连；字段行点击仍走 on_field_pick（两点选取）
+                    if let Some((tid, fid, side)) = super::hit_test_field_port(&tables, dx, dy) {
                         let (anchor_x, anchor_y) = tables
                             .iter()
                             .find(|t| t.id == tid)
-                            .map(|t| super::field_anchor_start(t, &fid))
+                            .map(|t| super::field_anchor_for_side(t, &fid, side))
                             .unwrap_or((dx, dy));
                         capture_pointer(&canvas, ev.pointer_id());
                         drag_state.set(Some(DragState {
@@ -1001,6 +1005,12 @@ mod leptos_canvas {
                         }));
                         return;
                     }
+                    if let Some((tid, fid)) = super::hit_test_field(&tables, dx, dy) {
+                        if let Some(cb) = on_field_pick.as_ref() {
+                            cb(tid, fid);
+                        }
+                        return;
+                    }
                     // 关系工具下未命中字段：回落到 pan 模式而不是吞掉 pointerdown
                     // （之前 return 会导致选择连线/点空白后画布无法拖动）
                     capture_pointer(&canvas, ev.pointer_id());
@@ -1023,11 +1033,11 @@ mod leptos_canvas {
                     }));
                     return;
                 }
-                // fix-remote-github-issues / UT-PB-08：Idle 下也可从字段拖出建关系（无需先点关系工具）
-                // 位移 <4px 松手走 on_field_pick → 选中字段；≥4px 走落账建关系
-                // #5：Shift 或已多选集合内拖动时让路给框选/多表拖（prefer_selection_over_field_rel）
+                // fix-remote-github-issues / UT-PB-08：Idle 下可从字段**连接点**拖出建关系（无需先点关系工具）
+                // #3 reopen：触发面改为左右 port，非整行；行内短按仍经表命中 → on_field_pick
+                // #5：Shift 或已多选集合内拖动时让路给框选/多表拖
                 if !read_only {
-                    if let Some((tid, fid)) = super::hit_test_field(&tables, dx, dy) {
+                    if let Some((tid, fid, side)) = super::hit_test_field_port(&tables, dx, dy) {
                         let multi = selected_table_ids.get_untracked();
                         if !super::prefer_selection_over_field_rel(
                             ev.shift_key(),
@@ -1037,7 +1047,7 @@ mod leptos_canvas {
                             let (anchor_x, anchor_y) = tables
                                 .iter()
                                 .find(|t| t.id == tid)
-                                .map(|t| super::field_anchor_start(t, &fid))
+                                .map(|t| super::field_anchor_for_side(t, &fid, side))
                                 .unwrap_or((dx, dy));
                             capture_pointer(&canvas, ev.pointer_id());
                             drag_state.set(Some(DragState {
@@ -1126,6 +1136,16 @@ mod leptos_canvas {
                     selected_ref_id.set(None);
                     selected_area_id.set(None);
                     selected_note_id.set(None);
+                    // 字段行（非 port）短按：选中字段；port 已在上方分流起拖连
+                    if !ev.shift_key() {
+                        if let Some((tid, fid)) = super::hit_test_field(&tables, dx, dy) {
+                            if tid == id {
+                                if let Some(cb) = on_field_pick.as_ref() {
+                                    cb(tid, fid);
+                                }
+                            }
+                        }
+                    }
                     // Shift+点击表：累加多选；否则若点的不在集合内则重置为单选
                     let mut multi = selected_table_ids.get_untracked();
                     if ev.shift_key() {
@@ -2013,9 +2033,17 @@ pub fn compute_table_render_size(table: &Table) -> (f64, f64) {
 
 /// 源字段右侧锚点（与正式关系线起点一致）。
 pub fn field_anchor_start(table: &Table, field_id: &str) -> (f64, f64) {
-    // feat-table-resize: 端点 x 消费 table.width,fallback 到 TABLE_WIDTH 默认 230.0
+    field_anchor_for_side(table, field_id, FieldPortSide::End)
+}
+
+/// 字段左右连接点锚点（#3：从对应侧 port 拖出）。
+pub fn field_anchor_for_side(table: &Table, field_id: &str, side: FieldPortSide) -> (f64, f64) {
     let width = table.width.map(|w| w as f64).unwrap_or(TABLE_WIDTH);
-    (table.x + width, field_anchor_y(table, field_id))
+    let y = field_anchor_y(table, field_id);
+    match side {
+        FieldPortSide::Start => (table.x, y),
+        FieldPortSide::End => (table.x + width, y),
+    }
 }
 
 /// 拖动中写入临时视觉坐标，不量化网格。
@@ -2760,6 +2788,25 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
         );
         let _ = ctx.set_text_align("left");
 
+        // #3：字段左右连接点（可见触发点，半径小于命中半径以便易点）
+        let cy = fy + FIELD_ROW_HEIGHT / 2.0;
+        let port_r = 3.5;
+        let _ = ctx.set_fill_style_str(palette.selected);
+        ctx.begin_path();
+        let _ = ctx.arc(x, cy, port_r, 0.0, std::f64::consts::TAU);
+        ctx.fill();
+        ctx.begin_path();
+        let _ = ctx.arc(x + width, cy, port_r, 0.0, std::f64::consts::TAU);
+        ctx.fill();
+        let _ = ctx.set_stroke_style_str(palette.table_bg);
+        ctx.set_line_width(1.0);
+        ctx.begin_path();
+        let _ = ctx.arc(x, cy, port_r, 0.0, std::f64::consts::TAU);
+        ctx.stroke();
+        ctx.begin_path();
+        let _ = ctx.arc(x + width, cy, port_r, 0.0, std::f64::consts::TAU);
+        ctx.stroke();
+
         if i + 1 < field_count {
             let _ = ctx.set_stroke_style_str(palette.row_separator);
             ctx.set_line_width(1.0);
@@ -2955,6 +3002,44 @@ pub fn hit_test_field(tables: &[Table], x: f64, y: f64) -> Option<(String, Strin
         let idx = ((y - table.y - TABLE_HEADER_HEIGHT) / FIELD_ROW_HEIGHT).floor() as usize;
         if let Some(field) = table.fields.get(idx) {
             return Some((table.id.clone(), field.id.clone()));
+        }
+    }
+    None
+}
+
+/// 字段左右连接点（#3 reopen：仅 port 可起拖连，非整行）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FieldPortSide {
+    /// 左侧
+    Start,
+    /// 右侧
+    End,
+}
+
+/// 命中字段左右连接点；半径见 `FIELD_PORT_HIT_RADIUS`。
+pub fn hit_test_field_port(
+    tables: &[Table],
+    x: f64,
+    y: f64,
+) -> Option<(String, String, FieldPortSide)> {
+    for table in tables.iter().rev() {
+        let width = table.width.map(|w| w as f64).unwrap_or(TABLE_WIDTH);
+        for field in &table.fields {
+            let cy = field_anchor_y(table, &field.id);
+            let left_dx = x - table.x;
+            let left_dy = y - cy;
+            if left_dx * left_dx + left_dy * left_dy <= FIELD_PORT_HIT_RADIUS * FIELD_PORT_HIT_RADIUS
+            {
+                return Some((table.id.clone(), field.id.clone(), FieldPortSide::Start));
+            }
+            let right_x = table.x + width;
+            let right_dx = x - right_x;
+            let right_dy = y - cy;
+            if right_dx * right_dx + right_dy * right_dy
+                <= FIELD_PORT_HIT_RADIUS * FIELD_PORT_HIT_RADIUS
+            {
+                return Some((table.id.clone(), field.id.clone(), FieldPortSide::End));
+            }
         }
     }
     None
@@ -4012,6 +4097,56 @@ mod tests {
         assert!(
             !prefer_selection_over_field_rel(false, &["a".into()], "a"),
             "ST-CR-MULTI-01: 单选不抢字段连线"
+        );
+    }
+
+    /// UT-PB-08 — 字段连接点命中（非整行）；行中心不命中 port
+    #[test]
+    fn ut_pb_08_hit_test_field_port() {
+        let table = Table {
+            id: "t1".into(),
+            name: "t1".into(),
+            x: 100.0,
+            y: 100.0,
+            color: String::new(),
+            comment: String::new(),
+            fields: vec![crate::editor_core::types::Field {
+                id: "f1".into(),
+                name: "id".into(),
+                type_: "INT".into(),
+                default: String::new(),
+                check: String::new(),
+                primary: true,
+                unique: false,
+                not_null: true,
+                increment: false,
+                comment: String::new(),
+                tag: String::new(),
+                dict_code: String::new(),
+            }],
+            indices: Vec::new(),
+            width: None,
+            min_height: None,
+        };
+        let tables = vec![table];
+        let cy = 100.0 + TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT / 2.0;
+        let left = hit_test_field_port(&tables, 100.0, cy);
+        assert_eq!(
+            left.map(|(t, f, s)| (t, f, s)),
+            Some(("t1".into(), "f1".into(), FieldPortSide::Start)),
+            "UT-PB-08: 左侧连接点应命中"
+        );
+        let right = hit_test_field_port(&tables, 100.0 + TABLE_WIDTH, cy);
+        assert_eq!(
+            right.map(|(_, _, s)| s),
+            Some(FieldPortSide::End),
+            "UT-PB-08: 右侧连接点应命中"
+        );
+        let mid = hit_test_field_port(&tables, 100.0 + TABLE_WIDTH / 2.0, cy);
+        assert!(mid.is_none(), "UT-PB-08: 字段行中心不得起拖连");
+        assert!(
+            hit_test_field(&tables, 100.0 + TABLE_WIDTH / 2.0, cy).is_some(),
+            "UT-PB-08: 行中心仍可选中字段"
         );
     }
 
