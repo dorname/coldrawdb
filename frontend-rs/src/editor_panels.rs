@@ -32,7 +32,7 @@ use crate::splitter::{Splitter, SplitterKind};
 use crate::icons::{
     IconAdd, IconAddArea, IconAddNote, IconAddTable, IconArrowLeft, IconBox, IconChevronLeft, IconChevronRight,
     IconClose, IconDelete, IconEnum, IconExport, IconImport, IconKey, IconMinus, IconMoon, IconMore,
-    IconActivity, IconEye, IconEyeOff, IconLogo, IconRedo, IconRefresh, IconRelationship,
+    IconActivity, IconEye, IconEyeOff, IconLogo, IconRedo, IconRefresh, IconRelationship, IconSelect,
     IconSearch, IconSettings, IconShare, IconSun, IconType, IconUndo, IconUsers, IconWarning,
 };
 use leptos::*;
@@ -506,6 +506,8 @@ pub fn selection_auto_opens_inspector(sel: &SelectionKind) -> bool {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ActiveTool {
     Select,
+    /// 框选多表（空白拖框；点击表累加），对齐 GitHub #5
+    Marquee,
     Relationship,
     Pan,
     /// p0-fix 定点 2：区域 / 便签创建工具
@@ -5214,6 +5216,23 @@ pub fn ToolRail(
             >
                 <IconBox size="md"><IconAddTable /></IconBox>
                 <span class="cdb-tool-tip">"新建表 "<kbd>"T"</kbd></span>
+            </button>
+            <button
+                class="cdb-tool-btn"
+                class:cdb-is-active=move || active_tool.get() == ActiveTool::Marquee
+                data-testid="tool-marquee"
+                disabled=rel_disabled
+                on:click=move |_| {
+                    if rel_disabled() {
+                        return;
+                    }
+                    // #5：框选工具——空白拖框多选，无需按住 Shift
+                    rel_tool_state.set(RelToolState::Idle);
+                    active_tool.set(ActiveTool::Marquee);
+                }
+            >
+                <IconBox size="md"><IconSelect /></IconBox>
+                <span class="cdb-tool-tip">"框选多表"</span>
             </button>
             <button
                 class="cdb-tool-btn"
@@ -9950,6 +9969,11 @@ pub fn AppRoot(
             && rel_tool_state.get().is_picking();
         rel_tool_active.set(picking);
     });
+    // #5：框选工具信号（画布空白拖框无需 Shift）
+    let marquee_active: RwSignal<bool> = create_rw_signal(false);
+    create_effect(move |_| {
+        marquee_active.set(active_tool.get() == ActiveTool::Marquee);
+    });
 
     // p0-fix 定点 2：创建工具信号 — 画布十字光标 + 拖框建区域 / 点击放便签
     let create_tool: RwSignal<Option<crate::editor_render::CreateToolKind>> =
@@ -12305,6 +12329,7 @@ pub fn AppRoot(
                         selected_table_ids=selected_table_ids
                         on_reference_pick=on_reference_pick
                         create_tool=create_tool
+                        marquee_active=marquee_active
                         on_area_create=on_area_create
                         on_note_create=on_note_create
                         on_area_pick=on_area_pick
@@ -16759,8 +16784,12 @@ CREATE INDEX idx_x ON users (id);";
             "ST-CR-MULTI-01: Shift/多选必须让路给框选与多表拖动"
         );
         assert!(
-            render.contains("hit_test_field_port") && render.contains("FIELD_PORT_HIT_RADIUS"),
-            "UT-PB-08: 字段拖连必须走左右连接点"
+            render.contains("table_visually_selected") && render.contains("hit_test_field_port"),
+            "ST-CR-MULTI-01 / UT-PB-08: 多选高亮与连接点"
+        );
+        assert!(
+            src.contains("tool-marquee") && src.contains("ActiveTool::Marquee"),
+            "ST-CR-MULTI-01: ToolRail 必须提供框选工具按钮"
         );
     }
 

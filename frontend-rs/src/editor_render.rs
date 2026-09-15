@@ -439,6 +439,16 @@ pub fn prefer_selection_over_field_rel(
         && selected_table_ids.iter().any(|id| id == field_table_id)
 }
 
+/// #5：表是否应绘制选中环（主选中或框选/多选集合内）。
+pub fn table_visually_selected(
+    table_id: &str,
+    primary_selected_id: Option<&str>,
+    multi_selected_ids: &[String],
+) -> bool {
+    primary_selected_id == Some(table_id)
+        || multi_selected_ids.iter().any(|id| id == table_id)
+}
+
 /// 框选矩形与表 AABB 相交判定（世界坐标）。
 pub fn tables_in_marquee(tables: &[Table], x1: f64, y1: f64, x2: f64, y2: f64) -> Vec<String> {
     let min_x = x1.min(x2);
@@ -597,6 +607,8 @@ mod leptos_canvas {
         on_reference_pick: Option<Box<dyn Fn(String) + 'static>>,
         /// p0-fix 定点 2：当前创建工具（Some → 十字光标 + 拖拽创建区域 / 点击放置便签）
         create_tool: RwSignal<Option<CreateToolKind>>,
+        /// fix-remote-github-issues / #5：框选工具激活（空白拖无需 Shift）
+        marquee_active: RwSignal<bool>,
         /// p0-fix 定点 2：区域拖框落账（x, y, width, height）
         on_area_create: Option<Box<dyn Fn(f64, f64, f64, f64) + 'static>>,
         /// p0-fix 定点 2：便签点击放置落账（x, y）
@@ -806,6 +818,8 @@ mod leptos_canvas {
             let sel_ref = selected_ref_id.with(|s| s.clone());
             let sel_area = selected_area_id.with(|s| s.clone());
             let sel_note = selected_note_id.with(|s| s.clone());
+            // #5：订阅多选集合，框选/Shift 多选后重绘选中环
+            let multi_sel = selected_table_ids.with(|ids| ids.clone());
             // R-PERF-11：幽灵层接管中的表 id（主画布跳过绘制）
             let ghost_skip = ghost.borrow().as_ref().map(|g| g.table_id.clone());
 
@@ -833,6 +847,7 @@ mod leptos_canvas {
                                     notes,
                                     presence,
                                     sel.as_deref(),
+                                    &multi_sel,
                                     sel_ref.as_deref(),
                                     sel_area.as_deref(),
                                     sel_note.as_deref(),
@@ -899,11 +914,13 @@ mod leptos_canvas {
         }
         {
             create_effect(move |_| {
-                let active = create_tool.get().is_some();
+                let active = create_tool.get().is_some() || marquee_active.get();
                 if let Some(canvas) = canvas_ref.get() {
                     let ws: &web_sys::HtmlCanvasElement = &canvas;
                     let el: &web_sys::HtmlElement = ws.unchecked_ref();
-                    let _ = el.style().set_property("cursor", if active { "crosshair" } else { "" });
+                    let _ = el
+                        .style()
+                        .set_property("cursor", if active { "crosshair" } else { "" });
                 }
             });
         }
@@ -1040,7 +1057,7 @@ mod leptos_canvas {
                     if let Some((tid, fid, side)) = super::hit_test_field_port(&tables, dx, dy) {
                         let multi = selected_table_ids.get_untracked();
                         if !super::prefer_selection_over_field_rel(
-                            ev.shift_key(),
+                            ev.shift_key() || marquee_active.get_untracked(),
                             &multi,
                             &tid,
                         ) {
@@ -1136,8 +1153,8 @@ mod leptos_canvas {
                     selected_ref_id.set(None);
                     selected_area_id.set(None);
                     selected_note_id.set(None);
-                    // 字段行（非 port）短按：选中字段；port 已在上方分流起拖连
-                    if !ev.shift_key() {
+                    // 字段行（非 port）短按：选中字段；框选/Shift 手势下不抢选字段
+                    if !ev.shift_key() && !marquee_active.get_untracked() {
                         if let Some((tid, fid)) = super::hit_test_field(&tables, dx, dy) {
                             if tid == id {
                                 if let Some(cb) = on_field_pick.as_ref() {
@@ -1146,9 +1163,11 @@ mod leptos_canvas {
                             }
                         }
                     }
-                    // Shift+点击表：累加多选；否则若点的不在集合内则重置为单选
+                    // Shift / 框选工具：累加多选；否则若点的不在集合内则重置为单选
                     let mut multi = selected_table_ids.get_untracked();
-                    if ev.shift_key() {
+                    let multi_gesture =
+                        ev.shift_key() || marquee_active.get_untracked();
+                    if multi_gesture {
                         if multi.iter().any(|x| x == &id) {
                             multi.retain(|x| x != &id);
                         } else {
@@ -1284,8 +1303,10 @@ mod leptos_canvas {
                         cb();
                     }
                     capture_pointer(&canvas, ev.pointer_id());
-                    // Shift+空白 = 框选多表；否则平移画布
-                    let marquee_start = if ev.shift_key() && !read_only {
+                    // Shift+空白 或框选工具 = 框选多表；否则平移画布
+                    let use_marquee =
+                        !read_only && (ev.shift_key() || marquee_active.get_untracked());
+                    let marquee_start = if use_marquee {
                         selected_table_ids.set(Vec::new());
                         Some((dx, dy))
                     } else {
@@ -1780,7 +1801,10 @@ mod leptos_canvas {
                         diag_x,
                         diag_y,
                     );
-                    selected_table_ids.set(ids);
+                    selected_table_ids.set(ids.clone());
+                    if let Some(first) = ids.first() {
+                        selected_id.set(Some(first.clone()));
+                    }
                     schedule_paint();
                     return;
                 }
@@ -2149,6 +2173,8 @@ pub fn draw_canvas(
     notes: &[Note],
     remote_presence: &[RemotePresence],
     selected_id: Option<&str>,
+    // #5：多选 / 框选集合（集合内表均绘制选中环）
+    selected_table_ids: &[String],
     // p0-fix 定点 3：选中的关系连线 id（点击连线高亮）
     selected_ref_id: Option<&str>,
     // p0-fix 定点 2：选中的区域 / 便签 id（点击高亮 + Inspector 编辑）
@@ -2229,7 +2255,7 @@ pub fn draw_canvas(
         if ghost_skip == Some(table.id.as_str()) {
             continue;
         }
-        let is_sel = selected_id == Some(table.id.as_str());
+        let is_sel = table_visually_selected(table.id.as_str(), selected_id, selected_table_ids);
         // R-PERF-04：被拖表以覆盖坐标绘制（一帧至多一张表的一次克隆）
         let visual = table_with_override(table, table_override);
         draw_table(ctx, &visual, is_sel, palette, t.zoom);
@@ -4097,6 +4123,28 @@ mod tests {
         assert!(
             !prefer_selection_over_field_rel(false, &["a".into()], "a"),
             "ST-CR-MULTI-01: 单选不抢字段连线"
+        );
+    }
+
+    /// ST-CR-MULTI-01：多选集合内表必须有选中视觉（对齐 #5 reopen）
+    #[test]
+    fn ut_cr_multi_01_table_visually_selected() {
+        let multi = vec!["a".into(), "b".into()];
+        assert!(
+            table_visually_selected("a", Some("a"), &multi),
+            "主选中应高亮"
+        );
+        assert!(
+            table_visually_selected("b", Some("a"), &multi),
+            "多选集合内非主选中表也必须高亮"
+        );
+        assert!(
+            !table_visually_selected("c", Some("a"), &multi),
+            "未入选表不高亮"
+        );
+        assert!(
+            table_visually_selected("x", Some("x"), &[]),
+            "仅主选中时仍高亮"
         );
     }
 
