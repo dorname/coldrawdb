@@ -75,14 +75,15 @@ test.describe("Phase B Relationship Tool E2E", () => {
       return;
     }
 
-    const fieldY = box.y + 160 + 32 + 12;
-    await page.mouse.move(box.x + 240 + 40, fieldY);
+    // #3：拖连命中左右连接点（非整行）；table_1 默认约 (180,145) 宽 230 → 右 port x≈410
+    const fieldY = box.y + 205;
+    await page.mouse.move(box.x + 410, fieldY);
     await page.mouse.down();
-    await page.mouse.move(box.x + 240 + 80, fieldY, { steps: 4 });
+    await page.mouse.move(box.x + 430, fieldY, { steps: 4 });
     await expect(page.locator('[data-testid="rel-rubber-band"]')).toBeVisible({
       timeout: 2_000,
     });
-    await page.mouse.move(box.x + 460, fieldY + 40, { steps: 6 });
+    await page.mouse.move(box.x + 535, fieldY + 40, { steps: 6 });
     await page.mouse.up();
 
     const confirm = page.locator('[data-testid="rel-confirm-bar"]');

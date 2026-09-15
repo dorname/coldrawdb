@@ -294,10 +294,14 @@ async function createTwoTables(page) {
   await page.locator('[data-testid="save-state"][data-state="saved"]').waitFor({ timeout: 8_000 });
 }
 
-// 画布坐标（默认 pan0 zoom1；表 i 落位 x=180+i*55, y=145+i*35；表头 43 / 字段行 35）
-const TABLE1_FIELD = { x: 220, y: 205 }; // table_1 首字段行（避开 table_2 x 重叠区）
+// 画布坐标（默认 pan0 zoom1；表 i 落位 x=180+i*55, y=145+i*35；表头 43 / 字段行 35；表宽 230）
+const TABLE1_FIELD = { x: 220, y: 205 }; // table_1 首字段行（避开 table_2 x 重叠区；点击选取用）
 const TABLE2_FIELD = { x: 295, y: 240 }; // table_2 首字段行
 const TABLE2_HEADER = { x: 350, y: 201.5 }; // table_2 表头中心（rev 命中优先 table_2）
+// #3：拖连仅左右连接点（FIELD_PORT_HIT_RADIUS=10）；行中心会走点击选取而非 rubber-band
+const TABLE1_PORT_END = { x: 410, y: 205 }; // table_1 右侧 port（180+230）
+// 松手落点走 hit_test_field（字段行矩形），table_2 拖开 +300,+100 后首字段行中心
+const TABLE2_FIELD_AFTER_NUDGE = { x: TABLE2_FIELD.x + 300, y: TABLE2_FIELD.y + 100 };
 
 async function canvasPoint(page, point) {
   const box = await page.locator('[data-testid="editor-canvas-container"] canvas').boundingBox();
@@ -1254,11 +1258,21 @@ try {
     await createRoomAndEnter(page);
     await createTwoTables(page);
 
+    // 先把 table_2 拖开，避免重叠遮挡目标左侧 port
+    const header = await canvasPoint(page, TABLE2_HEADER);
+    await page.mouse.move(header.x, header.y);
+    await page.mouse.down();
+    await page.mouse.move(header.x + 300, header.y + 100, { steps: 5 });
+    await page.mouse.up();
+    await waitSaved(page);
+    await waitForCanvasStable(page);
+
     await page.keyboard.press("r");
     await page.locator('[data-testid="rel-tool-hint"]:visible').waitFor();
     await waitForCanvasStable(page);
-    const from = await canvasPoint(page, TABLE1_FIELD);
-    const to = await canvasPoint(page, TABLE2_FIELD);
+    // #3：必须从字段左右连接点起拖（非整行中心）
+    const from = await canvasPoint(page, TABLE1_PORT_END);
+    const to = await canvasPoint(page, TABLE2_FIELD_AFTER_NUDGE);
     await page.mouse.move(from.x, from.y);
     await page.mouse.down();
     await page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2, { steps: 4 });

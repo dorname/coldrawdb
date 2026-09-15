@@ -109,7 +109,54 @@ cd frontend-rs && trunk build --release --no-wasm-opt
 # 产物：frontend-rs/dist/
 ```
 
-## Docker 部署
+## 稳定版运行（Windows / macOS / Linux）
+
+coldrawdb 是**浏览器端自托管**应用：正式交付物是 **Docker 镜像 + Compose**，在三平台上通过 Docker 运行同一套 Linux 容器（CI 推送 `linux/amd64` 与 `linux/arm64`，覆盖 Intel/AMD PC 与 Apple Silicon）。
+
+| 平台 | 推荐入口 | 说明 |
+|---|---|---|
+| Windows | [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/) | 启用 WSL2 后端；浏览器访问宿主机映射端口 |
+| macOS | [Docker Desktop](https://docs.docker.com/desktop/setup/install/mac-install/) | Intel / Apple Silicon 均用多架构镜像 |
+| Linux | Docker Engine + Compose v2 | 直接 `docker compose` |
+
+**推荐（staging Compose，含 nginx 反代与每日备份）**：
+
+```bash
+# 1) 克隆或下载发布源码后，在仓库根目录执行
+docker compose up -d --build
+
+# 2) 浏览器打开（Windows / macOS / Linux 相同）
+#    http://localhost/
+```
+
+跨机或局域网邀请链接请设置公开 SPA 基址（不要指向裸后端 `:3000`）：
+
+```bash
+# Windows PowerShell
+$env:PUBLIC_BASE_URL="http://192.168.1.10"; docker compose up -d --build
+
+# macOS / Linux
+PUBLIC_BASE_URL=http://192.168.1.10 docker compose up -d --build
+```
+
+健康检查：`GET http://localhost/api/v1/diagrams/health`（经 nginx:80）或 `GET http://localhost:3000/api/v1/diagrams/health`（直连后端）。
+
+从 Git 标签发布时，GitHub Actions（`.github/workflows/docker.yml`）会构建并推送：
+
+- `ghcr.io/<owner>/coldrawdb:<tag>`
+- `ghcr.io/<owner>/coldrawdb:latest`
+- 平台：`linux/amd64,linux/arm64`
+
+拉取已发布镜像（标签以实际 Release 为准）示例：
+
+```bash
+docker pull ghcr.io/dorname/coldrawdb:latest
+docker run -p 3000:3000 -v ./data:/data -e PUBLIC_BASE_URL=http://localhost:3000 ghcr.io/dorname/coldrawdb:latest
+```
+
+本地开发（非稳定版交付路径）：Linux / macOS / Windows WSL2 使用下方「快速开始」；原生 Windows 无 WSL 时请用 Docker。
+
+## Docker 部署（源码构建）
 
 单容器：
 
