@@ -19,6 +19,9 @@ use web_sys::{CanvasRenderingContext2d, MouseEvent, PointerEvent, WheelEvent};
 const TABLE_WIDTH: f64 = 230.0;
 const TABLE_HEADER_HEIGHT: f64 = 43.0;
 const FIELD_ROW_HEIGHT: f64 = 35.0;
+/// 便签渲染 / 命中尺寸（与 draw_note 一致）
+pub const NOTE_WIDTH: f64 = 180.0;
+pub const NOTE_HEIGHT: f64 = 100.0;
 /// 字段左右连接点命中半径（世界坐标；#3 reopen：整行触发面过大，改为触发点）
 pub const FIELD_PORT_HIT_RADIUS: f64 = 10.0;
 /// 生产端网格尺寸：松手吸附 20px（core-CR-canvas-test-cases.md §1 合同；
@@ -478,6 +481,48 @@ pub fn resolve_table_multi_on_pointerdown(
     multi
 }
 
+/// 区域标题栏命中高度（世界坐标）：表叠在区域上时仍可从标题拖动区域。
+pub const AREA_HEADER_HIT: f64 = 28.0;
+
+/// #5：框选矩形与便签 AABB 相交。
+pub fn notes_in_marquee(notes: &[Note], x1: f64, y1: f64, x2: f64, y2: f64) -> Vec<String> {
+    let min_x = x1.min(x2);
+    let max_x = x1.max(x2);
+    let min_y = y1.min(y2);
+    let max_y = y1.max(y2);
+    notes
+        .iter()
+        .filter(|n| {
+            let nx2 = n.x + NOTE_WIDTH;
+            let ny2 = n.y + NOTE_HEIGHT;
+            n.x < max_x && nx2 > min_x && n.y < max_y && ny2 > min_y
+        })
+        .map(|n| n.id.clone())
+        .collect()
+}
+
+/// #5：框选矩形与区域 AABB 相交。
+pub fn areas_in_marquee(areas: &[Area], x1: f64, y1: f64, x2: f64, y2: f64) -> Vec<String> {
+    let min_x = x1.min(x2);
+    let max_x = x1.max(x2);
+    let min_y = y1.min(y2);
+    let max_y = y1.max(y2);
+    areas
+        .iter()
+        .filter(|a| {
+            let ax2 = a.x + a.width;
+            let ay2 = a.y + a.height;
+            a.x < max_x && ax2 > min_x && a.y < max_y && ay2 > min_y
+        })
+        .map(|a| a.id.clone())
+        .collect()
+}
+
+/// 多选总成员数（表 + 便签 + 区域）。
+pub fn selection_group_len(tables: &[String], notes: &[String], areas: &[String]) -> usize {
+    tables.len() + notes.len() + areas.len()
+}
+
 /// 框选矩形与表 AABB 相交判定（世界坐标）。
 pub fn tables_in_marquee(tables: &[Table], x1: f64, y1: f64, x2: f64, y2: f64) -> Vec<String> {
     let min_x = x1.min(x2);
@@ -528,6 +573,9 @@ struct DragState {
     table_id: Option<String>,
     /// 多表拖动：选中集合内各表起始世界坐标
     multi_starts: Option<Vec<(String, f64, f64)>>,
+    /// #5：整组拖动时便签 / 区域起始坐标（与 multi_starts 同时生效）
+    multi_note_starts: Option<Vec<(String, f64, f64)>>,
+    multi_area_starts: Option<Vec<(String, f64, f64)>>,
     /// Shift+空白拖：框选起点（世界坐标）
     marquee_start: Option<(f64, f64)>,
     endpoint_drag: Option<(String, EndpointEnd)>, // (ref_id, end) when dragging an endpoint
@@ -570,6 +618,8 @@ impl Default for DragState {
         DragState {
             table_id: None,
             multi_starts: None,
+            multi_note_starts: None,
+            multi_area_starts: None,
             marquee_start: None,
             endpoint_drag: None,
             rel_drag: None,
@@ -1035,6 +1085,8 @@ mod leptos_canvas {
                         drag_state.set(Some(DragState {
                             table_id: None,
                             multi_starts: None,
+                            multi_note_starts: None,
+                            multi_area_starts: None,
                             marquee_start: None,
                             endpoint_drag: None,
                             rel_drag: Some(RelFieldDrag {
@@ -1069,6 +1121,8 @@ mod leptos_canvas {
                     drag_state.set(Some(DragState {
                         table_id: None,
                         multi_starts: None,
+                        multi_note_starts: None,
+                        multi_area_starts: None,
                         marquee_start: None,
                         endpoint_drag: None,
                         rel_drag: None,
@@ -1105,6 +1159,8 @@ mod leptos_canvas {
                             drag_state.set(Some(DragState {
                                 table_id: None,
                                 multi_starts: None,
+                                multi_note_starts: None,
+                                multi_area_starts: None,
                                 marquee_start: None,
                                 endpoint_drag: None,
                                 rel_drag: Some(RelFieldDrag {
@@ -1136,6 +1192,8 @@ mod leptos_canvas {
                         drag_state.set(Some(DragState {
                             table_id: None,
                             multi_starts: None,
+                            multi_note_starts: None,
+                            multi_area_starts: None,
                             marquee_start: None,
                             endpoint_drag: None,
                             rel_drag: None,
@@ -1165,6 +1223,8 @@ mod leptos_canvas {
                     drag_state.set(Some(DragState {
                         table_id: None,
                         multi_starts: None,
+                        multi_note_starts: None,
+                        multi_area_starts: None,
                         marquee_start: None,
                         endpoint_drag: Some((ref_id, end)),
                         rel_drag: None,
@@ -1180,6 +1240,128 @@ mod leptos_canvas {
                         start_table_y: 0.0,
                     }));
                     return;
+                }
+                // #5 / 便签·区域拖拽：
+                // 1) 已选中的区域：整区可拖（含表叠盖处）——「被选中后支持拖拽」
+                // 2) 便签在表之上；未选中区域仍可用标题栏拖动
+                if !read_only {
+                    if let Some(sel_area) = selected_area_id.get_untracked() {
+                        if super::hit_test_area(&store.areas.get_untracked(), dx, dy)
+                            .as_deref()
+                            == Some(sel_area.as_str())
+                        {
+                            let (area_x, area_y) = store
+                                .areas
+                                .get_untracked()
+                                .iter()
+                                .find(|a| a.id == sel_area)
+                                .map(|a| (a.x, a.y))
+                                .unwrap_or((0.0, 0.0));
+                            if let Some(cb) = on_area_pick.as_ref() {
+                                cb(sel_area.clone());
+                            }
+                            capture_pointer(&canvas, ev.pointer_id());
+                            drag_state.set(Some(DragState {
+                                table_id: None,
+                                multi_starts: None,
+                                multi_note_starts: None,
+                                multi_area_starts: None,
+                                marquee_start: None,
+                                endpoint_drag: None,
+                                rel_drag: None,
+                                create_drag: None,
+                                note_drag: None,
+                                area_drag: Some((sel_area, area_x, area_y)),
+                                pointer_id: ev.pointer_id(),
+                                start_mouse_x: ev.client_x() as f64,
+                                start_mouse_y: ev.client_y() as f64,
+                                start_pan_x: t_now.pan_x,
+                                start_pan_y: t_now.pan_y,
+                                start_table_x: 0.0,
+                                start_table_y: 0.0,
+                            }));
+                            return;
+                        }
+                    }
+                    if let Some(note_id) = super::hit_test_note(&store.notes.get_untracked(), dx, dy)
+                    {
+                        selected_id.set(None);
+                        selected_ref_id.set(None);
+                        selected_area_id.set(None);
+                        selected_note_id.set(Some(note_id.clone()));
+                        selected_table_ids.set(Vec::new());
+                        let (note_x, note_y) = store
+                            .notes
+                            .get_untracked()
+                            .iter()
+                            .find(|n| n.id == note_id)
+                            .map(|n| (n.x, n.y))
+                            .unwrap_or((0.0, 0.0));
+                        if let Some(cb) = on_note_pick.as_ref() {
+                            cb(note_id.clone());
+                        }
+                        capture_pointer(&canvas, ev.pointer_id());
+                        drag_state.set(Some(DragState {
+                            table_id: None,
+                            multi_starts: None,
+                            multi_note_starts: None,
+                            multi_area_starts: None,
+                            marquee_start: None,
+                            endpoint_drag: None,
+                            rel_drag: None,
+                            create_drag: None,
+                            note_drag: Some((note_id, note_x, note_y)),
+                            area_drag: None,
+                            pointer_id: ev.pointer_id(),
+                            start_mouse_x: ev.client_x() as f64,
+                            start_mouse_y: ev.client_y() as f64,
+                            start_pan_x: t_now.pan_x,
+                            start_pan_y: t_now.pan_y,
+                            start_table_x: 0.0,
+                            start_table_y: 0.0,
+                        }));
+                        return;
+                    }
+                    if let Some(area_id) =
+                        super::hit_test_area_header(&store.areas.get_untracked(), dx, dy)
+                    {
+                        selected_id.set(None);
+                        selected_ref_id.set(None);
+                        selected_note_id.set(None);
+                        selected_area_id.set(Some(area_id.clone()));
+                        selected_table_ids.set(Vec::new());
+                        let (area_x, area_y) = store
+                            .areas
+                            .get_untracked()
+                            .iter()
+                            .find(|a| a.id == area_id)
+                            .map(|a| (a.x, a.y))
+                            .unwrap_or((0.0, 0.0));
+                        if let Some(cb) = on_area_pick.as_ref() {
+                            cb(area_id.clone());
+                        }
+                        capture_pointer(&canvas, ev.pointer_id());
+                        drag_state.set(Some(DragState {
+                            table_id: None,
+                            multi_starts: None,
+                            multi_note_starts: None,
+                            multi_area_starts: None,
+                            marquee_start: None,
+                            endpoint_drag: None,
+                            rel_drag: None,
+                            create_drag: None,
+                            note_drag: None,
+                            area_drag: Some((area_id, area_x, area_y)),
+                            pointer_id: ev.pointer_id(),
+                            start_mouse_x: ev.client_x() as f64,
+                            start_mouse_y: ev.client_y() as f64,
+                            start_pan_x: t_now.pan_x,
+                            start_pan_y: t_now.pan_y,
+                            start_table_x: 0.0,
+                            start_table_y: 0.0,
+                        }));
+                        return;
+                    }
                 }
                 if let Some(id) = super::hit_test(&tables, dx, dy) {
                     let table_x = tables.iter().find(|t| t.id == id).map(|t| t.x).unwrap_or(0.0);
@@ -1225,6 +1407,8 @@ mod leptos_canvas {
                     drag_state.set(Some(DragState {
                         table_id: Some(id),
                         multi_starts,
+                        multi_note_starts: None,
+                        multi_area_starts: None,
                         marquee_start: None,
                         endpoint_drag: None,
                         rel_drag: None,
@@ -1271,6 +1455,8 @@ mod leptos_canvas {
                     drag_state.set(Some(DragState {
                         table_id: None,
                         multi_starts: None,
+                        multi_note_starts: None,
+                        multi_area_starts: None,
                         marquee_start: None,
                         endpoint_drag: None,
                         rel_drag: None,
@@ -1307,6 +1493,8 @@ mod leptos_canvas {
                     drag_state.set(Some(DragState {
                         table_id: None,
                         multi_starts: None,
+                        multi_note_starts: None,
+                        multi_area_starts: None,
                         marquee_start: None,
                         endpoint_drag: None,
                         rel_drag: None,
@@ -1343,6 +1531,8 @@ mod leptos_canvas {
                     drag_state.set(Some(DragState {
                         table_id: None,
                         multi_starts: None,
+                        multi_note_starts: None,
+                        multi_area_starts: None,
                         marquee_start,
                         endpoint_drag: None,
                         rel_drag: None,
@@ -3198,10 +3388,6 @@ pub fn hit_test_endpoint(
 
 // ─── Area/Note 创建与命中（p0-fix 定点 2） ─────────────────────────────────
 
-/// 便签渲染尺寸（draw_note 与 hit_test_note 共用）
-pub const NOTE_WIDTH: f64 = 180.0;
-pub const NOTE_HEIGHT: f64 = 100.0;
-
 /// p0-fix 定点 2：纯函数 — 拖拽矩形归一化（UT-AREA-01）
 /// 返回 (x, y, width, height)；宽或高 < 10px → None（防误触不创建）
 pub fn area_rect_from_drag(x1: f64, y1: f64, x2: f64, y2: f64) -> Option<(f64, f64, f64, f64)> {
@@ -3243,6 +3429,20 @@ pub fn build_note(id: String, x: f64, y: f64) -> Note {
 pub fn hit_test_area(areas: &[Area], x: f64, y: f64) -> Option<String> {
     for a in areas.iter().rev() {
         if x >= a.x && x <= a.x + a.width && y >= a.y && y <= a.y + a.height {
+            return Some(a.id.clone());
+        }
+    }
+    None
+}
+
+/// 区域标题栏命中（在表命中之前调用，使叠在区域内的表不挡住区域拖动）。
+pub fn hit_test_area_header(areas: &[Area], x: f64, y: f64) -> Option<String> {
+    for a in areas.iter().rev() {
+        if x >= a.x
+            && x <= a.x + a.width
+            && y >= a.y
+            && y <= a.y + AREA_HEADER_HIT.min(a.height)
+        {
             return Some(a.id.clone());
         }
     }
@@ -3551,6 +3751,53 @@ mod tests {
     }
 
     // ─── UT-AREA-01 / UT-NOTE-01 — p0-fix 定点 2 区域/便签创建 ─────────────
+
+    /// 便签/区域拖拽命中：标题栏可拖区域；框选可收集便签与区域
+    #[test]
+    fn ut_cr_note_area_drag_hit_priority() {
+        let area = Area {
+            id: "a1".into(),
+            x: 0.0,
+            y: 0.0,
+            width: 400.0,
+            height: 300.0,
+            color: "#3b82f6".into(),
+            name: "区域".into(),
+        };
+        assert_eq!(
+            hit_test_area_header(&[area.clone()], 20.0, 10.0),
+            Some("a1".into())
+        );
+        assert_eq!(
+            hit_test_area_header(&[area.clone()], 20.0, 50.0),
+            None,
+            "标题栏以下不走 header 命中"
+        );
+        let note = Note {
+            id: "n1".into(),
+            x: 10.0,
+            y: 10.0,
+            content: "hi".into(),
+            color: "#f59e0b".into(),
+        };
+        assert_eq!(hit_test_note(&[note], 20.0, 20.0), Some("n1".into()));
+        let notes = notes_in_marquee(
+            &[Note {
+                id: "n1".into(),
+                x: 10.0,
+                y: 10.0,
+                content: String::new(),
+                color: String::new(),
+            }],
+            0.0,
+            0.0,
+            200.0,
+            200.0,
+        );
+        assert_eq!(notes, vec!["n1".to_string()]);
+        let areas = areas_in_marquee(&[area], 0.0, 0.0, 100.0, 100.0);
+        assert_eq!(areas, vec!["a1".to_string()]);
+    }
 
     /// UT-AREA-01: 拖框归一化 + <10px 不创建 + build_area 默认值 + hit_test_area
     #[test]
