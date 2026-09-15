@@ -564,7 +564,10 @@ struct LivePaint {
     // 深克隆。松手落账路径直接原地改 store（get_untracked + iter_mut），
     // apply_visual_table_position 仅保留为纯函数供 UT 与落账语义验证。
     table_pos: Option<(String, f64, f64)>,
+    /// 关系拖连橡皮筋（贝塞尔线，世界坐标两端点）
     rubber: Option<(f64, f64, f64, f64)>,
+    /// #5：框选矩形预览（对角世界坐标；不得复用 rubber，否则会画成连线）
+    marquee_preview: Option<(f64, f64, f64, f64)>,
     /// p0-fix 定点 2：区域拖框预览矩形 (x, y, w, h)
     area_preview: Option<(f64, f64, f64, f64)>,
     /// redesign-listview-type-length-canvas-fix：便签/区域拖动中的视觉坐标覆盖（松手才落账 store）
@@ -801,11 +804,12 @@ mod leptos_canvas {
             // R-PERF-05：transform 用 get_untracked（effect 不订阅 transform，重绘由
             // frame_tick 统一驱动）；Vec 信号一律 .with() 传引用，禁止 .get() 深克隆整表。
             let t = transform.get_untracked();
-            let (table_pos, rubber, area_preview, live_notes, live_areas) = {
+            let (table_pos, rubber, marquee_preview, area_preview, live_notes, live_areas) = {
                 let live_g = live.borrow();
                 (
                     live_g.table_pos.clone(),
                     live_g.rubber,
+                    live_g.marquee_preview,
                     live_g.area_preview,
                     live_g.notes.clone(),
                     live_g.areas.clone(),
@@ -852,6 +856,7 @@ mod leptos_canvas {
                                     sel_area.as_deref(),
                                     sel_note.as_deref(),
                                     rubber,
+                                    marquee_preview,
                                     area_preview,
                                     table_override,
                                     ghost_skip.as_deref(),
@@ -960,6 +965,7 @@ mod leptos_canvas {
                 if drag_state.get_untracked().is_some() {
                     drag_state.set(None);
                     live.borrow_mut().rubber = None;
+                    live.borrow_mut().marquee_preview = None;
                     live.borrow_mut().table_pos = None;
                     live.borrow_mut().area_preview = None;
                     rubber_d.set(None);
@@ -1574,7 +1580,9 @@ mod leptos_canvas {
                         &canvas,
                         &t_now,
                     );
-                    live.borrow_mut().rubber = Some((mx, my, diag_x, diag_y));
+                    // #5：框选必须画矩形，禁止写入关系 rubber（否则 SVG/canvas 会画贝塞尔线）
+                    live.borrow_mut().rubber = None;
+                    live.borrow_mut().marquee_preview = Some((mx, my, diag_x, diag_y));
                     schedule_paint();
                 } else {
                     // R-PERF-05：pan 与 wheel 共用 pending_transform 通道，rAF 合并落账——
@@ -1792,6 +1800,7 @@ mod leptos_canvas {
                         })
                         .unwrap_or((mx, my));
                     live.borrow_mut().rubber = None;
+                    live.borrow_mut().marquee_preview = None;
                     rubber_d.set(None);
                     drag_state.set(None);
                     let ids = super::tables_in_marquee(
@@ -1829,6 +1838,7 @@ mod leptos_canvas {
                     return;
                 }
                 live.borrow_mut().rubber = None;
+                live.borrow_mut().marquee_preview = None;
                 live.borrow_mut().table_pos = None;
                 live.borrow_mut().area_preview = None;
                 live.borrow_mut().notes = None;
@@ -2138,6 +2148,13 @@ pub fn calc_path(from: &Table, from_field_id: &str, to: &Table, to_field_id: &st
     }
 }
 
+/// 框选矩形：对角点 → 归一化 (x, y, w, h)（UT-CR-MULTI / #5：预览必须是框而非线）。
+pub fn normalize_marquee_rect(x1: f64, y1: f64, x2: f64, y2: f64) -> (f64, f64, f64, f64) {
+    let min_x = x1.min(x2);
+    let min_y = y1.min(y2);
+    (min_x, min_y, (x1 - x2).abs(), (y1 - y2).abs())
+}
+
 /// 橡皮筋 SVG `d`：起点为源字段锚点，终点为指针坐标。
 pub fn rubber_band_path(x1: f64, y1: f64, x2: f64, y2: f64) -> String {
     let (cx1, cy1, cx2, cy2) = bezier_controls(x1, y1, x2, y2);
@@ -2181,6 +2198,8 @@ pub fn draw_canvas(
     selected_area_id: Option<&str>,
     selected_note_id: Option<&str>,
     rubber_band: Option<(f64, f64, f64, f64)>,
+    // #5：框选矩形预览（对角点）；与关系 rubber_band 分离
+    marquee_preview: Option<(f64, f64, f64, f64)>,
     // p0-fix 定点 2：区域拖框预览矩形 (x, y, w, h)
     area_preview: Option<(f64, f64, f64, f64)>,
     // R-PERF-04：被拖表的 (id, x, y) 覆盖坐标（绘制时替换坐标，松手才落账 store）
@@ -2271,6 +2290,10 @@ pub fn draw_canvas(
 
     if let Some((x1, y1, x2, y2)) = rubber_band {
         draw_rubber_band(ctx, x1, y1, x2, y2, palette);
+    }
+
+    if let Some((x1, y1, x2, y2)) = marquee_preview {
+        draw_marquee_rect(ctx, x1, y1, x2, y2, palette);
     }
 
     ctx.restore();
@@ -2922,6 +2945,36 @@ fn draw_rubber_band(ctx: &CanvasRenderingContext2d, x1: f64, y1: f64, x2: f64, y
     ctx.move_to(x1, y1);
     ctx.bezier_curve_to(cx1, cy1, cx2, cy2, x2, y2);
     ctx.stroke();
+    let _ = ctx.set_line_dash(&js_sys::Array::new());
+}
+
+/// #5：框选预览矩形（虚线框 + 淡填，禁止画成关系贝塞尔线）
+fn draw_marquee_rect(
+    ctx: &CanvasRenderingContext2d,
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    palette: &CanvasPalette,
+) {
+    let (x, y, w, h) = normalize_marquee_rect(x1, y1, x2, y2);
+    let _ = ctx.set_fill_style_str(palette.selected_soft);
+    // selected_soft 可能是描边色；用低透明 brand 近似填充
+    ctx.save();
+    ctx.set_global_alpha(0.12);
+    let _ = ctx.set_fill_style_str(palette.selected);
+    ctx.fill_rect(x, y, w, h);
+    ctx.restore();
+    let _ = ctx.set_stroke_style_str(palette.selected);
+    ctx.set_line_width(1.5);
+    let dash = {
+        let a = js_sys::Array::new();
+        a.push(&wasm_bindgen::JsValue::from(6.0));
+        a.push(&wasm_bindgen::JsValue::from(4.0));
+        a
+    };
+    let _ = ctx.set_line_dash(&dash);
+    ctx.stroke_rect(x, y, w, h);
     let _ = ctx.set_line_dash(&js_sys::Array::new());
 }
 
@@ -4146,6 +4199,20 @@ mod tests {
             table_visually_selected("x", Some("x"), &[]),
             "仅主选中时仍高亮"
         );
+    }
+
+    /// ST-CR-MULTI-01 / #5：框选预览必须是归一化矩形，而非关系贝塞尔线
+    #[test]
+    fn ut_cr_multi_01_normalize_marquee_rect() {
+        let (x, y, w, h) = normalize_marquee_rect(100.0, 50.0, 40.0, 90.0);
+        assert_eq!((x, y, w, h), (40.0, 50.0, 60.0, 40.0));
+        let path = rubber_band_path(0.0, 0.0, 100.0, 100.0);
+        assert!(
+            path.contains('C') || path.contains('c'),
+            "关系 rubber 仍是曲线；框选不得复用该路径画线"
+        );
+        let (x2, y2, w2, h2) = normalize_marquee_rect(0.0, 0.0, 100.0, 80.0);
+        assert!(w2 > 0.0 && h2 > 0.0 && x2 == 0.0 && y2 == 0.0);
     }
 
     /// UT-PB-08 — 字段连接点命中（非整行）；行中心不命中 port

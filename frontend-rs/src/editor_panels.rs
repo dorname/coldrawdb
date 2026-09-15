@@ -16791,6 +16791,10 @@ CREATE INDEX idx_x ON users (id);";
             src.contains("tool-marquee") && src.contains("ActiveTool::Marquee"),
             "ST-CR-MULTI-01: ToolRail 必须提供框选工具按钮"
         );
+        assert!(
+            render.contains("marquee_preview") && render.contains("normalize_marquee_rect"),
+            "ST-CR-MULTI-01: 框选预览必须是矩形通道，不得复用关系 rubber 画线"
+        );
     }
 
     /// UT-S04-18：compose 注入 PUBLIC_BASE_URL，且默认非裸 :3000
