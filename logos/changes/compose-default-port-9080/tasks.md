@@ -15,5 +15,5 @@
 
 - [x] 推送含本变更的 `main`
 - [x] 本地移动 annotated tag `v0.1.0` 至新 HEAD，并 `git push --force origin v0.1.0`（覆盖远端 tag）
-- [ ] 删除旧 GitHub Release `v0.1.0`（若存在）并确认 tag 推送触发 Release + Docker CI 重建
+- [x] 删除旧 GitHub Release `v0.1.0`（若存在）并确认 tag 推送触发 Release + Docker CI 重建
 - [ ] 确认 GHCR / Release 资产对应新 commit；Docker 可用时按 SMOKE-core-STABLE-01（`:9080`）冒烟

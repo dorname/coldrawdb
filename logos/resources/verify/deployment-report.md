@@ -6,7 +6,7 @@
 | 部署时间 | 2026-09-16 |
 | 目标环境 | GHCR + GitHub Release（用户本机 Docker：Win/macOS/Linux） |
 | 版本 | `v0.1.0`（覆盖重发） |
-| 状态 | 执行中 |
+| 状态 | Release 已重建；Docker 多架构推送进行中 |
 
 ## 执行摘要
 
