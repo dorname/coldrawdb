@@ -16855,8 +16855,12 @@ CREATE INDEX idx_x ON users (id);";
             "UT-S04-18: 默认不得指向裸 :3000"
         );
         assert!(
-            compose.contains("PUBLIC_BASE_URL: \"${PUBLIC_BASE_URL:-http://localhost}\""),
-            "UT-S04-18: 默认应指向公开入口 localhost（nginx:80）"
+            compose.contains("PUBLIC_BASE_URL: \"${PUBLIC_BASE_URL:-http://localhost:9080}\""),
+            "UT-S04-18: 默认应指向公开入口 localhost:9080（nginx 宿主机映射）"
+        );
+        assert!(
+            compose.contains("${COLDRAWDB_HTTP_PORT:-9080}:80"),
+            "UT-S04-18: nginx 默认宿主机端口应为 9080"
         );
     }
 
