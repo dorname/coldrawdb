@@ -201,13 +201,14 @@
 
 - 本机 Docker daemon 可用
 - 仓库根目录或已发布源码包
+- 使用默认 compose 映射（`COLDRAWDB_HTTP_PORT` 未覆盖时为 **9080**）
 
 ### 步骤
 
 1. `docker compose up -d --build`（或 `docker pull` + 等价 run）
 2. 等待 `coldrawdb` healthcheck 健康
-3. `GET http://localhost/api/v1/diagrams/health`（经 nginx:80）→ 200 + `status=ok`
-4. `GET http://localhost/` → SPA 入口可达（非 502）
+3. `GET http://localhost:9080/api/v1/diagrams/health`（经 nginx，宿主机 9080）→ 200 + `status=ok`
+4. `GET http://localhost:9080/` → SPA 入口可达（非 502）
 
 ### 断言
 

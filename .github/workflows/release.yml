@@ -45,7 +45,7 @@ jobs:
             docker compose up -d --build
             ```
 
-            浏览器打开：http://localhost/
+            浏览器打开：http://localhost:9080/
 
             详见 README「稳定版运行」一节。
         env:

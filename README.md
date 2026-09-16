@@ -34,7 +34,7 @@ coldrawdb 是一个纯 Rust 实现的数据库实体关系（DBER）编辑器：
 | 鉴权 | JWT（`jsonwebtoken`）+ Argon2 密码散列 + refresh token |
 | 协作 | actix-web-actors WebSocket + OT（Operation Transform） |
 | MCP | `mcp-server/` 独立 crate，stdio transport，仅调用 diagram HTTP API |
-| 部署 | 多阶段 Dockerfile（静态服务 + SPA 回源）+ docker-compose（nginx:80 反代 + 每日 SQLite 备份侧车） |
+| 部署 | 多阶段 Dockerfile（静态服务 + SPA 回源）+ docker-compose（nginx 默认宿主机 **9080** 反代 + 每日 SQLite 备份侧车） |
 | 测试 | `cargo test`（UT/ST）+ `wasm-pack test --chrome` + Playwright E2E |
 | CI | GitHub Actions：`build.yml`（cargo build + trunk build）与 `docker.yml`（镜像构建） |
 
@@ -126,20 +126,23 @@ coldrawdb 是**浏览器端自托管**应用：正式交付物是 **Docker 镜�
 docker compose up -d --build
 
 # 2) 浏览器打开（Windows / macOS / Linux 相同）
-#    http://localhost/
+#    http://localhost:9080/
+#
+# 可选：改宿主机 HTTP 端口（默认 9080，避免 80 被占用）
+#    COLDRAWDB_HTTP_PORT=8080 docker compose up -d --build
 ```
 
-跨机或局域网邀请链接请设置公开 SPA 基址（不要指向裸后端 `:3000`）：
+跨机或局域网邀请链接请设置公开 SPA 基址（不要指向裸后端 `:3000`；端口须与 `COLDRAWDB_HTTP_PORT` 一致）：
 
 ```bash
 # Windows PowerShell
-$env:PUBLIC_BASE_URL="http://192.168.1.10"; docker compose up -d --build
+$env:PUBLIC_BASE_URL="http://192.168.1.10:9080"; docker compose up -d --build
 
 # macOS / Linux
-PUBLIC_BASE_URL=http://192.168.1.10 docker compose up -d --build
+PUBLIC_BASE_URL=http://192.168.1.10:9080 docker compose up -d --build
 ```
 
-健康检查：`GET http://localhost/api/v1/diagrams/health`（经 nginx:80）或 `GET http://localhost:3000/api/v1/diagrams/health`（直连后端）。
+健康检查：`GET http://localhost:9080/api/v1/diagrams/health`（经 nginx 默认映射）或 `GET http://localhost:3000/api/v1/diagrams/health`（直连后端）。
 
 从 Git 标签发布时，GitHub Actions（`.github/workflows/docker.yml`）会构建并推送：
 
@@ -177,7 +180,7 @@ staging 组合（推荐，含 nginx 反代与每日备份）：
 docker compose up -d --build
 ```
 
-- `nginx`（80 端口）反代至 `coldrawdb`（3000 端口），静态资源 + SPA 回源
+- `nginx`（默认宿主机 **9080** → 容器 80）反代至 `coldrawdb`（3000 端口），静态资源 + SPA 回源
 - SQLite 数据落盘 `./data/`，日志落盘 `./logs/`
 - `backup` 侧车每日打包 `./data/` 至 `./backups/`
 - 健康检查：`GET /api/v1/diagrams/health`（30s 间隔，自动重启）
