@@ -19,10 +19,10 @@
 
 ## Skipped Cases
 
-- UT-PC-13
-- UT-PC-21
 - UT-PC-17
+- UT-PC-13
 - UT-PC-24
+- UT-PC-21
 - ST-S01-03
 - ST-S02-01
 - ST-S02-02
