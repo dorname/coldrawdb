@@ -1,0 +1,52 @@
+# 稳定版 tag 发布：创建 GitHub Release + 源码 zip。
+# 镜像多架构推送仍由 docker.yml（tag 触发）负责。
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: "github-release"
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pack source zip
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          git archive --format=zip --prefix="coldrawdb-${VERSION}/" \
+            -o "coldrawdb-${VERSION}-src.zip" "${GITHUB_REF_NAME}"
+          ls -lh "coldrawdb-${VERSION}-src.zip"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: coldrawdb ${{ github.ref_name }}
+          generate_release_notes: true
+          files: coldrawdb-${{ github.ref_name }}-src.zip
+          body: |
+            ## 稳定版运行（Windows / macOS / Linux）
+
+            正式交付物为 Docker 镜像 + Compose（`linux/amd64` + `linux/arm64`）。
+
+            ```bash
+            docker pull ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            # 或克隆本 tag 后：
+            docker compose up -d --build
+            ```
+
+            浏览器打开：http://localhost/
+
+            详见 README「稳定版运行」一节。
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
