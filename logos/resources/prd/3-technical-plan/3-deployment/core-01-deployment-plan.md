@@ -8,6 +8,7 @@
 | Docker | 单镜像包含 frontend 静态资源 + backend 二进制 |
 | Staging | 单机 Docker Compose；模拟生产链路 |
 | Production | **V1 不实现**（仅 staging） |
+| 稳定版发布 | GHCR 多架构镜像 + GitHub Release；用户本机 Docker 运行 |
 
 > **V1 关键边界**：无生产部署目标。V1 部署 = 开发者机器 + staging 单机。完整生产部署待 V2 引入 OT 后端服务后重新设计。
 
@@ -15,7 +16,7 @@
 
 | 维度 | 本地 dev | Docker | Staging |
 |---|---|---|---|
-| 操作系统 | Linux / macOS / WSL2 | 任意 | Linux (Debian 12) |
+| 操作系统 | Linux / macOS / WSL2 | 任意（安装 Docker 的 Windows / macOS / Linux 宿主机；容器内仍为 Linux） | Linux (Debian 12) |
 | 前端 | `trunk serve` 8080 | nginx 静态 | nginx 静态 |
 | 后端 | `cargo run` 3000 | actix-web in container 3000 | actix-web in container 3000 |
 | 数据库 | SQLite 文件 | SQLite 文件（volume） | SQLite 文件（volume） |
@@ -24,6 +25,27 @@
 | 鉴权 | 无 | 无 | 无 |
 | 监控 | console | docker logs | docker logs + JSON 日志收集 |
 | 数据备份 | 无 | 无 | 每日 cron 拷贝 SQLite |
+
+### 2.1 稳定版交付（Windows / macOS / Linux）
+
+稳定版用户侧交付物为 **Docker 镜像 + Compose**，不是原生桌面安装包。
+
+| 客户端 OS | 推荐运行时 | 获取方式 | 访问入口 |
+|---|---|---|---|
+| Windows | Docker Desktop（WSL2 后端） | `docker compose up -d --build` 或 `docker pull ghcr.io/<owner>/coldrawdb:<tag>` | 浏览器 `http://localhost/`（nginx:80） |
+| macOS | Docker Desktop（Intel / Apple Silicon） | 同上；镜像含 `linux/arm64` | 同上 |
+| Linux | Docker Engine + Compose v2 | 同上 | 同上 |
+
+本地 Rust/trunk 双进程（§3）仅开发路径；原生 Windows 无 WSL 时必须用 Docker。
+
+版本标签约定：
+
+- SemVer annotated tag：`vMAJOR.MINOR.PATCH`（首个稳定版 `v0.1.0`）
+- Tag 推送触发：
+  1. `.github/workflows/docker.yml` → `ghcr.io/<owner>/coldrawdb:<tag>` + `:latest`，平台 `linux/amd64,linux/arm64`
+  2. `.github/workflows/release.yml` → GitHub Release + `coldrawdb-<tag>-src.zip`
+
+跨机邀请：设置 `PUBLIC_BASE_URL` 为公开 SPA 入口（Compose 默认 `http://localhost`，禁止默认裸后端 `:3000`）。
 
 ## 3. 本地 dev 部署
 
