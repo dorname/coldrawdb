@@ -1,5 +1,6 @@
-# 稳定版 tag 发布：创建 GitHub Release + 源码 zip。
+# 稳定版发布（release.yml）：创建 GitHub Release + 一键部署包 `coldrawdb-<tag>-deploy.zip`。
 # 镜像多架构推送仍由 docker.yml（tag 触发）负责。
+# 不再上传源码 zip；GitHub 自动归档的 Source code (zip/tar.gz) 非正式交付物。
 name: Release
 
 on:
@@ -20,12 +21,56 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Pack source zip
+      # release 形态 compose：注入精确镜像 tag，去掉仓库内 <owner>/<tag> 占位
+      - name: Prepare release compose
         run: |
           VERSION="${GITHUB_REF_NAME}"
-          git archive --format=zip --prefix="coldrawdb-${VERSION}/" \
-            -o "coldrawdb-${VERSION}-src.zip" "${GITHUB_REF_NAME}"
-          ls -lh "coldrawdb-${VERSION}-src.zip"
+          OWNER="${GITHUB_REPOSITORY_OWNER}"
+          sed -e "s|<owner>|${OWNER}|g" -e "s|<tag>|${VERSION}|g" \
+            compose.release.yml > compose.yml
+          grep "image:" compose.yml
+
+      - name: Write quickstart guide
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          {
+            echo "# coldrawdb ${VERSION} 快速上手"
+            echo
+            echo "1. 解压本压缩包到任意目录，进入该目录"
+            echo "2. 启动："
+            echo
+            echo "   docker compose up -d"
+            echo
+            echo "   （首次运行会从 GHCR 拉取预构建镜像，镜像支持 linux/amd64 与 linux/arm64）"
+            echo
+            echo "3. 浏览器打开：http://localhost:9080/"
+            echo "4. 停止：docker compose down"
+            echo
+            echo "## 可选配置"
+            echo
+            echo "- 改宿主机 HTTP 端口（默认 9080，避免 80 被占用）："
+            echo "  COLDRAWDB_HTTP_PORT=8080 docker compose up -d"
+            echo "- 跨机 / 局域网邀请链接（不要指向裸后端 :3000，端口须与 COLDRAWDB_HTTP_PORT 一致）："
+            echo '  - Windows PowerShell: $env:PUBLIC_BASE_URL="http://192.168.1.10:9080"; docker compose up -d'
+            echo "  - macOS / Linux: PUBLIC_BASE_URL=http://192.168.1.10:9080 docker compose up -d"
+            echo
+            echo "## 健康检查"
+            echo
+            echo "- 经 nginx：GET http://localhost:9080/api/v1/diagrams/health"
+            echo "- 直连后端：GET http://localhost:3000/api/v1/diagrams/health"
+            echo
+            echo "## 数据与备份"
+            echo
+            echo "- SQLite 数据卷：./data；日志卷：./logs；每日自动备份：./backups"
+          } > 快速上手.md
+          cat 快速上手.md
+
+      - name: Pack deploy zip
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          zip "coldrawdb-${VERSION}-deploy.zip" compose.yml nginx.conf .env.sample 快速上手.md
+          ls -lh "coldrawdb-${VERSION}-deploy.zip"
+          unzip -l "coldrawdb-${VERSION}-deploy.zip"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -33,19 +78,21 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: coldrawdb ${{ github.ref_name }}
           generate_release_notes: true
-          files: coldrawdb-${{ github.ref_name }}-src.zip
+          files: coldrawdb-${{ github.ref_name }}-deploy.zip
           body: |
             ## 稳定版运行（Windows / macOS / Linux）
 
-            正式交付物为 Docker 镜像 + Compose（`linux/amd64` + `linux/arm64`）。
+            正式交付物为 **一键部署包** \`coldrawdb-${{ github.ref_name }}-deploy.zip\`（Docker 镜像 + Compose，\`linux/amd64\` + \`linux/arm64\`）。
 
             ```bash
-            docker pull ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-            # 或克隆本 tag 后：
-            docker compose up -d --build
+            # 1) 解压后进入目录
+            # 2) 启动（自动从 GHCR 拉取预构建镜像，无需构建）
+            docker compose up -d
             ```
 
             浏览器打开：http://localhost:9080/
+
+            > 下方 \`Source code (zip/tar.gz)\` 为 GitHub 自动生成的源码归档，**非正式交付物**；稳定版请使用上方 deploy.zip。
 
             详见 README「稳定版运行」一节。
         env:

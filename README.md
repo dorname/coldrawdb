@@ -119,27 +119,32 @@ coldrawdb 是**浏览器端自托管**应用：正式交付物是 **Docker 镜�
 | macOS | [Docker Desktop](https://docs.docker.com/desktop/setup/install/mac-install/) | Intel / Apple Silicon 均用多架构镜像 |
 | Linux | Docker Engine + Compose v2 | 直接 `docker compose` |
 
-**推荐（staging Compose，含 nginx 反代与每日备份）**：
+**推荐（Release 一键部署包，含 nginx 反代与每日备份）**：
 
 ```bash
-# 1) 克隆或下载发布源码后，在仓库根目录执行
-docker compose up -d --build
+# 1) 从 GitHub Release 下载 coldrawdb-<tag>-deploy.zip，解压后进入该目录
+unzip coldrawdb-v0.1.0-deploy.zip && cd coldrawdb-v0.1.0
 
-# 2) 浏览器打开（Windows / macOS / Linux 相同）
+# 2) 启动（自动从 GHCR 拉取预构建镜像，无需本地构建）
+docker compose up -d
+
+# 3) 浏览器打开（Windows / macOS / Linux 相同）
 #    http://localhost:9080/
 #
 # 可选：改宿主机 HTTP 端口（默认 9080，避免 80 被占用）
-#    COLDRAWDB_HTTP_PORT=8080 docker compose up -d --build
+#    COLDRAWDB_HTTP_PORT=8080 docker compose up -d
 ```
+
+> 开发者 / staging：克隆本仓库后在根目录使用 `docker compose up -d --build`（staging 形态 compose，本地构建）。
 
 跨机或局域网邀请链接请设置公开 SPA 基址（不要指向裸后端 `:3000`；端口须与 `COLDRAWDB_HTTP_PORT` 一致）：
 
 ```bash
 # Windows PowerShell
-$env:PUBLIC_BASE_URL="http://192.168.1.10:9080"; docker compose up -d --build
+$env:PUBLIC_BASE_URL="http://192.168.1.10:9080"; docker compose up -d
 
 # macOS / Linux
-PUBLIC_BASE_URL=http://192.168.1.10:9080 docker compose up -d --build
+PUBLIC_BASE_URL=http://192.168.1.10:9080 docker compose up -d
 ```
 
 健康检查：`GET http://localhost:9080/api/v1/diagrams/health`（经 nginx 默认映射）或 `GET http://localhost:3000/api/v1/diagrams/health`（直连后端）。
@@ -150,11 +155,11 @@ PUBLIC_BASE_URL=http://192.168.1.10:9080 docker compose up -d --build
 - `ghcr.io/<owner>/coldrawdb:latest`
 - 平台：`linux/amd64,linux/arm64`
 
-稳定版用户侧获取方式（三选一即可）：
+稳定版用户侧获取方式（推荐方式 1）：
 
-1. **Compose 源码构建**（上表推荐）：克隆 tag / 下载 Release 源码包后 `docker compose up -d --build`
+1. **Release 一键部署包**（推荐）：下载 Release 资产 `coldrawdb-<tag>-deploy.zip` → 解压 → `docker compose up -d`（引用 GHCR 预构建镜像，无需本地构建）
 2. **GHCR 镜像**：`docker pull ghcr.io/dorname/coldrawdb:<tag>`
-3. **源码 zip**：Release 附件或本地 `git archive` 产物，解压后仍用方式 1
+3. **Compose 源码构建**（开发 / staging 形态）：克隆仓库后 `docker compose up -d --build`
 
 拉取已发布镜像（标签以实际 Release 为准）示例：
 

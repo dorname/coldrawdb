@@ -7,7 +7,9 @@
 
 ## [code] 发布工作流与文档
 
-- [ ] 实现代码变更
+- [x] 新增 `compose.release.yml`：引用 `ghcr.io/<owner>/coldrawdb:<tag>` 预构建镜像，无 `build:` 段，保留 nginx / backup 服务与 9080 默认端口
+- [x] 更新 `.github/workflows/release.yml`：打包 `coldrawdb-<tag>-deploy.zip`（`compose.release.yml` + `nginx.conf` + `.env.sample` + `快速上手.md`，按 Release 名注入镜像 tag），Release body 指向 deploy.zip 并注明自动归档非交付物
+- [x] 更新 `README.md`「稳定版运行」：推荐入口改为下载 deploy.zip，staging 形态 compose 保留为开发说明
 
 ## [deploy] 覆盖重发 v0.1.0
 
