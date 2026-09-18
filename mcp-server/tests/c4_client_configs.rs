@@ -42,7 +42,7 @@ fn handshake(case_id: &str) {
         Some(&json!("coldrawdb-mcp"))
     );
     let tools = listed.pointer("/result/tools").unwrap().as_array().unwrap();
-    assert_eq!(tools.len(), 7);
+    assert_eq!(tools.len(), 11);
     assert!(!serde_json::to_string(tools).unwrap().contains("#/schemas/"));
     assert!(child.wait().unwrap().success());
     reporter::report(case_id, Ok(()), started.elapsed().as_millis());
