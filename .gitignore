@@ -56,3 +56,4 @@ frontend-rs/scripts/debug-smoke.mjs
 # 根级 cargo 构建产物
 /target/
 coldrawdb.tar
+nginx.tar
