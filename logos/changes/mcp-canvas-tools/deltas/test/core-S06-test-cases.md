@@ -1,10 +1,6 @@
-# core-S06 MCP 服务测试用例
+# Delta: core-S06-test-cases.md — mcp-canvas-tools（新增 UT-MCP-16～22、ST-MCP-10～12）
 
-> module: core | scenario: S06 | proposal: align-unified-prototype-and-add-mcp
-
-## 1. 测试边界
-
-MCP 测试分三层：纯函数/配置 UT、mock HTTP 的 MCP stdio ST、与真实隔离 backend 的 orchestration。所有自动化用例必须通过 OpenLogos reporter 追加到 `logos/resources/verify/test-results.jsonl`；日志与结果中不得出现测试 Token 明文。
+## MODIFIED — 2. UT 用例
 
 ## 2. UT 用例
 
@@ -33,6 +29,8 @@ MCP 测试分三层：纯函数/配置 UT、mock HTTP 的 MCP stdio ST、与真�
 | UT-MCP-21 | update_table 端到端（mock HTTP） | GET → 修改 name/comment → PUT；PUT body 中仅该表属性变更，其他表不变 |
 | UT-MCP-22 | update_reference create/delete（mock HTTP） | create：references 数组新增一条边；delete：指定 ref_id 从 references 中移除；revision 均 +1 |
 
+## MODIFIED — 3. ST 用例
+
 ## 3. ST 用例
 
 | ID | 前置与步骤 | 预期 |
@@ -52,6 +50,8 @@ MCP 测试分三层：纯函数/配置 UT、mock HTTP 的 MCP stdio ST、与真�
 
 > CI 若没有某个客户端二进制，ST-MCP-06～09 可由配置解析 + 官方 schema fixture 执行；至少 ST-MCP-01 必须使用真实 MCP client/Inspector 完成协议握手，不能全部以静态检查代替。
 
+## MODIFIED — 4. 验收标准追溯
+
 ## 4. 验收标准追溯
 
 | 验收标准 | 用例 |
@@ -62,16 +62,3 @@ MCP 测试分三层：纯函数/配置 UT、mock HTTP 的 MCP stdio ST、与真�
 | MCP-AC-04 一致性与安全 | UT-MCP-12～15、ST-MCP-04/05 |
 | MCP-AC-05 配置可用 | UT-MCP-01/11、ST-MCP-06～09 |
 | MCP-AC-06 画布编辑 | UT-MCP-16～22、ST-MCP-10～12 |
-
-## 5. Reporter 契约
-
-每个测试完成后写一行 JSON：
-
-```json
-{"test_id":"UT-MCP-01","status":"PASS","duration_ms":12,"timestamp":"2026-08-18T00:00:00Z","module":"core","scenario":"S06"}
-```
-
-- `test_id` 必须在本文件登记且唯一。
-- 失败写 `FAIL` 并可带脱敏 `message`，不得写 Token 或完整 diagram payload。
-- 编排 runner 失败时也必须报告已执行步骤；不能因进程退出丢失整个结果账本。
-

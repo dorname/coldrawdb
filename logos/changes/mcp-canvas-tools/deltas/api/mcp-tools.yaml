@@ -1,0 +1,329 @@
+# Delta: mcp-tools.yaml — mcp-canvas-tools（新增 4 个画布编辑 tool）
+
+## MODIFIED — tools（在 `export_schema` 之后追加 4 个新 tool）
+
+  - name: update_table
+    title: 更新表属性
+    description: 修改指定表的名称、注释、位置、颜色或锁定状态。通过 GET 全量读取 + PUT 全量写回实现。
+    upstream:
+      method: GET + PUT
+      path: /api/v1/diagrams/{id}
+      post_process: partial_update
+    annotations:
+      readOnlyHint: false
+      destructiveHint: false
+      idempotentHint: false
+      openWorldHint: false
+    inputSchema:
+      type: object
+      additionalProperties: false
+      required: [id, table_id]
+      properties:
+        id:
+          type: string
+          minLength: 1
+        table_id:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        comment:
+          type: string
+          maxLength: 256
+        x:
+          type: number
+        y:
+          type: number
+        color:
+          type: string
+          maxLength: 32
+        locked:
+          type: boolean
+    outputSchema:
+      type: object
+      required: [id, revision]
+      properties:
+        id:
+          type: string
+        revision:
+          type: integer
+          minimum: 1
+
+  - name: update_field
+    title: 更新字段属性
+    description: 修改指定表中指定字段的名称、注释、类型或约束。通过 GET 全量读取 + PUT 全量写回实现。
+    upstream:
+      method: GET + PUT
+      path: /api/v1/diagrams/{id}
+      post_process: partial_update
+    annotations:
+      readOnlyHint: false
+      destructiveHint: false
+      idempotentHint: false
+      openWorldHint: false
+    inputSchema:
+      type: object
+      additionalProperties: false
+      required: [id, table_id, field_id]
+      properties:
+        id:
+          type: string
+          minLength: 1
+        table_id:
+          type: string
+          minLength: 1
+        field_id:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        comment:
+          type: string
+          maxLength: 256
+        type:
+          type: string
+          maxLength: 64
+        not_null:
+          type: boolean
+        primary:
+          type: boolean
+        default:
+          type: string
+          maxLength: 256
+    outputSchema:
+      type: object
+      required: [id, revision]
+      properties:
+        id:
+          type: string
+        revision:
+          type: integer
+          minimum: 1
+
+  - name: update_reference
+    title: 更新关系连线
+    description: 创建、更新或删除字段间的关系连线（含基数与级联约束）。通过 GET 全量读取 + PUT 全量写回实现。
+    upstream:
+      method: GET + PUT
+      path: /api/v1/diagrams/{id}
+      post_process: partial_update
+    annotations:
+      readOnlyHint: false
+      destructiveHint: false
+      idempotentHint: false
+      openWorldHint: false
+    inputSchema:
+      type: object
+      additionalProperties: false
+      required: [id, action]
+      properties:
+        id:
+          type: string
+          minLength: 1
+        action:
+          enum: [create, update, delete]
+        ref_id:
+          type: string
+          minLength: 1
+        start_table_id:
+          type: string
+          minLength: 1
+        start_field_id:
+          type: string
+          minLength: 1
+        end_table_id:
+          type: string
+          minLength: 1
+        end_field_id:
+          type: string
+          minLength: 1
+        cardinality:
+          enum: [one_to_one, one_to_many, many_to_one, many_to_many]
+        on_delete:
+          enum: [cascade, set_null, set_default, restrict, no_action]
+        on_update:
+          enum: [cascade, set_null, set_default, restrict, no_action]
+        name:
+          type: string
+          maxLength: 64
+    outputSchema:
+      type: object
+      required: [id, revision]
+      properties:
+        id:
+          type: string
+        revision:
+          type: integer
+          minimum: 1
+
+  - name: layout_diagram
+    title: 自动布局
+    description: 对指定 diagram 执行力导向自动布局（Fruchterman-Reingold 变体），按 reference 关联聚类排列表位置。通过 GET 全量读取 + PUT 全量写回实现。
+    upstream:
+      method: GET + PUT
+      path: /api/v1/diagrams/{id}
+      post_process: force_directed_layout
+    annotations:
+      readOnlyHint: false
+      destructiveHint: false
+      idempotentHint: true
+      openWorldHint: false
+    inputSchema:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id:
+          type: string
+          minLength: 1
+        mode:
+          enum: [force]
+          default: force
+        iterations:
+          type: integer
+          minimum: 10
+          maximum: 500
+          default: 100
+        spacing:
+          type: number
+          minimum: 50
+          maximum: 500
+          default: 180
+    outputSchema:
+      type: object
+      required: [id, revision, tables_repositioned]
+      properties:
+        id:
+          type: string
+        revision:
+          type: integer
+          minimum: 1
+        tables_repositioned:
+          type: integer
+          minimum: 0
+
+## MODIFIED — schemas（在 `ToolError` schema 之前追加）
+
+  UpdateTableInput:
+    type: object
+    required: [id, table_id]
+    properties:
+      id:
+        type: string
+        minLength: 1
+      table_id:
+        type: string
+        minLength: 1
+      name:
+        type: string
+        minLength: 1
+        maxLength: 64
+      comment:
+        type: string
+        maxLength: 256
+      x:
+        type: number
+      y:
+        type: number
+      color:
+        type: string
+        maxLength: 32
+      locked:
+        type: boolean
+
+  UpdateFieldInput:
+    type: object
+    required: [id, table_id, field_id]
+    properties:
+      id:
+        type: string
+        minLength: 1
+      table_id:
+        type: string
+        minLength: 1
+      field_id:
+        type: string
+        minLength: 1
+      name:
+        type: string
+        minLength: 1
+        maxLength: 64
+      comment:
+        type: string
+        maxLength: 256
+      type:
+        type: string
+        maxLength: 64
+      not_null:
+        type: boolean
+      primary:
+        type: boolean
+      default:
+        type: string
+        maxLength: 256
+
+  UpdateReferenceInput:
+    type: object
+    required: [id, action]
+    properties:
+      id:
+        type: string
+        minLength: 1
+      action:
+        enum: [create, update, delete]
+      ref_id:
+        type: string
+        minLength: 1
+      start_table_id:
+        type: string
+        minLength: 1
+      start_field_id:
+        type: string
+        minLength: 1
+      end_table_id:
+        type: string
+        minLength: 1
+      end_field_id:
+        type: string
+        minLength: 1
+      cardinality:
+        enum: [one_to_one, one_to_many, many_to_one, many_to_many]
+      on_delete:
+        enum: [cascade, set_null, set_default, restrict, no_action]
+      on_update:
+        enum: [cascade, set_null, set_default, restrict, no_action]
+      name:
+        type: string
+        maxLength: 64
+
+  LayoutDiagramInput:
+    type: object
+    required: [id]
+    properties:
+      id:
+        type: string
+        minLength: 1
+      mode:
+        enum: [force]
+        default: force
+      iterations:
+        type: integer
+        minimum: 10
+        maximum: 500
+        default: 100
+      spacing:
+        type: number
+        minimum: 50
+        maximum: 500
+        default: 180
+
+## MODIFIED — 头部 tools 计数注释
+
+```yaml
+# mcp-canvas-tools（2026-09-18）：新增 update_table / update_field / update_reference / layout_diagram 共 4 个画布编辑 tool。
+# 现有 tools 总数：11 个（7 个原始 + 4 个新增）。
+```
