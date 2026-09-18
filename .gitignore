@@ -55,3 +55,4 @@ frontend-rs/scripts/debug-smoke.mjs
 .octos-workspace.toml
 # 根级 cargo 构建产物
 /target/
+coldrawdb.tar
