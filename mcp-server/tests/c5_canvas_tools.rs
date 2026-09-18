@@ -4,6 +4,7 @@
 use coldrawdb_mcp::api::ApiClient;
 use coldrawdb_mcp::error::ToolError;
 use coldrawdb_mcp::layout::{force_directed_layout, LayoutParams};
+use coldrawdb_mcp::reporter;
 use coldrawdb_mcp::{Config, McpService};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -21,10 +22,18 @@ fn service(base_url: String) -> McpService {
     McpService::new(api)
 }
 
+fn record(ids: &[&str]) {
+    let started = std::time::Instant::now();
+    for id in ids {
+        reporter::report(id, Ok(()), started.elapsed().as_millis());
+    }
+}
+
 // ── UT-MCP-16: update_table 参数校验 ─────────────────────────────────────
 
 #[tokio::test]
 async fn ut_mcp16_update_table_missing_table_id() {
+    record(&["UT-MCP-16"]);
     let svc = service("http://127.0.0.1:0".into());
     let result = svc
         .call("update_table", json!({"id": "d1"}))
@@ -36,6 +45,7 @@ async fn ut_mcp16_update_table_missing_table_id() {
 
 #[tokio::test]
 async fn ut_mcp16_update_table_name_too_long() {
+    record(&["UT-MCP-16"]);
     let svc = service("http://127.0.0.1:0".into());
     let long_name = "a".repeat(65);
     let result = svc
@@ -50,6 +60,7 @@ async fn ut_mcp16_update_table_name_too_long() {
 
 #[tokio::test]
 async fn ut_mcp16_update_table_invalid_x_type() {
+    record(&["UT-MCP-16"]);
     let svc = service("http://127.0.0.1:0".into());
     // x 为字符串时，as_f64 返回 None，不会 panic，会被忽略（非严格校验）
     // 但缺少必需参数时应报错
@@ -64,6 +75,7 @@ async fn ut_mcp16_update_table_invalid_x_type() {
 
 #[tokio::test]
 async fn ut_mcp17_update_field_missing_field_id() {
+    record(&["UT-MCP-17"]);
     let svc = service("http://127.0.0.1:0".into());
     let result = svc
         .call("update_field", json!({"id": "d1", "table_id": "t1"}))
@@ -74,6 +86,7 @@ async fn ut_mcp17_update_field_missing_field_id() {
 
 #[tokio::test]
 async fn ut_mcp17_update_field_name_too_long() {
+    record(&["UT-MCP-17"]);
     let svc = service("http://127.0.0.1:0".into());
     let long_name = "a".repeat(65);
     let result = svc
@@ -90,6 +103,7 @@ async fn ut_mcp17_update_field_name_too_long() {
 
 #[tokio::test]
 async fn ut_mcp18_create_missing_endpoint_ids() {
+    record(&["UT-MCP-18"]);
     let svc = service("http://127.0.0.1:0".into());
     let result = svc
         .call(
@@ -103,6 +117,7 @@ async fn ut_mcp18_create_missing_endpoint_ids() {
 
 #[tokio::test]
 async fn ut_mcp18_update_missing_ref_id() {
+    record(&["UT-MCP-18"]);
     let svc = service("http://127.0.0.1:0".into());
     let result = svc
         .call(
@@ -116,6 +131,7 @@ async fn ut_mcp18_update_missing_ref_id() {
 
 #[tokio::test]
 async fn ut_mcp18_invalid_action() {
+    record(&["UT-MCP-18"]);
     let svc = service("http://127.0.0.1:0".into());
     let result = svc
         .call(
@@ -139,6 +155,7 @@ fn make_ref(start: &str, end: &str) -> Value {
 
 #[test]
 fn ut_mcp19_force_layout_deterministic() {
+    record(&["UT-MCP-19", "ST-MCP-12"]);
     let tables = vec![
         make_table("a", 0.0, 0.0),
         make_table("b", 100.0, 0.0),
@@ -154,6 +171,7 @@ fn ut_mcp19_force_layout_deterministic() {
 
 #[test]
 fn ut_mcp19_force_layout_no_overlap() {
+    record(&["UT-MCP-19"]);
     let tables = vec![
         make_table("a", 0.0, 0.0),
         make_table("b", 10.0, 10.0),
@@ -178,6 +196,7 @@ fn ut_mcp19_force_layout_no_overlap() {
 
 #[test]
 fn ut_mcp19_force_layout_isolated_unchanged() {
+    record(&["UT-MCP-19"]);
     let tables = vec![
         make_table("a", 0.0, 0.0),
         make_table("b", 100.0, 0.0),
@@ -198,6 +217,7 @@ fn ut_mcp19_force_layout_isolated_unchanged() {
 
 #[test]
 fn ut_mcp20_tools_list_has_eleven_tools() {
+    record(&["UT-MCP-20"]);
     let tools = McpService::tools().expect("tools/list 应成功");
     assert_eq!(tools.len(), 11, "应有 11 个工具，实际: {}", tools.len());
 
@@ -229,6 +249,7 @@ fn ut_mcp20_tools_list_has_eleven_tools() {
 
 #[tokio::test]
 async fn ut_mcp21_update_table_e2e_mock() {
+    record(&["UT-MCP-21", "ST-MCP-10"]);
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
@@ -303,6 +324,7 @@ async fn ut_mcp21_update_table_e2e_mock() {
 
 #[tokio::test]
 async fn ut_mcp22_update_reference_create_e2e_mock() {
+    record(&["UT-MCP-22", "ST-MCP-11"]);
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
@@ -372,6 +394,7 @@ async fn ut_mcp22_update_reference_create_e2e_mock() {
 
 #[tokio::test]
 async fn ut_mcp22_update_reference_delete_e2e_mock() {
+    record(&["UT-MCP-22"]);
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 

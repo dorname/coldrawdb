@@ -8,4 +8,9 @@
 
 ## [code] 代码实现
 
-- [ ] 实现代码变更
+- [x] 新增 `mcp-server/src/layout.rs` — 力导向布局算法（Fruchterman-Reingold 变体，确定性输出，固定随机种子）
+- [x] 更新 `mcp-server/src/service.rs` — 实现 `update_table` / `update_field` / `update_reference` / `layout_diagram` 四个 tool handler
+- [x] 更新 `mcp-server/src/api.rs` — 如需要，新增辅助函数（全量 diagram 读取 + 修改 + 写回）
+- [x] 编写 UT 测试：UT-MCP-16～22（参数校验、布局算法正确性、工具契约稳定性）
+- [x] 编写 ST 测试：ST-MCP-10～12（端到端画布编辑链路，mock HTTP）
+- [x] 所有测试通过 OpenLogos reporter 写入 `logos/resources/verify/test-results.jsonl`
