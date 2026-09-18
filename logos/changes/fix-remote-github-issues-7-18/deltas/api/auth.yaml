@@ -1,0 +1,53 @@
+# Delta — auth.yaml（修改）
+
+> 模块：core | 提案：fix-remote-github-issues-7-18
+> 关联 issue：#16（access token TTL 15 分钟过短）
+> 决策：默认 TTL 提升为 3600s（1 小时，用户拍板）；`config.toml [auth] access_ttl_secs` 与 `COLDRAWDB_ACCESS_TTL_SECS` 环境变量可覆盖。
+
+## MODIFIED — info.description
+
+```yaml
+info:
+  title: coldrawdb auth API
+  description: |
+    V2 用户鉴权 API（S03：注册 / 登录 / Token 续期 / 退出）。
+
+    **Coverage**: 5 endpoints under `/api/v1/auth/*`.
+    **来源时序图**: `core-S03-user-auth.md` §3–§6.
+    **认证**: access_token 为 JWT Bearer（默认 TTL 1h，可经 `[auth] access_ttl_secs` / `COLDRAWDB_ACCESS_TTL_SECS` 配置）；refresh_token 为 HttpOnly Cookie。
+    **对齐**: 与 `core-S03-user-auth-design.md` 交互规格一致。
+  version: 2.0.0
+```
+
+## MODIFIED — components.securitySchemes.bearerAuth
+
+```yaml
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "Short-lived access token (default TTL 1h; configurable)"
+```
+
+## MODIFIED — LoginResponse.expiresIn 示例
+
+```yaml
+        expiresIn:
+          type: integer
+          description: "Access token TTL in seconds (matches configured auth.access_ttl_secs)"
+          example: 3600
+```
+
+## MODIFIED — RefreshResponse.expiresIn 示例
+
+```yaml
+        expiresIn:
+          type: integer
+          example: 3600
+```
+
+## ADDED — 契约说明（TTL 配置化不变量）
+
+- `/auth/login` 与 `/auth/refresh` 返回的 `expiresIn` **必须等于**实际签发 JWT 的 `exp - iat`，且等于生效的 `access_ttl_secs` 配置值。
+- `access_ttl_secs` 合法区间 300～86400；配置缺省为 3600；非法值（非正整数 / 超界）启动报错，不静默回退。
+- refresh token TTL 口径不变（remember_device=true 30 天 / false 7 天），不在本提案调整。

@@ -4,6 +4,10 @@ scenario: S06
 protocol:
 # mcp-canvas-tools（2026-09-18）：新增 update_table / update_field / update_reference / layout_diagram 共 4 个画布编辑 tool。
 # 现有 tools 总数：11 个（7 个原始 + 4 个新增）。
+# fix-remote-github-issues-7-18（2026-09-18）：update_reference 新增 color 参数（#12）；
+# 写工具（update_diagram/update_table/update_field/update_reference/layout_diagram）成功响应约定：
+# 必须 normalize 为与各自 outputSchema 完全一致的瘦响应（update_* 恰好 { id, revision }；
+# layout_diagram 恰好 { id, revision, tables_repositioned }），不透传上游 envelope 或整图字段（#18）。
   name: Model Context Protocol
   transport: stdio
   version_strategy: negotiate
@@ -368,7 +372,7 @@ tools:
 
   - name: update_reference
     title: 更新关系连线
-    description: 创建、更新或删除字段间的关系连线（含基数与级联约束）。通过 GET 全量读取 + PUT 全量写回实现。
+    description: "创建、更新或删除字段间的关系连线（含基数、级联约束与连线颜色 color）。通过 GET 全量读取 + PUT 全量写回实现。成功响应为 outputSchema 瘦响应 { id, revision }。"
     upstream:
       method: GET + PUT
       path: /api/v1/diagrams/{id}
@@ -412,6 +416,9 @@ tools:
         name:
           type: string
           maxLength: 64
+        color:
+          type: string
+          maxLength: 64
     outputSchema:
       type: object
       required: [id, revision]
@@ -424,7 +431,7 @@ tools:
 
   - name: layout_diagram
     title: 自动布局
-    description: 对指定 diagram 执行力导向自动布局（Fruchterman-Reingold 变体），按 reference 关联聚类排列表位置。通过 GET 全量读取 + PUT 全量写回实现。
+    description: "对指定 diagram 执行力导向自动布局（Fruchterman-Reingold 变体），按 reference 关联聚类排列表位置。通过 GET 全量读取 + PUT 全量写回实现。成功响应为 outputSchema 瘦响应 { id, revision, tables_repositioned }。"
     upstream:
       method: GET + PUT
       path: /api/v1/diagrams/{id}

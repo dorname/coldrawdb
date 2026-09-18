@@ -1,0 +1,46 @@
+# Delta — mcp-tools.yaml（修改）
+
+> 模块：core | 提案：fix-remote-github-issues-7-18
+> 关联 issue：#18（layout_diagram 等写工具返回校验失败）、#12（update_reference 支持 color）
+
+## ADDED — 写工具返回约定（瘦响应不变量）
+
+> 修复 issue #18 的契约侧澄清。适用于所有经上游 PUT 写回的工具（`update_diagram` / `update_table` / `update_field` / `update_reference` / `layout_diagram`）。
+
+- 写工具成功响应**必须 normalize 为与各自 `outputSchema` 完全一致的对象**：
+  - `update_diagram` / `update_table` / `update_field` / `update_reference`：恰好 `{ id: string, revision: integer(≥1) }`
+  - `layout_diagram`：恰好 `{ id, revision, tables_repositioned: integer(≥0) }`
+- 不得直传上游 envelope（`code` / `request_id`）或整图 diagram 字段；上游 `data` 中缺失 `id` 时以请求路径 id 补齐，`revision` 必须来自上游成功响应。
+- `tools/call` 的 `structuredContent` 与该对象相同；`content[0].text` 为同一对象的 JSON 序列化。宿主对 `structuredContent` 做 outputSchema 严格校验时必须通过。
+- 契约测试：mock 上游 PUT `data` 为任意含额外字段的形状时，工具返回仍通过 outputSchema 校验（见 `core-S06-test-cases.md` UT-MCP-23 / ST-MCP-13）。
+
+## MODIFIED — update_reference.inputSchema（新增 color 参数）
+
+`UpdateReferenceInput` properties 末尾追加：
+
+```yaml
+        color:
+          type: string
+          maxLength: 64
+```
+
+完整 MODIFIED 片段（`update_reference` 工具条目）：
+
+```yaml
+  - name: update_reference
+    title: 更新关系连线
+    description: "创建、更新或删除关系连线（字段级 FK）；可配置 cardinality、约束动作、名称与连线颜色。通过 GET 全量读取 + PUT 全量写回实现。成功响应为 outputSchema 瘦响应 { id, revision }。"
+    # ... 其余字段不变；inputSchema.properties 追加：
+    #   color: { type: string, maxLength: 64 }  —— 关系线颜色（CSS 颜色值；'' 或不传 = 保持/回退默认）
+```
+
+行为约定：`action=create` 时可同时指定 `color`；`action=update` 时 `color` 不传则保持原值；`action=delete` 忽略 `color`。
+
+## MODIFIED — layout_diagram.description（返回约定澄清）
+
+```yaml
+  - name: layout_diagram
+    title: 自动布局
+    description: "对指定 diagram 执行力导向自动布局（Fruchterman-Reingold 变体），按 reference 关联聚类排列表位置。通过 GET 全量读取 + PUT 全量写回实现。成功响应为 outputSchema 瘦响应 { id, revision, tables_repositioned }。"
+    # outputSchema 不变（required: [id, revision, tables_repositioned]）
+```

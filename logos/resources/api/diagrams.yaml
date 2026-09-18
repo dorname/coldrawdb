@@ -301,6 +301,7 @@ components:
         type_: { type: string, default: '' }
         on_delete: { type: string, default: '' }
         on_update: { type: string, default: '' }
+        color: { type: string, default: '' }
     Area:
       type: object
       required: [id]
