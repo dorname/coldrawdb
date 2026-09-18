@@ -13,7 +13,10 @@
 
 ## [deploy] 覆盖重发 v0.1.0
 
-- [ ] 推送含本变更的 `main`
-- [ ] 本地移动 annotated tag `v0.1.0` 至新 HEAD，并 `git push --force origin v0.1.0`
-- [ ] 删除旧 GitHub Release `v0.1.0`（若存在）并确认 tag 推送触发 Release（deploy.zip）+ Docker CI 重建
-- [ ] 确认 Release 资产含 `coldrawdb-v0.1.0-deploy.zip`、GHCR 镜像推送成功；本机无 Docker 时 SMOKE 记 SKIPPED
+- [x] 推送含本变更的 `main`
+- [x] 本地移动 annotated tag `v0.1.0` 至新 HEAD，并 `git push --force origin v0.1.0`
+- [x] 删除旧 GitHub Release `v0.1.0`（若存在）并确认 tag 推送触发 Release（deploy.zip）+ Docker CI 重建
+- [x] 确认 Release 资产含 `coldrawdb-v0.1.0-deploy.zip`、GHCR 镜像推送成功；本机无 Docker 时 SMOKE 记 SKIPPED
+  - Release 资产已确认含 deploy.zip（API + 页面核验），旧 src.zip 已不在资产列表
+  - GHCR 多架构推送：Docker Build and Push #16（tag v0.1.0）后台进行中，用户选择不等其完成，以 CI 运行中作为后续跟踪项（deployment-report §执行摘要 6）
+  - SMOKE-core-STABLE-01：本机无 Docker daemon，记 SKIPPED（已追加至 smoke-results.jsonl）

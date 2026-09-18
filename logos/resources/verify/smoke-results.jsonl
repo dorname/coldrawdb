@@ -16,3 +16,4 @@
 {"id":"SMOKE-core-04","status":"pass","duration_ms":12,"timestamp":"2026-09-10T17:08:45Z","scenario":"smoke","note":"frontend index.html available (http=200)"}
 {"id":"SMOKE-core-05","status":"pass","duration_ms":12,"timestamp":"2026-09-10T17:08:45Z","scenario":"smoke","note":"GET /api/v1/bridge/config (DB-backed) (http=200)"}
 {"id":"SMOKE-core-06","status":"pass","duration_ms":2014,"timestamp":"2026-09-10T17:08:47Z","scenario":"smoke","note":"local start-local.sh + stop-local.sh round-trip"}
+{"id": "SMOKE-core-STABLE-01", "status": "skipped", "duration_ms": 0, "timestamp": "2026-09-18T05:20:13Z", "scenario": "smoke", "note": "SKIPPED: no docker daemon — 本机无 Docker；Release 资产已含 coldrawdb-v0.1.0-deploy.zip，以 CI 证据代替（release-deploy-bundle 2026-09-18）"}
