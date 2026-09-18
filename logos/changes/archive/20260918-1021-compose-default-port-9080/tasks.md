@@ -17,4 +17,6 @@
 - [x] 本地移动 annotated tag `v0.1.0` 至新 HEAD，并 `git push --force origin v0.1.0`（覆盖远端 tag）
 - [x] 删除旧 GitHub Release `v0.1.0`（若存在）并确认 tag 推送触发 Release + Docker CI 重建
 - [x] 修复 `docker.yml` GHCR 登录（`GITHUB_TOKEN` + `packages: write`）并再次覆盖推送 tag
-- [ ] 确认 GHCR 镜像推送成功；本机无 Docker 时 SMOKE 记 SKIPPED
+- [x] 确认 GHCR 镜像推送成功；本机无 Docker 时 SMOKE 记 SKIPPED
+  - GHCR 推送：Docker Build and Push #14（commit 5cce410，tag v0.1.0）completed success，镜像 `ghcr.io/dorname/coldrawdb:v0.1.0` 就绪（multi-arch amd64/arm64）
+  - SMOKE-core-STABLE-01：本机无 Docker daemon，记 SKIPPED（deployment-report §执行摘要 6）
