@@ -316,6 +316,7 @@ V1 字段类型用 `text-orange-500`（main `stringColor`）等 Tailwind 颜色 
 ## ADDED — §1.6 表颜色配置（fix-remote-github-issues-7-18）
 
 > 实现 issue #12 的表侧。`Table.color` 字段已存在且表头渐变已使用；本提案补齐**表边框着色**与 **Inspector 编辑入口**。
+> issue #24：表头文字对比度见 `core-01-editor-canvas.md` §5.8 R-COLOR-04。
 
 | 规则 | 规格 |
 |---|---|
@@ -324,9 +325,10 @@ V1 字段类型用 `text-orange-500`（main `stringColor`）等 Tailwind 颜色 
 | 即时落账 | picker/`change`/`input` 变更走既有 store → dirty → schedule_save，进 UndoRedoContext |
 | 出边跟随 | 表色变更后，所有**未显式设色**的出边关系线渲染色应即时跟随（合同见 `core-01b` §4.2）；不静默改写已保存的 `Reference.color` |
 | 渲染 | `color` 非空：表头渐变（现状）+ **表边框**跟随该色；为空：保持 `palette` 默认（`header_tint` / `table_border`） |
+| 表头文字对比度（#24） | 表头主文本 / 旁注 / 字段计数必须按 `core-01-editor-canvas.md` §5.8 **R-COLOR-04** 相对表头有效背景自适应深/浅前景；禁止仅按全局主题固定浅色字绘制在浅色表头上 |
 | 持久化 | `color` 已随 diagram JSON 保存（`diagrams.yaml` `Table.color` 既有）；无需迁移 |
 | 导入导出 | JSON 保留；SQL/DBML 降级忽略（现状不变） |
-| 兼容 | 存量图 `color=''` → 视觉与现状一致 |
+| 兼容 | 存量图 `color=''` → 视觉与现状一致（默认 tint + R-COLOR-04 合成后仍可读） |
 
 **关系线颜色**入口与合同见 `core-01b-relationship.md` §4.1 / §4.2。
 
@@ -358,5 +360,6 @@ V1 字段类型用 `text-orange-500`（main `stringColor`）等 Tailwind 颜色 
 | ST-CR-WIDTH-01 | e2e：长表名表卡明显宽于默认 230；Inspector 名称完整可读对照 |
 | UT-CR-COLOR-02 | picker/hex 写入任意合法色并参与边框渲染 |
 | ST-CR-COLOR-02 | e2e：picker 改色 → 保存刷新保留；出边未设色时跟随表色 |
+| UT-CR-COLOR-03 | 表头前景相对有效背景亮度自适应（浅色表头 → 深色字；深色表头 → 浅色字） |
 
 > 详细步骤见 `core-CR-canvas-test-cases.md`；Inspector 注释编辑既有用例（UT-PC-29 / UT-PC-30 / ST-PC-08）继续有效。
