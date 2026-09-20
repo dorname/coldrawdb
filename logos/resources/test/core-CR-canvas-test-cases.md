@@ -445,12 +445,26 @@
 
 ## 合并自 fix-open-issues-19-22（2026-09-20）
 
-## ADDED — UT-CR-DRAG-01 — 有效拖动后抑制 click 穿透（#19）
+### 用例登记（verify 表行解析）
+
+| ID | 描述 |
+|---|---|
+| UT-CR-CLICK-01 | 有效拖动后抑制 click 穿透 |
+| ST-CR-CLICK-01 | e2e：区域拖到邀请按钮不打开模态 |
+| UT-CR-WIDTH-01 | auto / 固定宽分支 |
+| UT-CR-WIDTH-02 | 长表名撑宽 |
+| ST-CR-WIDTH-01 | e2e：长表名可读 |
+| UT-CR-COLOR-02 | picker 写入任意色 |
+| ST-CR-COLOR-02 | e2e：picker + 出边跟随 |
+
+
+
+## ADDED — UT-CR-CLICK-01 — 有效拖动后抑制 click 穿透（#19）
 
 - **位置**：`frontend-rs/src/editor_render.rs`（`should_suppress_click_after_drag`）
 - **断言**：位移 ≥ `DRAG_THRESHOLD` → true；< 阈值 → false；区域/表/便签共用
 
-## ADDED — ST-CR-DRAG-01 — e2e：区域拖到邀请按钮不打开模态（#19）
+## ADDED — ST-CR-CLICK-01 — e2e：区域拖到邀请按钮不打开模态（#19）
 
 - **GIVEN**：协作房间编辑器，画布有区域，AppBar 可见 `btn-invite`
 - **WHEN**：对区域 `pointerdown` → 指针移到 `btn-invite` 中心 → `pointerup`
@@ -478,4 +492,4 @@
 
 - **THEN**：未设色出边跟随表色；显式设色后改表色不影响该线；清除关系色后恢复跟随
 
-> 附录追加：UT-CR-DRAG-01 / ST-CR-DRAG-01 / UT-CR-WIDTH-01 / UT-CR-WIDTH-02 / ST-CR-WIDTH-01 / UT-CR-COLOR-02 / ST-CR-COLOR-02。
+> 附录追加：UT-CR-CLICK-01 / ST-CR-CLICK-01 / UT-CR-WIDTH-01 / UT-CR-WIDTH-02 / ST-CR-WIDTH-01 / UT-CR-COLOR-02 / ST-CR-COLOR-02。

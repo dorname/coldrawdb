@@ -97,7 +97,7 @@ echo "[verify-pre-run] G 批前重建含 COLDRAWDB_API_BASE 的前端 dist ..."
 echo "[verify-pre-run] G 批 GitHub issue 修复 Playwright 回归 ..."
 # G 批依赖本地 start-local；路径已修但仍可能因端口/环境失败。
 # 失败不阻断账本：UT 已由 cargo reporter 写入；ST 由 openlogos_reporter 声明。
-if ! (cd "$ROOT/frontend-rs/tests/e2e" && ./node_modules/.bin/playwright test \
+if ! (cd "$ROOT/frontend-rs/tests/e2e" && E2E_BASE_URL="http://127.0.0.1:8080" COLDRAWDB_FRONTEND_PORT=8080 ./node_modules/.bin/playwright test \
   specs/pc-ddl-drop.spec.ts \
   specs/canvas-sides-resize.spec.ts \
   specs/appbar-truncate.spec.ts \

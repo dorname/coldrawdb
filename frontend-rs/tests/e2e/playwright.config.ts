@@ -28,7 +28,7 @@ export default defineConfig({
     ["./reporter/openlogos.ts", { outputFile: "../../../logos/resources/verify/test-results.jsonl" }],
   ],
   use: {
-    baseURL: process.env.E2E_BASE_URL ?? "http://127.0.0.1:18080",
+    baseURL: process.env.E2E_BASE_URL ?? "http://127.0.0.1:8080",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     launchOptions: {
@@ -47,7 +47,7 @@ export default defineConfig({
   webServer: {
     // e2e → tests → frontend-rs → repo root（原先 ../.. 落在 frontend-rs，start-local 不存在 → exit 127）
     command: "cd ../../.. && bash scripts/start-local.sh",
-    url: `${process.env.E2E_BASE_URL ?? "http://127.0.0.1:18080"}/editor`,
+    url: `${process.env.E2E_BASE_URL ?? "http://127.0.0.1:8080"}/editor`,
     timeout: 120_000,
     reuseExistingServer: !process.env.CI,
     stdout: "pipe",

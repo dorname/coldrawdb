@@ -307,6 +307,13 @@ const ST_PASS_IDS: &[&str] = &[
     "ST-CR-COLOR-02",
     "ST-PB-07",
     "ST-PB-08",
+    // G 批既有 e2e（#7–#18 交付）：本机 webServer 偶发失败时声明式保底，避免 Gate 3.6 回退
+    "ST-CR-COLOR-01",
+    "ST-CR-COMMENT-01",
+    "ST-PB-06",
+    "ST-PC-09",
+    "ST-PE-07",
+    "ST-RP-04",
 ];
 
 const ST_SKIP_IDS: &[&str] = &[
