@@ -21,12 +21,13 @@ restore_or_cleanup() {
   local status=$?
   trap - EXIT
   if [[ $status -ne 0 ]]; then
-    if [[ $HAD_RESULT -eq 1 ]]; then
+    if [[ $HAD_RESULT -eq 1 && -s "$BACKUP" ]]; then
+      # 仅当备份非空时恢复，避免把已生成账本覆盖成空文件
       cp "$BACKUP" "$JSONL"
+      echo "[verify-pre-run] 失败，已恢复运行前测试账本。" >&2
     else
-      rm -f "$JSONL"
+      echo "[verify-pre-run] 失败；备份为空或不存在，保留当前账本（若有）。" >&2
     fi
-    echo "[verify-pre-run] 失败，已恢复运行前测试账本。" >&2
   fi
   rm -f "$BACKUP"
   rmdir "$VERIFY_TMP_DIR" 2>/dev/null || true
