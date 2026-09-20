@@ -1,0 +1,27 @@
+# Delta — diagrams.yaml（修改）
+
+> 模块：core | 提案：fix-remote-github-issues-7-18
+> 关联 issue：#12（关系连线颜色配置）
+
+## MODIFIED — components.schemas.Reference
+
+```yaml
+    Reference:
+      type: object
+      required: [id, start_table_id, end_table_id, start_field_id, end_field_id]
+      properties:
+        id: { type: string }
+        name: { type: string, default: '' }
+        start_table_id: { type: string }
+        end_table_id: { type: string }
+        start_field_id: { type: string }
+        end_field_id: { type: string }
+        type_: { type: string, default: '' }
+        on_delete: { type: string, default: '' }
+        on_update: { type: string, default: '' }
+        color: { type: string, default: '' }
+```
+
+- `color`：关系线颜色（CSS 颜色值；`''` = 未配置，渲染回退默认主题色）。
+- 兼容性：存量 diagram JSON 无 `color` 字段 → 反序列化取默认 `''`，行为不变。
+- SQL / DBML 导出忽略该字段（不改变 DDL 语义）；JSON 导出保留。

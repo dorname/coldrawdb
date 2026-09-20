@@ -979,30 +979,17 @@ mod leptos_canvas {
             .forget();
         }
 
-        {
-            let live = live.clone();
-            let ghost = ghost.clone();
-            create_effect(move |_| {
-            frame_tick.get();
-            theme_mode.get();
-            let Some(canvas) = canvas_ref.get() else {
-                return;
-            };
-            let ctx = match canvas.get_context("2d") {
-                Ok(Some(ctx)) => match ctx.dyn_into::<CanvasRenderingContext2d>() {
-                    Ok(ctx) => ctx,
-                    Err(_) => return,
-                },
-                _ => return,
-            };
-
+        // fix-remote-github-issues-7-18（issue #11，R-DPR-07~10）：backing store 同步抽为
+        // 共用闭包——渲染 effect（frame_tick 驱动）与 ResizeObserver 回调（容器尺寸/DPR
+        // 变化）同一路径；有效 dpr 恒走 capped_drag_dpr（R-DPR-09：与 R-PERF-10 同源）。
+        let sync_backing_store: Rc<dyn Fn(&web_sys::HtmlCanvasElement)> = Rc::new(move |canvas| {
             if let Some(parent) = canvas.parent_element() {
                 // R-DPR-01：backing store 像素 = CSS × devicePixelRatio
                 let css_w = parent.client_width().max(1) as f64;
                 let css_h = parent.client_height().max(1) as f64;
                 // R-PERF-10：任意拖拽活跃（表/关系/便签/区域/框选/平移）期间把有效 dpr
                 // 压到 DRAG_RENDER_DPR_CAP，降低软件合成像素负载。用 get_untracked——
-                // 本 effect 由 frame_tick 统一驱动，拖拽起止无需额外触发（否则每次
+                // 渲染 effect 由 frame_tick 统一驱动，拖拽起止无需额外触发（否则每次
                 // pointerdown/up 多一次重绘，破坏 ST-CR-PAN-01 的 paint 有界不变量；
                 // 且纯点击不该付出 backing store 重建成本）。dpr 切换实际发生在拖拽
                 // 首个 move 帧与松手落账帧。
@@ -1018,6 +1005,71 @@ mod leptos_canvas {
                 // CSS 布局尺寸由 `.cdb-canvas-element { width:100%; height:100% }` 控制，
                 // backing store 已通过 set_width/set_height 放大为 dpr 倍，无需内联 style
             }
+        });
+
+        // fix-remote-github-issues-7-18（issue #11，R-DPR-07~10）：canvas 父容器挂
+        // ResizeObserver——分隔条拖动（splitter 只写 CSS 变量）、窗口/侧栏尺寸变化时
+        // 同回调内同步 backing store 并 schedule_paint（与 R-PERF-05 共用 rAF 合并，
+        // 一帧至多一次 draw_canvas）；组件卸载经 on_cleanup 断开 observer（R-DPR-10）。
+        {
+            let schedule_paint = schedule_paint.clone();
+            let sync_backing_store = sync_backing_store.clone();
+            // (observer, callback) 句柄对：cleanup 时 disconnect + drop，不泄漏监听/闭包
+            let ro_holder: Rc<RefCell<Option<(web_sys::ResizeObserver, Closure<dyn FnMut(js_sys::Array, web_sys::ResizeObserver)>)>>> =
+                Rc::new(RefCell::new(None));
+            let ro_holder_cleanup = ro_holder.clone();
+            create_effect(move |_| {
+                let Some(canvas) = canvas_ref.get() else {
+                    return;
+                };
+                if ro_holder.borrow().is_some() {
+                    return;
+                }
+                let canvas_for_cb = canvas.clone();
+                let sync = sync_backing_store.clone();
+                let sp = schedule_paint.clone();
+                let cb = Closure::wrap(Box::new(move |_: js_sys::Array, _: web_sys::ResizeObserver| {
+                    // R-DPR-08：分隔条拖动路径由本回调自然覆盖（splitter 无需显式通知）
+                    sync(&canvas_for_cb);
+                    sp();
+                }) as Box<dyn FnMut(js_sys::Array, web_sys::ResizeObserver)>);
+                if let Ok(obs) = web_sys::ResizeObserver::new(cb.as_ref().unchecked_ref()) {
+                    if let Some(parent) = canvas.parent_element() {
+                        obs.observe(&parent);
+                        *ro_holder.borrow_mut() = Some((obs, cb));
+                    } else {
+                        obs.disconnect();
+                    }
+                }
+            });
+            on_cleanup(move || {
+                if let Some((obs, _cb)) = ro_holder_cleanup.borrow_mut().take() {
+                    obs.disconnect();
+                }
+            });
+        }
+
+        {
+            let live = live.clone();
+            let ghost = ghost.clone();
+            let sync_backing_store = sync_backing_store.clone();
+            create_effect(move |_| {
+            frame_tick.get();
+            theme_mode.get();
+            let Some(canvas) = canvas_ref.get() else {
+                return;
+            };
+            let ctx = match canvas.get_context("2d") {
+                Ok(Some(ctx)) => match ctx.dyn_into::<CanvasRenderingContext2d>() {
+                    Ok(ctx) => ctx,
+                    Err(_) => return,
+                },
+                _ => return,
+            };
+
+            // fix-remote-github-issues-7-18（issue #11）：backing store 同步与 ResizeObserver
+            // 回调共用同一闭包（R-DPR-07/09 同源口径；R-PERF-10 降采样逻辑见该闭包注释）
+            sync_backing_store(&canvas);
 
             // R-PERF-05：transform 用 get_untracked（effect 不订阅 transform，重绘由
             // frame_tick 统一驱动）；Vec 信号一律 .with() 传引用，禁止 .get() 深克隆整表。
@@ -1046,6 +1098,9 @@ mod leptos_canvas {
             let multi_areas = selected_area_ids.with(|ids| ids.clone());
             // R-PERF-11：幽灵层接管中的表 id（主画布跳过绘制）
             let ghost_skip = ghost.borrow().as_ref().map(|g| g.table_id.clone());
+            // fix-remote-github-issues-7-18（issue #10，R-CMT-04）：订阅注释显示模式——
+            // 切换即重绘（精灵指纹含 mode，自动触发重光栅）
+            let comment_mode = store.comment_display.get();
 
             let width = canvas.width() as f64;
             let height = canvas.height() as f64;
@@ -1082,6 +1137,7 @@ mod leptos_canvas {
                                     area_preview,
                                     table_override,
                                     ghost_skip.as_deref(),
+                                    comment_mode,
                                 );
                             });
                         });
@@ -2145,6 +2201,7 @@ mod leptos_canvas {
                                         &t_now,
                                         new_x,
                                         new_y,
+                                        store.comment_display.get_untracked(),
                                     )
                                 })
                             });
@@ -2893,12 +2950,53 @@ fn bezier_controls(x1: f64, y1: f64, x2: f64, y2: f64) -> (f64, f64, f64, f64) {
     (cx1, y1, cx2, y2)
 }
 
+// ─── fix-remote-github-issues-7-18（issue #9，core-01b §3.4）：连线路径自动选侧 ───
+
+/// 两表相对位置 → (出侧, 入侧)（core-01b §3.4，UT-PB-09）：
+/// 目标表中心 x < 源表中心 x → **左出右进**；否则 → **右出左进**（含中心 x 相等的稳定性默认）。
+/// 输入仅依赖两表几何（x / width），与字段无关。
+pub fn pick_port_sides(from: &Table, to: &Table) -> (FieldPortSide, FieldPortSide) {
+    let from_w = from.width.map(|w| w as f64).unwrap_or(TABLE_WIDTH);
+    let to_w = to.width.map(|w| w as f64).unwrap_or(TABLE_WIDTH);
+    let from_cx = from.x + from_w / 2.0;
+    let to_cx = to.x + to_w / 2.0;
+    if to_cx < from_cx {
+        (FieldPortSide::Start, FieldPortSide::End) // 目标在左：左出右进
+    } else {
+        (FieldPortSide::End, FieldPortSide::Start) // 目标在右（含相等）：右出左进
+    }
+}
+
+/// 方向感知贝塞尔控制点（core-01b §3.4，UT-PB-10）：左出时控制点向左伸展，右出向右；
+/// 入侧同理（左进控制点在终点左侧，右进在右侧）。伸展幅度取 |x2-x1| 的一半（与原算法同幅度）。
+fn bezier_controls_sided(
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    out_side: FieldPortSide,
+    in_side: FieldPortSide,
+) -> (f64, f64, f64, f64) {
+    let dx = (x2 - x1).abs() * 0.5;
+    let off1 = match out_side {
+        FieldPortSide::End => dx,   // 右出：向右伸展
+        FieldPortSide::Start => -dx, // 左出：向左伸展
+    };
+    let off2 = match in_side {
+        FieldPortSide::Start => -dx, // 左进：控制点在终点左侧
+        FieldPortSide::End => dx,    // 右进：控制点在终点右侧
+    };
+    (x1 + off1, y1, x2 + off2, y2)
+}
+
+/// fix-remote-github-issues-7-18（issue #9，core-01b §3.4）：出入锚点按 `pick_port_sides`
+/// 自动选侧（`field_anchor_for_side` 口径），贝塞尔控制点方向随侧（`bezier_controls_sided`）。
+/// 表拖动后重算（调用方每帧传入最新几何），无需用户重建关系。
 pub fn calc_path(from: &Table, from_field_id: &str, to: &Table, to_field_id: &str) -> RelationPath {
-    let x1 = from.x + TABLE_WIDTH;
-    let y1 = field_anchor_y(from, from_field_id);
-    let x2 = to.x;
-    let y2 = field_anchor_y(to, to_field_id);
-    let (cx1, cy1, cx2, cy2) = bezier_controls(x1, y1, x2, y2);
+    let (out_side, in_side) = pick_port_sides(from, to);
+    let (x1, y1) = field_anchor_for_side(from, from_field_id, out_side);
+    let (x2, y2) = field_anchor_for_side(to, to_field_id, in_side);
+    let (cx1, cy1, cx2, cy2) = bezier_controls_sided(x1, y1, x2, y2, out_side, in_side);
     RelationPath {
         x1,
         y1,
@@ -2972,6 +3070,8 @@ pub fn draw_canvas(
     table_override: Option<(&str, f64, f64)>,
     // R-PERF-11：幽灵层接管中的表 id——主画布跳过绘制（等效「抠出」，由 DOM 幽灵层呈现）
     ghost_skip: Option<&str>,
+    // fix-remote-github-issues-7-18（issue #10，R-CMT-04）：画布注释显示模式（视图偏好）
+    comment_mode: CommentDisplay,
 ) {
     bump_paint_counter();
 
@@ -3030,7 +3130,7 @@ pub fn draw_canvas(
         };
         if visible {
             let (from, to) = (table_map[r.start_table_id.as_str()], table_map[r.end_table_id.as_str()]);
-            draw_bezier_fields(ctx, from, &r.start_field_id, to, &r.end_field_id, palette, selected_ref_id == Some(&r.id));
+            draw_bezier_fields(ctx, from, &r.start_field_id, to, &r.end_field_id, palette, selected_ref_id == Some(&r.id), &r.color);
         }
     }
 
@@ -3044,7 +3144,7 @@ pub fn draw_canvas(
         let is_sel = table_visually_selected(table.id.as_str(), selected_id, selected_table_ids);
         // R-PERF-04：被拖表以覆盖坐标绘制（一帧至多一张表的一次克隆）
         let visual = table_with_override(table, table_override);
-        draw_table(ctx, &visual, is_sel, palette, t.zoom);
+        draw_table(ctx, &visual, is_sel, palette, t.zoom, comment_mode);
     }
 
     for note in collect_visible_notes(notes, vp) {
@@ -3242,7 +3342,49 @@ pub fn sprite_zoom_bucket(zoom: f64) -> u32 {
 
 /// R-PERF-07：卡体内容指纹（UT-CR-SPRITE-01）。位置（x/y）与选中态不参与——
 /// 移动不换缓存；编辑落账产生新内容才失效。FNV-1a。
-pub fn table_sprite_fingerprint(table: &Table, theme_dark: bool, dpr_x100: u32, zoom_bucket: u32) -> u64 {
+// fix-remote-github-issues-7-18（issue #10/#12，core-01 §5.8）：注释/颜色渲染纯函数 ───
+
+use crate::editor_core::CommentDisplay;
+
+/// R-COLOR-01：表边框用色——`table.color` 非空跟随，为空回退 `palette.table_border`。
+pub fn table_border_color<'a>(table_color: &'a str, palette_border: &'a str) -> &'a str {
+    if table_color.trim().is_empty() {
+        palette_border
+    } else {
+        table_color.trim()
+    }
+}
+
+/// R-COLOR-02 / UT-PB-11：关系线用色——`ref.color` 非空跟随，为空回退 `palette.relation`。
+pub fn relation_stroke_color<'a>(ref_color: &'a str, palette_relation: &'a str) -> &'a str {
+    if ref_color.trim().is_empty() {
+        palette_relation
+    } else {
+        ref_color.trim()
+    }
+}
+
+/// R-CMT-01/02：单行省略截断——逐字符测量，超出 max_w 时截断并追加 …（canvas 无原生省略）。
+fn truncate_to_width(ctx: &CanvasRenderingContext2d, text: &str, max_w: f64) -> String {
+    let full_w = ctx.measure_text(text).map(|m| m.width()).unwrap_or(0.0);
+    if full_w <= max_w {
+        return text.to_string();
+    }
+    let mut out = String::new();
+    for ch in text.chars() {
+        let candidate = format!("{out}{ch}…");
+        let w = ctx.measure_text(&candidate).map(|m| m.width()).unwrap_or(f64::MAX);
+        if w > max_w {
+            break;
+        }
+        out.push(ch);
+    }
+    format!("{out}…")
+}
+
+/// R-PERF-07：表精灵指纹（变化触发重光栅）。fix-remote-github-issues-7-18：
+/// 表/字段 comment 与注释显示模式混入指纹（R-CMT-03——注释内容/模式变化必须重光栅）。
+pub fn table_sprite_fingerprint(table: &Table, theme_dark: bool, dpr_x100: u32, zoom_bucket: u32, comment_mode: CommentDisplay) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     let mut mix = |bytes: &[u8]| {
         for &b in bytes {
@@ -3252,13 +3394,16 @@ pub fn table_sprite_fingerprint(table: &Table, theme_dark: bool, dpr_x100: u32, 
     };
     mix(table.name.as_bytes());
     mix(table.color.as_bytes());
+    mix(table.comment.as_bytes());
     mix(&table.width.unwrap_or(0).to_le_bytes());
     mix(&table.min_height.unwrap_or(0).to_le_bytes());
     for f in &table.fields {
         mix(f.name.as_bytes());
         mix(f.type_.as_bytes());
+        mix(f.comment.as_bytes());
         mix(&[f.primary as u8]);
     }
+    mix(&[comment_mode as u8]);
     mix(&[theme_dark as u8]);
     mix(&dpr_x100.to_le_bytes());
     mix(&(zoom_bucket as u32).to_le_bytes());
@@ -3297,6 +3442,7 @@ fn render_table_sprite(
     scale: f64,
     shadow_boost: f64,
     fingerprint: u64,
+    comment_mode: CommentDisplay,
 ) -> Option<TableSprite> {
     let doc = web_sys::window()?.document()?;
     let canvas: web_sys::HtmlCanvasElement = doc
@@ -3318,7 +3464,7 @@ fn render_table_sprite(
         (SPRITE_MARGIN - table.x) * scale,
         (SPRITE_MARGIN - table.y) * scale,
     );
-    draw_table_body(&off, table, palette, shadow_boost);
+    draw_table_body(&off, table, palette, shadow_boost, comment_mode);
     Some(TableSprite {
         canvas,
         fingerprint,
@@ -3334,6 +3480,7 @@ fn blit_table_sprite(
     table: &Table,
     palette: &CanvasPalette,
     zoom: f64,
+    comment_mode: CommentDisplay,
 ) -> bool {
     // R-PERF-10 修正：精灵恒以真实 dpr 渲染/取指纹——backing 分辨率与主画布有效 dpr
     // 解耦（位块传输按世界坐标 dw/dh 绘制，主画布降采样时由 CTM 自然缩小，观感不劣化）。
@@ -3346,6 +3493,7 @@ fn blit_table_sprite(
         current_theme_dark(),
         (dpr * 100.0).round() as u32,
         bucket,
+        comment_mode,
     );
     let sprite = TABLE_SPRITES.with(|c| {
         let mut map = c.borrow_mut();
@@ -3356,7 +3504,7 @@ fn blit_table_sprite(
         if !fresh {
             // shadow_boost = bucket / zoom（见 render_table_sprite 注释）
             let boost = bucket as f64 / zoom.max(0.01);
-            if let Some(s) = render_table_sprite(table, palette, scale, boost, fp) {
+            if let Some(s) = render_table_sprite(table, palette, scale, boost, fp, comment_mode) {
                 map.insert(table.id.clone(), s);
             }
         }
@@ -3464,24 +3612,37 @@ fn create_table_ghost(
     t: &Transform,
     table_x: f64,
     table_y: f64,
+    comment_mode: CommentDisplay,
 ) -> Option<GhostDrag> {
     let dpr = current_device_pixel_ratio();
     let bucket = sprite_zoom_bucket(t.zoom);
     let scale = dpr * bucket as f64;
     let boost = bucket as f64 / t.zoom.max(0.01);
-    let sprite = render_table_sprite(table, palette, scale, boost, 0)?;
+    let sprite = render_table_sprite(table, palette, scale, boost, 0, comment_mode)?;
     let el = sprite.canvas;
     let parent = canvas.parent_element()?;
     let css_w = sprite.w_world * t.zoom;
     let css_h = sprite.h_world * t.zoom;
-    // outline 负偏移模拟选中环（对齐 draw_table_selection 的 x-2.5 外扩口径）；
+    // fix-remote-github-issues-7-18（issue #17，R-HL-01/02）：高亮环改为幽灵 canvas 内
+    // round_rect 描边（与 draw_table_selection 同一函数、同一 16/14 圆角口径）——
+    // CSS outline 不贴合 border-radius，拖动时呈直角。幽灵层不再携带任何 outline 样式。
+    if let Ok(Some(ctx)) = el.get_context("2d") {
+        if let Ok(off) = ctx.dyn_into::<CanvasRenderingContext2d>() {
+            let _ = off.set_transform(
+                scale,
+                0.0,
+                0.0,
+                scale,
+                (sprite.margin - table.x) * scale,
+                (sprite.margin - table.y) * scale,
+            );
+            draw_table_selection(&off, table, palette);
+        }
+    }
     // will-change 提示合成器把幽灵层提升为独立层，transform 移动纯合成器完成
-    let ring_inset = (sprite.margin - 2.5) * t.zoom;
     let style = format!(
         "position:absolute;left:0;top:0;width:{css_w}px;height:{css_h}px;\
-         pointer-events:none;z-index:2;will-change:transform;\
-         outline:2px solid {sel};outline-offset:-{ring_inset}px;border-radius:16px;",
-        sel = palette.selected
+         pointer-events:none;z-index:2;will-change:transform;"
     );
     el.set_attribute("style", &style).ok()?;
     el.set_attribute("data-testid", "drag-ghost").ok()?;
@@ -3498,21 +3659,21 @@ fn create_table_ghost(
     Some(ghost)
 }
 
-fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool, palette: &CanvasPalette, zoom: f64) {
+fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool, palette: &CanvasPalette, zoom: f64, comment_mode: CommentDisplay) {
     // R-PERF-07：zoom ≤ SPRITE_CACHE_MAX_ZOOM 走精灵缓存；超出回退活画
-    if zoom <= SPRITE_CACHE_MAX_ZOOM && blit_table_sprite(ctx, table, palette, zoom) {
+    if zoom <= SPRITE_CACHE_MAX_ZOOM && blit_table_sprite(ctx, table, palette, zoom, comment_mode) {
         if selected {
             draw_table_selection(ctx, table, palette);
         }
         return;
     }
-    draw_table_body(ctx, table, palette, 1.0);
+    draw_table_body(ctx, table, palette, 1.0, comment_mode);
     if selected {
         draw_table_selection(ctx, table, palette);
     }
 }
 
-fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &CanvasPalette, shadow_boost: f64) {
+fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &CanvasPalette, shadow_boost: f64, comment_mode: CommentDisplay) {
     let field_count = table.fields.len().max(2);
     let (width, total_height) = compute_table_render_size(table);
     let x = table.x;
@@ -3532,7 +3693,8 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
     ctx.fill();
     ctx.restore();
 
-    let _ = ctx.set_stroke_style_str(palette.table_border);
+    // R-COLOR-01：表边框——table.color 非空跟随该色，为空保持 palette.table_border
+    let _ = ctx.set_stroke_style_str(table_border_color(&table.color, palette.table_border));
     ctx.set_line_width(1.0);
     ctx.begin_path();
     round_rect(ctx, x, y, TABLE_WIDTH, total_height, 14.0);
@@ -3557,11 +3719,26 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
     ctx.restore();
 
     // 表名（750/13px 强色）+ 字段计数（text-3 10px 右对齐）
+    // R-CMT-01：主文本按显示模式取值（comment 模式且有注释 → 注释；否则英文名）
+    let table_label = comment_mode.primary(&table.name, &table.comment);
     let _ = ctx.set_fill_style_str(palette.text_strong);
     let _ = ctx.set_font(&dpr_font(750, 13.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
     let _ = ctx.set_text_baseline("middle");
     let _ = ctx.set_text_align("left");
-    let _ = ctx.fill_text(&table.name, x + 11.0, y + TABLE_HEADER_HEIGHT / 2.0);
+    let _ = ctx.fill_text(table_label, x + 11.0, y + TABLE_HEADER_HEIGHT / 2.0);
+    // R-CMT-01：name+comment 模式且 comment 非空 → 表名右侧渲染注释（小字次要色，单行省略）；
+    // 空 comment 不渲染、不留占位（R-CMT-03）。canvas 无 DOM title——截断省略与原型一致。
+    if let Some(cmt) = comment_mode.secondary(&table.comment) {
+        let label_w = ctx.measure_text(table_label).map(|m| m.width()).unwrap_or(0.0);
+        let _ = ctx.set_fill_style_str(palette.text_muted);
+        let _ = ctx.set_font(&dpr_font(500, 10.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
+        let cmt_x = x + 11.0 + label_w + 6.0;
+        // 26 = 右边距 11 + 字段计数预留 15
+        let max_w = (x + TABLE_WIDTH - 26.0) - cmt_x;
+        if max_w > 12.0 {
+            let _ = ctx.fill_text(&truncate_to_width(ctx, cmt, max_w), cmt_x, y + TABLE_HEADER_HEIGHT / 2.0 + 0.5);
+        }
+    }
     let _ = ctx.set_fill_style_str(palette.text_muted);
     let _ = ctx.set_font(&dpr_font(500, 10.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
     let _ = ctx.set_text_align("right");
@@ -3591,9 +3768,11 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
         }
 
         let name_x = if field.primary { x + 36.0 } else { x + 11.0 };
+        // R-CMT-02：主文本按显示模式取值（comment 模式且有注释 → 注释；否则英文名）
+        let field_label = comment_mode.primary(&field.name, &field.comment);
         let _ = ctx.set_fill_style_str(palette.text_strong);
         let _ = ctx.set_font(&dpr_font(650, 11.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
-        let _ = ctx.fill_text(&field.name, name_x, fy + FIELD_ROW_HEIGHT / 2.0);
+        let _ = ctx.fill_text(field_label, name_x, fy + FIELD_ROW_HEIGHT / 2.0);
 
         let _ = ctx.set_fill_style_str(palette.text_muted);
         let _ = ctx.set_font(&dpr_font(500, 10.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
@@ -3603,6 +3782,19 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
             x + TABLE_WIDTH - 11.0,
             fy + FIELD_ROW_HEIGHT / 2.0,
         );
+        // R-CMT-02：name+comment 模式且 comment 非空 → 类型左侧渲染注释（灰色 9px）。
+        // 截断优先级 名称 > 类型 > 注释：注释可用宽 = 类型左缘 − 名称右缘 − 间距，不足则省略。
+        if let Some(f_cmt) = comment_mode.secondary(&field.comment) {
+            let type_w = ctx.measure_text(&field.type_).map(|m| m.width()).unwrap_or(0.0);
+            let name_w = ctx.measure_text(field_label).map(|m| m.width()).unwrap_or(0.0);
+            let type_left = x + TABLE_WIDTH - 11.0 - type_w;
+            let cmt_max_w = type_left - 8.0 - (name_x + name_w + 8.0);
+            if cmt_max_w > 10.0 {
+                let _ = ctx.set_font(&dpr_font(500, 9.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
+                let shown = truncate_to_width(ctx, f_cmt, cmt_max_w);
+                let _ = ctx.fill_text(&shown, type_left - 8.0, fy + FIELD_ROW_HEIGHT / 2.0 + 0.5);
+            }
+        }
         let _ = ctx.set_text_align("left");
 
         // #3：字段左右连接点（可见触发点，半径小于命中半径以便易点）
@@ -3672,8 +3864,12 @@ fn draw_bezier_fields(
     palette: &CanvasPalette,
     // p0-fix 定点 3：选中态（点击连线高亮——stroke 加粗 + brand 色）
     selected: bool,
+    // fix-remote-github-issues-7-18（issue #12，core-01b §4.1）：关系自定义色
+    // （'' = 默认 palette.relation；R-COLOR-03：选中高亮优先级高于自定义色）
+    ref_color: &str,
 ) {
     let path = calc_path(from, from_field_id, to, to_field_id);
+    let stroke = relation_stroke_color(ref_color, palette.relation);
 
     // 主原型 .relation-path-bg：7px surface 光晕垫底，主线 2px brand
     let _ = ctx.set_stroke_style_str(if selected { palette.selected_soft } else { palette.relation_halo });
@@ -3683,16 +3879,16 @@ fn draw_bezier_fields(
     ctx.bezier_curve_to(path.cx1, path.cy1, path.cx2, path.cy2, path.x2, path.y2);
     ctx.stroke();
 
-    let _ = ctx.set_stroke_style_str(if selected { palette.selected } else { palette.relation });
+    let _ = ctx.set_stroke_style_str(if selected { palette.selected } else { stroke });
     ctx.set_line_width(if selected { 3.5 } else { 2.0 });
     ctx.begin_path();
     ctx.move_to(path.x1, path.y1);
     ctx.bezier_curve_to(path.cx1, path.cy1, path.cx2, path.cy2, path.x2, path.y2);
     ctx.stroke();
 
-    draw_arrow_head(ctx, path.cx2, path.cy2, path.x2, path.y2, palette);
+    draw_arrow_head(ctx, path.cx2, path.cy2, path.x2, path.y2, stroke);
 
-    let _ = ctx.set_fill_style_str(palette.relation);
+    let _ = ctx.set_fill_style_str(stroke);
     ctx.begin_path();
     ctx.arc(path.x1, path.y1, 4.0, 0.0, std::f64::consts::TAU).ok();
     ctx.fill();
@@ -3746,7 +3942,7 @@ fn draw_marquee_rect(
     let _ = ctx.set_line_dash(&js_sys::Array::new());
 }
 
-fn draw_arrow_head(ctx: &CanvasRenderingContext2d, fromx: f64, fromy: f64, tox: f64, toy: f64, palette: &CanvasPalette) {
+fn draw_arrow_head(ctx: &CanvasRenderingContext2d, fromx: f64, fromy: f64, tox: f64, toy: f64, stroke: &str) {
     let angle = (toy - fromy).atan2(tox - fromx);
     let arrow_len = 10.0;
     let arrow_angle = std::f64::consts::TAU / 6.0;
@@ -3756,7 +3952,7 @@ fn draw_arrow_head(ctx: &CanvasRenderingContext2d, fromx: f64, fromy: f64, tox: 
     let ax2 = tox - arrow_len * (angle + arrow_angle).cos();
     let ay2 = toy - arrow_len * (angle + arrow_angle).sin();
 
-    let _ = ctx.set_fill_style_str(palette.relation);
+    let _ = ctx.set_fill_style_str(stroke);
     ctx.begin_path();
     ctx.move_to(tox, toy);
     ctx.line_to(ax1, ay1);
@@ -4147,6 +4343,7 @@ mod tests {
             type_: "1:N".into(),
             on_delete: "".into(),
             on_update: "".into(),
+            color: String::new(),
         }
     }
 
@@ -4261,6 +4458,7 @@ mod tests {
             type_: "one_to_many".into(),
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
+            color: String::new(),
         }];
         (tables, refs)
     }
@@ -4870,6 +5068,7 @@ mod tests {
             type_: "1:N".into(),
             on_delete: String::new(),
             on_update: String::new(),
+            color: String::new(),
         };
         let refs = vec![
             mk_ref("r-far", "fa", "fb", "f1", "f2"), // 两端都在视口外
@@ -4956,31 +5155,31 @@ mod tests {
         moved.x = 999.0;
         moved.y = -40.0;
         assert_eq!(
-            table_sprite_fingerprint(&t, true, 200, 1),
-            table_sprite_fingerprint(&moved, true, 200, 1),
+            table_sprite_fingerprint(&t, true, 200, 1, crate::editor_core::CommentDisplay::NameComment),
+            table_sprite_fingerprint(&moved, true, 200, 1, crate::editor_core::CommentDisplay::NameComment),
             "UT-CR-SPRITE-01: 位置变化不得改变指纹"
         );
 
         // 内容变更失效：改名 / 改字段类型 / 改主键 / 改色 / 改宽 / 主题 / dpr / 分档
-        let base = table_sprite_fingerprint(&t, true, 200, 1);
+        let base = table_sprite_fingerprint(&t, true, 200, 1, crate::editor_core::CommentDisplay::NameComment);
         let mut renamed = t.clone();
         renamed.name = "other".into();
-        assert_ne!(table_sprite_fingerprint(&renamed, true, 200, 1), base, "改名失效");
+        assert_ne!(table_sprite_fingerprint(&renamed, true, 200, 1, crate::editor_core::CommentDisplay::NameComment), base, "改名失效");
         let mut retyped = t.clone();
         retyped.fields[0].type_ = "UUID".into();
-        assert_ne!(table_sprite_fingerprint(&retyped, true, 200, 1), base, "改字段类型失效");
+        assert_ne!(table_sprite_fingerprint(&retyped, true, 200, 1, crate::editor_core::CommentDisplay::NameComment), base, "改字段类型失效");
         let mut unpk = t.clone();
         unpk.fields[0].primary = false;
-        assert_ne!(table_sprite_fingerprint(&unpk, true, 200, 1), base, "改主键失效");
+        assert_ne!(table_sprite_fingerprint(&unpk, true, 200, 1, crate::editor_core::CommentDisplay::NameComment), base, "改主键失效");
         let mut recolor = t.clone();
         recolor.color = "#fff".into();
-        assert_ne!(table_sprite_fingerprint(&recolor, true, 200, 1), base, "改色失效");
+        assert_ne!(table_sprite_fingerprint(&recolor, true, 200, 1, crate::editor_core::CommentDisplay::NameComment), base, "改色失效");
         let mut resized = t.clone();
         resized.width = Some(320);
-        assert_ne!(table_sprite_fingerprint(&resized, true, 200, 1), base, "改宽失效");
-        assert_ne!(table_sprite_fingerprint(&t, false, 200, 1), base, "主题切换失效");
-        assert_ne!(table_sprite_fingerprint(&t, true, 100, 1), base, "dpr 变化失效");
-        assert_ne!(table_sprite_fingerprint(&t, true, 200, 2), base, "zoom 分档切换失效");
+        assert_ne!(table_sprite_fingerprint(&resized, true, 200, 1, crate::editor_core::CommentDisplay::NameComment), base, "改宽失效");
+        assert_ne!(table_sprite_fingerprint(&t, false, 200, 1, crate::editor_core::CommentDisplay::NameComment), base, "主题切换失效");
+        assert_ne!(table_sprite_fingerprint(&t, true, 100, 1, crate::editor_core::CommentDisplay::NameComment), base, "dpr 变化失效");
+        assert_ne!(table_sprite_fingerprint(&t, true, 200, 2, crate::editor_core::CommentDisplay::NameComment), base, "zoom 分档切换失效");
     }
 
     /// UT-CR-GUARD-01 — DOM 写守护：值未变不写（R-PERF-08）
@@ -5026,6 +5225,7 @@ mod tests {
             type_: String::new(),
             on_delete: String::new(),
             on_update: String::new(),
+            color: String::new(),
         };
         let refs = vec![mk("r1", "a", "b")];
         assert!(table_has_references(&refs, "a"), "UT-CR-GHOST-01: 起点表有关联，禁走幽灵层");

@@ -1,0 +1,66 @@
+<!--
+  Delta — core-01-editor-prototype.html (fix-remote-github-issues-7-18)
+  关联 issue：#9（连线自动选侧）、#10（注释展示）、#12（颜色配置）、#13/#14/#15（顶栏，原型为对齐基准）
+
+  merge 操作：
+  1. MODIFIED：连线自动选侧（#9）——替换 bezierD / relationD / fieldPoint 调用口径：
+     按两表相对位置选择出入侧（目标在源左侧 → 左出右进；否则右出左进），
+     贝塞尔控制点伸展方向跟随出入侧。示例实现见下方「操作 1 片段」。
+  2. ADDED：画布注释展示（#10）——table-head 在表名下方渲染 table.comment 副标题行
+     （class="table-comment"，有 comment 才渲染）；字段行在类型后追加 field.comment
+     （class="field-comment"，灰色、单行省略、title 全文）；AppBar View/工具区新增
+     显示开关 data-testid="canvas-comment-display"（name / name+comment / comment，
+     默认 name+comment，localStorage["cdb.comment-display"] 持久化）。
+  3. ADDED：颜色配置（#12）——表卡片边框色跟随 --table-color（.db-table{border-color 随
+     var(--table-color) 派生}）；relation 数据新增可选 color 字段，paintRelations 描边
+     优先使用 rel.color；Inspector 关系面板追加颜色选择（预设色 + 默认）。
+  4. NO-OP（#13/#14/#15 微校）：顶栏 btn-back-to-rooms（透明边框 ghost）与
+     .room-badge strong 省略规则在原型已是目标形态，作为生产对齐基准保留；
+     仅确认 room-badge max-width 190px 与 title 全文口径不变。
+-->
+
+<!-- 操作 1 MODIFIED 片段：连线自动选侧（替换原 bezierD / relationD） -->
+<script>
+// 出入侧选择纯函数：目标表中心在源表中心左侧 → 左出右进；否则 → 右出左进
+function pickPortSides(from, to){
+  const fc = from.x + tableWidth(from)/2, tc = to.x + tableWidth(to)/2;
+  return tc < fc ? { out: "left", into: "right" } : { out: "right", into: "left" };
+}
+// side 感知锚点：out/into ∈ left|right，取字段行对应侧缘中点
+function fieldPointSide(table, fieldId, side){ /* 按 side 取 table.x 或 table.x+width，y 不变 */ }
+// 贝塞尔控制点方向跟随出入侧：左出 → 控制点向左（x1-c），右出 → 向右（x1+c）；入侧同理反向
+function bezierDSide(x1,y1,x2,y2,out,into){
+  const c = Math.max(80, Math.abs(x2-x1)*.45);
+  const c1 = out === "left" ? x1-c : x1+c;
+  const c2 = into === "left" ? x2-c : x2+c;
+  return `M${x1} ${y1} C${c1} ${y1},${c2} ${y2},${x2} ${y2}`;
+}
+// relationD 改为：const sides = pickPortSides(from, to);
+//   const a = fieldPointSide(from, rel.fromField, sides.out);
+//   const b = fieldPointSide(to, rel.toField, sides.into);
+//   return bezierDSide(a.x, a.y, b.x, b.y, sides.out, sides.into);
+// 橡皮筋预览同口径；拖表后重算自动换侧。
+</script>
+
+<!-- 操作 2 ADDED 片段：表头注释副标题 + 字段注释（有 comment 才渲染，随显示开关过滤） -->
+<template id="delta-comment-fragments">
+  <!-- table-head 内 strong 之后追加： -->
+  <!-- ${table.comment && mode!=="name" ? `<small class="table-comment" title="${esc(table.comment)}">${esc(table.comment)}</small>` : ""} -->
+  <!-- 字段行 field-type 之后追加： -->
+  <!-- ${field.comment && mode!=="name" ? `<span class="field-comment" title="${esc(field.comment)}">${esc(field.comment)}</span>` : ""} -->
+  <!-- mode === "comment" 时表名/字段名隐藏（无 comment 的对象回退显示技术名） -->
+</template>
+<style>
+  .table-comment{display:block;font-size:10px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .field-comment{color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+</style>
+
+<!-- 操作 3 ADDED 片段：表边框随 --table-color；关系线颜色 -->
+<style>
+  .db-table{border-color:color-mix(in srgb, var(--table-color, var(--line)) 65%, var(--line))}
+</style>
+<script>
+// paintRelations 描边：stroke = rel.color || "var(--line-strong)"（选中态高亮优先级不变）
+// Inspector 关系面板追加「连线颜色」select：预设色板 + 「默认」（color=""），
+// 变更经 commit() 落账；JSON 导出保留 color，SQL/DBML 导出忽略。
+</script>

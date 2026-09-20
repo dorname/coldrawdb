@@ -64,3 +64,40 @@ S03：注册 / 登录 / Token 续期 / 会话指示。成功后进入 **rooms**�
 ## 既有 S03 用例补充约束
 
 保留后端断言；补充：**前端成功路径必须以 rooms 为下一跳**；错误路径禁止用户枚举。本提案 A 批必须覆盖上表 UI 用例，不得仅以 API 200 视为「已对齐主原型」。
+
+---
+
+## 合并自 fix-remote-github-issues-7-18（2026-09-18）
+
+## ADDED — UT-S03-08 — access TTL 配置化与默认值
+
+- **位置**：`backend/src/auth/jwt.rs` + `backend/src/init.rs`（`[auth] access_ttl_secs`）
+- **断言**：
+  - 配置缺省 → 签发 JWT 的 `exp - iat == 3600`
+  - `config.toml` 设 `access_ttl_secs = 1800` → `exp - iat == 1800`
+  - env `COLDRAWDB_ACCESS_TTL_SECS=7200` 覆盖 TOML → `exp - iat == 7200`
+  - 非法值（0 / 负数 / 超 86400 上限）→ 启动报错，不静默回退
+
+## ADDED — UT-S03-09 — expiresIn 与 JWT exp 一致
+
+- **位置**：`backend/src/auth_v1.rs`（login / refresh handler）
+- **断言**：POST `/api/v1/auth/login` 与 `/auth/refresh` 返回体的 `expiresIn` == 生效配置值 == 响应 JWT 的 `exp - iat`（解码头(payload) 校验）
+
+## ADDED — ST-S03-02 — 续期链路在默认 TTL 下稳定
+
+- **步骤**：默认配置启动 → 登录 → 携带过期 accessToken + 有效 refresh Cookie 调 `/auth/refresh` → 用新 accessToken 访问 `/auth/me`
+- **断言**：refresh 200 且 `expiresIn == 3600`；`/auth/me` 200；旧 refresh_token 已撤销（复用 401）
+
+## ADDED — TTL 口径说明（随 UT-S03-08/09 生效）
+
+- 既有用例中含「15m / 900」字样的 TTL 预期统一改为「默认 3600，可配置」；不依赖具体秒数的用例不受影响。
+
+> 全部用例结果写入 `logos/resources/verify/test-results.jsonl`（`module: "core"`，`scenario: "S03"`）。
+
+### 用例登记（OpenLogos verify 解析用）
+
+| ID | 前置 | 操作 | 预期 |
+|---|---|---|---|
+| UT-S03-08 | 配置缺省 / TOML 覆盖 / env 覆盖 / 非法值 | 签发 JWT | `exp - iat` 随生效配置（默认 3600）；env 覆盖 TOML；非法值启动报错 |
+| UT-S03-09 | login / refresh 响应 | 解码响应 JWT payload | `expiresIn` == 生效配置值 == `exp - iat` |
+| ST-S03-02 | 默认配置启动 | 过期 accessToken + 有效 refresh Cookie 调 `/auth/refresh` → 访问 `/auth/me` | refresh 200 且 `expiresIn == 3600`；`/auth/me` 200；旧 refresh_token 复用 401 |

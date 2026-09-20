@@ -154,6 +154,9 @@ CREATE TABLE IF NOT EXISTS reference (
     cardinality         TEXT    NOT NULL CHECK(cardinality IN ('one_to_one', 'one_to_many', 'many_to_one', 'many_to_many')),
     on_update           TEXT    NOT NULL DEFAULT 'NO ACTION' CHECK(on_update IN ('CASCADE', 'RESTRICT', 'SET NULL', 'NO ACTION', 'SET DEFAULT')),
     on_delete           TEXT    NOT NULL DEFAULT 'NO ACTION' CHECK(on_delete IN ('CASCADE', 'RESTRICT', 'SET NULL', 'NO ACTION', 'SET DEFAULT')),
+    -- fix-remote-github-issues-7-18（#12）：关系线颜色；'' = 未配置（渲染回退默认主题色）
+    -- 既有库迁移：backend/migrations/0006_reference_color.up.sql（ALTER TABLE reference ADD COLUMN color ...）
+    color               TEXT    NOT NULL DEFAULT '',
     FOREIGN KEY (diagram_id) REFERENCES diagram(id) ON DELETE CASCADE,
     FOREIGN KEY (start_table_id) REFERENCES `table`(id) ON DELETE CASCADE,
     FOREIGN KEY (end_table_id) REFERENCES `table`(id) ON DELETE CASCADE,

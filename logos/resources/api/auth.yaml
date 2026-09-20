@@ -6,7 +6,7 @@ info:
 
     **Coverage**: 5 endpoints under `/api/v1/auth/*`.
     **来源时序图**: `core-S03-user-auth.md` §3–§6.
-    **认证**: access_token 为 JWT Bearer（15m TTL）；refresh_token 为 HttpOnly Cookie。
+    **认证**: access_token 为 JWT Bearer（默认 TTL 1h，可经 `[auth] access_ttl_secs` / `COLDRAWDB_ACCESS_TTL_SECS` 配置）；refresh_token 为 HttpOnly Cookie。
     **对齐**: 与 `core-S03-user-auth-design.md` 交互规格一致。
   version: 2.0.0
 servers:
@@ -190,7 +190,7 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Short-lived access token (default TTL 15m)
+      description: "Short-lived access token (default TTL 1h; configurable via [auth] access_ttl_secs / COLDRAWDB_ACCESS_TTL_SECS)"
     refreshCookie:
       type: apiKey
       in: cookie
@@ -287,8 +287,8 @@ components:
           description: JWT access token
         expiresIn:
           type: integer
-          description: Access token TTL in seconds
-          example: 900
+          description: "Access token TTL in seconds (equals configured auth.access_ttl_secs; must equal JWT exp - iat)"
+          example: 3600
         tokenType:
           type: string
           enum: [Bearer]
@@ -302,7 +302,7 @@ components:
           type: string
         expiresIn:
           type: integer
-          example: 900
+          example: 3600
         tokenType:
           type: string
           enum: [Bearer]
@@ -368,3 +368,10 @@ components:
         retryAfter:
           type: integer
           description: Seconds until retry allowed
+
+# --- 合并自 fix-remote-github-issues-7-18（2026-09-18，issue #16）---
+# TTL 配置化不变量：
+# - /auth/login 与 /auth/refresh 返回的 expiresIn 必须等于实际签发 JWT 的 exp - iat，
+#   且等于生效的 access_ttl_secs 配置值。
+# - access_ttl_secs 合法区间 300~86400；缺省 3600；非法值启动报错，不静默回退。
+# - refresh token TTL 口径不变（remember_device=true 30 天 / false 7 天）。

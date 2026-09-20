@@ -143,6 +143,7 @@ fn ut_pb_03_flip_reference_endpoints_swaps_start_and_end() {
         type_: "one_to_many".to_string(),
         on_delete: "RESTRICT".to_string(),
         on_update: "RESTRICT".to_string(),
+        color: String::new(),
     };
 
     // When: flip

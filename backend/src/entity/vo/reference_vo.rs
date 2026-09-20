@@ -11,6 +11,10 @@ pub struct ReferenceVo {
     pub end_field_id: Option<String>,
     pub start_field_id: Option<String>,
     pub update_constraint: Option<String>,
+    // fix-remote-github-issues-7-18（issue #12，core-01b §4.1）：关系线颜色；
+    // 存量导入 JSON 无此字段 → None → 落库 ''（默认主题色），向后兼容
+    #[serde(default)]
+    pub color: Option<String>,
 }
 
 impl ReferenceVo {
@@ -25,7 +29,7 @@ impl ReferenceVo {
             end_field_id: self.end_field_id.clone(),
             start_field_id: self.start_field_id.clone(),
             update_constraint: self.update_constraint.clone(),
+            color: self.color.clone().unwrap_or_default(),
         }
     }
 }
-

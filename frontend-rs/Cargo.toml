@@ -12,7 +12,8 @@ wasm-bindgen = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde-wasm-bindgen = "0.6"
-gloo = "0.11"
+# fix-remote-github-issues-7-18：features 增 "futures"（gloo-file 异步读文件文本，issue #7/#8 dropzone）
+gloo = { version = "0.11", features = ["futures"] }
 gloo-net = "0.5"
 gloo-timers = { version = "0.2", features = ["futures"] }
 leptos = { version = "0.5", features = ["csr"] }
@@ -52,6 +53,18 @@ web-sys = { version = "0.3", features = [
   "Location",
   "MediaQueryList",
   "MediaQueryListEvent",
+  # fix-remote-github-issues-7-18（issue #7/#8）：IO dropzone 文件拖放 + 隐藏 file input
+  "DragEvent",
+  "DataTransfer",
+  "FileList",
+  "File",
+  "Blob",
+  # fix-remote-github-issues-7-18（issue #11，R-DPR-07~10）：画布容器 ResizeObserver
+  "ResizeObserver",
+  "ResizeObserverEntry",
+  "ResizeObserverSize",
+  # fix-remote-github-issues-7-18（issue #10，R-CMT-01/02）：注释单行省略截断测量
+  "TextMetrics",
 ] }
 
 # E4 Monaco 依赖（V1 占位：需 wasm-pack + 浏览器环境激活）

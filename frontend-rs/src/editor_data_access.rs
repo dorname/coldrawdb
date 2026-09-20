@@ -1460,6 +1460,9 @@ struct ReferenceOut {
     on_delete: String,
     #[serde(default)]
     on_update: String,
+    // fix-remote-github-issues-7-18（issue #12）：关系线颜色，老数据缺省 ""（默认主题色）
+    #[serde(default)]
+    color: String,
 }
 
 #[derive(Deserialize)]
@@ -1571,6 +1574,7 @@ impl From<ReferenceOut> for Reference {
             type_: r.type_,
             on_delete: r.on_delete,
             on_update: r.on_update,
+            color: r.color,
         }
     }
 }
