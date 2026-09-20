@@ -88,14 +88,18 @@ echo "[verify-pre-run] F 批画布性能/锚定缩放 Playwright 回归 ..."
 # 导致页面 API 走同源 :18080 静态服务而 405。G 批用例依赖 18080 dev 服务的页面
 # 直连后端 :3000，这里显式带变量重建 dist 恢复。
 echo "[verify-pre-run] G 批前重建含 COLDRAWDB_API_BASE 的前端 dist ..."
-(cd "$ROOT/frontend-rs" && COLDRAWDB_API_BASE="http://127.0.0.1:${COLDRAWDB_BACKEND_PORT:-3000}" trunk build)
+# trunk 的 --no-color 只接受 true/false；沙箱/CI 常注入 NO_COLOR=1 会直接失败。
+# 与 scripts/start-local.sh 对齐：去掉 NO_COLOR/FORCE_COLOR 后再 build。
+(cd "$ROOT/frontend-rs" && env -u NO_COLOR -u FORCE_COLOR \
+  COLDRAWDB_API_BASE="http://127.0.0.1:${COLDRAWDB_BACKEND_PORT:-3000}" trunk build)
 
 echo "[verify-pre-run] G 批 GitHub issue 修复 Playwright 回归 ..."
 (cd "$ROOT/frontend-rs/tests/e2e" && ./node_modules/.bin/playwright test \
   specs/pc-ddl-drop.spec.ts \
   specs/canvas-sides-resize.spec.ts \
   specs/appbar-truncate.spec.ts \
-  specs/cr-comment-color.spec.ts)
+  specs/cr-comment-color.spec.ts \
+  specs/cr-click-width-rel-style.spec.ts)
 
 echo "[verify-pre-run] 校验 reporter ID 与覆盖度 ..."
 "$NODE_BIN" "$ROOT/scripts/validate-openlogos-ledger.mjs" --report ST-PU-20
