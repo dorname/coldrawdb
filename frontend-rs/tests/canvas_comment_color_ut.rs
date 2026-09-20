@@ -16,7 +16,9 @@ mod verify_reporter;
 use frontend_rs::editor_core::types::Table;
 use frontend_rs::editor_core::{CommentDisplay, COMMENT_DISPLAY_STORAGE_KEY};
 use frontend_rs::editor_render::{
+    composited_relative_luminance, header_foreground_colors, parse_css_color_rgba,
     relation_stroke_color, table_border_color, table_sprite_fingerprint,
+    HEADER_FG_LUMINANCE_THRESHOLD,
 };
 use std::time::Instant;
 
@@ -302,3 +304,62 @@ fn ut_pb_11_relation_color_render_contract() {
 
     report("UT-PB-11", start);
 }
+
+/// UT-CR-COLOR-03：表头前景相对有效背景亮度自适应（R-COLOR-04 / #24）。
+#[test]
+fn ut_cr_color_03_header_contrast_adaptive() {
+    let start = Instant::now();
+    let ls = "#142c34";
+    let lm = "#7b8d93";
+    let ds = "#f2fdfe";
+    let dm = "#86a3ab";
+    let dark_bg = "rgba(16,38,45,.94)";
+    let light_bg = "rgba(255,255,255,.84)";
+
+    // 1) 浅色实色表头 → 深色字
+    let fg = header_foreground_colors("#e8eef0", dark_bg, ls, lm, ds, dm, false);
+    assert_eq!(fg.strong, ls);
+    assert_eq!(fg.muted, lm);
+    let fg = header_foreground_colors("#ffffff", dark_bg, ls, lm, ds, dm, false);
+    assert_eq!(fg.strong, ls);
+
+    // 2) 深色实色表头 → 浅色字
+    let fg = header_foreground_colors("#175e7a", light_bg, ls, lm, ds, dm, true);
+    assert_eq!(fg.strong, ds);
+    let fg = header_foreground_colors("#142c34", light_bg, ls, lm, ds, dm, true);
+    assert_eq!(fg.strong, ds);
+
+    // 3) 暗主题默认半透明 tint over 暗底 → 浅色字
+    let l = composited_relative_luminance("rgba(79,209,197,.18)", dark_bg).unwrap();
+    assert!(
+        l < HEADER_FG_LUMINANCE_THRESHOLD,
+        "暗主题默认 tint 合成亮度应 < 阈值，实际 {l}"
+    );
+    let fg = header_foreground_colors("rgba(79,209,197,.18)", dark_bg, ls, lm, ds, dm, false);
+    assert_eq!(fg.strong, ds);
+
+    // 4) 亮主题默认 tint over 亮底 → 深色字
+    let l = composited_relative_luminance("rgba(30,131,147,.13)", light_bg).unwrap();
+    assert!(
+        l >= HEADER_FG_LUMINANCE_THRESHOLD,
+        "亮主题默认 tint 合成亮度应 ≥ 阈值，实际 {l}"
+    );
+    let fg = header_foreground_colors("rgba(30,131,147,.13)", light_bg, ls, lm, ds, dm, true);
+    assert_eq!(fg.strong, ls);
+
+    // 5) 表色接近暗主题字色 → 必须深色字
+    let fg = header_foreground_colors("#f2fdfe", dark_bg, ls, lm, ds, dm, false);
+    assert_eq!(fg.strong, ls, "近白表头不得继续用浅色字");
+
+    // 6) 渲染锚点
+    let body = RENDER.find("fn draw_table_body").expect("draw_table_body");
+    let block = &RENDER[body..body + 2500.min(RENDER.len() - body)];
+    assert!(
+        block.contains("header_foreground_colors("),
+        "R-COLOR-04：表头文字必须经 header_foreground_colors"
+    );
+
+    assert!(parse_css_color_rgba("#abc").is_some());
+    report("UT-CR-COLOR-03", start);
+}
+

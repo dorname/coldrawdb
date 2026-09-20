@@ -3552,6 +3552,158 @@ pub fn relation_stroke_color<'a>(
     }
 }
 
+/// R-COLOR-04：表头有效背景相对亮度阈值（WCAG sRGB 相对亮度）。
+pub const HEADER_FG_LUMINANCE_THRESHOLD: f64 = 0.55;
+
+/// 表头强/次前景色对（R-COLOR-04）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HeaderForeground<'a> {
+    pub strong: &'a str,
+    pub muted: &'a str,
+}
+
+fn srgb_channel_to_linear(c: f64) -> f64 {
+    if c <= 0.04045 {
+        c / 12.92
+    } else {
+        ((c + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+fn relative_luminance_rgb(r: f64, g: f64, b: f64) -> f64 {
+    let r = srgb_channel_to_linear(r);
+    let g = srgb_channel_to_linear(g);
+    let b = srgb_channel_to_linear(b);
+    0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+fn parse_hex_digit(c: u8) -> Option<u8> {
+    match c {
+        b'0'..=b'9' => Some(c - b'0'),
+        b'a'..=b'f' => Some(c - b'a' + 10),
+        b'A'..=b'F' => Some(c - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn parse_hex_byte(h: u8, l: u8) -> Option<f64> {
+    Some(((parse_hex_digit(h)? << 4) | parse_hex_digit(l)?) as f64 / 255.0)
+}
+
+/// 解析 `#rgb` / `#rrggbb` / `rgb(r,g,b)` / `rgba(r,g,b,a)` → (r,g,b,a) ∈ 0..=1。
+pub fn parse_css_color_rgba(input: &str) -> Option<(f64, f64, f64, f64)> {
+    let s = input.trim();
+    if let Some(hex) = s.strip_prefix('#') {
+        let b = hex.as_bytes();
+        return match b.len() {
+            3 => Some((
+                parse_hex_digit(b[0])? as f64 / 15.0,
+                parse_hex_digit(b[1])? as f64 / 15.0,
+                parse_hex_digit(b[2])? as f64 / 15.0,
+                1.0,
+            )),
+            6 => Some((
+                parse_hex_byte(b[0], b[1])?,
+                parse_hex_byte(b[2], b[3])?,
+                parse_hex_byte(b[4], b[5])?,
+                1.0,
+            )),
+            8 => Some((
+                parse_hex_byte(b[0], b[1])?,
+                parse_hex_byte(b[2], b[3])?,
+                parse_hex_byte(b[4], b[5])?,
+                parse_hex_byte(b[6], b[7])?,
+            )),
+            _ => None,
+        };
+    }
+    let lower = s.to_ascii_lowercase();
+    let (body, has_a) = if let Some(rest) = lower.strip_prefix("rgba(") {
+        (rest.strip_suffix(')')?, true)
+    } else if let Some(rest) = lower.strip_prefix("rgb(") {
+        (rest.strip_suffix(')')?, false)
+    } else {
+        return None;
+    };
+    let parts: Vec<&str> = body.split(',').map(str::trim).collect();
+    if has_a {
+        if parts.len() != 4 {
+            return None;
+        }
+        let r: f64 = parts[0].parse().ok()?;
+        let g: f64 = parts[1].parse().ok()?;
+        let b: f64 = parts[2].parse().ok()?;
+        let a: f64 = parts[3].parse().ok()?;
+        Some((
+            (r / 255.0).clamp(0.0, 1.0),
+            (g / 255.0).clamp(0.0, 1.0),
+            (b / 255.0).clamp(0.0, 1.0),
+            a.clamp(0.0, 1.0),
+        ))
+    } else {
+        if parts.len() != 3 {
+            return None;
+        }
+        let r: f64 = parts[0].parse().ok()?;
+        let g: f64 = parts[1].parse().ok()?;
+        let b: f64 = parts[2].parse().ok()?;
+        Some((
+            (r / 255.0).clamp(0.0, 1.0),
+            (g / 255.0).clamp(0.0, 1.0),
+            (b / 255.0).clamp(0.0, 1.0),
+            1.0,
+        ))
+    }
+}
+
+fn composite_over(src: (f64, f64, f64, f64), dst: (f64, f64, f64, f64)) -> (f64, f64, f64) {
+    let (sr, sg, sb, sa) = src;
+    let (dr, dg, db, da) = dst;
+    let out_a = sa + da * (1.0 - sa);
+    if out_a <= 1e-9 {
+        return (dr, dg, db);
+    }
+    let r = (sr * sa + dr * da * (1.0 - sa)) / out_a;
+    let g = (sg * sa + dg * da * (1.0 - sa)) / out_a;
+    let b = (sb * sa + db * da * (1.0 - sa)) / out_a;
+    (r, g, b)
+}
+
+/// tint over base 合成后的相对亮度；tint 解析失败 → None。
+pub fn composited_relative_luminance(tint: &str, base: &str) -> Option<f64> {
+    let src = parse_css_color_rgba(tint)?;
+    let dst = parse_css_color_rgba(base).unwrap_or((0.0, 0.0, 0.0, 1.0));
+    let (r, g, b) = composite_over(src, dst);
+    Some(relative_luminance_rgb(r, g, b))
+}
+
+/// R-COLOR-04：按表头有效背景亮度选择深/浅前景对。
+/// `fallback_dark_fg=true` 表示解析失败时倾向深色字（亮主题回退）。
+pub fn header_foreground_colors<'a>(
+    header_tint: &str,
+    table_bg: &str,
+    light_strong: &'a str,
+    light_muted: &'a str,
+    dark_strong: &'a str,
+    dark_muted: &'a str,
+    fallback_dark_fg: bool,
+) -> HeaderForeground<'a> {
+    let use_dark_fg = composited_relative_luminance(header_tint, table_bg)
+        .map(|l| l >= HEADER_FG_LUMINANCE_THRESHOLD)
+        .unwrap_or(fallback_dark_fg);
+    if use_dark_fg {
+        HeaderForeground {
+            strong: light_strong,
+            muted: light_muted,
+        }
+    } else {
+        HeaderForeground {
+            strong: dark_strong,
+            muted: dark_muted,
+        }
+    }
+}
+
 /// R-CMT-01/02：单行省略截断——逐字符测量，超出 max_w 时截断并追加 …（canvas 无原生省略）。
 fn truncate_to_width(ctx: &CanvasRenderingContext2d, text: &str, max_w: f64) -> String {
     let full_w = ctx.measure_text(text).map(|m| m.width()).unwrap_or(0.0);
@@ -3894,6 +4046,16 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
     } else {
         table.color.as_str()
     };
+    // R-COLOR-04：表头前景相对有效背景亮度自适应（不得在浅色表头上固定用主题浅色字）
+    let header_fg = header_foreground_colors(
+        header_tint,
+        palette.table_bg,
+        PALETTE_LIGHT.text_strong,
+        PALETTE_LIGHT.text_muted,
+        PALETTE_DARK.text_strong,
+        PALETTE_DARK.text_muted,
+        !current_theme_dark(),
+    );
     ctx.save();
     ctx.begin_path();
     round_rect_top(ctx, x, y, width, TABLE_HEADER_HEIGHT, 14.0);
@@ -3909,7 +4071,7 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
     // 表名（750/13px 强色）+ 字段计数（text-3 10px 右对齐）
     // R-CMT-01：主文本按显示模式取值（comment 模式且有注释 → 注释；否则英文名）
     let table_label = comment_mode.primary(&table.name, &table.comment);
-    let _ = ctx.set_fill_style_str(palette.text_strong);
+    let _ = ctx.set_fill_style_str(header_fg.strong);
     let _ = ctx.set_font(&dpr_font(750, 13.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
     let _ = ctx.set_text_baseline("middle");
     let _ = ctx.set_text_align("left");
@@ -3918,7 +4080,7 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
     // 空 comment 不渲染、不留占位（R-CMT-03）。canvas 无 DOM title——截断省略与原型一致。
     if let Some(cmt) = comment_mode.secondary(&table.comment) {
         let label_w = ctx.measure_text(table_label).map(|m| m.width()).unwrap_or(0.0);
-        let _ = ctx.set_fill_style_str(palette.text_muted);
+        let _ = ctx.set_fill_style_str(header_fg.muted);
         let _ = ctx.set_font(&dpr_font(500, 10.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
         let cmt_x = x + 11.0 + label_w + 6.0;
         // 26 = 右边距 11 + 字段计数预留 15
@@ -3927,7 +4089,7 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
             let _ = ctx.fill_text(&truncate_to_width(ctx, cmt, max_w), cmt_x, y + TABLE_HEADER_HEIGHT / 2.0 + 0.5);
         }
     }
-    let _ = ctx.set_fill_style_str(palette.text_muted);
+    let _ = ctx.set_fill_style_str(header_fg.muted);
     let _ = ctx.set_font(&dpr_font(500, 10.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
     let _ = ctx.set_text_align("right");
     let _ = ctx.fill_text(
