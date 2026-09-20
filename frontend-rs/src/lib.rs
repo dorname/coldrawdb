@@ -11,6 +11,7 @@ pub mod editor_dict;
 pub mod editor_panels;
 pub mod editor_render;
 pub mod icons;
+pub mod layout;
 pub mod splitter;
 
 use editor_core::{DebounceTrigger, EditorStore};

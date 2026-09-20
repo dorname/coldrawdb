@@ -11241,7 +11241,13 @@ pub fn AppRoot(
             let n_tables = new_tables.len();
             let n_refs = new_refs.len();
             let first_new = new_tables.first().map(|t| t.id.clone());
-            store.tables.set(merged_tables);
+            // layout-after-import-command / #23：本次导入关系非空时自动整理一次
+            let final_tables = if n_refs > 0 {
+                crate::layout::apply_default_layout(&merged_tables, &merged_refs)
+            } else {
+                merged_tables
+            };
+            store.tables.set(final_tables);
             store.references.set(merged_refs);
             store.dirty.set(true);
             if let Some(id) = first_new {
@@ -12426,6 +12432,8 @@ pub fn AppRoot(
         let store = store.clone();
         let canvas_transform = canvas_transform;
         let view_mode = view_mode;
+        let client = client.clone();
+        let debouncer = debouncer.clone();
         Callback::new(move |item: PaletteItem| match item.kind {
             crate::command_palette::PaletteKind::Table => {
                 let id = item.id.clone();
@@ -12439,6 +12447,32 @@ pub fn AppRoot(
             crate::command_palette::PaletteKind::Reference => {
                 selection.set(SelectionKind::Reference(item.id));
                 inspector_open.set(true);
+            }
+            crate::command_palette::PaletteKind::Action if item.id == "action:layout" => {
+                // layout-after-import-command / #23：整理布局
+                if editor_is_read_only(share_mode, current_room) {
+                    return;
+                }
+                let tables = store.tables.get();
+                let refs = store.references.get();
+                let laid = crate::layout::apply_default_layout(&tables, &refs);
+                store.tables.set(laid);
+                store.dirty.set(true);
+                schedule_save(
+                    client.clone(),
+                    store.clone(),
+                    current_diagram_id.clone(),
+                    current_title.clone(),
+                    debouncer.clone(),
+                    conflict.clone(),
+                    error.clone(),
+                    is_saving.clone(),
+                    save_offline.clone(),
+                    collab_state,
+                    activity_feed,
+                    current_room.clone(),
+                    auth_session.clone(),
+                );
             }
             _ => {}
         })

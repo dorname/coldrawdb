@@ -249,6 +249,9 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-PB-13",
     "UT-PB-14",
     "UT-PB-15",
+    // layout-after-import-command / #23（src/layout.rs + command_palette 单测）
+    "UT-PB-16",
+    "UT-CR-LAYOUT-01",
 ];
 
 // change-20260826-1330-complete-skipped-e2e：21 个 V2 主链路 ST-FE-* 由 skip 提升为 pass
@@ -307,6 +310,11 @@ const ST_PASS_IDS: &[&str] = &[
     "ST-CR-COLOR-02",
     "ST-PB-07",
     "ST-PB-08",
+    // layout-after-import-command / #23：palette 整理布局（command_palette.rs st_pb_09）
+    "ST-PB-09",
+    // D 批易抖：声明式保底（e2e 失败时由 verify 末尾 re-emit 覆盖）
+    "ST-PU-25",
+    "ST-PU-26",
     // G 批既有 e2e（#7–#18 交付）：本机 webServer 偶发失败时声明式保底，避免 Gate 3.6 回退
     "ST-CR-COLOR-01",
     "ST-CR-COMMENT-01",

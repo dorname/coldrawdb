@@ -46,16 +46,22 @@ pub fn filter_palette_items(items: &[PaletteItem], query: &str) -> Vec<PaletteIt
 }
 
 /// 从 diagram 表 / 关系构建 palette 列表。
+/// 固定前置 Action：`action:layout`（整理布局，#23）。
 pub fn build_palette_items(tables: &[Table], references: &[Reference]) -> Vec<PaletteItem> {
-    let mut items: Vec<PaletteItem> = tables
-        .iter()
-        .map(|t| PaletteItem {
+    let mut items: Vec<PaletteItem> = vec![PaletteItem {
+        kind: PaletteKind::Action,
+        id: "action:layout".into(),
+        label: "整理布局".into(),
+        subtitle: Some("力导向 · 对齐 MCP".into()),
+    }];
+    for t in tables {
+        items.push(PaletteItem {
             kind: PaletteKind::Table,
             id: t.id.clone(),
             label: t.name.clone(),
             subtitle: Some(format!("表 · {} 字段", t.fields.len())),
-        })
-        .collect();
+        });
+    }
     for r in references {
         items.push(PaletteItem {
             kind: PaletteKind::Reference,
@@ -148,7 +154,13 @@ pub fn CommandPalette(
                                                 "cdb-command-palette__item"
                                             }
                                         }
-                                        data-testid=format!("palette-item-{}", item.id)
+                                        data-testid={
+                                            if item.kind == PaletteKind::Action {
+                                                format!("palette-{}", item.id.replace(':', "-"))
+                                            } else {
+                                                format!("palette-item-{}", item.id)
+                                            }
+                                        }
                                         on:click=move |_| {
                                             on_select.call(item_for_click.clone());
                                             visible.set(false);
@@ -248,7 +260,98 @@ mod tests {
             min_height: None,
         }];
         let items = build_palette_items(&tables, &[]);
-        assert_eq!(items.len(), 1);
-        assert_eq!(items[0].label, "orders");
+        // Action「整理布局」固定前置 + 1 张表
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].id, "action:layout");
+        assert_eq!(items[0].kind, PaletteKind::Action);
+        assert_eq!(items[0].label, "整理布局");
+        assert_eq!(items[1].label, "orders");
+    }
+
+    /// ST-PB-09：palette 含整理布局 Action，触发后连通表坐标变化
+    #[test]
+    fn st_pb_09_palette_layout_action_changes_coords() {
+        use crate::layout::apply_default_layout;
+
+        let tables = vec![
+            Table {
+                id: "a".into(),
+                name: "a".into(),
+                x: 0.0,
+                y: 0.0,
+                color: String::new(),
+                comment: String::new(),
+                fields: vec![Field {
+                    id: "af".into(),
+                    name: "id".into(),
+                    type_: "INT".into(),
+                    default: String::new(),
+                    check: String::new(),
+                    primary: true,
+                    unique: false,
+                    not_null: true,
+                    increment: false,
+                    comment: String::new(),
+                    tag: String::new(),
+                    dict_code: String::new(),
+                }],
+                indices: vec![],
+                width: None,
+                min_height: None,
+            },
+            Table {
+                id: "b".into(),
+                name: "b".into(),
+                x: 5.0,
+                y: 5.0,
+                color: String::new(),
+                comment: String::new(),
+                fields: vec![Field {
+                    id: "bf".into(),
+                    name: "id".into(),
+                    type_: "INT".into(),
+                    default: String::new(),
+                    check: String::new(),
+                    primary: true,
+                    unique: false,
+                    not_null: true,
+                    increment: false,
+                    comment: String::new(),
+                    tag: String::new(),
+                    dict_code: String::new(),
+                }],
+                indices: vec![],
+                width: None,
+                min_height: None,
+            },
+        ];
+        let refs = vec![crate::editor_core::types::Reference {
+            id: "r1".into(),
+            name: "a->b".into(),
+            start_table_id: "a".into(),
+            end_table_id: "b".into(),
+            start_field_id: "af".into(),
+            end_field_id: "bf".into(),
+            type_: "one_to_many".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+            color: String::new(),
+            line_type: String::new(),
+            stroke_style: String::new(),
+        }];
+
+        let items = build_palette_items(&tables, &refs);
+        let action = items
+            .iter()
+            .find(|i| i.id == "action:layout" && i.kind == PaletteKind::Action)
+            .expect("palette 必须含 action:layout");
+        assert_eq!(action.label, "整理布局");
+
+        // 模拟 on_palette_select(Action) → apply_default_layout
+        let laid = apply_default_layout(&tables, &refs);
+        let changed = laid.iter().zip(tables.iter()).any(|(a, b)| {
+            (a.x - b.x).abs() > 0.01 || (a.y - b.y).abs() > 0.01
+        });
+        assert!(changed, "整理布局后连通表坐标应变化");
     }
 }
