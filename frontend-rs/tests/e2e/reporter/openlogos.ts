@@ -21,10 +21,14 @@ import type {
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-const OUTPUT = path.resolve(
-  import.meta.dirname,
-  "../../../../logos/resources/verify/test-results.jsonl",
-);
+// verify 预跑沙箱（bwrap --ro-bind workspace）下相对路径会指向沙箱副本，
+// 预跑脚本已 export COLDRAWDB_JSONL_PATH 为账本绝对路径，优先走该变量。
+const OUTPUT =
+  process.env.COLDRAWDB_JSONL_PATH ??
+  path.resolve(
+    import.meta.dirname,
+    "../../../../logos/resources/verify/test-results.jsonl",
+  );
 
 const PREFIX_MAP: Record<string, string> = {
   "s03-auth.spec.ts": "ST-FE-S03-",

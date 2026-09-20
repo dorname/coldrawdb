@@ -93,3 +93,11 @@ S03：注册 / 登录 / Token 续期 / 会话指示。成功后进入 **rooms**�
 - 既有用例中含「15m / 900」字样的 TTL 预期统一改为「默认 3600，可配置」；不依赖具体秒数的用例不受影响。
 
 > 全部用例结果写入 `logos/resources/verify/test-results.jsonl`（`module: "core"`，`scenario: "S03"`）。
+
+### 用例登记（OpenLogos verify 解析用）
+
+| ID | 前置 | 操作 | 预期 |
+|---|---|---|---|
+| UT-S03-08 | 配置缺省 / TOML 覆盖 / env 覆盖 / 非法值 | 签发 JWT | `exp - iat` 随生效配置（默认 3600）；env 覆盖 TOML；非法值启动报错 |
+| UT-S03-09 | login / refresh 响应 | 解码响应 JWT payload | `expiresIn` == 生效配置值 == `exp - iat` |
+| ST-S03-02 | 默认配置启动 | 过期 accessToken + 有效 refresh Cookie 调 `/auth/refresh` → 访问 `/auth/me` | refresh 200 且 `expiresIn == 3600`；`/auth/me` 200；旧 refresh_token 复用 401 |

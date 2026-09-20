@@ -413,3 +413,12 @@ IO：入口经 AppBar **更多菜单** → IO 抽屉；格式 SQL/DBML/JSON（�
 - **WHEN**：向 `io-dropzone` 派发 dragover + drop（`DataTransfer` 注入文件）→ 点「导入到画布」
 - **THEN**：textarea 已填充；摘要非 0；导入后画布新增该表；`Table.comment` 非空
 - **reporter**：结果追加 `logos/resources/verify/test-results.jsonl`（`scenario: "S01"`，`module: "core"`）
+
+### 用例登记（OpenLogos verify 解析用）
+
+| ID | GIVEN | WHEN | THEN |
+|---|---|---|---|
+| UT-PC-31 | ImportDrawer 打开（`sql` Tab） | `DataTransfer` 注入 `.sql` 文件触发 drop | 导入内容 == 文件文本；摘要非 0；`is-dragover` 移除；`preventDefault` 已调用 |
+| UT-PC-32 | — | `import_format_for_filename` | `.sql`/`.ddl`→sql、`.dbml`→dbml、`.json`→json（大小写不敏感）；其他→`None`；accept 含 `.ddl` |
+| UT-PC-33 | — | `include_str!` 锚点 | `io-file-input` 隐藏 input 的 `accept` 含 `.ddl`；dropzone 点击触发其 `click()` |
+| ST-PC-09 | 编辑器已加载 | 拖入 `schema.ddl`（含中文 COMMENT）→ 导入到画布 | textarea 已填充；摘要非 0；画布新增表；`Table.comment` 非空 |

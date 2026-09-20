@@ -1,0 +1,2 @@
+{"iter":1,"node":"verify","result":"fail","module":"core","timestamp":"2026-09-20T03:23:09.157Z","slice":"`frontend-rs/src/editor_panels.rs`：dropzone 绑定 drag/drop 事件 + 隐藏 file input + `.ddl` 放行（文案/accept/白名单）"}
+{"iter":2,"node":"verify","result":"pass","module":"core","timestamp":"2026-09-20T04:02:05.068Z","slice":"`frontend-rs/src/editor_panels.rs`：dropzone 绑定 drag/drop 事件 + 隐藏 file input + `.ddl` 放行（文案/accept/白名单）"}

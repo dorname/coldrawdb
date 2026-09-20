@@ -141,4 +141,13 @@
 - **WHEN**：选中其一，Inspector 关系面板设置颜色为预设色 → 保存 → 刷新
 - **THEN**：仅该关系线变色（`stroke` 生效），其他关系不变；刷新后颜色仍在；导出 JSON 含该 `color`，再导入保留
 
+### 用例登记（OpenLogos verify 解析用）
+
+| ID | GIVEN | WHEN | THEN |
+|---|---|---|---|
+| UT-PB-09 | 两表几何（x / width） | `pick_port_sides` | 目标在左→左出右进；在右→右出左进；中心 x 相等→默认右出左进 |
+| UT-PB-10 | 表 A(0,0) 与 B(-400,0) 各含字段 | `calc_path` | 起点==`A.x`、终点==`B.x+B.width`；c1<x1、c2>x2；B 移右侧回归右出左进 |
+| UT-PB-11 | `ref.color` 非空 / 为空 | 关系描边取色纯函数 | 非空→该色；空→`palette.relation`；选中外环仍 `palette.selected` |
+| ST-PB-06 | 画布含 ≥2 条关系 | Inspector 关系面板设预设色 → 保存 → 刷新 | 仅该线变色；刷新后仍在；导出 JSON 含 `color` 再导入保留 |
+
 > 全部用例结果写入 `logos/resources/verify/test-results.jsonl`（`module: "core"`，`scenario: "S01"`）。

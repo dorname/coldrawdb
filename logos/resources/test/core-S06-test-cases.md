@@ -110,3 +110,11 @@ MCP 测试分三层：纯函数/配置 UT、mock HTTP 的 MCP stdio ST、与真�
 | MCP-AC-04 一致性与安全 | UT-MCP-12～15、ST-MCP-04/05 |
 | MCP-AC-05 配置可用 | UT-MCP-01/11、ST-MCP-06～09 |
 | MCP-AC-06 画布编辑 | UT-MCP-16～24、ST-MCP-10～13 |
+
+### 用例登记（OpenLogos verify 解析用）
+
+| ID | 输入/操作 | 断言 |
+|---|---|---|
+| UT-MCP-23 | mock 上游 PUT 200 且 `data` 含额外字段 | update_* 四工具恰好 `{id,revision}`；`layout_diagram` 恰好 `{id,revision,tables_repositioned}`；缺 `id` 以路径补齐；`revision` 缺/非数→`UPSTREAM_INVALID` |
+| UT-MCP-24 | `update_reference` 带 / 不带 `color` | create 含 `color`；update 不传保持原值；`color` >64 → `VALIDATION_ERROR` |
+| ST-MCP-13 | stdio → `layout_diagram(mode=force)` | `structuredContent` 过 `outputSchema`；`content[0].text` == `structuredContent`；坐标更新且 revision 递增 |

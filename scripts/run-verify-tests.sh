@@ -80,6 +80,23 @@ echo "[verify-pre-run] E 批 splitter 分隔条 + 表注释 Playwright 回归 ..
 echo "[verify-pre-run] F 批画布性能/锚定缩放 Playwright 回归 ..."
 (cd "$ROOT/frontend-rs" && "$NPM_BIN" run test:canvas-perf)
 
+# G 批：fix-remote-github-issues-7-18 新增 e2e spec（Playwright 测试框架，
+# 非手写 parity 脚本）。必须在 tests/e2e 下用其本地 playwright 实例运行。
+#
+# 前置：parity 各批的 `trunk build` 不带 COLDRAWDB_API_BASE，其 rlib 会污染共享
+# cargo 增量缓存与 dist/（option_env! 读编译期变量，缓存复用后 serve 重建不会重烧），
+# 导致页面 API 走同源 :18080 静态服务而 405。G 批用例依赖 18080 dev 服务的页面
+# 直连后端 :3000，这里显式带变量重建 dist 恢复。
+echo "[verify-pre-run] G 批前重建含 COLDRAWDB_API_BASE 的前端 dist ..."
+(cd "$ROOT/frontend-rs" && COLDRAWDB_API_BASE="http://127.0.0.1:${COLDRAWDB_BACKEND_PORT:-3000}" trunk build)
+
+echo "[verify-pre-run] G 批 GitHub issue 修复 Playwright 回归 ..."
+(cd "$ROOT/frontend-rs/tests/e2e" && ./node_modules/.bin/playwright test \
+  specs/pc-ddl-drop.spec.ts \
+  specs/canvas-sides-resize.spec.ts \
+  specs/appbar-truncate.spec.ts \
+  specs/cr-comment-color.spec.ts)
+
 echo "[verify-pre-run] 校验 reporter ID 与覆盖度 ..."
 "$NODE_BIN" "$ROOT/scripts/validate-openlogos-ledger.mjs" --report ST-PU-20
 

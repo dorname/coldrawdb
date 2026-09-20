@@ -145,6 +145,12 @@
 | UT-CR-07 | 连线使用当前视觉坐标 | `editor_render.rs::calc_path` |
 | ST-CR-01 | references 贝塞尔连线在画布可见 | `frontend-rs/tests/wasm/cr.rs` |
 | ST-CR-02 | 拖表过程中连线路径更新 | e2e canvas drag follow
+| UT-CR-GHOST-02 | 幽灵层圆角高亮（R-HL-02） | `editor_render.rs::create_table_ghost` |
+| UT-CR-COMMENT-01 | 注释渲染口径（三态 + 空值） | `editor_render.rs` 表头/字段行文本布局 |
+| UT-CR-COMMENT-02 | 注释显示开关持久化 | `editor_panels.rs` `canvas-comment-display` |
+| UT-CR-COLOR-01 | 表边框与关系线用色回退 | `editor_render.rs` 取色纯函数 |
+| ST-CR-COMMENT-01 | e2e：中文注释画布可见 | `frontend-rs/tests/e2e/specs/cr-comment-color.spec.ts` |
+| ST-CR-COLOR-01 | e2e：表颜色配置闭环 | `frontend-rs/tests/e2e/specs/cr-comment-color.spec.ts` |
 
 ## 6. p0-fix 定点 2：区域 / 便签创建交互（2026-09-04）
 

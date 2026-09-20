@@ -98,3 +98,11 @@ openlogos smoke                             # 期望 SMOKE_PASS
 
 > §3 验收条件追加：AC-RP-06 — ResizeObserver 同步路径落地且 UT-RP-06/07、ST-RP-04 PASS。
 > 结果写入 `logos/resources/verify/test-results.jsonl`（`module: "core"`，`scenario: "S01"`）。
+
+### 用例登记（OpenLogos verify 解析用）
+
+| ID | GIVEN | WHEN | THEN |
+|---|---|---|---|
+| UT-RP-06 | 父容器 1200×800 @ dpr=1 | 容器宽度变 900 触发 ResizeObserver | 同帧 `canvas.width==900`、`canvas.height==800`；`set_transform` 按最新 dpr×zoom 复位 |
+| UT-RP-07 | 分隔条拖动中 | 连续 5 次宽度变更 | 每次经 ResizeObserver / `schedule_paint` 重绘；dpr 来自 `effective_device_pixel_ratio()`；卸载后 disconnect |
+| ST-RP-04 | 多表缩放 64%（dpr=1 / dpr=2） | 分隔条往返 ≥10 次 + 窗口尺寸变更 | 全程 `canvas.width == CSS宽×dpr`；无位图拉伸模糊；全程未点击画布 |
