@@ -104,7 +104,7 @@ curl http://127.0.0.1:3000/api/v1/bridge/config
 # 后端 release
 cd backend && cargo build --release
 
-# 前端 release（trunk 0.21.x 需显式关闭 wasm-opt，见 frontend-rs/Trunk.toml 注释）
+# 前端 release（trunk 0.21.x 需显式关闭 wasm-opt，见 frontend-rs/trunk.toml 注释）
 cd frontend-rs && trunk build --release --no-wasm-opt
 # 产物：frontend-rs/dist/
 ```

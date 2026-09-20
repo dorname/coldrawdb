@@ -1,14 +1,25 @@
+# coldrawdb 前端构建配置（trunk）
+#
+# 历史：本文件曾与仅大小写不同的 `Trunk.toml` 在 Git 索引中重复存在（且内容不一致），
+# 导致 Windows / macOS 检出后恒出现「假修改」，而 Linux / Docker 下 trunk 又会读到另一份。
+# 现归一为唯一的小写 `trunk.toml`（见变更提案 fix-trunk-toml-case-conflict）。
+
 [build]
 target = "index.html"
 dist = "dist"
 
-# Disable wasm-opt: cached version 123 fails on memory.copy (needs --enable-bulk-memory-opt).
-# Rust's release profile (opt-level = "z" in Cargo.toml) does the optimization.
+# 关闭 wasm-opt：缓存的 wasm-opt 版本 123 在 memory.copy 上失败（需要 --enable-bulk-memory-opt）；
+# 压缩改由 Cargo.toml 的 release profile（opt-level = "z"）完成。
+# 注意区分：[tools] wasm-opt 是「是否启用该工具」；[build] wasm_opt 才是 0-4 级别的优化档位。
+# 若日后本开关失效，CLI 兜底方式是 `trunk build --release --no-wasm-opt`。
 [tools]
 wasm-opt = false
 
-# Disable live-reload WebSocket to avoid e2e smoke tests reloading mid-run
-# after backend PUT requests (trunk's autoreload can trigger on unrelated
-# filesystem or websocket events in container/CI environments).
+# 关闭 live-reload WebSocket：避免 e2e smoke 期间后端 PUT 请求触发 trunk 重建并向页面广播
+# reload，导致双上下文用例被弹回房间列表。
 [serve]
 no_autoreload = true
+
+# e2e 运行期间 Playwright 会在 tests/ 下写 trace / 截图，触发 trunk 重建并广播 reload。
+[watch]
+ignore = ["tests"]

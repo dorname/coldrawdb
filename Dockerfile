@@ -8,7 +8,7 @@ WORKDIR /app
 RUN cargo install --locked trunk
 RUN rustup target add wasm32-unknown-unknown
 COPY frontend-rs/Cargo.toml frontend-rs/Cargo.lock ./frontend-rs/
-COPY frontend-rs/index.html frontend-rs/Trunk.toml ./frontend-rs/
+COPY frontend-rs/index.html frontend-rs/trunk.toml ./frontend-rs/
 COPY frontend-rs/src ./frontend-rs/src
 # index.html data-wasm-opt="0"（-O0）；trunk 0.21.14 无 --no-wasm-opt flag，wasm-opt 由 trunk 自动下载
 RUN cd frontend-rs && trunk build --release
