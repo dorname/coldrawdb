@@ -91,7 +91,9 @@ impl McpService {
                     .filter(|value| value.is_object())
                     .cloned()
                     .ok_or_else(|| ToolError::validation("diagram 必须是 object"))?;
-                self.api.update(id, expected_revision, diagram).await
+                // fix-remote-github-issues-7-18（#18）：统一 normalize 为瘦响应
+                let data = self.api.update(id, expected_revision, diagram).await?;
+                slim_write_response(&data, id)
             }
             "delete_diagram" => self.api.delete(required_str(&arguments, "id")?).await,
             "import_schema" => {
@@ -166,7 +168,9 @@ impl McpService {
             table["locked"] = json!(locked);
         }
 
-        self.api.update(id, revision, diagram).await
+        // fix-remote-github-issues-7-18（#18）：统一 normalize 为瘦响应
+        let data = self.api.update(id, revision, diagram).await?;
+        slim_write_response(&data, id)
     }
 
     async fn update_field(&self, arguments: Value) -> Result<Value, ToolError> {
@@ -226,7 +230,9 @@ impl McpService {
             field["default"] = json!(default);
         }
 
-        self.api.update(id, revision, diagram).await
+        // fix-remote-github-issues-7-18（#18）：统一 normalize 为瘦响应
+        let data = self.api.update(id, revision, diagram).await?;
+        slim_write_response(&data, id)
     }
 
     async fn update_reference(&self, arguments: Value) -> Result<Value, ToolError> {
@@ -245,6 +251,15 @@ impl McpService {
                 required_str(&arguments, "ref_id")?;
             }
             _ => return Err(ToolError::validation("action 必须是 create/update/delete")),
+        }
+        // fix-remote-github-issues-7-18（#12）：color 仅 create/update 消费，delete 忽略；
+        // 长度校验沿用现有参数校验风格（本地拒绝，不发 HTTP）。
+        if action != "delete" {
+            if let Some(color) = arguments.get("color").and_then(Value::as_str) {
+                if color.chars().count() > 64 {
+                    return Err(ToolError::validation("color 最长 64 个字符"));
+                }
+            }
         }
 
         let result = self.api.get(id).await?;
@@ -282,6 +297,10 @@ impl McpService {
                 if let Some(name) = arguments.get("name").and_then(Value::as_str) {
                     new_ref["name"] = json!(name);
                 }
+                // fix-remote-github-issues-7-18（#12）：create 时 color 可带入
+                if let Some(color) = arguments.get("color").and_then(Value::as_str) {
+                    new_ref["color"] = json!(color);
+                }
                 references.push(new_ref);
             }
             "update" => {
@@ -302,6 +321,10 @@ impl McpService {
                 if let Some(name) = arguments.get("name").and_then(Value::as_str) {
                     existing["name"] = json!(name);
                 }
+                // fix-remote-github-issues-7-18（#12）：update 不传 color 时保持原值
+                if let Some(color) = arguments.get("color").and_then(Value::as_str) {
+                    existing["color"] = json!(color);
+                }
             }
             "delete" => {
                 let ref_id = required_str(&arguments, "ref_id")?;
@@ -314,7 +337,9 @@ impl McpService {
             _ => return Err(ToolError::validation("action 必须是 create/update/delete")),
         }
 
-        self.api.update(id, revision, diagram).await
+        // fix-remote-github-issues-7-18（#18）：统一 normalize 为瘦响应
+        let data = self.api.update(id, revision, diagram).await?;
+        slim_write_response(&data, id)
     }
 
     async fn layout_diagram(&self, arguments: Value) -> Result<Value, ToolError> {
@@ -357,10 +382,32 @@ impl McpService {
         let count = repositioned.len();
         diagram["tables"] = json!(repositioned);
 
-        let mut resp = self.api.update(id, revision, diagram).await?;
+        // fix-remote-github-issues-7-18（#18）：先 normalize 为瘦响应，再追加
+        // tables_repositioned，保证 structuredContent 与 outputSchema 完全一致。
+        let data = self.api.update(id, revision, diagram).await?;
+        let mut resp = slim_write_response(&data, id)?;
         resp["tables_repositioned"] = json!(count);
         Ok(resp)
     }
+}
+
+/// fix-remote-github-issues-7-18（#18）：写工具瘦响应 normalize。
+/// 从上游 PUT 响应的 data 中只提取 outputSchema 约定的字段（恰好 `{ id, revision }`），
+/// 不透传 envelope / request_id / 整图等多余字段；上游 data 缺 id 时以请求路径 id 补齐。
+/// revision 必须存在且为整数 ≥1，否则映射 UPSTREAM_ERROR（沿用现有「上游响应畸形」
+/// 错误风格；mcp-tools.yaml 的 ToolError code 枚举不含 UPSTREAM_INVALID，故不新增码值）。
+fn slim_write_response(data: &Value, path_id: &str) -> Result<Value, ToolError> {
+    let revision = data
+        .get("revision")
+        .and_then(Value::as_i64)
+        .filter(|revision| *revision >= 1)
+        .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "上游写响应缺少有效 revision", false))?;
+    let id = data
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(path_id);
+    Ok(json!({"id": id, "revision": revision}))
 }
 
 fn uuid_simple() -> String {

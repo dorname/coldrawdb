@@ -166,6 +166,12 @@ export async function waitCollabConnected(page: Page, timeout = 20_000): Promise
 
 export interface DebugState {
   tables: string[];
+  // fix-remote-github-issues-7-18（ST-PB-05）：表世界坐标（OT 物化后实际值）
+  table_pos?: Array<{ name: string; x: number; y: number }>;
+  // fix-remote-github-issues-7-18（ST-CR-COMMENT-01/ST-CR-COLOR-01）：表 comment/color 通道
+  table_meta?: Array<{ id: string; name: string; comment: string; color: string }>;
+  // fix-remote-github-issues-7-18（ST-PB-06）：关系 color 通道
+  ref_meta?: Array<{ id: string; color: string }>;
   revision: number;
   dirty: boolean;
 }

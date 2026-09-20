@@ -834,9 +834,10 @@ html {
   align-items: center;
   min-height: 28px;
   max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* fix-remote-github-issues-7-18（issue #15，R-AB-08）：中部弹性收缩——
+     长房间名压缩 badge 而非挤出操作区；截断规则落在 strong 文本节点（见下） */
+  flex: 0 1 auto;
+  min-width: 0;
   border: 1px solid var(--cdb-color-primary-soft-hover);
   border-radius: var(--cdb-radius-md);
   background: var(--cdb-color-primary-soft);
@@ -844,6 +845,16 @@ html {
   padding: 0 var(--cdb-space-2);
   font-size: var(--cdb-font-size-sm);
   font-weight: var(--cdb-font-weight-medium);
+}
+
+/* fix-remote-github-issues-7-18（issue #15，R-AB-06）：截断三件套落在文本节点上
+   （此前写在容器 <button> 而文本在内部 <strong>，ellipsis 不生效）；
+   全文经按钮 title 悬停兜底（R-AB-07） */
+.cdb-room-badge strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cdb-collab-pills {
@@ -2403,7 +2414,10 @@ textarea {
 }
 
 .cdb-diagram-title {
-  min-width: 80px;
+  /* fix-remote-github-issues-7-18（issue #15，R-AB-08）：中部区弹性收缩——
+     min-width:0 允许 flex 压缩；输入框文本截断为原生行为，全文经 title 兜底 */
+  min-width: 0;
+  flex: 0 1 auto;
   width: min(220px, 18vw);
   height: 38px;
   border: 1px solid transparent;
@@ -2912,6 +2926,14 @@ textarea {
   color: var(--cdb-color-text-muted);
   margin-bottom: var(--cdb-space-3);
   background: var(--cdb-color-bg-subtle);
+  /* fix-remote-github-issues-7-18（issue #7）：可点击 + dragover 高亮态（core-01d §4.3） */
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.cdb-io-dropzone.is-dragover {
+  border-color: var(--cdb-color-primary);
+  background: var(--cdb-color-bg-hover, var(--cdb-color-bg-subtle));
 }
 
 .cdb-io-dropzone strong {
@@ -3254,6 +3276,8 @@ textarea {
   font-size: var(--cdb-text-xs);
   padding: 2px var(--cdb-space-2);
   border-radius: 999px;
+  /* fix-remote-github-issues-7-18（issue #15，R-AB-08）：保存态 chip 不被压缩 */
+  flex: 0 0 auto;
   background: var(--cdb-color-bg-subtle);
   border: 1px solid var(--cdb-color-border);
   white-space: nowrap;
@@ -3317,6 +3341,12 @@ textarea {
   border-radius: var(--cdb-radius-sm);
   cursor: pointer;
   font-size: var(--cdb-text-base);
+  /* fix-remote-github-issues-7-18（issue #14，R-AB-01）：图标+文字同行居中；
+     .cdb-btn--block 的 display:block 在后定义，覆盖本行不受影响 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--cdb-space-1);
 }
 
 .cdb-btn:hover { background: var(--cdb-color-bg-subtle); }
@@ -3347,8 +3377,20 @@ textarea {
 
 .cdb-btn--ghost {
   background: transparent;
-  border-color: var(--cdb-color-border);
+  /* fix-remote-github-issues-7-18（issue #14，R-AB-02）：ghost 语义对齐主原型——
+     透明边框（不常驻可见边框），hover 才显现底色 */
+  border-color: transparent;
   color: var(--cdb-color-text-muted);
+}
+
+.cdb-btn--ghost:hover {
+  background: var(--cdb-color-surface-hover, var(--cdb-color-bg-subtle));
+  color: var(--cdb-color-text);
+}
+
+.cdb-btn--ghost:focus-visible {
+  outline: 2px solid var(--cdb-color-focus-ring, var(--cdb-color-primary));
+  outline-offset: 1px;
 }
 
 .cdb-btn--ghost:hover {
@@ -3867,6 +3909,12 @@ textarea {
 
 /* fix-appbar-roomname-back-and-import-merge：AppBar 显性返回入口 */
 .cdb-back-to-rooms {
+  /* fix-remote-github-issues-7-18（issue #13/#14，R-AB-01/04）：
+     单一横排按钮（图标+「空间」同行居中）；可点击高度 ≥36px；窄屏不挤压标题区 */
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  flex: 0 0 auto;
   gap: var(--cdb-space-1);
   font-size: var(--cdb-font-size-sm);
 }

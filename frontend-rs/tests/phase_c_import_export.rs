@@ -59,6 +59,7 @@ fn fixture_minimal_reference() -> Reference {
         type_: "one_to_many".to_string(),
         on_delete: "RESTRICT".to_string(),
         on_update: "RESTRICT".to_string(),
+        color: String::new(),
     }
 }
 

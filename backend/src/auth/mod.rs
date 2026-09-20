@@ -1,7 +1,14 @@
 mod jwt;
 mod password;
 
-pub use jwt::{access_ttl_secs, sign_access_token, verify_access_token};
+pub use jwt::{
+    access_ttl_secs, set_access_ttl_secs, sign_access_token, verify_access_token,
+    DEFAULT_ACCESS_TTL_SECS, MAX_ACCESS_TTL_SECS, MIN_ACCESS_TTL_SECS,
+};
+// 显式 TTL 签发仅服务于测试（UT-S03-08 断言 exp-iat、ST-S03-02 构造过期 token），
+// 非 test 构建不导出以避免 unused 警告
+#[cfg(test)]
+pub use jwt::sign_access_token_with_ttl;
 pub use password::{hash_password, password_meets_policy, verify_password};
 
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait};

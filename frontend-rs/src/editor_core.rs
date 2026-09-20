@@ -121,6 +121,10 @@ pub mod types {
         pub type_: String,
         pub on_delete: String,
         pub on_update: String,
+        // fix-remote-github-issues-7-18（issue #12，core-01b §4.1）：关系线颜色。
+        // serde default = "" —— 老 JSON 无此字段反序列化为 ""（默认主题色），向后兼容。
+        #[serde(default)]
+        pub color: String,
     }
 
     #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -235,6 +239,96 @@ pub fn compose_field_type(base: &str, len: &str, scale: &str) -> String {
     }
 }
 
+/// fix-remote-github-issues-7-18（issue #10，core-01a §1.5）：
+/// 画布注释显示模式三态。视图偏好：localStorage key `cdb.comment-display`，
+/// 不写入 diagram 数据、不影响保存链路（R-CMT-04）。
+pub const COMMENT_DISPLAY_STORAGE_KEY: &str = "cdb.comment-display";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CommentDisplay {
+    /// 仅英文名（技术标识符）
+    Name,
+    /// 默认：英文名为主 + 灰色中文注释（有 comment 才显示注释部分）
+    NameComment,
+    /// 仅注释（无 comment 的表/字段回退显示英文名，不留空白）
+    Comment,
+}
+
+impl CommentDisplay {
+    /// 解析 localStorage 存储值；缺省/非法回落 NameComment（规格默认，用户已拍板）。
+    pub fn from_stored(stored: Option<&str>) -> Self {
+        match stored {
+            Some("name") => Self::Name,
+            Some("comment") => Self::Comment,
+            _ => Self::NameComment,
+        }
+    }
+
+    /// 存入 localStorage 的规范值。
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Name => "name",
+            Self::NameComment => "name+comment",
+            Self::Comment => "comment",
+        }
+    }
+
+    /// 三态循环：name → name+comment → comment → name。
+    pub fn next(self) -> Self {
+        match self {
+            Self::Name => Self::NameComment,
+            Self::NameComment => Self::Comment,
+            Self::Comment => Self::Name,
+        }
+    }
+
+    /// 开关按钮文案（「注释：{label}」）。
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Name => "仅英文名",
+            Self::NameComment => "英文名+注释",
+            Self::Comment => "仅注释",
+        }
+    }
+
+    /// R-CMT-01/02：主文本——`comment` 模式且 comment 非空时显示注释，否则显示英文名。
+    /// 空 comment 回退英文名（不留空白）。
+    pub fn primary<'a>(self, name: &'a str, comment: &'a str) -> &'a str {
+        if self == Self::Comment && !comment.trim().is_empty() {
+            comment
+        } else {
+            name
+        }
+    }
+
+    /// R-CMT-01/02：注释副文本——仅 `name+comment` 模式且 comment 非空时渲染；
+    /// 空 comment 不渲染、不留占位（R-CMT-03）。
+    pub fn secondary<'a>(self, comment: &'a str) -> Option<&'a str> {
+        if self == Self::NameComment && !comment.trim().is_empty() {
+            Some(comment)
+        } else {
+            None
+        }
+    }
+}
+
+/// 从 localStorage 读注释显示模式（native 测试环境无 window → 默认 NameComment）。
+pub fn initial_comment_display() -> CommentDisplay {
+    // web_sys::window() 在 non-wasm target 触发 `cannot access imported statics` panic
+    // （EditorStore::new 被大量 native UT 使用），必须 cfg 守卫
+    #[cfg(target_arch = "wasm32")]
+    {
+        let stored = web_sys::window()
+            .and_then(|w| w.local_storage().ok().flatten())
+            .and_then(|s| s.get_item(COMMENT_DISPLAY_STORAGE_KEY).ok().flatten());
+        CommentDisplay::from_stored(stored.as_deref())
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        CommentDisplay::NameComment
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct EditorStore {
     pub tables: RwSignal<Vec<Table>>,
@@ -246,6 +340,10 @@ pub struct EditorStore {
     pub database: RwSignal<Database>,
     /// feat-data-dictionary（S07）：数据字典（代码映射表），随 snapshot/load 进出 diagram JSON。
     pub dictionaries: RwSignal<Vec<DataDictionary>>,
+    /// fix-remote-github-issues-7-18（issue #10，core-01a §1.5 / R-CMT-04）：
+    /// 画布注释显示模式（视图偏好，不落库 diagram 数据）。初值读 localStorage
+    /// `cdb.comment-display`，缺省/非法回落 `NameComment`（英文名+注释）。
+    pub comment_display: RwSignal<CommentDisplay>,
 }
 
 /// 从现有 tables/fields/references/areas/notes 中解析最大数字 id，
@@ -353,6 +451,7 @@ impl EditorStore {
             dirty: create_rw_signal(false),
             database: create_rw_signal(Database::Generic),
             dictionaries: create_rw_signal(Vec::new()),
+            comment_display: create_rw_signal(initial_comment_display()),
         }
     }
 
@@ -430,6 +529,13 @@ pub enum Command {
         /// 变更前全部字段绑定 (table_id, field_id, dict_code)（含空串，保证全量可恢复）
         before_bindings: Vec<(String, String, String)>,
         after_bindings: Vec<(String, String, String)>,
+    },
+    /// fix-remote-github-issues-7-18（issue #12，core-01a §1.6）：表颜色前后快照，
+    /// undo/redo 单元。execute/apply 置 after，revert 回 before。
+    SetTableColor {
+        table_id: String,
+        before: String,
+        after: String,
     },
 }
 
@@ -725,6 +831,15 @@ impl CommandStack {
             } => {
                 apply_dict_state(store, after, after_bindings);
             }
+            Command::SetTableColor { table_id, after, .. } => {
+                let mut tables = store.tables.get();
+                let table = tables
+                    .iter_mut()
+                    .find(|t| t.id == *table_id)
+                    .ok_or_else(|| CoreError::new(format!("table '{}' not found", table_id)))?;
+                table.color = after.clone();
+                store.tables.set(tables);
+            }
         }
         store.dirty.set(true);
         stack.undo.push(cmd);
@@ -789,6 +904,15 @@ impl CommandStack {
             } => {
                 apply_dict_state(store, before, before_bindings);
             }
+            Command::SetTableColor { table_id, before, .. } => {
+                let mut tables = store.tables.get();
+                let table = tables
+                    .iter_mut()
+                    .find(|t| t.id == *table_id)
+                    .ok_or_else(|| CoreError::new(format!("table '{}' not found", table_id)))?;
+                table.color = before.clone();
+                store.tables.set(tables);
+            }
         }
         store.dirty.set(true);
         Ok(())
@@ -840,6 +964,15 @@ impl CommandStack {
                 ..
             } => {
                 apply_dict_state(store, after, after_bindings);
+            }
+            Command::SetTableColor { table_id, after, .. } => {
+                let mut tables = store.tables.get();
+                let table = tables
+                    .iter_mut()
+                    .find(|t| t.id == *table_id)
+                    .ok_or_else(|| CoreError::new(format!("table '{}' not found", table_id)))?;
+                table.color = after.clone();
+                store.tables.set(tables);
             }
         }
         store.dirty.set(true);
@@ -1206,6 +1339,7 @@ mod tests {
             type_: "1:N".into(),
             on_delete: "".into(),
             on_update: "".into(),
+            color: String::new(),
         });
         stack.undo.push(cmd.clone());
         stack.undo();
@@ -1292,6 +1426,7 @@ mod tests {
             type_: "one_to_many".into(),
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
+            color: String::new(),
         };
         CommandStack::apply(&store, &mut stack, Command::AddReference(reference.clone())).unwrap();
         assert_eq!(store.references.get().len(), 1, "UT-KB-03: 关系写入");

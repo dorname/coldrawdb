@@ -10,6 +10,9 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
     pub cardinality: Option<String>,
+    // fix-remote-github-issues-7-18（issue #12，core-01b §4.1）：关系线颜色
+    // （迁移 0009_reference_color；'' = 默认主题色）
+    pub color: String,
     #[sea_orm(column_name = "deleteConstraint")]
     pub delete_constraint: Option<String>,
     #[sea_orm(column_name = "endFieldId")]

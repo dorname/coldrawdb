@@ -1594,6 +1594,7 @@ mod tests {
             type_: "OneToMany".into(),
             on_delete: "Cascade".into(),
             on_update: "NoAction".into(),
+            color: String::new(),
         }
     }
 

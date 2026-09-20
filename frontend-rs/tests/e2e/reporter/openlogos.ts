@@ -31,6 +31,14 @@ const PREFIX_MAP: Record<string, string> = {
   "s04-rooms.spec.ts": "ST-FE-S04-",
   "s05-collab.spec.ts": "ST-FE-S05-",
   "v2-regression.spec.ts": "ST-FE-V2-",
+  // fix-remote-github-issues-7-18（issue #7/#8）：ST-PC-09 拖入 .ddl → 摘要 → 导入画布
+  "pc-ddl-drop.spec.ts": "ST-PC-",
+  // fix-remote-github-issues-7-18（issue #9/#11）：ST-PB-05 连线换侧 / ST-RP-04 分隔条清晰
+  "canvas-sides-resize.spec.ts": "ST-",
+  // fix-remote-github-issues-7-18（issue #13/#14/#15）：ST-PE-07 长房间名 AppBar 布局
+  "appbar-truncate.spec.ts": "ST-",
+  // fix-remote-github-issues-7-18（issue #10/#12）：ST-CR-COMMENT-01 / ST-CR-COLOR-01 / ST-PB-06
+  "cr-comment-color.spec.ts": "ST-",
 };
 
 function testId(test: TestCase): string | null {
@@ -38,8 +46,9 @@ function testId(test: TestCase): string | null {
   const prefix = PREFIX_MAP[file];
   if (!prefix) return null;
 
-  // test.title 形如 "ST-FE-S03-01: register → 跳转 home"
-  const m = test.title.match(/^(ST-FE-[A-Z0-9]+-\d+)/);
+  // test.title 形如 "ST-FE-S03-01: register → 跳转 home" 或 "ST-PC-09: 拖入 .ddl → ..."
+  // 多段字母前缀（ST-CR-COMMENT-01 / ST-CR-COLOR-01）：字母段可重复，数字段收尾
+  const m = test.title.match(/^(ST-(?:FE-)?[A-Z0-9]+(?:-[A-Z0-9]+)*-\d+)/);
   return m ? m[1] : null;
 }
 

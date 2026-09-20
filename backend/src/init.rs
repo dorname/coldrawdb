@@ -126,6 +126,9 @@ pub struct Config {
     pub database: DatabaseConfig,
     pub server: ServerConfig,
     pub options: OptionsConfig,
+    /// issue #16（批次 E）：[auth] 段整体缺省时回退默认（access_ttl_secs = 3600）
+    #[serde(default)]
+    pub auth: AuthConfig,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -144,6 +147,61 @@ pub struct ServerConfig {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct OptionsConfig {
     pub init_db: bool,
+}
+
+/// issue #16（fix-remote-github-issues-7-18 批次 E）：[auth] 配置段。
+/// access_ttl_secs 缺省 3600 秒；合法区间 300～86400 秒（auth.yaml「TTL 配置化不变量」）。
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct AuthConfig {
+    #[serde(default = "default_access_ttl_secs")]
+    pub access_ttl_secs: i64,
+}
+
+impl Default for AuthConfig {
+    fn default() -> Self {
+        Self {
+            access_ttl_secs: default_access_ttl_secs(),
+        }
+    }
+}
+
+fn default_access_ttl_secs() -> i64 {
+    crate::auth::DEFAULT_ACCESS_TTL_SECS
+}
+
+/// 校验 access_ttl_secs 合法区间（300～86400 秒）。
+/// 非法值返回错误文案（启动时报错用），绝不静默回退。
+pub fn validate_access_ttl_secs(ttl_secs: i64) -> Result<i64, String> {
+    let (min, max) = (
+        crate::auth::MIN_ACCESS_TTL_SECS,
+        crate::auth::MAX_ACCESS_TTL_SECS,
+    );
+    if (min..=max).contains(&ttl_secs) {
+        Ok(ttl_secs)
+    } else {
+        Err(format!(
+            "invalid [auth] access_ttl_secs={ttl_secs}: 合法区间为 {min}~{max} 秒"
+        ))
+    }
+}
+
+/// `COLDRAWDB_ACCESS_TTL_SECS` 环境变量覆盖（显式参数版本，便于单测，
+/// 与 apply_env_overrides_from 同风格，避免 set_var 的跨测试竞态）。
+/// Ok 时写入 `config.auth.access_ttl_secs`；Err 时 config 保持不变（不静默回退）。
+pub fn apply_access_ttl_override_from(
+    config: &mut Config,
+    access_ttl: Option<&str>,
+) -> Result<(), String> {
+    let Some(raw) = access_ttl else {
+        return Ok(());
+    };
+    let ttl = raw
+        .trim()
+        .parse::<i64>()
+        .map_err(|_| format!("invalid COLDRAWDB_ACCESS_TTL_SECS={raw:?}: 无法解析为整数"))?;
+    validate_access_ttl_secs(ttl)?;
+    config.auth.access_ttl_secs = ttl;
+    Ok(())
 }
 
 /// 读取配置文件config.toml
@@ -177,14 +235,26 @@ pub fn db_path_from_url(url: &str) -> Option<String> {
     }
 }
 
-/// 应用 `COLDRAWDB_BIND_ADDR` / `COLDRAWDB_DB_URL` 环境变量覆盖（仅修改内存中的 Config 副本，
-/// 不回写 config.toml）。非法值静默忽略并保留文件配置。
+/// 应用 `COLDRAWDB_BIND_ADDR` / `COLDRAWDB_DB_URL` / `COLDRAWDB_ACCESS_TTL_SECS`
+/// 环境变量覆盖（仅修改内存中的 Config 副本，不回写 config.toml）。
+/// bind_addr / db_url 非法值静默忽略并保留文件配置；
+/// issue #16：access_ttl_secs 非法值（无法解析 / 越界 300~86400）启动报错，不静默回退。
 pub fn apply_env_overrides(config: &mut Config) {
     apply_env_overrides_from(
         config,
         std::env::var("COLDRAWDB_BIND_ADDR").ok().as_deref(),
         std::env::var("COLDRAWDB_DB_URL").ok().as_deref(),
     );
+    if let Err(msg) = apply_access_ttl_override_from(
+        config,
+        std::env::var("COLDRAWDB_ACCESS_TTL_SECS").ok().as_deref(),
+    ) {
+        panic!("{msg}");
+    }
+    // TOML 文件中的值（env 未覆盖时）同样校验，非法即启动报错
+    if let Err(msg) = validate_access_ttl_secs(config.auth.access_ttl_secs) {
+        panic!("{msg}");
+    }
 }
 
 /// 显式参数版本（便于单测，避免 set_var 的跨测试竞态）。
@@ -214,6 +284,9 @@ pub async fn init(mode: bool) -> Result<Option<DatabaseConnection>, DrawDBError>
     // feat-docker-compose-deploy：env 覆盖只作用于运行时副本，回写 config.toml 时用原始值
     let file_config = config.clone();
     apply_env_overrides(&mut config);
+    // issue #16（批次 E）：将生效的 access TTL 下发到 JWT 签发层，
+    // 保证 login/refresh 的 expiresIn 与 JWT exp-iat 等于配置值
+    crate::auth::set_access_ttl_secs(config.auth.access_ttl_secs);
     let server_config = config.server.clone();
     SERVER_CONFIG
         .set(RwLock::new(server_config))
@@ -305,6 +378,8 @@ mod test {
                 host: "127.0.0.1".to_string(),
             },
             options: OptionsConfig { init_db: false },
+            // issue #16：Config 新增 [auth] 段，字面构造需同步带默认值
+            auth: AuthConfig::default(),
         };
         apply_env_overrides_from(
             &mut config,

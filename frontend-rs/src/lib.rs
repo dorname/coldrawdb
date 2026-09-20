@@ -258,8 +258,31 @@ fn expose_test_hooks(store: &EditorStore) {
         let tables = store_for_state
             .tables
             .with_untracked(|ts| ts.iter().map(|t| t.name.clone()).collect::<Vec<_>>());
+        // fix-remote-github-issues-7-18（ST-PB-05）：表世界坐标通道——房间 OT 物化/防重叠
+        // 错位后坐标不可预设，e2e 按实际坐标驱动拖拽
+        let table_pos = store_for_state.tables.with_untracked(|ts| {
+            ts.iter()
+                .map(|t| serde_json::json!({"name": t.name, "x": t.x, "y": t.y}))
+                .collect::<Vec<_>>()
+        });
+        // fix-remote-github-issues-7-18（ST-CR-COMMENT-01 / ST-CR-COLOR-01 / ST-PB-06）：
+        // 表 comment/color 与关系 color 断言通道——画布自绘像素无法 DOM 断言，
+        // 数据层事实经 debug hook 暴露（含刷新后的持久化验证）
+        let table_meta = store_for_state.tables.with_untracked(|ts| {
+            ts.iter()
+                .map(|t| serde_json::json!({"id": t.id, "name": t.name, "comment": t.comment, "color": t.color}))
+                .collect::<Vec<_>>()
+        });
+        let ref_meta = store_for_state.references.with_untracked(|rs| {
+            rs.iter()
+                .map(|r| serde_json::json!({"id": r.id, "color": r.color}))
+                .collect::<Vec<_>>()
+        });
         serde_json::json!({
             "tables": tables,
+            "table_pos": table_pos,
+            "table_meta": table_meta,
+            "ref_meta": ref_meta,
             "revision": store_for_state.revision.get_untracked(),
             "dirty": store_for_state.dirty.get_untracked(),
         })

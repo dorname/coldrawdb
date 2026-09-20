@@ -581,6 +581,8 @@ pub fn build_reference(
         type_: cardinality.to_string(),
         on_delete: "RESTRICT".into(),
         on_update: "RESTRICT".into(),
+        // fix-remote-github-issues-7-18（issue #12）：新建关系默认无色（主题色）
+        color: String::new(),
     }
 }
 
@@ -780,6 +782,27 @@ pub fn count_dbml_tables(text: &str) -> usize {
         .count()
 }
 
+// ─── fix-remote-github-issues-7-18（issue #7/#8，core-01d §4.3）：IO 文件拖放 ───
+
+/// 导入文件大小上限（KB；core-01d §4.3：V1 硬编码 5120 KB，与 bridge 默认 maxImportSizeKb 一致）
+pub const IMPORT_MAX_SIZE_KB: usize = 5120;
+
+/// 扩展名白名单 → ImportFormat Tab 映射（core-01d §4.3，UT-PC-32）。
+/// `.sql`/`.ddl` → Sql（.ddl 视为 SQL DDL 文本，同路径解析）；`.dbml` → Dbml；`.json` → Json。
+/// 非白名单返回 None（inline 提示「仅支持 .sql / .ddl / .dbml / .json」，不写内容）。
+pub fn import_format_for_filename(name: &str) -> Option<ImportFormat> {
+    let ext = name.rsplit('.').next()?.to_ascii_lowercase();
+    match ext.as_str() {
+        "sql" | "ddl" => Some(ImportFormat::Sql),
+        "dbml" => Some(ImportFormat::Dbml),
+        "json" => Some(ImportFormat::Json),
+        _ => None,
+    }
+}
+
+/// dropzone 的 accept 属性值（UT-PC-33 断言锚点；与 import_format_for_filename 白名单一一对应）
+pub const IMPORT_ACCEPT_EXTS: &str = ".sql,.ddl,.dbml,.json";
+
 /// 导入解析摘要
 pub fn import_parse_summary(format: ImportFormat, content: &str) -> Result<String, String> {
     match format {
@@ -863,6 +886,8 @@ pub fn parse_sql_import_tables(content: &str) -> Result<(Vec<Table>, Vec<Referen
             type_: type_.to_string(),
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
+            // fix-remote-github-issues-7-18（core-01b §4.1）：SQL/DBML 导入降级 color=''
+            color: String::new(),
         });
     }
     Ok((tables, references))
@@ -1025,7 +1050,10 @@ fn parse_create_table_stmt(
         return None;
     }
     // 表体：第一个 `(` 到其配对的 `)`
-    let (body, _) = extract_paren_content(stmt, stmt.find('(')?)?;
+    let (body, body_end) = extract_paren_content(stmt, stmt.find('(')?)?;
+    // fix-remote-github-issues-7-18（ST-PC-09）：MySQL 行内表选项 `) COMMENT='x'` 回填表 comment
+    // （导出侧 export_sql 早已产出该形态，导入侧此前丢弃——round-trip 缺口）
+    let table_comment = parse_table_option_comment(&stmt[body_end..]);
     // 顶层逗号切分（括号内逗号不切）
     let mut parts: Vec<String> = Vec::new();
     let mut depth = 0i32;
@@ -1110,12 +1138,24 @@ fn parse_create_table_stmt(
         x: 100.0 + (table_index as f64) * 40.0,
         y: 100.0 + (table_index as f64) * 30.0,
         color: String::new(),
-        comment: String::new(),
+        comment: table_comment,
         fields,
         indices: vec![],
         width: None,
         min_height: None,
     })
+}
+
+/// 解析 `)` 之后表选项串中的 `COMMENT='x'` / `COMMENT 'x'`（MySQL 行内表注释）。
+/// 无 COMMENT 选项 → 空串；字面量支持 `''` 转义（复用 parse_sql_string_literal）。
+fn parse_table_option_comment(tail: &str) -> String {
+    let up = tail.to_uppercase();
+    let Some(pos) = up.find("COMMENT") else {
+        return String::new();
+    };
+    let after = tail[pos + "COMMENT".len()..].trim_start();
+    let after = after.strip_prefix('=').unwrap_or(after).trim_start();
+    parse_sql_string_literal(after).unwrap_or_default()
 }
 
 /// 解析单列定义行（如 `` `name` VARCHAR(32) NOT NULL UNIQUE DEFAULT 'x' COMMENT 'y' ``）。
@@ -1446,6 +1486,10 @@ pub fn parse_json_import_tables(content: &str) -> Result<(Vec<Table>, Vec<Refere
         on_delete: String,
         #[serde(default)]
         on_update: String,
+        // fix-remote-github-issues-7-18（core-01b §4.1）：JSON 导入回填关系线颜色；
+        // 存量 JSON 无 color → 默认 ""（主题色），向后兼容
+        #[serde(default)]
+        color: String,
     }
     #[derive(serde::Deserialize, Default)]
     struct JsonDoc {
@@ -1511,6 +1555,7 @@ pub fn parse_json_import_tables(content: &str) -> Result<(Vec<Table>, Vec<Refere
             type_: r.type_,
             on_delete: r.on_delete,
             on_update: r.on_update,
+            color: r.color,
         })
         .collect();
     Ok((tables, references))
@@ -2430,7 +2475,7 @@ pub fn Toolbar(
 
 /// 画布底部浮动缩放条（仅缩放，撤销/重做保留在工具栏）
 #[component]
-pub fn FloatingControls(transform: RwSignal<Transform>) -> impl IntoView {
+pub fn FloatingControls(transform: RwSignal<Transform>, store: EditorStore) -> impl IntoView {
     view! {
         <div class="cdb-floating-controls" data-testid="floating-controls">
             <button
@@ -2451,6 +2496,28 @@ pub fn FloatingControls(transform: RwSignal<Transform>) -> impl IntoView {
                 on:click=move |_| zoom_in(transform)
             >
                 <IconBox size="sm"><IconAdd /></IconBox>
+            </button>
+            // fix-remote-github-issues-7-18（issue #10，core-01a §1.5 / R-CMT-04）：
+            // 画布注释显示三态开关（视图偏好：localStorage cdb.comment-display，
+            // 不落库 diagram 数据、不影响保存链路；切换即重绘）
+            <button
+                class="cdb-btn cdb-btn--ghost cdb-btn--small"
+                data-testid="canvas-comment-display"
+                title="切换画布注释显示（仅英文名 / 英文名+注释 / 仅注释）"
+                on:click=move |_| {
+                    let next = store.comment_display.get().next();
+                    store.comment_display.set(next);
+                    if let Some(local) = web_sys::window()
+                        .and_then(|w| w.local_storage().ok().flatten())
+                    {
+                        let _ = local.set_item(
+                            crate::editor_core::COMMENT_DISPLAY_STORAGE_KEY,
+                            next.as_str(),
+                        );
+                    }
+                }
+            >
+                {move || format!("注释：{}", store.comment_display.get().label())}
             </button>
         </div>
     }
@@ -5444,6 +5511,39 @@ pub fn ImportDrawer(
     // (ddl, table_count)；连接成功且 tables>0 时写入；连接信息不持久化
     let db_result: RwSignal<Option<usize>> = create_rw_signal(None);
     let connecting = create_rw_signal(false);
+    // fix-remote-github-issues-7-18（issue #7/#8，core-01d §4.3）：dropzone 拖放/点击选择文件。
+    // 信号与 node_ref 必须在组件顶层创建（渲染闭包重跑时状态不丢失）。
+    let io_drag_over = create_rw_signal(false);
+    let io_file_input_ref = create_node_ref::<html::Input>();
+    // 读取所选文件：白名单校验 → 大小上限 → File.text → 写 content + 切 Tab（drop 与 file input 共用）
+    let read_import_file: Rc<dyn Fn(web_sys::File)> = {
+        Rc::new(move |file: web_sys::File| {
+            let name = file.name();
+            let Some(fmt) = import_format_for_filename(&name) else {
+                inline_error.set(Some(format!(
+                    "仅支持 .sql / .ddl / .dbml / .json（收到 {name}）"
+                )));
+                return;
+            };
+            if file.size() as usize > IMPORT_MAX_SIZE_KB * 1024 {
+                inline_error.set(Some(format!(
+                    "文件超过大小上限 {} KB",
+                    IMPORT_MAX_SIZE_KB
+                )));
+                return;
+            }
+            inline_error.set(None);
+            spawn_local(async move {
+                match gloo::file::futures::read_as_text(&file.into()).await {
+                    Ok(text) => {
+                        format.set(fmt);
+                        content.set(text);
+                    }
+                    Err(_) => inline_error.set(Some(format!("读取文件失败（{name}）"))),
+                }
+            });
+        })
+    };
 
     let refresh_logs = {
         let client = client.clone();
@@ -5658,11 +5758,74 @@ pub fn ImportDrawer(
                         } else {
                             view! { <></> }.into_view()
                         }}
-                        <div class="cdb-io-dropzone" data-testid="io-dropzone">
+                        // fix-remote-github-issues-7-18（issue #7/#8，core-01d §4.3 交互合同）：
+                        // dropzone 绑定 drag 事件 + 点击触发隐藏 file input；非白名单 inline 拒绝。
+                        // 文件读取走 gloo-file futures → spawn_local，与既有异步模式一致。
+                        <div
+                            class="cdb-io-dropzone"
+                            class:is-dragover=move || io_drag_over.get()
+                            data-testid="io-dropzone"
+                            on:dragenter=move |ev| {
+                                ev.prevent_default();
+                                io_drag_over.set(true);
+                            }
+                            on:dragover=move |ev| {
+                                ev.prevent_default();
+                                io_drag_over.set(true);
+                            }
+                            on:dragleave=move |ev| {
+                                ev.prevent_default();
+                                io_drag_over.set(false);
+                            }
+                            on:drop={
+                                let read_import_file = read_import_file.clone();
+                                move |ev: web_sys::DragEvent| {
+                                    ev.prevent_default();
+                                    io_drag_over.set(false);
+                                    if let Some(file) = ev
+                                        .data_transfer()
+                                        .and_then(|dt| dt.files())
+                                        .and_then(|fl| fl.get(0))
+                                    {
+                                        read_import_file(file);
+                                    }
+                                }
+                            }
+                            on:click=move |_| {
+                                if let Some(input) = io_file_input_ref.get() {
+                                    input.click();
+                                }
+                            }
+                        >
                             "拖放 "
-                            <strong>".sql / .dbml / .json"</strong>
-                            " 或粘贴下方"
+                            <strong>".sql / .ddl / .dbml / .json"</strong>
+                            " 或点击选择文件 / 粘贴下方"
                         </div>
+                        <input
+                            type="file"
+                            class="cdb-io-file-input"
+                            data-testid="io-file-input"
+                            accept=IMPORT_ACCEPT_EXTS
+                            style="display:none"
+                            node_ref=io_file_input_ref
+                            on:change={
+                                let read_import_file = read_import_file.clone();
+                                move |ev| {
+                                    use wasm_bindgen::JsCast;
+                                    let Some(input) = ev
+                                        .target()
+                                        .and_then(|t| t.dyn_into::<web_sys::HtmlInputElement>().ok())
+                                    else {
+                                        return;
+                                    };
+                                    if let Some(file) = input.files().and_then(|fl| fl.get(0)) {
+                                        read_import_file(file);
+                                    }
+                                    // 允许连续选择同一文件再次触发 change
+                                    input.set_value("");
+                                }
+                            }
+                        />
                         <textarea
                             class="cdb-io-textarea"
                             data-testid="import-textarea"
@@ -6143,6 +6306,25 @@ pub fn EmptyGuide(
     }
 }
 
+/// fix-remote-github-issues-7-18（issue #12，core-01a §1.6）：表颜色预设色板
+/// （与主原型强调色选项对齐；"" = 默认 palette.header_tint / table_border）
+pub const TABLE_COLOR_PRESETS: &[(&str, &str)] = &[
+    ("", "默认"),
+    ("rgba(79,209,197,.18)", "青绿色"),
+    ("rgba(170,140,255,.17)", "紫罗兰"),
+    ("rgba(242,184,75,.18)", "琥珀色"),
+];
+
+/// fix-remote-github-issues-7-18（issue #12，core-01b §4.1）：关系线颜色预设色板
+/// （"" = 默认 palette.relation 主题色）
+pub const RELATION_COLOR_PRESETS: &[(&str, &str)] = &[
+    ("", "默认（主题色）"),
+    ("#4fd1c5", "青绿色"),
+    ("#aa8cff", "紫罗兰"),
+    ("#f2b84b", "琥珀色"),
+    ("#f28b8b", "珊瑚色"),
+];
+
 /// Phase A：Inspector 抽屉
 /// 检查器 — 严格对齐主原型 renderInspector：
 /// header「检查器」+ close；body = 数据表 section（名称/强调色）+ 字段卡列表（名称/类型/约束 chips/删除）
@@ -6165,6 +6347,9 @@ pub fn Inspector(
     // 表 / 字段注释 blur 落账通路（写 store → dirty → schedule_save，仿 on_rename_table）
     on_set_table_comment: Rc<dyn Fn(String, String)>,
     on_set_field_comment: Rc<dyn Fn(String, String, String)>,
+    // fix-remote-github-issues-7-18（issue #12，core-01a §1.6）：表颜色 change 落账
+    // （Command::SetTableColor 进 UndoRedoContext + dirty + schedule_save）
+    on_set_table_color: Rc<dyn Fn(String, String)>,
     on_delete_field: Rc<dyn Fn(String, String)>,
     on_delete_table: Rc<dyn Fn(String)>,
     on_update_ref_field: Rc<dyn Fn(String, &str, String)>,
@@ -6469,6 +6654,10 @@ pub fn Inspector(
                             let field_count = fields.len();
                             let on_rename = on_rename_table.clone();
                             let on_del_table = on_delete_table.clone();
+                            // fix-remote-github-issues-7-18（issue #12，core-01a §1.6）：表颜色
+                            let on_set_color = on_set_table_color.clone();
+                            let table_id_for_color = table_id.clone();
+                            let table_color = t.color.clone();
                             let on_set_comment = on_set_table_comment.clone();
                             let table_id_for_comment = table_id.clone();
                             let table_comment = t.comment.clone();
@@ -6508,6 +6697,27 @@ pub fn Inspector(
                                                     }
                                                 }
                                             />
+                                        </div>
+                                        // fix-remote-github-issues-7-18（issue #12，core-01a §1.6）：
+                                        // 表颜色选择器——预设色板（与主原型强调色对齐）+「默认」清空回 ''；
+                                        // change 落账走 Command::SetTableColor（进 UndoRedoContext）
+                                        <div class="cdb-form-group">
+                                            <label>"颜色"</label>
+                                            <select
+                                                class="cdb-form-select"
+                                                data-testid="inspector-table-color"
+                                                disabled=ro
+                                                on:change=move |ev| {
+                                                    if !ro {
+                                                        on_set_color(table_id_for_color.clone(), event_target_value(&ev));
+                                                    }
+                                                }
+                                            >
+                                                <For each=|| TABLE_COLOR_PRESETS.to_vec() key=|c| c.0.to_string() children=move |(value, label): (&'static str, &'static str)| {
+                                                    let sel = table_color == value;
+                                                    view! { <option value=value selected=sel>{label}</option> }
+                                                } />
+                                            </select>
                                         </div>
                                     </section>
                                     <section class="cdb-panel-section">
@@ -6785,9 +6995,12 @@ pub fn Inspector(
                             let rid_on_update = rid.clone();
                             let rid_flip = rid.clone();
                             let rid_delete = rid.clone();
+                            let rid_color = rid.clone();
                             let on_upd_ref_type = on_upd_ref.clone();
                             let on_upd_ref_del = on_upd_ref.clone();
                             let on_upd_ref_upd = on_upd_ref.clone();
+                            let on_upd_ref_color = on_upd_ref.clone();
+                            let ref_color = r.color.clone();
                             let card_for_options = card.clone();
                             view! {
                                 <div data-testid="inspector-reference-form">
@@ -6835,6 +7048,24 @@ pub fn Inspector(
                                             <option value="CASCADE" selected=on_upd == "CASCADE">"CASCADE"</option>
                                             <option value="SET NULL" selected=on_upd == "SET NULL">"SET NULL"</option>
                                             <option value="NO ACTION" selected=on_upd == "NO ACTION">"NO ACTION"</option>
+                                        </select>
+                                    </div>
+                                    // fix-remote-github-issues-7-18（issue #12，core-01b §4.1）：
+                                    // 关系线颜色——预设色板 + 「默认（主题色）」清除回 ''；
+                                    // 复用 on_update_ref_field 落账链路（store → dirty → schedule_save）
+                                    <div class="cdb-form-group">
+                                        <label>"连线颜色"</label>
+                                        <select
+                                            class="cdb-form-select"
+                                            data-testid="inspector-relation-color"
+                                            on:change=move |ev| {
+                                                on_upd_ref_color(rid_color.clone(), "color", event_target_value(&ev));
+                                            }
+                                        >
+                                            <For each=|| RELATION_COLOR_PRESETS.to_vec() key=|c| c.0.to_string() children=move |(value, label): (&'static str, &'static str)| {
+                                                let sel = ref_color == value;
+                                                view! { <option value=value selected=sel>{label}</option> }
+                                            } />
                                         </select>
                                     </div>
                                     <button
@@ -10724,6 +10955,7 @@ pub fn AppRoot(
     let client_for_rename_field = client.clone();
     let client_for_set_table_comment = client.clone();
     let client_for_set_field_comment = client.clone();
+    let client_for_set_table_color = client.clone();
     let client_for_delete_field = client.clone();
     let client_for_delete_table = client.clone();
 
@@ -11435,6 +11667,54 @@ pub fn AppRoot(
         })
     };
 
+    // fix-remote-github-issues-7-18（issue #12，core-01a §1.6）：表颜色落账——
+    // Command::SetTableColor 走 CommandStack::apply（before/after 快照进 UndoRedoContext），
+    // 保存链路与其他表属性一致（dirty + schedule_save）。
+    let on_set_table_color = {
+        let store = store.clone();
+        let debouncer = debouncer.clone();
+        Rc::new(move |table_id: String, color: String| {
+            if editor_is_read_only(share_mode, current_room) {
+                return;
+            }
+            let Some(before) = store
+                .tables
+                .with(|ts| ts.iter().find(|t| t.id == table_id).map(|t| t.color.clone()))
+            else {
+                return;
+            };
+            if before == color {
+                return;
+            }
+            let cmd = crate::editor_core::Command::SetTableColor {
+                table_id,
+                before,
+                after: color,
+            };
+            let stack_rc = command_stack.get();
+            let mut stack = stack_rc.borrow_mut();
+            if crate::editor_core::CommandStack::apply(&store, &mut stack, cmd).is_err() {
+                return;
+            }
+            drop(stack);
+            schedule_save(
+                client_for_set_table_color.clone(),
+                store.clone(),
+                current_diagram_id.clone(),
+                current_title.clone(),
+                debouncer.clone(),
+                conflict.clone(),
+                error.clone(),
+                is_saving.clone(),
+                save_offline.clone(),
+                collab_state,
+                activity_feed,
+                current_room.clone(),
+                auth_session.clone(),
+            );
+        })
+    };
+
     // fix-canvas-zoom-invite-comment-resize（core-01a §2.3）：Inspector 字段卡注释
     // blur 落账，通路与 on_rename_field / ListView commit_comment 一致。
     let on_set_field_comment = {
@@ -11568,6 +11848,8 @@ pub fn AppRoot(
                     "type_" => r.type_ = value,
                     "on_delete" => r.on_delete = value,
                     "on_update" => r.on_update = value,
+                    // fix-remote-github-issues-7-18（issue #12，core-01b §4.1）：关系线颜色
+                    "color" => r.color = value,
                     _ => {}
                 }
             }
@@ -12368,7 +12650,7 @@ pub fn AppRoot(
                         theme_mode=theme_mode
                     />
                     <ActivityFeed items=activity_feed visible=activity_open />
-                    <FloatingControls transform=canvas_transform />
+                    <FloatingControls transform=canvas_transform store=store.clone() />
                 </div>
                 <Splitter kind=SplitterKind::Inspector />
                 <Inspector
@@ -12385,6 +12667,7 @@ pub fn AppRoot(
                     on_rename_field=on_rename_field.clone()
                     on_set_table_comment=on_set_table_comment.clone()
                     on_set_field_comment=on_set_field_comment.clone()
+                    on_set_table_color=on_set_table_color.clone()
                     on_delete_field=on_delete_field.clone()
                     on_delete_table=on_delete_table.clone()
                     on_update_ref_field=on_update_ref_field.clone()
@@ -14367,6 +14650,7 @@ mod tests {
                 type_: "one_to_many".into(),
                 on_delete: String::new(),
                 on_update: String::new(),
+                color: String::new(),
             },
             Reference {
                 id: "r2".into(),
@@ -14378,6 +14662,7 @@ mod tests {
                 type_: "many_to_one".into(),
                 on_delete: String::new(),
                 on_update: String::new(),
+                color: String::new(),
             },
         ];
         let result = filter_references_by_query(&refs, "user");
@@ -14610,6 +14895,7 @@ mod tests {
             type_: "one_to_many".into(),
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
+            color: String::new(),
         };
         store.references.set(vec![existing]);
         // 现在连 f1 → f2：f2 已参与 1 条（s=1, e=2）→ many_to_one
@@ -14634,6 +14920,7 @@ mod tests {
             type_: "one_to_many".into(),
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
+            color: String::new(),
         };
         store.references.set(vec![existing]);
         // 现在连 f1 → f2：f1 已参与 1 条（s=2, e=1）→ one_to_many
@@ -14657,6 +14944,7 @@ mod tests {
             type_: "one_to_many".into(),
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
+            color: String::new(),
         };
         let existing2 = Reference {
             id: "r2".into(),
@@ -14668,6 +14956,7 @@ mod tests {
             type_: "one_to_many".into(),
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
+            color: String::new(),
         };
         store.references.set(vec![existing1, existing2]);
         // 现在连 f1 → f2：f1 已参与 1 条（s=2）、f2 已参与 1 条（e=2）→ many_to_many
@@ -14691,6 +14980,7 @@ mod tests {
             type_: "one_to_many".into(),
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
+            color: String::new(),
         };
         let existing2 = Reference {
             id: "r2".into(),
@@ -14702,6 +14992,7 @@ mod tests {
             type_: "one_to_many".into(),
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
+            color: String::new(),
         };
         store.references.set(vec![existing1, existing2]);
         // 现在连 f1 → f2：f1 已参与 2 条（s=3）、f2 已参与 0 条（e=1）→ one_to_many
@@ -14745,6 +15036,7 @@ mod tests {
             type_: "one_to_many".into(),
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
+            color: String::new(),
         };
         store.references.set(vec![existing]);
         // 现在连 f1 → f2：f1 已参与 1 条（s=2）、f2 已参与 0 条（e=1）→ one_to_many
@@ -14758,6 +15050,7 @@ mod tests {
             type_: "one_to_many".into(),
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
+            color: String::new(),
         };
         // 翻转前：s=2, e=1 → one_to_many
         let flipped = flip_reference_endpoints(&r, &store);
@@ -15077,6 +15370,7 @@ mod tests {
             type_: "one_to_many".into(),
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
+            color: String::new(),
         };
         store.references.set(vec![existing]);
         // 现在连 f1 → f2：f1 已参与 1 条（s=2）、f2 已参与 0 条（e=1）→ one_to_many
@@ -16275,6 +16569,7 @@ mod tests {
             type_: "one_to_many".into(),
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
+            color: String::new(),
         }];
         let tables = vec![users, posts];
 
@@ -16338,6 +16633,7 @@ mod tests {
             type_: "one_to_many".into(),
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
+            color: String::new(),
         }];
         let out = export_diagram_dbml(&tables, &refs);
         assert!(out.contains("Table users"), "UT-PC-03: 应含 Table 块");
@@ -16966,6 +17262,7 @@ CREATE TABLE posts (id UUID PRIMARY KEY, user_id UUID REFERENCES users(id));",
             type_: "one_to_many".into(),
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
+            color: String::new(),
         };
         let (_, merged_r2) =
             merge_import_into_store(&[], &[existing_ref], &[], &new_refs);
@@ -17064,16 +17361,22 @@ CREATE TABLE posts (id UUID PRIMARY KEY, user_id UUID NOT NULL, FOREIGN KEY (use
             "UT-S04-UI-12: diagram-title 应绑定 title 属性"
         );
         // room-badge 名称缩略 CSS 规则
+        // fix-remote-github-issues-7-18（issue #14）：截断三件套下沉到 `.cdb-room-badge strong`
+        // （flex 容器截断必须落在文本节点上），容器保留 max-width 限宽
         let css_idx = css
-            .find(".cdb-room-badge {")
-            .expect("UT-S04-UI-12: room-badge CSS 规则存在");
+            .find(".cdb-room-badge strong {")
+            .expect("UT-S04-UI-12: room-badge strong CSS 规则存在");
         let css_block = &css[css_idx..css_idx + 400.min(css.len() - css_idx)];
         assert!(
             css_block.contains("text-overflow: ellipsis"),
-            "UT-S04-UI-12: room-badge CSS 应含 ellipsis 缩略"
+            "UT-S04-UI-12: room-badge strong CSS 应含 ellipsis 缩略"
         );
+        let badge_css_idx = css
+            .find(".cdb-room-badge {")
+            .expect("UT-S04-UI-12: room-badge CSS 规则存在");
+        let badge_css_block = &css[badge_css_idx..badge_css_idx + 400.min(css.len() - badge_css_idx)];
         assert!(
-            css_block.contains("max-width"),
+            badge_css_block.contains("max-width"),
             "UT-S04-UI-12: room-badge CSS 应有 max-width 限宽"
         );
     }
@@ -17505,6 +17808,7 @@ CREATE TABLE posts (id UUID PRIMARY KEY, user_id UUID NOT NULL, FOREIGN KEY (use
             type_: "one_to_many".into(),
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
+            color: String::new(),
         };
         let flipped = flip_reference_endpoints(&r, &store);
         assert_eq!(flipped.start_table_id, "t2", "UT-PB-03: start_table 应互换");
