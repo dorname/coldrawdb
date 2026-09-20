@@ -232,8 +232,8 @@ Viewer 与 share-readonly：**不得**启用字段直连手势（同既有关系
 | 动态更新 | 已有关系在任一端表拖动后按最新相对位置重算出入侧，无需用户重建关系 |
 | 稳定性 | 两侧距离相等（x 差为 0）时保持现状默认（右出左进），避免边界抖动 |
 
-**本版本仍不做**：自动绕障 routing、边捆绑、导入后自动整理布局、手动指定出入侧 UI。  
-**本提案（fix-open-issues-19-22 / #21）新增**：正交折线 / 直线路径类型与虚线线型（§4.3）；选中态密度降噪（§4.4）。出入侧仍由 §3.4 `pick_port_sides` 自动决定。
+**本版本仍不做**：自动绕障 routing、边捆绑、手动指定出入侧 UI。  
+**本提案（layout-after-import-command / #23）新增**：一键整理布局与导入后自动整理（§4.5）。出入侧仍由 §3.4 `pick_port_sides` 自动决定。
 
 ## ADDED — §4.1 关系线颜色（fix-remote-github-issues-7-18；#22 继承语义）
 
@@ -275,6 +275,21 @@ Viewer 与 share-readonly：**不得**启用字段直连手势（同既有关系
 | 相关定义 | 与选中表相连的关系、或选中关系本身，视为相关 |
 | 视觉 | 非相关关系线不透明度降低（建议 ≤ 0.25），相关线保持正常或略加粗；不删除、不改数据 |
 | 无选中 | 全部关系正常不透明度 |
+
+## ADDED — §4.5 一键整理布局（layout-after-import-command / #23）
+
+| 规则 | 规格 |
+|---|---|
+| 算法 | 复用 MCP `force_directed_layout`（Fruchterman-Reingold 变体）；前端 `frontend-rs/src/layout.rs` 纯函数；**不改 MCP** |
+| 参数 | `iterations=100`，`spacing=180`，随机种子固定 `42`（确定性） |
+| 输入 | 当前 `Table[]`（id/x/y）与 `Reference[]`（start_table_id / end_table_id） |
+| 输出 | 仅改写连通表的 `x`/`y`；其他字段不变 |
+| 孤立表 | 无关联边的表位置**不变** |
+| 无边 | 关系为空时原样返回，不扰动坐标 |
+| 命令入口 | Command Palette Action：id=`action:layout`，label=`整理布局`，`data-testid="palette-action-layout"` |
+| 落账 | 写 store → dirty → schedule_save → 重绘（与拖表同链路） |
+| 导入后自动 | 导入成功且**本次导入**解析出关系非空时，自动执行一次整理；关系为空不触发 |
+| 不做 | 边捆绑、手动指定出入侧、绕障 routing |
 
 ## MODIFIED — 7. 与后端实体的对账
 
@@ -321,5 +336,7 @@ Viewer 与 share-readonly：**不得**启用字段直连手势（同既有关系
 | UT-PB-15 | 选中表时非相关线 alpha 降低、相关线不降 |
 | ST-PB-07 | e2e：切换正交折线 → 保存刷新保留 |
 | ST-PB-08 | e2e：表设色且关系未设色 → 出边跟表色；关系显式设色后改表色不影响该线 |
+| UT-PB-16 | 力导向：确定性 / 无重叠 / 孤立不动 |
+| ST-PB-09 | Command Palette「整理布局」触发后连通表坐标变化 |
 
 > 详细步骤见 `core-PB-relationship-test-cases.md`。

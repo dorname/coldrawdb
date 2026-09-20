@@ -227,6 +227,7 @@ pub fn CommandPalette(
 - Enter 选中：聚焦画布对象 + 滚动到视口 + 关闭 Palette
 - Esc 关闭
 - ↑/↓ 键导航结果列表
+- **固定 Action（layout-after-import-command / #23）**：id=`action:layout`，label=`整理布局`，`data-testid="palette-action-layout"`；Enter / 点击后对当前 diagram 执行力导向布局（见 `core-01b-relationship.md` §4.5）并关闭 Palette
 
 **z-index**：`--cdb-z-modal`（L5，与 CodeView 同层互斥）
 
