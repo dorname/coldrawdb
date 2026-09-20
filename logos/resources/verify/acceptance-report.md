@@ -6,12 +6,12 @@
 
 | Metric | Value |
 |--------|-------|
-| Defined cases | 480 |
+| Defined cases | 483 |
 | Manual cases (excluded) | 0 |
-| Executed cases | 480 |
-| Passed | 444 |
+| Executed cases | 483 |
+| Passed | 450 |
 | Failed | 0 |
-| Skipped | 36 |
+| Skipped | 33 |
 | Uncovered | 0 |
 | Coverage | 100% |
 | Pass rate | 93% |
@@ -19,10 +19,6 @@
 
 ## Skipped Cases
 
-- UT-PC-17
-- UT-PC-13
-- UT-PC-21
-- UT-PC-24
 - ST-S01-03
 - ST-S02-01
 - ST-S02-02
@@ -34,6 +30,7 @@
 - ST-MM-01
 - ST-MM-02
 - ST-MM-03
+- ST-PC-01
 - ST-SP-01
 - ST-UI-05
 - ST-S04-UI-08
