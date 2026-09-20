@@ -139,9 +139,14 @@ pub struct ReferenceDto {
     #[serde(default)]
     pub on_update: String,
     // fix-remote-github-issues-7-18（issue #12，core-01b §4.1）：关系线颜色；
-    // 存量 doc JSON 无此字段 → 默认 ""（默认主题色），向后兼容
+    // 存量 doc JSON 无此字段 → 默认 ""（跟随源表色），向后兼容
     #[serde(default)]
     pub color: String,
+    // fix-open-issues-19-22（#21）
+    #[serde(default)]
+    pub line_type: String,
+    #[serde(default)]
+    pub stroke_style: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -340,7 +345,7 @@ async fn load_table<C: ConnectionTrait>(conn: &C, table_id: &str) -> Result<Opti
 
 async fn load_reference<C: ConnectionTrait>(conn: &C, ref_id: &str) -> Result<Option<ReferenceDto>, DrawDBError> {
     let q = format!(
-        "SELECT id, name, cardinality, deleteConstraint, updateConstraint, startFieldId, endFieldId, startTableId, endTableId, color \
+        "SELECT id, name, cardinality, deleteConstraint, updateConstraint, startFieldId, endFieldId, startTableId, endTableId, color, line_type, stroke_style \
          FROM reference WHERE id='{}' AND (is_deleted=0 OR is_deleted IS NULL) LIMIT 1",
         esc(ref_id)
     );
@@ -361,8 +366,10 @@ async fn load_reference<C: ConnectionTrait>(conn: &C, ref_id: &str) -> Result<Op
         on_delete: row_str(&row, "deleteConstraint").unwrap_or_else(|| "RESTRICT".into()),
         on_update: row_str(&row, "updateConstraint").unwrap_or_else(|| "RESTRICT".into()),
         // fix-remote-github-issues-7-18（issue #12）：迁移 0009 前存量库无 color 列
-        // （DEFAULT '' 已回填），row_str 兜底空串
         color: row_str(&row, "color").unwrap_or_default(),
+        // fix-open-issues-19-22（#21）：迁移 0010 前缺省 bezier/solid
+        line_type: row_str(&row, "line_type").unwrap_or_else(|| "bezier".into()),
+        stroke_style: row_str(&row, "stroke_style").unwrap_or_else(|| "solid".into()),
     }))
 }
 
@@ -597,8 +604,8 @@ pub async fn save_diagram<C: ConnectionTrait + TransactionTrait>(
 
     for reference in &diagram.references {
         let ins_r = format!(
-            "INSERT INTO reference(id, name, cardinality, deleteConstraint, updateConstraint, startFieldId, endFieldId, startTableId, endTableId, color, is_deleted) \
-             VALUES('{}',{},'{}','{}','{}','{}','{}','{}','{}','{}',0)",
+            "INSERT INTO reference(id, name, cardinality, deleteConstraint, updateConstraint, startFieldId, endFieldId, startTableId, endTableId, color, line_type, stroke_style, is_deleted) \
+             VALUES('{}',{},'{}','{}','{}','{}','{}','{}','{}','{}','{}','{}',0)",
             esc(&reference.id),
             sql_opt_str(Some(reference.name.as_str())),
             esc(if reference.type_.is_empty() { "one_to_many" } else { &reference.type_ }),
@@ -610,6 +617,8 @@ pub async fn save_diagram<C: ConnectionTrait + TransactionTrait>(
             esc(&reference.end_table_id),
             // fix-remote-github-issues-7-18（issue #12，core-01b §4.1）：关系线颜色落库
             esc(&reference.color),
+            esc(if reference.line_type.is_empty() { "bezier" } else { &reference.line_type }),
+            esc(if reference.stroke_style.is_empty() { "solid" } else { &reference.stroke_style }),
         );
         tx.execute(Statement::from_sql_and_values(DatabaseBackend::Sqlite, ins_r, vec![]))
             .await?;

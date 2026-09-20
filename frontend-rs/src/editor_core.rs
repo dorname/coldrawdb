@@ -76,8 +76,8 @@ pub mod types {
         pub comment: String,
         pub fields: Vec<Field>,
         pub indices: Vec<Index>,
-        // feat-table-resize: 表宽度。`None` 表示用渲染层硬编码默认 (`TABLE_WIDTH = 230.0`)。
-        // serde 默认 `None` —— 老 JSON 无此字段时反序列化为 None，向后兼容。
+        // feat-table-resize / #20：表宽度。`None` / `Some(0)` = auto（内容估算夹紧 [230,480]）；
+        // 正数 = 用户固定宽。serde 默认 `None` —— 老 JSON 无此字段时反序列化为 None。
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub width: Option<u32>,
         // feat-table-resize: 表最小高度（最小高度语义，operator Q4 裁决）。
@@ -122,9 +122,15 @@ pub mod types {
         pub on_delete: String,
         pub on_update: String,
         // fix-remote-github-issues-7-18（issue #12，core-01b §4.1）：关系线颜色。
-        // serde default = "" —— 老 JSON 无此字段反序列化为 ""（默认主题色），向后兼容。
+        // serde default = "" —— 老 JSON 无此字段反序列化为 ""（跟随源表色 / 主题色），向后兼容。
         #[serde(default)]
         pub color: String,
+        // fix-open-issues-19-22（#21）：线条类型；空串视为 bezier。
+        #[serde(default)]
+        pub line_type: String,
+        // fix-open-issues-19-22（#21）：线型；空串视为 solid。
+        #[serde(default)]
+        pub stroke_style: String,
     }
 
     #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1340,6 +1346,8 @@ mod tests {
             on_delete: "".into(),
             on_update: "".into(),
             color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
         });
         stack.undo.push(cmd.clone());
         stack.undo();
@@ -1427,6 +1435,8 @@ mod tests {
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
             color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
         };
         CommandStack::apply(&store, &mut stack, Command::AddReference(reference.clone())).unwrap();
         assert_eq!(store.references.get().len(), 1, "UT-KB-03: 关系写入");

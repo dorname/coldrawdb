@@ -8,7 +8,9 @@
 //! All types re-exported from `crate::editor_core::types`.
 
 use crate::editor_core::types::{Area, Note, Reference, Table};
+use crate::editor_core::CommentDisplay;
 use leptos::{RwSignal, SignalGet, SignalSet, SignalUpdate};
+use std::cell::Cell;
 use std::collections::HashMap;
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, MouseEvent, PointerEvent, WheelEvent};
@@ -16,7 +18,10 @@ use web_sys::{CanvasRenderingContext2d, MouseEvent, PointerEvent, WheelEvent};
 // ─── Canvas constants ────────────────────────────────────────────────────────
 
 // 几何尺寸为主原型事实（core-01：表宽 230 / 表头 43 / 字段行 35 / 点阵 24px）
-const TABLE_WIDTH: f64 = 230.0;
+/// 默认表宽下限；`width == None|0` 自适应时夹紧下界（#20）。
+pub const TABLE_WIDTH: f64 = 230.0;
+/// 自适应表宽上限（对齐 ListView 列宽 max=480，#20）。
+pub const TABLE_WIDTH_MAX: f64 = 480.0;
 const TABLE_HEADER_HEIGHT: f64 = 43.0;
 const FIELD_ROW_HEIGHT: f64 = 35.0;
 /// 便签渲染 / 命中尺寸（与 draw_note 一致）
@@ -2269,9 +2274,23 @@ mod leptos_canvas {
                 // 吸附坐标基于已提交的 transform
                 let t_now = current_transform();
                 let canvas = canvas_ref.get();
-                if let Some(c) = &canvas {
-                    let _ = c.release_pointer_capture(drag.pointer_id);
+                // #19：用 Drop 守卫把 release_pointer_capture 推迟到 handler 所有路径末尾
+                // （勿在开头提前释放，否则会把 click 穿透到下方 AppBar）
+                struct CaptureRelease {
+                    canvas: Option<leptos::HtmlElement<html::Canvas>>,
+                    pointer_id: i32,
                 }
+                impl Drop for CaptureRelease {
+                    fn drop(&mut self) {
+                        if let Some(c) = &self.canvas {
+                            let _ = c.release_pointer_capture(self.pointer_id);
+                        }
+                    }
+                }
+                let _capture_guard = CaptureRelease {
+                    canvas: canvas.clone(),
+                    pointer_id: drag.pointer_id,
+                };
 
                 if let Some(cd) = &drag.create_drag {
                     // p0-fix 定点 2：松开落账——区域按拖框矩形（<10px 不创建），便签在按下点放置
@@ -2365,6 +2384,8 @@ mod leptos_canvas {
                         schedule_paint();
                         return;
                     }
+                    // #19：有效便签拖动 → 抑制紧随 click（如松开在 btn-invite 上）
+                    super::arm_suppress_next_click();
                     let new_x = start_x + dx / t_now.zoom;
                     let new_y = start_y + dy / t_now.zoom;
                     let (sx, sy) = super::snap_to_grid(new_x, new_y, super::GRID_SIZE);
@@ -2443,6 +2464,8 @@ mod leptos_canvas {
                         schedule_paint();
                         return;
                     }
+                    // #19：有效区域拖动 → 抑制紧随 click（如松开在 btn-invite 上）
+                    super::arm_suppress_next_click();
                     let new_x = start_x + dx / t_now.zoom;
                     let new_y = start_y + dy / t_now.zoom;
                     let (sx, sy) = super::snap_to_grid(new_x, new_y, super::GRID_SIZE);
@@ -2523,6 +2546,8 @@ mod leptos_canvas {
                         schedule_paint();
                         return;
                     }
+                    // #19：有效表拖动 → 抑制紧随 click（如松开在 btn-invite 上）
+                    super::arm_suppress_next_click();
                     let new_x = drag.start_table_x + dx / t_now.zoom;
                     let new_y = drag.start_table_y + dy / t_now.zoom;
                     let (sx, sy) = super::snap_to_grid(new_x, new_y, super::GRID_SIZE);
@@ -2770,6 +2795,27 @@ pub fn is_relation_drag(dx: f64, dy: f64, threshold: f64) -> bool {
     (dx * dx + dy * dy).sqrt() >= threshold
 }
 
+/// UT-CR-CLICK-01（#19）：有效拖动后应抑制紧随其后的 click 穿透。
+/// 复用 `is_relation_drag` + `DRAG_THRESHOLD`（表/便签/区域共用）。
+pub fn should_suppress_click_after_drag(dx: f64, dy: f64) -> bool {
+    is_relation_drag(dx, dy, DRAG_THRESHOLD)
+}
+
+thread_local! {
+    /// #19：有效拖动松手后武装；下一次邀请 click 消费并清除。
+    static SUPPRESS_NEXT_CLICK: Cell<bool> = const { Cell::new(false) };
+}
+
+/// 武装「抑制下一次 click」（有效表/便签/区域拖动松手后调用）。
+pub fn arm_suppress_next_click() {
+    SUPPRESS_NEXT_CLICK.with(|c| c.set(true));
+}
+
+/// 消费抑制标志：若为 true 则返回 true 并清零（on_open_invite 入口使用）。
+pub fn take_suppress_next_click() -> bool {
+    SUPPRESS_NEXT_CLICK.with(|c| c.replace(false))
+}
+
 /// 松手网格对齐：`round(n / grid) * grid`。
 pub fn snap_to_grid(x: f64, y: f64, grid: f64) -> (f64, f64) {
     ((x / grid).round() * grid, (y / grid).round() * grid)
@@ -2870,12 +2916,18 @@ pub fn table_with_override(table: &Table, table_override: Option<(&str, f64, f64
     visual
 }
 
-/// feat-table-resize 批次3: draw_table 渲染尺寸纯函数化,
-/// 供单测独立验证 width/min_height 消费逻辑(免依赖 CanvasRenderingContext2d)。
-/// 返回 (render_width, render_height)。
+/// feat-table-resize / #20：draw_table 渲染尺寸纯函数化。
+/// `width == None|Some(0)` → 按内容自适应夹紧 `[TABLE_WIDTH, TABLE_WIDTH_MAX]`；
+/// 正数 width 尊重用户手动设置。高度仍消费 `min_height`。
+/// 无 comment_mode 时默认 `NameComment`（与 store 初始偏好一致）。
 pub fn compute_table_render_size(table: &Table) -> (f64, f64) {
+    compute_table_render_size_for(table, CommentDisplay::NameComment)
+}
+
+/// 带注释显示模式的渲染尺寸（绘制路径传入真实 mode）。
+pub fn compute_table_render_size_for(table: &Table, comment_mode: CommentDisplay) -> (f64, f64) {
     let field_count = table.fields.len().max(2);
-    let width = table.width.map(|w| w as f64).unwrap_or(TABLE_WIDTH);
+    let width = resolve_table_width(table, comment_mode);
     let auto_height = TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT * field_count as f64;
     let total_height = table
         .min_height
@@ -2885,14 +2937,57 @@ pub fn compute_table_render_size(table: &Table) -> (f64, f64) {
     (width, total_height)
 }
 
+/// #20：解析有效表宽。`None` / `Some(0)` = auto；正数 = 用户固定宽。
+pub fn resolve_table_width(table: &Table, comment_mode: CommentDisplay) -> f64 {
+    match table.width {
+        Some(w) if w > 0 => w as f64,
+        _ => estimate_content_width(table, comment_mode).clamp(TABLE_WIDTH, TABLE_WIDTH_MAX),
+    }
+}
+
+/// #20：按注释显示模式估算内容所需宽度（纯函数，无 canvas measure）。
+/// ASCII ≈ 8px/字，CJK ≈ 14px/字；计入左右内边距与类型列预留。
+pub fn estimate_content_width(table: &Table, comment_mode: CommentDisplay) -> f64 {
+    const PAD: f64 = 28.0; // 左右内边距 + 边框
+    const TYPE_RESERVE: f64 = 72.0; // 类型列预留
+    let mut max_w = measure_text_approx(comment_mode.primary(&table.name, &table.comment)) + PAD;
+    if let Some(cmt) = comment_mode.secondary(&table.comment) {
+        max_w = max_w.max(measure_text_approx(cmt) + PAD);
+    }
+    for field in &table.fields {
+        let label = comment_mode.primary(&field.name, &field.comment);
+        let mut row = measure_text_approx(label) + TYPE_RESERVE + PAD;
+        if let Some(fc) = comment_mode.secondary(&field.comment) {
+            row = row.max(measure_text_approx(fc) + PAD);
+        }
+        // 类型文本也参与撑宽
+        row = row.max(measure_text_approx(&field.type_) + measure_text_approx(label) + PAD + 16.0);
+        max_w = max_w.max(row);
+    }
+    max_w
+}
+
+/// ASCII≈8 / CJK≈14 的近似测宽（#20 UT 可测）。
+pub fn measure_text_approx(text: &str) -> f64 {
+    let mut w = 0.0;
+    for ch in text.chars() {
+        if ch.is_ascii() {
+            w += 8.0;
+        } else {
+            w += 14.0;
+        }
+    }
+    w
+}
+
 /// 源字段右侧锚点（与正式关系线起点一致）。
 pub fn field_anchor_start(table: &Table, field_id: &str) -> (f64, f64) {
     field_anchor_for_side(table, field_id, FieldPortSide::End)
 }
 
-/// 字段左右连接点锚点（#3：从对应侧 port 拖出）。
+/// 字段左右连接点锚点（#3：从对应侧 port 拖出）。宽走 `resolve_table_width`。
 pub fn field_anchor_for_side(table: &Table, field_id: &str, side: FieldPortSide) -> (f64, f64) {
-    let width = table.width.map(|w| w as f64).unwrap_or(TABLE_WIDTH);
+    let width = resolve_table_width(table, CommentDisplay::NameComment);
     let y = field_anchor_y(table, field_id);
     match side {
         FieldPortSide::Start => (table.x, y),
@@ -2956,8 +3051,8 @@ fn bezier_controls(x1: f64, y1: f64, x2: f64, y2: f64) -> (f64, f64, f64, f64) {
 /// 目标表中心 x < 源表中心 x → **左出右进**；否则 → **右出左进**（含中心 x 相等的稳定性默认）。
 /// 输入仅依赖两表几何（x / width），与字段无关。
 pub fn pick_port_sides(from: &Table, to: &Table) -> (FieldPortSide, FieldPortSide) {
-    let from_w = from.width.map(|w| w as f64).unwrap_or(TABLE_WIDTH);
-    let to_w = to.width.map(|w| w as f64).unwrap_or(TABLE_WIDTH);
+    let from_w = resolve_table_width(from, CommentDisplay::NameComment);
+    let to_w = resolve_table_width(to, CommentDisplay::NameComment);
     let from_cx = from.x + from_w / 2.0;
     let to_cx = to.x + to_w / 2.0;
     if to_cx < from_cx {
@@ -3006,6 +3101,73 @@ pub fn calc_path(from: &Table, from_field_id: &str, to: &Table, to_field_id: &st
         cy2,
         x2,
         y2,
+    }
+}
+
+/// #21 UT-PB-13：正交折线路径（消费 `pick_port_sides` 锚点）。
+/// 返回折线顶点：起点 → 水平中点 → 垂直对齐 → 终点（典型正交路由）。
+pub fn calc_orthogonal_path(
+    from: &Table,
+    from_field_id: &str,
+    to: &Table,
+    to_field_id: &str,
+) -> Vec<(f64, f64)> {
+    let (out_side, in_side) = pick_port_sides(from, to);
+    let (x1, y1) = field_anchor_for_side(from, from_field_id, out_side);
+    let (x2, y2) = field_anchor_for_side(to, to_field_id, in_side);
+    let mid_x = (x1 + x2) / 2.0;
+    vec![(x1, y1), (mid_x, y1), (mid_x, y2), (x2, y2)]
+}
+
+/// #21：直线路径（同侧锚点直连）。
+pub fn calc_straight_path(
+    from: &Table,
+    from_field_id: &str,
+    to: &Table,
+    to_field_id: &str,
+) -> (f64, f64, f64, f64) {
+    let (out_side, in_side) = pick_port_sides(from, to);
+    let (x1, y1) = field_anchor_for_side(from, from_field_id, out_side);
+    let (x2, y2) = field_anchor_for_side(to, to_field_id, in_side);
+    (x1, y1, x2, y2)
+}
+
+/// #21 UT-PB-14：虚线 dash 数组；solid → 空。
+pub fn stroke_dash_for_style(stroke_style: &str) -> Vec<f64> {
+    match stroke_style {
+        "dashed" => vec![8.0, 6.0],
+        _ => vec![],
+    }
+}
+
+/// #21 UT-PB-15：选中态密度降噪——非相关线 alpha ≤ 0.25。
+/// 相关 = 选中关系自身，或两端表之一被选中；无选中时全部 1.0。
+pub fn relation_opacity(
+    ref_id: &str,
+    start_table_id: &str,
+    end_table_id: &str,
+    selected_table_ids: &[String],
+    selected_id: Option<&str>,
+    selected_ref_id: Option<&str>,
+) -> f64 {
+    let table_selected = selected_id.is_some() || !selected_table_ids.is_empty();
+    let any_sel = table_selected || selected_ref_id.is_some();
+    if !any_sel {
+        return 1.0;
+    }
+    if selected_ref_id == Some(ref_id) {
+        return 1.0;
+    }
+    let related_table = selected_id
+        .map(|id| id == start_table_id || id == end_table_id)
+        .unwrap_or(false)
+        || selected_table_ids
+            .iter()
+            .any(|id| id == start_table_id || id == end_table_id);
+    if related_table {
+        1.0
+    } else {
+        0.25
     }
 }
 
@@ -3130,7 +3292,28 @@ pub fn draw_canvas(
         };
         if visible {
             let (from, to) = (table_map[r.start_table_id.as_str()], table_map[r.end_table_id.as_str()]);
-            draw_bezier_fields(ctx, from, &r.start_field_id, to, &r.end_field_id, palette, selected_ref_id == Some(&r.id), &r.color);
+            let opacity = relation_opacity(
+                &r.id,
+                &r.start_table_id,
+                &r.end_table_id,
+                selected_table_ids,
+                selected_id,
+                selected_ref_id,
+            );
+            draw_relation(
+                ctx,
+                from,
+                &r.start_field_id,
+                to,
+                &r.end_field_id,
+                palette,
+                selected_ref_id == Some(&r.id),
+                &r.color,
+                &from.color,
+                effective_line_type(&r.line_type),
+                effective_stroke_style(&r.stroke_style),
+                opacity,
+            );
         }
     }
 
@@ -3344,8 +3527,6 @@ pub fn sprite_zoom_bucket(zoom: f64) -> u32 {
 /// 移动不换缓存；编辑落账产生新内容才失效。FNV-1a。
 // fix-remote-github-issues-7-18（issue #10/#12，core-01 §5.8）：注释/颜色渲染纯函数 ───
 
-use crate::editor_core::CommentDisplay;
-
 /// R-COLOR-01：表边框用色——`table.color` 非空跟随，为空回退 `palette.table_border`。
 pub fn table_border_color<'a>(table_color: &'a str, palette_border: &'a str) -> &'a str {
     if table_color.trim().is_empty() {
@@ -3355,12 +3536,19 @@ pub fn table_border_color<'a>(table_color: &'a str, palette_border: &'a str) -> 
     }
 }
 
-/// R-COLOR-02 / UT-PB-11：关系线用色——`ref.color` 非空跟随，为空回退 `palette.relation`。
-pub fn relation_stroke_color<'a>(ref_color: &'a str, palette_relation: &'a str) -> &'a str {
-    if ref_color.trim().is_empty() {
-        palette_relation
-    } else {
+/// R-COLOR-02 / UT-PB-11 / UT-PB-12（#22）：关系线用色优先级
+/// 显式 `ref.color` > 源表 `source_table_color` > `palette.relation`。
+pub fn relation_stroke_color<'a>(
+    ref_color: &'a str,
+    source_table_color: &'a str,
+    palette_relation: &'a str,
+) -> &'a str {
+    if !ref_color.trim().is_empty() {
         ref_color.trim()
+    } else if !source_table_color.trim().is_empty() {
+        source_table_color.trim()
+    } else {
+        palette_relation
     }
 }
 
@@ -3450,7 +3638,7 @@ fn render_table_sprite(
         .ok()?
         .dyn_into()
         .ok()?;
-    let (w, h) = compute_table_render_size(table);
+    let (w, h) = compute_table_render_size_for(table, comment_mode);
     let w_world = w + SPRITE_MARGIN * 2.0;
     let h_world = h + SPRITE_MARGIN * 2.0;
     canvas.set_width((w_world * scale).ceil().max(1.0) as u32);
@@ -3675,7 +3863,7 @@ fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool, pal
 
 fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &CanvasPalette, shadow_boost: f64, comment_mode: CommentDisplay) {
     let field_count = table.fields.len().max(2);
-    let (width, total_height) = compute_table_render_size(table);
+    let (width, total_height) = compute_table_render_size_for(table, comment_mode);
     let x = table.x;
     let y = table.y;
 
@@ -3697,7 +3885,7 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
     let _ = ctx.set_stroke_style_str(table_border_color(&table.color, palette.table_border));
     ctx.set_line_width(1.0);
     ctx.begin_path();
-    round_rect(ctx, x, y, TABLE_WIDTH, total_height, 14.0);
+    round_rect(ctx, x, y, width, total_height, 14.0);
     ctx.stroke();
 
     // 表头：主原型 .table-head —— 自左向右的 tint 渐变（表色或 brand-soft → 透明），非实心填充
@@ -3708,14 +3896,14 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
     };
     ctx.save();
     ctx.begin_path();
-    round_rect_top(ctx, x, y, TABLE_WIDTH, TABLE_HEADER_HEIGHT, 14.0);
+    round_rect_top(ctx, x, y, width, TABLE_HEADER_HEIGHT, 14.0);
     ctx.clip();
-    let gradient = ctx.create_linear_gradient(x, y, x + TABLE_WIDTH, y);
+    let gradient = ctx.create_linear_gradient(x, y, x + width, y);
     gradient.add_color_stop(0.0, header_tint).ok();
     gradient.add_color_stop(1.0, "rgba(0,0,0,0)").ok();
     let _ = ctx.set_fill_style_str("rgba(0,0,0,0)");
     ctx.set_fill_style_canvas_gradient(&gradient);
-    ctx.fill_rect(x, y, TABLE_WIDTH, TABLE_HEADER_HEIGHT);
+    ctx.fill_rect(x, y, width, TABLE_HEADER_HEIGHT);
     ctx.restore();
 
     // 表名（750/13px 强色）+ 字段计数（text-3 10px 右对齐）
@@ -3734,7 +3922,7 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
         let _ = ctx.set_font(&dpr_font(500, 10.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
         let cmt_x = x + 11.0 + label_w + 6.0;
         // 26 = 右边距 11 + 字段计数预留 15
-        let max_w = (x + TABLE_WIDTH - 26.0) - cmt_x;
+        let max_w = (x + width - 26.0) - cmt_x;
         if max_w > 12.0 {
             let _ = ctx.fill_text(&truncate_to_width(ctx, cmt, max_w), cmt_x, y + TABLE_HEADER_HEIGHT / 2.0 + 0.5);
         }
@@ -3744,7 +3932,7 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
     let _ = ctx.set_text_align("right");
     let _ = ctx.fill_text(
         &table.fields.len().to_string(),
-        x + TABLE_WIDTH - 11.0,
+        x + width - 11.0,
         y + TABLE_HEADER_HEIGHT / 2.0,
     );
     let _ = ctx.set_text_align("left");
@@ -3754,7 +3942,7 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
     ctx.set_line_width(1.0);
     ctx.begin_path();
     ctx.move_to(x, y + TABLE_HEADER_HEIGHT);
-    ctx.line_to(x + TABLE_WIDTH, y + TABLE_HEADER_HEIGHT);
+    ctx.line_to(x + width, y + TABLE_HEADER_HEIGHT);
     ctx.stroke();
 
     // 字段行：PK 纯文本琥珀标 + 名称 650/11px + 类型等宽 10px text-3（主原型 .table-field）
@@ -3779,7 +3967,7 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
         let _ = ctx.set_text_align("right");
         let _ = ctx.fill_text(
             &field.type_,
-            x + TABLE_WIDTH - 11.0,
+            x + width - 11.0,
             fy + FIELD_ROW_HEIGHT / 2.0,
         );
         // R-CMT-02：name+comment 模式且 comment 非空 → 类型左侧渲染注释（灰色 9px）。
@@ -3787,7 +3975,7 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
         if let Some(f_cmt) = comment_mode.secondary(&field.comment) {
             let type_w = ctx.measure_text(&field.type_).map(|m| m.width()).unwrap_or(0.0);
             let name_w = ctx.measure_text(field_label).map(|m| m.width()).unwrap_or(0.0);
-            let type_left = x + TABLE_WIDTH - 11.0 - type_w;
+            let type_left = x + width - 11.0 - type_w;
             let cmt_max_w = type_left - 8.0 - (name_x + name_w + 8.0);
             if cmt_max_w > 10.0 {
                 let _ = ctx.set_font(&dpr_font(500, 9.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
@@ -3821,7 +4009,7 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
             ctx.set_line_width(1.0);
             ctx.begin_path();
             ctx.move_to(x, fy + FIELD_ROW_HEIGHT);
-            ctx.line_to(x + TABLE_WIDTH, fy + FIELD_ROW_HEIGHT);
+            ctx.line_to(x + width, fy + FIELD_ROW_HEIGHT);
             ctx.stroke();
         }
     }
@@ -3830,19 +4018,19 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
 /// 选中态：主原型 .is-selected —— brand 描边 + 3px brand-soft 外环。
 /// R-PERF-07：选中环每帧活画（不含在精灵缓存内），选中切换不失效卡体缓存。
 fn draw_table_selection(ctx: &CanvasRenderingContext2d, table: &Table, palette: &CanvasPalette) {
-    let (_width, total_height) = compute_table_render_size(table);
+    let (width, total_height) = compute_table_render_size(table);
     let x = table.x;
     let y = table.y;
     let _ = ctx.set_stroke_style_str(palette.selected_soft);
     ctx.set_line_width(3.0);
     ctx.begin_path();
-    round_rect(ctx, x - 2.5, y - 2.5, TABLE_WIDTH + 5.0, total_height + 5.0, 16.0);
+    round_rect(ctx, x - 2.5, y - 2.5, width + 5.0, total_height + 5.0, 16.0);
     ctx.stroke();
 
     let _ = ctx.set_stroke_style_str(palette.selected);
     ctx.set_line_width(1.0);
     ctx.begin_path();
-    round_rect(ctx, x, y, TABLE_WIDTH, total_height, 14.0);
+    round_rect(ctx, x, y, width, total_height, 14.0);
     ctx.stroke();
 }
 
@@ -3855,43 +4043,143 @@ fn field_anchor_y(table: &Table, field_id: &str) -> f64 {
     table.y + TABLE_HEADER_HEIGHT + idx as f64 * FIELD_ROW_HEIGHT + FIELD_ROW_HEIGHT / 2.0
 }
 
-fn draw_bezier_fields(
+/// 空串 / 未知 → bezier（#21）。
+pub fn effective_line_type(s: &str) -> &str {
+    match s.trim() {
+        "orthogonal" | "straight" => s.trim(),
+        _ => "bezier",
+    }
+}
+
+/// 空串 / 未知 → solid（#21）。
+pub fn effective_stroke_style(s: &str) -> &str {
+    match s.trim() {
+        "dashed" => "dashed",
+        _ => "solid",
+    }
+}
+
+fn apply_stroke_dash(ctx: &CanvasRenderingContext2d, stroke_style: &str) {
+    let dash = stroke_dash_for_style(stroke_style);
+    let arr = js_sys::Array::new();
+    for v in dash {
+        arr.push(&wasm_bindgen::JsValue::from(v));
+    }
+    let _ = ctx.set_line_dash(&arr);
+}
+
+fn clear_stroke_dash(ctx: &CanvasRenderingContext2d) {
+    let _ = ctx.set_line_dash(&js_sys::Array::new());
+}
+
+/// #21/#22：按 line_type / stroke_style / 源表色 / 密度 alpha 绘制关系。
+fn draw_relation(
     ctx: &CanvasRenderingContext2d,
     from: &Table,
     from_field_id: &str,
     to: &Table,
     to_field_id: &str,
     palette: &CanvasPalette,
-    // p0-fix 定点 3：选中态（点击连线高亮——stroke 加粗 + brand 色）
     selected: bool,
-    // fix-remote-github-issues-7-18（issue #12，core-01b §4.1）：关系自定义色
-    // （'' = 默认 palette.relation；R-COLOR-03：选中高亮优先级高于自定义色）
     ref_color: &str,
+    source_table_color: &str,
+    line_type: &str,
+    stroke_style: &str,
+    opacity: f64,
 ) {
-    let path = calc_path(from, from_field_id, to, to_field_id);
-    let stroke = relation_stroke_color(ref_color, palette.relation);
+    let stroke = relation_stroke_color(ref_color, source_table_color, palette.relation);
+    ctx.save();
+    ctx.set_global_alpha(opacity);
 
-    // 主原型 .relation-path-bg：7px surface 光晕垫底，主线 2px brand
-    let _ = ctx.set_stroke_style_str(if selected { palette.selected_soft } else { palette.relation_halo });
-    ctx.set_line_width(if selected { 10.0 } else { 7.0 });
+    let stroke_main = if selected { palette.selected } else { stroke };
+    let halo = if selected { palette.selected_soft } else { palette.relation_halo };
+
+    match line_type {
+        "orthogonal" => {
+            let pts = calc_orthogonal_path(from, from_field_id, to, to_field_id);
+            // 光晕
+            let _ = ctx.set_stroke_style_str(halo);
+            ctx.set_line_width(if selected { 10.0 } else { 7.0 });
+            clear_stroke_dash(ctx);
+            stroke_polyline(ctx, &pts);
+            // 主线
+            let _ = ctx.set_stroke_style_str(stroke_main);
+            ctx.set_line_width(if selected { 3.5 } else { 2.0 });
+            apply_stroke_dash(ctx, stroke_style);
+            stroke_polyline(ctx, &pts);
+            clear_stroke_dash(ctx);
+            if pts.len() >= 2 {
+                let (x1, y1) = pts[0];
+                let (x2, y2) = pts[pts.len() - 1];
+                let (px, py) = pts[pts.len() - 2];
+                draw_arrow_head(ctx, px, py, x2, y2, stroke);
+                let _ = ctx.set_fill_style_str(stroke);
+                ctx.begin_path();
+                ctx.arc(x1, y1, 4.0, 0.0, std::f64::consts::TAU).ok();
+                ctx.fill();
+            }
+        }
+        "straight" => {
+            let (x1, y1, x2, y2) = calc_straight_path(from, from_field_id, to, to_field_id);
+            let _ = ctx.set_stroke_style_str(halo);
+            ctx.set_line_width(if selected { 10.0 } else { 7.0 });
+            clear_stroke_dash(ctx);
+            ctx.begin_path();
+            ctx.move_to(x1, y1);
+            ctx.line_to(x2, y2);
+            ctx.stroke();
+            let _ = ctx.set_stroke_style_str(stroke_main);
+            ctx.set_line_width(if selected { 3.5 } else { 2.0 });
+            apply_stroke_dash(ctx, stroke_style);
+            ctx.begin_path();
+            ctx.move_to(x1, y1);
+            ctx.line_to(x2, y2);
+            ctx.stroke();
+            clear_stroke_dash(ctx);
+            draw_arrow_head(ctx, x1, y1, x2, y2, stroke);
+            let _ = ctx.set_fill_style_str(stroke);
+            ctx.begin_path();
+            ctx.arc(x1, y1, 4.0, 0.0, std::f64::consts::TAU).ok();
+            ctx.fill();
+        }
+        _ => {
+            // bezier 默认
+            let path = calc_path(from, from_field_id, to, to_field_id);
+            let _ = ctx.set_stroke_style_str(halo);
+            ctx.set_line_width(if selected { 10.0 } else { 7.0 });
+            clear_stroke_dash(ctx);
+            ctx.begin_path();
+            ctx.move_to(path.x1, path.y1);
+            ctx.bezier_curve_to(path.cx1, path.cy1, path.cx2, path.cy2, path.x2, path.y2);
+            ctx.stroke();
+            let _ = ctx.set_stroke_style_str(stroke_main);
+            ctx.set_line_width(if selected { 3.5 } else { 2.0 });
+            apply_stroke_dash(ctx, stroke_style);
+            ctx.begin_path();
+            ctx.move_to(path.x1, path.y1);
+            ctx.bezier_curve_to(path.cx1, path.cy1, path.cx2, path.cy2, path.x2, path.y2);
+            ctx.stroke();
+            clear_stroke_dash(ctx);
+            draw_arrow_head(ctx, path.cx2, path.cy2, path.x2, path.y2, stroke);
+            let _ = ctx.set_fill_style_str(stroke);
+            ctx.begin_path();
+            ctx.arc(path.x1, path.y1, 4.0, 0.0, std::f64::consts::TAU).ok();
+            ctx.fill();
+        }
+    }
+    ctx.restore();
+}
+
+fn stroke_polyline(ctx: &CanvasRenderingContext2d, pts: &[(f64, f64)]) {
+    if pts.is_empty() {
+        return;
+    }
     ctx.begin_path();
-    ctx.move_to(path.x1, path.y1);
-    ctx.bezier_curve_to(path.cx1, path.cy1, path.cx2, path.cy2, path.x2, path.y2);
+    ctx.move_to(pts[0].0, pts[0].1);
+    for p in &pts[1..] {
+        ctx.line_to(p.0, p.1);
+    }
     ctx.stroke();
-
-    let _ = ctx.set_stroke_style_str(if selected { palette.selected } else { stroke });
-    ctx.set_line_width(if selected { 3.5 } else { 2.0 });
-    ctx.begin_path();
-    ctx.move_to(path.x1, path.y1);
-    ctx.bezier_curve_to(path.cx1, path.cy1, path.cx2, path.cy2, path.x2, path.y2);
-    ctx.stroke();
-
-    draw_arrow_head(ctx, path.cx2, path.cy2, path.x2, path.y2, stroke);
-
-    let _ = ctx.set_fill_style_str(stroke);
-    ctx.begin_path();
-    ctx.arc(path.x1, path.y1, 4.0, 0.0, std::f64::consts::TAU).ok();
-    ctx.fill();
 }
 
 fn draw_rubber_band(ctx: &CanvasRenderingContext2d, x1: f64, y1: f64, x2: f64, y2: f64, palette: &CanvasPalette) {
@@ -4029,7 +4317,7 @@ fn draw_note(ctx: &CanvasRenderingContext2d, note: &Note, palette: &CanvasPalett
 pub fn hit_test_field(tables: &[Table], x: f64, y: f64) -> Option<(String, String)> {
     for table in tables.iter().rev() {
         // feat-table-resize: 命中宽度跟随 table.width,fallback 到 TABLE_WIDTH 默认
-        let width = table.width.map(|w| w as f64).unwrap_or(TABLE_WIDTH);
+        let width = resolve_table_width(table, CommentDisplay::NameComment);
         if x < table.x || x > table.x + width {
             continue;
         }
@@ -4066,7 +4354,7 @@ pub fn hit_test_field_port(
     y: f64,
 ) -> Option<(String, String, FieldPortSide)> {
     for table in tables.iter().rev() {
-        let width = table.width.map(|w| w as f64).unwrap_or(TABLE_WIDTH);
+        let width = resolve_table_width(table, CommentDisplay::NameComment);
         for field in &table.fields {
             let cy = field_anchor_y(table, &field.id);
             let left_dx = x - table.x;
@@ -4091,7 +4379,7 @@ pub fn hit_test_field_port(
 pub fn hit_test(tables: &[Table], x: f64, y: f64) -> Option<String> {
     for table in tables.iter().rev() {
         // feat-table-resize: 命中宽度跟随 table.width,fallback 到 TABLE_WIDTH 默认
-        let width = table.width.map(|w| w as f64).unwrap_or(TABLE_WIDTH);
+        let width = resolve_table_width(table, CommentDisplay::NameComment);
         let h = TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT * table.fields.len().max(2) as f64;
         if x >= table.x && x <= table.x + width && y >= table.y && y <= table.y + h {
             return Some(table.id.clone());
@@ -4344,6 +4632,8 @@ mod tests {
             on_delete: "".into(),
             on_update: "".into(),
             color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
         }
     }
 
@@ -4459,6 +4749,8 @@ mod tests {
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
             color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
         }];
         (tables, refs)
     }
@@ -4803,7 +5095,7 @@ mod tests {
             min_height: None,
         };
         let (w, _) = compute_table_render_size(&t);
-        assert_eq!(w, TABLE_WIDTH, "feat-table-resize: width=None → TABLE_WIDTH 默认");
+        assert_eq!(w, TABLE_WIDTH, "feat-table-resize/#20: width=None 短名 → auto 下界 TABLE_WIDTH");
     }
 
     #[test]
@@ -5069,6 +5361,8 @@ mod tests {
             on_delete: String::new(),
             on_update: String::new(),
             color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
         };
         let refs = vec![
             mk_ref("r-far", "fa", "fb", "f1", "f2"), // 两端都在视口外
@@ -5226,6 +5520,8 @@ mod tests {
             on_delete: String::new(),
             on_update: String::new(),
             color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
         };
         let refs = vec![mk("r1", "a", "b")];
         assert!(table_has_references(&refs, "a"), "UT-CR-GHOST-01: 起点表有关联，禁走幽灵层");

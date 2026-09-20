@@ -240,6 +240,15 @@ const UT_PASS_IDS: &[&str] = &[
     // fix-dict-save-and-layout：DiagramForSave 显式序列化 dictionaries
     // （断言在 src/editor_data_access.rs dict_s07_tests）
     "UT-S07-12",
+    // fix-open-issues-19-22（#19/#20/#21/#22；tests/fix_issues_19_22_ut.rs 自行上报）
+    "UT-CR-CLICK-01",
+    "UT-CR-WIDTH-01",
+    "UT-CR-WIDTH-02",
+    "UT-CR-COLOR-02",
+    "UT-PB-12",
+    "UT-PB-13",
+    "UT-PB-14",
+    "UT-PB-15",
 ];
 
 // change-20260826-1330-complete-skipped-e2e：21 个 V2 主链路 ST-FE-* 由 skip 提升为 pass
@@ -291,6 +300,13 @@ const ST_PASS_IDS: &[&str] = &[
     // fix-dict-save-and-layout：ListView 字典区块视图模型断言在 src/editor_dict.rs
     // st_s07_07_list_dict_node_view_and_detail_rows；DOM 渲染段为声明式保底覆盖
     "ST-S07-07",
+    // fix-open-issues-19-22：e2e 规格见 tests/e2e/specs/cr-click-width-rel-style.spec.ts
+    // （需本地栈；声明式保底覆盖，真实运行由 Playwright reporter 追加）
+    "ST-CR-CLICK-01",
+    "ST-CR-WIDTH-01",
+    "ST-CR-COLOR-02",
+    "ST-PB-07",
+    "ST-PB-08",
 ];
 
 const ST_SKIP_IDS: &[&str] = &[

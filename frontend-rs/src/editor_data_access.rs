@@ -1460,9 +1460,14 @@ struct ReferenceOut {
     on_delete: String,
     #[serde(default)]
     on_update: String,
-    // fix-remote-github-issues-7-18（issue #12）：关系线颜色，老数据缺省 ""（默认主题色）
+    // fix-remote-github-issues-7-18（issue #12）：关系线颜色，老数据缺省 ""（跟随源表色）
     #[serde(default)]
     color: String,
+    // fix-open-issues-19-22（#21）
+    #[serde(default)]
+    line_type: String,
+    #[serde(default)]
+    stroke_style: String,
 }
 
 #[derive(Deserialize)]
@@ -1575,6 +1580,16 @@ impl From<ReferenceOut> for Reference {
             on_delete: r.on_delete,
             on_update: r.on_update,
             color: r.color,
+            line_type: if r.line_type.is_empty() {
+                "bezier".into()
+            } else {
+                r.line_type
+            },
+            stroke_style: if r.stroke_style.is_empty() {
+                "solid".into()
+            } else {
+                r.stroke_style
+            },
         }
     }
 }

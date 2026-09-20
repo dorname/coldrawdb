@@ -87,6 +87,8 @@ fn fixture_users_orders() -> (Vec<Table>, Vec<Reference>) {
         on_delete: "RESTRICT".to_string(),
         on_update: "RESTRICT".to_string(),
         color: String::new(),
+        line_type: "bezier".into(),
+        stroke_style: "solid".into(),
     };
     (vec![users, orders], vec![reference])
 }

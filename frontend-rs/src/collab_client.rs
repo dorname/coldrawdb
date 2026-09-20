@@ -1595,6 +1595,8 @@ mod tests {
             on_delete: "Cascade".into(),
             on_update: "NoAction".into(),
             color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
         }
     }
 

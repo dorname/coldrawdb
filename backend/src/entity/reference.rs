@@ -11,8 +11,11 @@ pub struct Model {
     pub id: String,
     pub cardinality: Option<String>,
     // fix-remote-github-issues-7-18（issue #12，core-01b §4.1）：关系线颜色
-    // （迁移 0009_reference_color；'' = 默认主题色）
+    // （迁移 0009_reference_color；'' = 跟随源表色 / 主题色）
     pub color: String,
+    // fix-open-issues-19-22（#21）：线条类型 / 线型（迁移 0010）
+    pub line_type: String,
+    pub stroke_style: String,
     #[sea_orm(column_name = "deleteConstraint")]
     pub delete_constraint: Option<String>,
     #[sea_orm(column_name = "endFieldId")]

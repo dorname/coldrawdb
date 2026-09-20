@@ -583,6 +583,8 @@ pub fn build_reference(
         on_update: "RESTRICT".into(),
         // fix-remote-github-issues-7-18（issue #12）：新建关系默认无色（主题色）
         color: String::new(),
+        line_type: "bezier".into(),
+        stroke_style: "solid".into(),
     }
 }
 
@@ -888,6 +890,8 @@ pub fn parse_sql_import_tables(content: &str) -> Result<(Vec<Table>, Vec<Referen
             on_update: "RESTRICT".into(),
             // fix-remote-github-issues-7-18（core-01b §4.1）：SQL/DBML 导入降级 color=''
             color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
         });
     }
     Ok((tables, references))
@@ -1487,9 +1491,14 @@ pub fn parse_json_import_tables(content: &str) -> Result<(Vec<Table>, Vec<Refere
         #[serde(default)]
         on_update: String,
         // fix-remote-github-issues-7-18（core-01b §4.1）：JSON 导入回填关系线颜色；
-        // 存量 JSON 无 color → 默认 ""（主题色），向后兼容
+        // 存量 JSON 无 color → 默认 ""（跟随源表色），向后兼容
         #[serde(default)]
         color: String,
+        // fix-open-issues-19-22（#21）：缺省空串，映射时归一化为 bezier/solid
+        #[serde(default)]
+        line_type: String,
+        #[serde(default)]
+        stroke_style: String,
     }
     #[derive(serde::Deserialize, Default)]
     struct JsonDoc {
@@ -1556,6 +1565,16 @@ pub fn parse_json_import_tables(content: &str) -> Result<(Vec<Table>, Vec<Refere
             on_delete: r.on_delete,
             on_update: r.on_update,
             color: r.color,
+            line_type: if r.line_type.is_empty() {
+                "bezier".into()
+            } else {
+                r.line_type
+            },
+            stroke_style: if r.stroke_style.is_empty() {
+                "solid".into()
+            } else {
+                r.stroke_style
+            },
         })
         .collect();
     Ok((tables, references))
@@ -6318,11 +6337,24 @@ pub const TABLE_COLOR_PRESETS: &[(&str, &str)] = &[
 /// fix-remote-github-issues-7-18（issue #12，core-01b §4.1）：关系线颜色预设色板
 /// （"" = 默认 palette.relation 主题色）
 pub const RELATION_COLOR_PRESETS: &[(&str, &str)] = &[
-    ("", "默认（主题色）"),
+    ("", "跟随源表"),
     ("#4fd1c5", "青绿色"),
     ("#aa8cff", "紫罗兰"),
     ("#f2b84b", "琥珀色"),
     ("#f28b8b", "珊瑚色"),
+];
+
+/// #21：线条类型选项
+pub const RELATION_LINE_TYPE_OPTIONS: &[(&str, &str)] = &[
+    ("bezier", "贝塞尔曲线"),
+    ("orthogonal", "正交折线"),
+    ("straight", "直线"),
+];
+
+/// #21：线型选项
+pub const RELATION_STROKE_STYLE_OPTIONS: &[(&str, &str)] = &[
+    ("solid", "实线"),
+    ("dashed", "虚线"),
 ];
 
 /// Phase A：Inspector 抽屉
@@ -6707,17 +6739,49 @@ pub fn Inspector(
                                                 class="cdb-form-select"
                                                 data-testid="inspector-table-color"
                                                 disabled=ro
-                                                on:change=move |ev| {
-                                                    if !ro {
-                                                        on_set_color(table_id_for_color.clone(), event_target_value(&ev));
+                                                on:change={
+                                                    let on_set_color = on_set_color.clone();
+                                                    let tid = table_id_for_color.clone();
+                                                    move |ev| {
+                                                        if !ro {
+                                                            on_set_color(tid.clone(), event_target_value(&ev));
+                                                        }
                                                     }
                                                 }
                                             >
-                                                <For each=|| TABLE_COLOR_PRESETS.to_vec() key=|c| c.0.to_string() children=move |(value, label): (&'static str, &'static str)| {
+                                                <For each=|| TABLE_COLOR_PRESETS.to_vec() key=|c| c.0.to_string() children={
+                                                    let table_color = table_color.clone();
+                                                    move |(value, label): (&'static str, &'static str)| {
                                                     let sel = table_color == value;
                                                     view! { <option value=value selected=sel>{label}</option> }
-                                                } />
+                                                }} />
                                             </select>
+                                            // #22：任意色 picker（与预设并列；合法 hex 写入 table.color）
+                                            <input
+                                                type="color"
+                                                class="cdb-form-input"
+                                                data-testid="inspector-table-color-picker"
+                                                prop:value={
+                                                    let table_color = table_color.clone();
+                                                    move || {
+                                                    let c = table_color.clone();
+                                                    if c.starts_with('#') && (c.len() == 7 || c.len() == 4) {
+                                                        c
+                                                    } else {
+                                                        "#4fd1c5".into()
+                                                    }
+                                                }}
+                                                disabled=ro
+                                                on:change={
+                                                    let on_set_color = on_set_color.clone();
+                                                    let tid = table_id_for_color.clone();
+                                                    move |ev| {
+                                                        if !ro {
+                                                            on_set_color(tid.clone(), event_target_value(&ev));
+                                                        }
+                                                    }
+                                                }
+                                            />
                                         </div>
                                     </section>
                                     <section class="cdb-panel-section">
@@ -6996,11 +7060,25 @@ pub fn Inspector(
                             let rid_flip = rid.clone();
                             let rid_delete = rid.clone();
                             let rid_color = rid.clone();
+                            let rid_line = rid.clone();
+                            let rid_stroke = rid.clone();
                             let on_upd_ref_type = on_upd_ref.clone();
                             let on_upd_ref_del = on_upd_ref.clone();
                             let on_upd_ref_upd = on_upd_ref.clone();
                             let on_upd_ref_color = on_upd_ref.clone();
+                            let on_upd_ref_line = on_upd_ref.clone();
+                            let on_upd_ref_stroke = on_upd_ref.clone();
                             let ref_color = r.color.clone();
+                            let ref_line_type = if r.line_type.is_empty() {
+                                "bezier".to_string()
+                            } else {
+                                r.line_type.clone()
+                            };
+                            let ref_stroke_style = if r.stroke_style.is_empty() {
+                                "solid".to_string()
+                            } else {
+                                r.stroke_style.clone()
+                            };
                             let card_for_options = card.clone();
                             view! {
                                 <div data-testid="inspector-reference-form">
@@ -7064,6 +7142,37 @@ pub fn Inspector(
                                         >
                                             <For each=|| RELATION_COLOR_PRESETS.to_vec() key=|c| c.0.to_string() children=move |(value, label): (&'static str, &'static str)| {
                                                 let sel = ref_color == value;
+                                                view! { <option value=value selected=sel>{label}</option> }
+                                            } />
+                                        </select>
+                                    </div>
+                                    // #21：线条类型 / 线型
+                                    <div class="cdb-form-group">
+                                        <label>"线条类型"</label>
+                                        <select
+                                            class="cdb-form-select"
+                                            data-testid="inspector-rel-line-type"
+                                            on:change=move |ev| {
+                                                on_upd_ref_line(rid_line.clone(), "line_type", event_target_value(&ev));
+                                            }
+                                        >
+                                            <For each=|| RELATION_LINE_TYPE_OPTIONS.to_vec() key=|c| c.0.to_string() children=move |(value, label): (&'static str, &'static str)| {
+                                                let sel = ref_line_type == value;
+                                                view! { <option value=value selected=sel>{label}</option> }
+                                            } />
+                                        </select>
+                                    </div>
+                                    <div class="cdb-form-group">
+                                        <label>"线型"</label>
+                                        <select
+                                            class="cdb-form-select"
+                                            data-testid="inspector-rel-stroke-style"
+                                            on:change=move |ev| {
+                                                on_upd_ref_stroke(rid_stroke.clone(), "stroke_style", event_target_value(&ev));
+                                            }
+                                        >
+                                            <For each=|| RELATION_STROKE_STYLE_OPTIONS.to_vec() key=|c| c.0.to_string() children=move |(value, label): (&'static str, &'static str)| {
+                                                let sel = ref_stroke_style == value;
                                                 view! { <option value=value selected=sel>{label}</option> }
                                             } />
                                         </select>
@@ -11850,6 +11959,9 @@ pub fn AppRoot(
                     "on_update" => r.on_update = value,
                     // fix-remote-github-issues-7-18（issue #12，core-01b §4.1）：关系线颜色
                     "color" => r.color = value,
+                    // fix-open-issues-19-22（#21）
+                    "line_type" => r.line_type = value,
+                    "stroke_style" => r.stroke_style = value,
                     _ => {}
                 }
             }
@@ -12350,7 +12462,13 @@ pub fn AppRoot(
     let invite_modal_open: RwSignal<bool> = create_rw_signal(false);
     let on_open_invite = {
         let invite_modal_open = invite_modal_open.clone();
-        Rc::new(move || invite_modal_open.set(true)) as Rc<dyn Fn()>
+        Rc::new(move || {
+            // #19：有效画布拖动松手后的 click 穿透到邀请按钮时不打开模态
+            if crate::editor_render::take_suppress_next_click() {
+                return;
+            }
+            invite_modal_open.set(true);
+        }) as Rc<dyn Fn()>
     };
 
     // B 批：invite 页「返回空间」— 已登录回 rooms，未登录回 auth
@@ -14651,6 +14769,8 @@ mod tests {
                 on_delete: String::new(),
                 on_update: String::new(),
                 color: String::new(),
+                line_type: "bezier".into(),
+                stroke_style: "solid".into(),
             },
             Reference {
                 id: "r2".into(),
@@ -14663,6 +14783,8 @@ mod tests {
                 on_delete: String::new(),
                 on_update: String::new(),
                 color: String::new(),
+                line_type: "bezier".into(),
+                stroke_style: "solid".into(),
             },
         ];
         let result = filter_references_by_query(&refs, "user");
@@ -14896,6 +15018,8 @@ mod tests {
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
             color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
         };
         store.references.set(vec![existing]);
         // 现在连 f1 → f2：f2 已参与 1 条（s=1, e=2）→ many_to_one
@@ -14921,6 +15045,8 @@ mod tests {
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
             color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
         };
         store.references.set(vec![existing]);
         // 现在连 f1 → f2：f1 已参与 1 条（s=2, e=1）→ one_to_many
@@ -14945,6 +15071,8 @@ mod tests {
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
             color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
         };
         let existing2 = Reference {
             id: "r2".into(),
@@ -14957,6 +15085,8 @@ mod tests {
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
             color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
         };
         store.references.set(vec![existing1, existing2]);
         // 现在连 f1 → f2：f1 已参与 1 条（s=2）、f2 已参与 1 条（e=2）→ many_to_many
@@ -14981,6 +15111,8 @@ mod tests {
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
             color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
         };
         let existing2 = Reference {
             id: "r2".into(),
@@ -14993,6 +15125,8 @@ mod tests {
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
             color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
         };
         store.references.set(vec![existing1, existing2]);
         // 现在连 f1 → f2：f1 已参与 2 条（s=3）、f2 已参与 0 条（e=1）→ one_to_many
@@ -15037,6 +15171,8 @@ mod tests {
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
             color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
         };
         store.references.set(vec![existing]);
         // 现在连 f1 → f2：f1 已参与 1 条（s=2）、f2 已参与 0 条（e=1）→ one_to_many
@@ -15051,6 +15187,8 @@ mod tests {
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
             color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
         };
         // 翻转前：s=2, e=1 → one_to_many
         let flipped = flip_reference_endpoints(&r, &store);
@@ -15371,6 +15509,8 @@ mod tests {
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
             color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
         };
         store.references.set(vec![existing]);
         // 现在连 f1 → f2：f1 已参与 1 条（s=2）、f2 已参与 0 条（e=1）→ one_to_many
@@ -16570,6 +16710,8 @@ mod tests {
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
             color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
         }];
         let tables = vec![users, posts];
 
@@ -16634,6 +16776,8 @@ mod tests {
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
             color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
         }];
         let out = export_diagram_dbml(&tables, &refs);
         assert!(out.contains("Table users"), "UT-PC-03: 应含 Table 块");
@@ -17263,6 +17407,8 @@ CREATE TABLE posts (id UUID PRIMARY KEY, user_id UUID REFERENCES users(id));",
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
             color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
         };
         let (_, merged_r2) =
             merge_import_into_store(&[], &[existing_ref], &[], &new_refs);
@@ -17809,6 +17955,8 @@ CREATE TABLE posts (id UUID PRIMARY KEY, user_id UUID NOT NULL, FOREIGN KEY (use
             on_delete: "RESTRICT".into(),
             on_update: "RESTRICT".into(),
             color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
         };
         let flipped = flip_reference_endpoints(&r, &store);
         assert_eq!(flipped.start_table_id, "t2", "UT-PB-03: start_table 应互换");

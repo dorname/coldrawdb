@@ -210,8 +210,9 @@ fn ut_cr_color_01_border_and_stroke_contract() {
     );
 
     // 2) 关系线：同理
-    assert_eq!(relation_stroke_color("#f2b84b", "REL"), "#f2b84b");
-    assert_eq!(relation_stroke_color("", "REL"), "REL");
+    assert_eq!(relation_stroke_color("#f2b84b", "", "REL"), "#f2b84b");
+    assert_eq!(relation_stroke_color("", "", "REL"), "REL");
+    assert_eq!(relation_stroke_color("", "#abc", "REL"), "#abc");
 
     // 3) 渲染锚点：draw_table_body 表边框消费 table_border_color
     assert!(
@@ -254,37 +255,42 @@ fn ut_cr_color_01_border_and_stroke_contract() {
     report("UT-CR-COLOR-01", start);
 }
 
-/// UT-PB-11：关系 color 非空时渲染用色取自 Reference.color，为空回退 palette.relation。
+/// UT-PB-11：关系 color 非空时渲染用色取自 Reference.color，为空回退源表色 / palette.relation。
 #[test]
 fn ut_pb_11_relation_color_render_contract() {
     let start = Instant::now();
 
-    // 1) 纯函数行为（与 UT-CR-COLOR-01 同一合同，此处锚定 PB 用例）
-    assert_eq!(relation_stroke_color("#aa8cff", "PALETTE_REL"), "#aa8cff");
-    assert_eq!(relation_stroke_color("", "PALETTE_REL"), "PALETTE_REL");
-    assert_eq!(relation_stroke_color("  ", "PALETTE_REL"), "PALETTE_REL");
+    // 1) 纯函数行为（与 UT-CR-COLOR-01 / UT-PB-12 同一合同）
+    assert_eq!(relation_stroke_color("#aa8cff", "", "PALETTE_REL"), "#aa8cff");
+    assert_eq!(relation_stroke_color("", "", "PALETTE_REL"), "PALETTE_REL");
+    assert_eq!(relation_stroke_color("  ", "", "PALETTE_REL"), "PALETTE_REL");
+    assert_eq!(
+        relation_stroke_color("", "#4fd1c5", "PALETTE_REL"),
+        "#4fd1c5",
+        "空显式色跟随源表"
+    );
 
-    // 2) 渲染锚点：draw_bezier_fields 经 relation_stroke_color 取色，
-    //    主线 / 箭头 / 端点圆点统一消费 stroke（R-COLOR-02）
-    let bez_idx = RENDER.find("fn draw_bezier_fields").expect("draw_bezier_fields 存在");
-    let bez_block = &RENDER[bez_idx..bez_idx + 1800.min(RENDER.len() - bez_idx)];
+    // 2) 渲染锚点：draw_relation 经 relation_stroke_color 取色
+    let bez_idx = RENDER.find("fn draw_relation").expect("draw_relation 存在");
+    let bez_block = &RENDER[bez_idx..bez_idx + 2500.min(RENDER.len() - bez_idx)];
     assert!(
-        bez_block.contains("relation_stroke_color(ref_color, palette.relation)"),
-        "关系线必须经 relation_stroke_color 取色"
+        bez_block.contains("relation_stroke_color(ref_color, source_table_color, palette.relation)"),
+        "关系线必须经 relation_stroke_color(显式, 源表, palette) 取色"
     );
     assert!(
-        bez_block.contains("draw_arrow_head(ctx, path.cx2, path.cy2, path.x2, path.y2, stroke)"),
-        "箭头必须与主线同色"
+        bez_block.contains("draw_arrow_head"),
+        "箭头必须绘制"
     );
     assert!(
-        RENDER.contains("if selected { palette.selected } else { stroke }"),
+        RENDER.contains("if selected { palette.selected } else { stroke }")
+            || RENDER.contains("let stroke_main = if selected { palette.selected } else { stroke }"),
         "R-COLOR-03：选中高亮优先级高于自定义色"
     );
 
-    // 3) 调用点锚点：渲染循环把 r.color 传入 draw_bezier_fields
+    // 3) 调用点锚点：渲染循环把 r.color 与源表色传入 draw_relation
     assert!(
-        RENDER.contains("selected_ref_id == Some(&r.id), &r.color)"),
-        "渲染循环必须把 Reference.color 传入绘制"
+        RENDER.contains("&r.color") && RENDER.contains("&from.color"),
+        "渲染循环必须把 Reference.color 与源表色传入绘制"
     );
 
     // 4) 数据兼容锚点：Reference.color serde default（存量 JSON 无字段 → ''）

@@ -144,6 +144,8 @@ fn ut_pb_03_flip_reference_endpoints_swaps_start_and_end() {
         on_delete: "RESTRICT".to_string(),
         on_update: "RESTRICT".to_string(),
         color: String::new(),
+        line_type: "bezier".into(),
+        stroke_style: "solid".into(),
     };
 
     // When: flip
