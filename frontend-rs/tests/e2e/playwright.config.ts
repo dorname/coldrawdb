@@ -24,7 +24,8 @@ export default defineConfig({
   workers: 1,
   reporter: [
     ["list"],
-    ["./reporter/openlogos.ts", { outputFile: "../../logos/resources/verify/test-results.jsonl" }],
+    // e2e 位于 frontend-rs/tests/e2e，仓库根 logos 需上溯三级（与 outputDir 一致）
+    ["./reporter/openlogos.ts", { outputFile: "../../../logos/resources/verify/test-results.jsonl" }],
   ],
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://127.0.0.1:18080",
@@ -44,7 +45,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "cd ../.. && bash scripts/start-local.sh",
+    // e2e → tests → frontend-rs → repo root（原先 ../.. 落在 frontend-rs，start-local 不存在 → exit 127）
+    command: "cd ../../.. && bash scripts/start-local.sh",
     url: `${process.env.E2E_BASE_URL ?? "http://127.0.0.1:18080"}/editor`,
     timeout: 120_000,
     reuseExistingServer: !process.env.CI,
