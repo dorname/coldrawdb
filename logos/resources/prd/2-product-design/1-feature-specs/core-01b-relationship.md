@@ -232,20 +232,49 @@ Viewer 与 share-readonly：**不得**启用字段直连手势（同既有关系
 | 动态更新 | 已有关系在任一端表拖动后按最新相对位置重算出入侧，无需用户重建关系 |
 | 稳定性 | 两侧距离相等（x 差为 0）时保持现状默认（右出左进），避免边界抖动 |
 
-**V1.2 不做**：自动绕障 routing、正交折线、手动指定出入侧的 UI（后续增强）。
+**本版本仍不做**：自动绕障 routing、边捆绑、导入后自动整理布局、手动指定出入侧 UI。  
+**本提案（fix-open-issues-19-22 / #21）新增**：正交折线 / 直线路径类型与虚线线型（§4.3）；选中态密度降噪（§4.4）。出入侧仍由 §3.4 `pick_port_sides` 自动决定。
 
-## ADDED — §4.1 关系线颜色（fix-remote-github-issues-7-18）
+## ADDED — §4.1 关系线颜色（fix-remote-github-issues-7-18；#22 继承语义）
 
-> 实现 issue #12 的关系侧：`Reference` 增加可选 `color` 字段。
+> 实现 issue #12 的关系侧：`Reference` 增加可选 `color` 字段。#22 扩展空 color 继承源表色。
 
 | 规则 | 规格 |
 |---|---|
-| 数据 | `Reference.color: string`（默认 `''` = 未配置）；前端模型、后端 `reference` 表（迁移 `0006_reference_color`）、`diagrams.yaml`、`mcp-tools.yaml` `UpdateReferenceInput` 同步扩展 |
-| 渲染 | `color` 非空时关系线（含拖拽橡皮筋预览与端点）使用该色；为空时使用 `palette.relation` 默认主题色 |
+| 数据 | `Reference.color: string`（默认 `''` = 未配置）；前端模型、后端 `reference` 表（迁移 `0009_reference_color`）、`diagrams.yaml`、`mcp-tools.yaml` `UpdateReferenceInput` 同步扩展 |
+| 渲染优先级 | 1) `Reference.color` 非空 → 关系显式色；2) 空且源表（`start_table_id`）`Table.color` 非空 → **跟随源表色**；3) 二者皆空 → `palette.relation` |
 | 选中态 | 选中高亮优先级高于自定义色（选中态仍用 `palette.selected` 外环/加粗，自定义色作为基线色保留），二者不得互相覆盖导致不可辨识 |
-| Inspector | 关系面板新增颜色入口（预设色板 + 清除回默认）；变更走既有落账链路（store → dirty → schedule_save） |
+| Inspector | 关系面板新增颜色入口（预设色板 + 清除回默认）；标明「默认 = 跟随源表」；变更走既有落账链路（store → dirty → schedule_save） |
 | 导入导出 | JSON 导出保留 `color`、导入回填；SQL / DBML 导出**降级忽略**（不改变 DDL 语义），导入 SQL/DBML 时 `color=''` |
-| 兼容 | 存量图无 `color` 字段 → 反序列化默认 `''`，视觉与现状完全一致 |
+| 兼容 | 存量图无 `color` 字段 → 反序列化默认 `''`；无表色时视觉与主题默认色一致 |
+
+## ADDED — §4.2 出边跟随源表色（fix-open-issues-19-22 / #22）
+
+| 规则 | 规格 |
+|---|---|
+| 定义 | 「出边」= `start_table_id` 等于该表的 `Reference` |
+| 即时性 | 源表 `color` 变更后，所有 `Reference.color==''` 的出边下一帧重绘即用新表色；**不得**因改表色静默覆盖已保存的非空 `Reference.color` |
+| 兼容 | 存量图行为：无表色时仍为主题默认色，与 #12 交付观感一致 |
+
+## ADDED — §4.3 线条类型与线型（fix-open-issues-19-22 / #21 C1）
+
+| 规则 | 规格 |
+|---|---|
+| 数据 | `Reference.line_type`: `bezier`（默认）\| `orthogonal` \| `straight`；`Reference.stroke_style`: `solid`（默认）\| `dashed` |
+| 持久化 | 前端模型 + 后端 `reference` 表（迁移 `0010_reference_line_style`）+ `diagrams.yaml` 同步；JSON 导入导出保留；SQL/DBML 降级忽略 |
+| 路径 | `bezier` 保持现状三次贝塞尔；`straight` 为两端锚点直线；`orthogonal` 为水平/垂直折线（至少一折），锚点与出入侧由 §3.4 `pick_port_sides` 决定 |
+| 线型 | `dashed` 使用 canvas `set_line_dash`；`solid` 实线 |
+| Inspector | 选中关系后可切换线条类型与线型（`data-testid="inspector-rel-line-type"` / `inspector-rel-stroke-style`），走既有落账链路 |
+| 兼容 | 缺字段反序列化为 `bezier` + `solid` |
+
+## ADDED — §4.4 密度降噪（fix-open-issues-19-22 / #21 C2）
+
+| 规则 | 规格 |
+|---|---|
+| 触发 | 画布选中 ≥1 张表或 ≥1 条关系时启用 |
+| 相关定义 | 与选中表相连的关系、或选中关系本身，视为相关 |
+| 视觉 | 非相关关系线不透明度降低（建议 ≤ 0.25），相关线保持正常或略加粗；不删除、不改数据 |
+| 无选中 | 全部关系正常不透明度 |
 
 ## MODIFIED — 7. 与后端实体的对账
 
@@ -257,7 +286,9 @@ Viewer 与 share-readonly：**不得**启用字段直连手势（同既有关系
 | onDelete | `reference.on_delete` | snake_case 存库 |
 | startTableId + startFieldId | `reference.start_table_id` + `reference.start_field_id` | UUID |
 | endTableId + endFieldId | `reference.end_table_id` + `reference.end_field_id` | UUID |
-| color | `reference.color` | 关系线颜色（`''` = 默认主题色）；迁移 `0006_reference_color` 新增 |
+| color | `reference.color` | 关系线颜色（`''` = 跟随源表色 / 主题默认）；迁移 `0009_reference_color` |
+| line_type | `reference.line_type` | `bezier`/`orthogonal`/`straight`；迁移 `0010` |
+| stroke_style | `reference.stroke_style` | `solid`/`dashed`；迁移 `0010` |
 | many_to_many 中间表 | `table_link` 表 | 自动生成 |
 
 ## MODIFIED — 8. 测试用例 ID 索引
@@ -281,8 +312,14 @@ Viewer 与 share-readonly：**不得**启用字段直连手势（同既有关系
 | ST-PB-02 | e2e：关系工具从字段拖到另一字段 + 确认 → 新增 1 条 reference |
 | UT-PB-09 | `pick_port_sides` 按相对位置选侧（目标在左 → 左出右进；在右 → 右出左进；x 相等 → 默认） |
 | UT-PB-10 | `calc_path` 消费选侧结果：锚点与贝塞尔控制点方向随侧变化 |
-| UT-PB-11 | 关系 `color` 非空时渲染用色取自 `Reference.color`，为空回退 `palette.relation` |
+| UT-PB-11 | 关系 `color` 非空时渲染用色取自 `Reference.color`，为空回退源表色 / `palette.relation` |
 | ST-PB-05 | e2e：目标表拖到源表左侧 → 连线改为左出右进，不再绕行 |
 | ST-PB-06 | e2e：Inspector 修改关系颜色 → 仅该线变色 → 保存刷新后保留 |
+| UT-PB-12 | `relation_stroke_color`：显式色 > 源表色 > palette |
+| UT-PB-13 | `calc_path`/`calc_path_orthogonal`：orthogonal 折线锚点消费 `pick_port_sides` |
+| UT-PB-14 | 线型 dashed 时 dash 数组非空；solid 为空 |
+| UT-PB-15 | 选中表时非相关线 alpha 降低、相关线不降 |
+| ST-PB-07 | e2e：切换正交折线 → 保存刷新保留 |
+| ST-PB-08 | e2e：表设色且关系未设色 → 出边跟表色；关系显式设色后改表色不影响该线 |
 
 > 详细步骤见 `core-PB-relationship-test-cases.md`。

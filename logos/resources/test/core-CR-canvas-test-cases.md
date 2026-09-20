@@ -442,3 +442,40 @@
 
 > 附录 A（用例 ID 清单）追加登记：UT-CR-COMMENT-01 / UT-CR-COMMENT-02 / UT-CR-COLOR-01 / UT-CR-GHOST-02 / ST-CR-COMMENT-01 / ST-CR-COLOR-01。
 > 全部用例结果写入 `logos/resources/verify/test-results.jsonl`（`module: "core"`，`scenario: "S01"`）。
+
+## 合并自 fix-open-issues-19-22（2026-09-20）
+
+## ADDED — UT-CR-DRAG-01 — 有效拖动后抑制 click 穿透（#19）
+
+- **位置**：`frontend-rs/src/editor_render.rs`（`should_suppress_click_after_drag`）
+- **断言**：位移 ≥ `DRAG_THRESHOLD` → true；< 阈值 → false；区域/表/便签共用
+
+## ADDED — ST-CR-DRAG-01 — e2e：区域拖到邀请按钮不打开模态（#19）
+
+- **GIVEN**：协作房间编辑器，画布有区域，AppBar 可见 `btn-invite`
+- **WHEN**：对区域 `pointerdown` → 指针移到 `btn-invite` 中心 → `pointerup`
+- **THEN**：`modal-invite` **不出现**；区域坐标已更新
+
+## ADDED — UT-CR-WIDTH-01 — auto / 固定宽分支（#20）
+
+- **位置**：`compute_table_render_size` / `resolve_table_width`
+- **断言**：`None`/`Some(0)` → auto ∈ `[230,480]`；`Some(350)` → 350
+
+## ADDED — UT-CR-WIDTH-02 — 长表名撑宽（#20）
+
+- **GIVEN**：表名 `asset_v2.virtualization_cluster_profile`，`width=None`
+- **THEN**：有效宽 > 230 且 ≤ 480
+
+## ADDED — ST-CR-WIDTH-01 — e2e：长表名可读（#20）
+
+- **THEN**：画布表头显著宽于默认 230；Inspector 名称完整
+
+## ADDED — UT-CR-COLOR-02 — picker 写入任意色（#22）
+
+- **断言**：合法 hex 写入后 `table_border_color` 派生自该值；清空回退 palette
+
+## ADDED — ST-CR-COLOR-02 — e2e：picker + 出边跟随（#22）
+
+- **THEN**：未设色出边跟随表色；显式设色后改表色不影响该线；清除关系色后恢复跟随
+
+> 附录追加：UT-CR-DRAG-01 / ST-CR-DRAG-01 / UT-CR-WIDTH-01 / UT-CR-WIDTH-02 / ST-CR-WIDTH-01 / UT-CR-COLOR-02 / ST-CR-COLOR-02。

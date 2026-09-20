@@ -151,3 +151,42 @@
 | ST-PB-06 | 画布含 ≥2 条关系 | Inspector 关系面板设预设色 → 保存 → 刷新 | 仅该线变色；刷新后仍在；导出 JSON 含 `color` 再导入保留 |
 
 > 全部用例结果写入 `logos/resources/verify/test-results.jsonl`（`module: "core"`，`scenario: "S01"`）。
+
+## 合并自 fix-open-issues-19-22（2026-09-20）
+
+## ADDED — UT-PB-12 — 关系描边色优先级（#22）
+
+- **位置**：`relation_stroke_color`（可传入源表色）
+- **断言**：显式色 > 源表色 > palette.relation
+
+## ADDED — UT-PB-13 — 正交折线消费选侧（#21）
+
+- **GIVEN**：A→B，B 在 A 左侧；`line_type=orthogonal`
+- **THEN**：折线锚点与 `pick_port_sides` 一致（左出右进）
+
+## ADDED — UT-PB-14 — 虚线线型（#21）
+
+- **断言**：`dashed` → dash 非空；`solid` → 空 dash
+
+## ADDED — UT-PB-15 — 选中态密度降噪（#21）
+
+- **THEN**：非相关线 alpha ≤ 0.25；相关线正常；无选中时全部正常
+
+## ADDED — ST-PB-07 — e2e：正交折线持久化（#21）
+
+- **THEN**：切换 `orthogonal` → 保存刷新保留；JSON 含 `line_type`
+
+## ADDED — ST-PB-08 — e2e：出边跟随源表色（#22）
+
+- **THEN**：表设色且关系未设色 → 出边跟表色；显式设色优先
+
+### 用例登记追加
+
+| ID | 描述 |
+|---|---|
+| UT-PB-12 | 描边色优先级 |
+| UT-PB-13 | 正交折线选侧 |
+| UT-PB-14 | dashed/solid |
+| UT-PB-15 | 密度降噪 alpha |
+| ST-PB-07 | 正交折线持久化 |
+| ST-PB-08 | 出边跟随源表色 |

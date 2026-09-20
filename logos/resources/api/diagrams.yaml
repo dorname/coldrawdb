@@ -301,7 +301,20 @@ components:
         type_: { type: string, default: '' }
         on_delete: { type: string, default: '' }
         on_update: { type: string, default: '' }
-        color: { type: string, default: '' }
+        color:
+          type: string
+          default: ''
+          description: "Relation stroke color. Empty = inherit start table color when set, else theme default."
+        line_type:
+          type: string
+          default: bezier
+          enum: [bezier, orthogonal, straight]
+          description: "Path style for the relation edge."
+        stroke_style:
+          type: string
+          default: solid
+          enum: [solid, dashed]
+          description: "Stroke dash pattern for the relation edge."
     Area:
       type: object
       required: [id]

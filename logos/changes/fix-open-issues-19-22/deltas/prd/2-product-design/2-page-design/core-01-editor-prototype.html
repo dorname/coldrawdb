@@ -1,0 +1,18 @@
+# Delta — core-01-editor-prototype.html（修改）
+
+> 模块：core | 提案：fix-open-issues-19-22
+> 关联 issue：#21、#22
+> 说明：唯一现行主原型微对齐；不重做整页布局。
+
+## 变更要点
+
+1. **#22 表色**：Inspector「数据表」颜色区在命名预设旁增加 `<input type="color" data-testid="inspector-table-color-picker">`（或原型等价控件），保留「默认」清空。
+2. **#22 出边跟随**：原型注释/提示文案标明关系色「空 = 跟随源表」。
+3. **#21 线型**：关系 Inspector（或选中浮层）增加：
+   - 线条类型：`bezier` / `orthogonal` / `straight`（`data-testid="inspector-rel-line-type"`）
+   - 线条样式：`solid` / `dashed`（`data-testid="inspector-rel-stroke-style"`）
+4. **#19/#20**：原型可不演示 click 抑制与自适应宽（生产行为合同以功能规格为准）；可选在画布长表名 demo 表上加宽示意。
+
+## merge 指引
+
+在 `core-01-editor-prototype.html` 的 Inspector 表色与关系面板对应 section 插入上述控件与简短说明文字即可，保持现有 V2 布局（AppBar / ToolRail / Inspector）与 token 不变。

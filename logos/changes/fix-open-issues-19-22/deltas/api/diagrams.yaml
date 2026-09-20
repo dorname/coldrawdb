@@ -1,0 +1,30 @@
+# Delta — diagrams.yaml（修改）
+
+> 模块：core | 提案：fix-open-issues-19-22
+> 关联 issue：#21、#22
+
+## MODIFIED — components.schemas.Reference
+
+在既有 `color` 属性后追加：
+
+```yaml
+        color:
+          type: string
+          default: ''
+          description: "Relation stroke color. Empty = inherit start table color when set, else theme default."
+        line_type:
+          type: string
+          default: bezier
+          enum: [bezier, orthogonal, straight]
+          description: "Path style for the relation edge."
+        stroke_style:
+          type: string
+          default: solid
+          enum: [solid, dashed]
+          description: "Stroke dash pattern for the relation edge."
+```
+
+说明：
+
+- merge 时将现有单行 `color: { type: string, default: '' }` 展开为带 `description` 的映射（或等价保留紧凑写法并另起两行属性），确保 OpenAPI 3.x 合法。
+- 缺省反序列化：`line_type=bezier`、`stroke_style=solid`、`color=''`。
