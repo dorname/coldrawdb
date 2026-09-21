@@ -1,6 +1,7 @@
 use reqwest::{Client, Method};
 use serde_json::{json, Value};
 
+use crate::collab;
 use crate::config::Config;
 use crate::error::ToolError;
 
@@ -94,13 +95,65 @@ impl ApiClient {
             .request(
                 Method::PUT,
                 &format!("/api/v1/diagrams/{id}"),
-                Some(json!({"expected_revision":expected_revision,"diagram":diagram})),
+                Some(json!({"expected_revision":expected_revision,"diagram":diagram.clone()})),
             )
+            .await;
+        match response {
+            Ok(response) => response
+                .get("data")
+                .cloned()
+                .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "上游响应缺少 data", false)),
+            Err(error) if error.code == "USE_OP_CHANNEL" => {
+                self.write_room_diagram(id, expected_revision, diagram).await
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    /// 房间图 PUT 被收编后，按当前物化文档 diff，经 WebSocket 提交 op。
+    async fn write_room_diagram(
+        &self,
+        id: &str,
+        expected_revision: i64,
+        desired: Value,
+    ) -> Result<Value, ToolError> {
+        let rooms = self.request(Method::GET, "/api/v1/rooms", None).await?;
+        let current = self
+            .request(Method::GET, &format!("/api/v1/diagrams/{id}"), None)
             .await?;
-        response
-            .get("data")
-            .cloned()
-            .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "上游响应缺少 data", false))
+        let base = current.get("data").cloned().ok_or_else(|| {
+            ToolError::new("UPSTREAM_ERROR", "上游响应缺少 data", false)
+        })?;
+        let base_revision = base.get("revision").and_then(Value::as_i64).ok_or_else(|| {
+            ToolError::new("UPSTREAM_ERROR", "物化文档缺少 revision", false)
+        })?;
+        if base_revision != expected_revision {
+            let mut error = ToolError::new("REVISION_CONFLICT", "revision 与服务端不一致", false);
+            error.details = Some(json!({"current_revision": base_revision}));
+            return Err(error);
+        }
+        let (room_id, ops, revision) = collab::plan_room_save(
+            self.config.base_url.as_str(),
+            self.config.access_token.as_deref(),
+            &rooms,
+            id,
+            base_revision,
+            &base,
+            &desired,
+        )
+        .map_err(|(code, message)| ToolError::new(&code, message, false))?;
+        if ops.is_empty() {
+            return Ok(json!({"id": id, "revision": revision}));
+        }
+        let token = self.config.access_token.as_deref().unwrap_or("");
+        let ws_url = collab::collab_ws_url(self.config.base_url.as_str(), &room_id, token)
+            .map_err(|code| ToolError::new(&code, "无法构造协作 WebSocket 地址", false))?;
+        let server_rev = collab::transport::submit_over_websocket(&ws_url, &ops, revision)
+            .await
+            .map_err(|(code, message)| {
+                ToolError::new(&code, message, code == "UPSTREAM_UNAVAILABLE")
+            })?;
+        Ok(json!({"id": id, "revision": server_rev}))
     }
 
     pub async fn delete(&self, id: &str) -> Result<Value, ToolError> {

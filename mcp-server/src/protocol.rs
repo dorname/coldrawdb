@@ -30,11 +30,18 @@ pub async fn handle(service: &McpService, request: Value) -> Option<Value> {
                 .unwrap_or_else(|| json!({}));
             let started = Instant::now();
             let outcome = service.call(name, arguments).await;
-            let status = if outcome.is_ok() { "ok" } else { "error" };
-            eprintln!(
-                "{}",
-                json!({"event":"tool_call","tool":name,"duration_ms":started.elapsed().as_millis(),"status":status})
-            );
+            // 成功调用不写 stderr。Cursor 会把子进程 stderr 整段标成 [error]。
+            if let Err(error) = &outcome {
+                if let Some(line) = crate::collab::tool_log_line(
+                    "error",
+                    name,
+                    started.elapsed().as_millis(),
+                    Some(error.code.as_str()),
+                    Some(error.message.as_str()),
+                ) {
+                    eprintln!("{line}");
+                }
+            }
             match outcome {
                 Ok(value) => Ok(tool_result(value, false)),
                 Err(error) => Ok(tool_result(

@@ -9,6 +9,6 @@
 
 ## [code] 代码实现
 
-- [ ] `mcp-server`：成功 tool_call 不写 stderr；失败日志含 `code` 与 `message`
-- [ ] `mcp-server`：409 `USE_OP_CHANNEL` 不再映射为 `REVISION_CONFLICT`；房间图经 WS op 写入
-- [ ] 补齐 UT-MCP-25～27，并保持非房间 PUT 测试通过
+- [x] `mcp-server`：成功 tool_call 不写 stderr；失败日志含 `code` 与 `message`
+- [x] `mcp-server`：409 `USE_OP_CHANNEL` 不再映射为 `REVISION_CONFLICT`；房间图经 WS op 写入
+- [x] 补齐 UT-MCP-25～27，并保持非房间 PUT 测试通过

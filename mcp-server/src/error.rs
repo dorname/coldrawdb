@@ -38,6 +38,9 @@ impl ToolError {
             401 => ("UNAUTHENTICATED", false),
             403 => ("PERMISSION_DENIED", false),
             404 => ("NOT_FOUND", false),
+            409 if body.pointer("/details/code").and_then(Value::as_str) == Some("USE_OP_CHANNEL") => {
+                ("USE_OP_CHANNEL", false)
+            }
             409 => ("REVISION_CONFLICT", false),
             500..=599 => ("UPSTREAM_ERROR", true),
             _ => ("UPSTREAM_ERROR", false),
@@ -55,7 +58,7 @@ impl ToolError {
             .and_then(Value::as_object)
             .map(|source| {
                 let mut safe = Map::new();
-                for key in ["current_revision", "field"] {
+                for key in ["current_revision", "field", "code"] {
                     if let Some(value) = source.get(key) {
                         safe.insert(key.into(), value.clone());
                     }
