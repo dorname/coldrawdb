@@ -334,12 +334,12 @@ V1 字段类型用 `text-orange-500`（main `stringColor`）等 Tailwind 颜色 
 
 ## ADDED — §1.7 表宽内容自适应（fix-open-issues-19-22 / #20）
 
-> 实现 issue #20。渲染细则见 `core-01-editor-canvas.md` §5.10 R-WIDTH-01～05。
+> 实现 issue #20；#25 补齐 NameComment 并排注释计入宽度。渲染细则见 `core-01-editor-canvas.md` §5.10 R-WIDTH-01～05。
 
 | 规则 | 规格 |
 |---|---|
 | 数据语义 | `Table.width`：`None` / `0` = auto；正整数 = 固定 CSS/世界坐标宽度（px） |
-| 测量输入 | 随注释显示模式（`name` / `name+comment` / `comment`）取表头主文本、字段名、类型、注释中实际绘制的字符串 |
+| 测量输入 | 随注释显示模式（`name` / `name+comment` / `comment`）取表头主文本、字段名、类型、注释中**实际并排绘制**的字符串；`name+comment` 下注释与名称/类型横向累加（见 R-WIDTH-01），不得仅取 max |
 | 夹紧 | `[230, 480]`（与 ListView `auto_calc_column_width` 上限一致） |
 | Inspector / 模态 | Set Table Width：「0 = auto」写入 auto 语义；正数写入固定宽 |
 | 导入 | SQL/DBML/JSON 导入新建表默认 auto，首次展示按内容 fit |
@@ -361,5 +361,6 @@ V1 字段类型用 `text-orange-500`（main `stringColor`）等 Tailwind 颜色 
 | UT-CR-COLOR-02 | picker/hex 写入任意合法色并参与边框渲染 |
 | ST-CR-COLOR-02 | e2e：picker 改色 → 保存刷新保留；出边未设色时跟随表色 |
 | UT-CR-COLOR-03 | 表头前景相对有效背景亮度自适应（浅色表头 → 深色字；深色表头 → 浅色字） |
+| UT-CR-WIDTH-03 | NameComment 下短英文名 + 中文注释并排撑宽（#25）：有注释估算 > 无注释；近似 ≥ 名+注释+类型 |
 
 > 详细步骤见 `core-CR-canvas-test-cases.md`；Inspector 注释编辑既有用例（UT-PC-29 / UT-PC-30 / ST-PC-08）继续有效。

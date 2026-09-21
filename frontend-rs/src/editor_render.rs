@@ -2945,23 +2945,46 @@ pub fn resolve_table_width(table: &Table, comment_mode: CommentDisplay) -> f64 {
     }
 }
 
-/// #20：按注释显示模式估算内容所需宽度（纯函数，无 canvas measure）。
-/// ASCII ≈ 8px/字，CJK ≈ 14px/字；计入左右内边距与类型列预留。
+/// #20 / #25：按注释显示模式估算内容所需宽度（纯函数，无 canvas measure）。
+/// ASCII ≈ 8px/字，CJK ≈ 14px/字。
+/// NameComment 下注释与主文本/类型**并排累加**（对齐 `draw_table_body`），禁止对各文本段取 max。
 pub fn estimate_content_width(table: &Table, comment_mode: CommentDisplay) -> f64 {
-    const PAD: f64 = 28.0; // 左右内边距 + 边框
-    const TYPE_RESERVE: f64 = 72.0; // 类型列预留
-    let mut max_w = measure_text_approx(comment_mode.primary(&table.name, &table.comment)) + PAD;
+    // 与 draw_table_body 布局常量对齐
+    const LEFT_PAD: f64 = 11.0;
+    const RIGHT_PAD: f64 = 11.0;
+    const HEADER_NAME_CMT_GAP: f64 = 6.0;
+    const HEADER_COUNT_RESERVE: f64 = 15.0; // 字段计数右对齐占位
+    const FIELD_GAP: f64 = 8.0; // 名称↔注释、注释↔类型
+    const PK_NAME_EXTRA: f64 = 25.0; // primary 时 name_x 36−11
+
+    let table_label = comment_mode.primary(&table.name, &table.comment);
+    let mut max_w = LEFT_PAD + measure_text_approx(table_label) + HEADER_COUNT_RESERVE + RIGHT_PAD;
     if let Some(cmt) = comment_mode.secondary(&table.comment) {
-        max_w = max_w.max(measure_text_approx(cmt) + PAD);
+        max_w = LEFT_PAD
+            + measure_text_approx(table_label)
+            + HEADER_NAME_CMT_GAP
+            + measure_text_approx(cmt)
+            + HEADER_COUNT_RESERVE
+            + RIGHT_PAD;
     }
+
     for field in &table.fields {
         let label = comment_mode.primary(&field.name, &field.comment);
-        let mut row = measure_text_approx(label) + TYPE_RESERVE + PAD;
-        if let Some(fc) = comment_mode.secondary(&field.comment) {
-            row = row.max(measure_text_approx(fc) + PAD);
-        }
-        // 类型文本也参与撑宽
-        row = row.max(measure_text_approx(&field.type_) + measure_text_approx(label) + PAD + 16.0);
+        let pk_extra = if field.primary { PK_NAME_EXTRA } else { 0.0 };
+        let label_w = measure_text_approx(label);
+        let type_w = measure_text_approx(&field.type_);
+        let row = if let Some(fc) = comment_mode.secondary(&field.comment) {
+            LEFT_PAD
+                + pk_extra
+                + label_w
+                + FIELD_GAP
+                + measure_text_approx(fc)
+                + FIELD_GAP
+                + type_w
+                + RIGHT_PAD
+        } else {
+            LEFT_PAD + pk_extra + label_w + FIELD_GAP + type_w + RIGHT_PAD
+        };
         max_w = max_w.max(row);
     }
     max_w
