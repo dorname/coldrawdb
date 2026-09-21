@@ -52,7 +52,7 @@ function startFrontend() {
   return spawn("trunk", ["serve", "--port", "4175"], {
     cwd: new URL("..", import.meta.url),
     env,
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["ignore", "ignore", "ignore"], // serve: 避免 pipe 无人读堵死
   });
 }
 
