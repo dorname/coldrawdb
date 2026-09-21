@@ -1,0 +1,79 @@
+# Delta — diagrams.yaml（修改）
+
+> 模块：core | 提案：fix-diagram-import-persistence
+> 关联缺陷：导入图持久化「假成功真丢数据」导致 MCP 响应校验失败
+
+## MODIFIED — paths./api/v1/diagrams/import.post.responses
+
+现有 `200` 响应语义仅写「导入成功」。修正为按实际持久化结果上报，并新增 `500`：
+
+```yaml
+  /api/v1/diagrams/import:
+    post:
+      operationId: importDiagram
+      summary: 导入 drawdb JSON object（缺 id 表/字段自动补全，坏表跳过并记入 warnings）
+      responses:
+        '200':
+          description: 导入成功；imported_tables/imported_fields 按实际持久化数量上报
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          description: 持久化失败（如表数据非法且无法跳过），不创建半成品图
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+```
+
+## MODIFIED — components.schemas.ImportResponse
+
+`data` 语义收紧（数量按实报，`warnings` 携带丢弃/补全明细）：
+
+```yaml
+    ImportResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [diagram_id, imported_tables, imported_fields, warnings]
+              properties:
+                diagram_id:
+                  type: string
+                imported_tables:
+                  type: integer
+                  description: 实际持久化到库的表数量（非 payload 原始数量）
+                imported_fields:
+                  type: integer
+                  description: 实际持久化到库的字段数量（非 payload 原始数量）
+                warnings:
+                  type: array
+                  items:
+                    type: string
+                  description: "丢弃的坏表/坏字段明细与自动补全说明（如 'table[2] dropped: missing id'、'generated id for table[0]'）"
+                source:
+                  type: string
+                  nullable: true
+```
+
+## MODIFIED — components.schemas.Diagram（name 允许 null，与存量数据兼容）
+
+```yaml
+    Diagram:
+      type: object
+      required: [id]
+      properties:
+        name:
+          type: [string, "null"]
+          description: 图名；历史脏数据可能为 null（修复前导入产生），消费方需容错
+```
+
+说明：
+
+- 后端实现同步收紧：`diagram_from_import_payload` 逐表容错（缺 id 自动生成 `auto-` 前缀 id，坏表跳过并进 warnings）；`save_diagram` 不再用 `name=None` 覆盖列值；`import_diagram_v1` 传播持久化错误、数量按实报。
+- `name` 允许 null 仅作存量与旁路数据兼容；新导入图 name 缺省为 `imported_diagram` 或 payload.name。

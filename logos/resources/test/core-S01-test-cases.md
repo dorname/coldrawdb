@@ -314,8 +314,12 @@ pub fn make_diagram() -> DiagramCreateRequest {
 | UT-S01-09 | 并发 PUT 冲突 | `backend/src/diagrams/v1/service.rs` |
 | UT-S01-10 | JSON 字段类型校验 | `backend/src/diagrams_v1.rs` |
 | UT-S01-11 | field.tag 保存/加载往返 | `backend/src/diagram_persistence.rs` |
+| UT-S01-12 | save_diagram name=None 不覆盖列值 | `backend/src/diagram_persistence.rs` |
+| UT-S01-13 | normalize_import_payload 逐实体容错 | `backend/src/diagram_persistence.rs` |
 | UT-ID-GLOBAL-01 | 前端实体 id 全局唯一(1000 个 id 互不重复) | `frontend-rs/tests/entity_id_uniqueness.rs` |
 | UT-ID-GLOBAL-02 | 新格式 id 绕过 max+1 解析(兼容存量加载) | `frontend-rs/src/editor_panels.rs` |
 | ST-S01-01 | 编辑保存端到端 | `backend/src/diagrams_v1.rs::tests` |
 | ST-S01-02 | 导入端到端 | `backend/src/diagrams_v1.rs::tests` |
+| ST-S01-04 | 导入缺 id/name payload 兜底补全 | `backend/src/diagrams_v1.rs::tests` |
+| ST-S01-05 | 导入坏表丢弃 + warnings 明细 | `backend/src/diagrams_v1.rs::tests` |
 | ST-S01-03 | 浏览器 wasm 渲染 | `frontend-rs/tests/wasm/` |

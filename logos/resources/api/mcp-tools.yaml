@@ -512,8 +512,10 @@ schemas:
     properties:
       id:
         type: string
+      # fix-diagram-import-persistence（UT-MCP-29）：修复前导入的存量图 name 可能为
+      # null；值放宽可空、键保留 required，杜绝客户端 schema 硬校验失败。
       name:
-        type: string
+        type: [string, "null"]
       database:
         type: [string, "null"]
       revision:

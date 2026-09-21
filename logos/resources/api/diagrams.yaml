@@ -101,7 +101,7 @@ paths:
   /api/v1/diagrams/import:
     post:
       operationId: importDiagram
-      summary: 导入 drawdb JSON object
+      summary: "导入 drawdb JSON object（缺 id 表/字段自动补全，坏表跳过并记入 warnings）"
       requestBody:
         required: true
         content:
@@ -110,13 +110,19 @@ paths:
               $ref: '#/components/schemas/ImportRequest'
       responses:
         '200':
-          description: 导入成功
+          description: "导入成功；imported_tables/imported_fields 按实际持久化数量上报"
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ImportResponse'
         '400':
           $ref: '#/components/responses/ApiError'
+        '500':
+          description: "持久化失败（不创建半成品图，已插入的空图行回收）"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 components:
   responses:
     ApiError:
@@ -230,12 +236,15 @@ components:
                   type: string
                 imported_tables:
                   type: integer
+                  description: "实际持久化到库的表数量（fix-diagram-import-persistence：不再按 payload 原始数量虚报）"
                 imported_fields:
                   type: integer
+                  description: "实际持久化到库的字段数量"
                 warnings:
                   type: array
                   items:
                     type: string
+                  description: "丢弃的坏表/坏字段明细与自动补全说明（如 'table[2] dropped: missing name'、'generated id for table[0]'）"
                 source:
                   type: string
                   nullable: true

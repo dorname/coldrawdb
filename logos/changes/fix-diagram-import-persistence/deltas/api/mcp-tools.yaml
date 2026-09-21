@@ -1,0 +1,45 @@
+# Delta — mcp-tools.yaml（修改）
+
+> 模块：core | 提案：fix-diagram-import-persistence
+> 关联缺陷：导入脏图 `name: null` 违反契约，MCP 客户端每次调用抛 `Output validation error`
+
+## MODIFIED — schemas.Diagram.properties.name
+
+```yaml
+  Diagram:
+    type: object
+    required: [id, name]
+    additionalProperties: true
+    properties:
+      id:
+        type: string
+      name:
+        type: [string, "null"]
+        description: 图名；修复前导入的存量图可能为 null，消费方（AI 客户端）需容错展示
+      database:
+        type: [string, "null"]
+      revision:
+        type: integer
+        minimum: 0
+      tables:
+        type: array
+        items:
+          type: object
+      references:
+        type: array
+        items:
+          type: object
+      areas:
+        type: array
+        items:
+          type: object
+      notes:
+        type: array
+        items:
+          type: object
+```
+
+说明：
+
+- `required` 保留 `[id, name]`（name 键必须存在），仅放宽值类型为可空——`get_diagram` 等读工具的 structuredContent 对存量脏图不再触发客户端 schema 硬校验失败。
+- 与 `logos/resources/api/diagrams.yaml` 的 `components.schemas.Diagram` 放宽保持一致。
