@@ -1,112 +1,4 @@
-# S06 时序图：AI 客户端通过 MCP 管理数据库图表
-
-> Why：`core-S06-mcp-service-requirements.md` | What：`core-S06-mcp-service-design.md` | How 契约：`mcp-tools.yaml`
-
-## 1. 场景描述
-
-开发者在 Claude、Codex、Cursor 或 OpenCode 中启用 coldrawdb MCP，读取现有 diagram，基于最新 revision 提交全量更新；服务通过现有 HTTP API 保存，成功时返回新 revision，冲突时停止并要求重新读取与人工合并。
-
-成功标志：客户端完成 initialize/tools/list；`get_diagram` 返回 rev=N；`update_diagram(expected_revision=N)` 返回 rev=N+1，且 OpenLogos reporter 记录对应 ST。
-
-## 2. 参与者
-
-| 参与者 | 职责 | 实现边界 |
-|---|---|---|
-| 开发者 | 配置服务、批准写工具、决定冲突处理 | 人类确认点 |
-| AI 客户端 | 启动 stdio 子进程、展示工具、执行审批策略 | Claude/Codex/Cursor/OpenCode |
-| coldrawdb-mcp | MCP 握手、schema、参数校验、错误规范化 | 独立 Rust adapter/service |
-| HTTP Adapter | 固定路径调用、Bearer 透传、超时、脱敏 | 不接受任意 URL/method/header |
-| coldrawdb API | diagram CRUD/import 和 revision 校验 | 既有 backend |
-| SQLite | 持久化 | MCP 不直接访问 |
-
-## 3. 主时序：初始化、读取与更新
-
-```mermaid
-sequenceDiagram
-  autonumber
-  actor U as 开发者
-  participant C as Claude/Codex/Cursor/OpenCode
-  participant M as coldrawdb-mcp
-  participant H as HTTP Adapter
-  participant A as coldrawdb API
-  participant D as SQLite
-
-  U->>C: 启用 coldrawdb MCP
-  C->>M: initialize(protocolVersion, capabilities)
-  M-->>C: serverInfo + tools capability + instructions
-  C->>M: notifications/initialized
-  C->>M: tools/list
-  M-->>C: 七个工具 + schemas + annotations
-  U->>C: 读取并更新 diagram
-  C->>M: tools/call get_diagram(id)
-  M->>H: GET /api/v1/diagrams/id
-  H->>A: HTTP + 可选 Bearer
-  A->>D: load_diagram(id)
-  D-->>A: diagram rev=5
-  A-->>H: 200 ApiResp
-  H-->>M: 规范化 diagram
-  M-->>C: structuredContent
-  C->>M: tools/call update_diagram(expected_revision=5)
-  M->>H: PUT /api/v1/diagrams/id
-  H->>A: expected_revision=5 + diagram
-  A->>D: compare revision and save
-  alt revision 一致
-    D-->>A: revision=6
-    A-->>H: 200 ApiResp
-    H-->>M: success
-    M-->>C: id + revision=6
-    C-->>U: 更新成功
-  else revision 冲突
-    D-->>A: current_revision=7
-    A-->>H: 409 ApiErr
-    H-->>M: REVISION_CONFLICT
-    M-->>C: isError + current_revision=7
-    C-->>U: 请求读取最新版本并人工合并
-  end
-```
-
-## 4. 辅时序：导出
-
-```mermaid
-sequenceDiagram
-  participant C as AI 客户端
-  participant M as coldrawdb-mcp
-  participant A as coldrawdb API
-  participant S as Export Serializer
-
-  C->>M: export_schema(id, format=dbml)
-  M->>A: GET /api/v1/diagrams/id
-  A-->>M: diagram + revision
-  M->>S: serialize(diagram, dbml)
-  S-->>M: deterministic content
-  M-->>C: diagram_id + revision + mime_type + content
-```
-
-序列化是 adapter 内纯函数；不得把导出文本发送给未配置的第三方服务。
-
-## 5. 辅时序：删除双确认
-
-```mermaid
-sequenceDiagram
-  actor U as 开发者
-  participant C as AI 客户端
-  participant M as coldrawdb-mcp
-  participant A as coldrawdb API
-
-  C-->>U: destructiveHint=true，请求批准
-  alt 用户批准
-    U->>C: approve
-    C->>M: delete_diagram(id, confirm=true)
-    M->>A: DELETE /api/v1/diagrams/id
-    A-->>M: 200 id
-    M-->>C: deleted=true
-  else 用户拒绝
-    U->>C: deny
-    Note over C,M: 不调用服务
-  end
-```
-
-## 6. API 与工具推导
+## MODIFIED — 6. API 与工具推导
 
 | 时序步骤 | 推导工具 | 上游 |
 |---|---|---|
@@ -204,7 +96,7 @@ sequenceDiagram
 - 客户端帧为 `{type:"op", clientRev, op}`。先忽略 `connected`，每条 op 等待 `ack.serverRev`。`error.code=READ_ONLY` 原样返回。
 - token 只出现在 WebSocket query。连接失败信息必须打码，不得进入 stderr 或 MCP 错误。
 
-## 7. 异常与恢复
+## MODIFIED — 7. 异常与恢复
 
 - stdin EOF：完成当前响应后正常退出；不得把 EOF 当成上游错误。
 - 上游超时：返回 `UPSTREAM_TIMEOUT`；不自动重试写操作。
@@ -214,7 +106,7 @@ sequenceDiagram
 - stdout 污染：协议测试立即失败。成功调用不写 stderr；失败日志只能是一行含 `code`/`message` 的 JSON。
 - 遗留 list 端点失败：返回 `UPSTREAM_ERROR`，不得退化为 SQLite 查询。
 
-## 8. 测试映射
+## MODIFIED — 8. 测试映射
 
 | 步骤 | 用例 |
 |---|---|
@@ -234,7 +126,7 @@ sequenceDiagram
 | layout_diagram 端到端 + 确定性输出验证 | ST-MCP-12 |
 | 房间 op 写入与 stderr | UT-MCP-25～27 |
 
-## 9. 设计决策
+## MODIFIED — 9. 设计决策
 
 - stdio 是四客户端交集，且与当前“本地可信”安全边界匹配。
 - adapter 调 HTTP 而非复用 repository，避免绕过业务响应与 revision 语义。房间图不绕过写收编：PUT 被拒绝后走与前端相同的 op 通道。
