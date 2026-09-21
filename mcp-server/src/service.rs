@@ -100,11 +100,15 @@ impl McpService {
                 if arguments.get("format").and_then(Value::as_str) != Some("drawdb_json") {
                     return Err(ToolError::validation("MVP 仅支持 drawdb_json 导入"));
                 }
-                let payload = arguments
+                let mut payload = arguments
                     .get("payload")
                     .filter(|value| value.is_object())
                     .cloned()
                     .ok_or_else(|| ToolError::validation("payload 必须是 object"))?;
+                // fix-diagram-import-persistence（UT-MCP-28）：adapter 侧前置规范化。
+                // TableDto/FieldDto 等 id 必填，缺 id 的 payload 会被旧后端整组静默
+                // 丢弃（假成功真丢数据）；规范化后未升级后端也能正确落库。
+                normalize_import_payload(&mut payload);
                 self.api
                     .import(arguments.get("source").and_then(Value::as_str), payload)
                     .await
@@ -417,6 +421,68 @@ fn uuid_simple() -> String {
         .unwrap_or_default()
         .as_nanos();
     format!("{:x}", nanos)
+}
+
+/// fix-diagram-import-persistence（UT-MCP-28）：import payload 前置规范化。
+/// 与后端 `normalize_import_payload` 同规则：补默认 name、为缺 id 的表/字段/
+/// 关系/区域/便签生成 `auto-` 前缀 id；已有值一律保留。adapter 只补全不丢弃，
+/// 坏实体由后端规范化丢弃并进 warnings。
+fn normalize_import_payload(payload: &mut Value) {
+    if payload
+        .get("name")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or("")
+        .is_empty()
+    {
+        payload["name"] = json!("imported_diagram");
+    }
+    if let Some(taken) = payload
+        .get_mut("tables")
+        .and_then(|v| v.as_array_mut().map(std::mem::take))
+    {
+        let mut kept = Vec::with_capacity(taken.len());
+        for mut table in taken {
+            ensure_entity_id(&mut table);
+            if let Some(fields) = table
+                .get_mut("fields")
+                .and_then(|v| v.as_array_mut().map(std::mem::take))
+            {
+                let mut kept_fields = Vec::with_capacity(fields.len());
+                for mut field in fields {
+                    ensure_entity_id(&mut field);
+                    kept_fields.push(field);
+                }
+                table["fields"] = json!(kept_fields);
+            }
+            kept.push(table);
+        }
+        payload["tables"] = json!(kept);
+    }
+    for key in ["references", "areas", "notes"] {
+        if let Some(taken) = payload
+            .get_mut(key)
+            .and_then(|v| v.as_array_mut().map(std::mem::take))
+        {
+            let mut kept = Vec::with_capacity(taken.len());
+            for mut item in taken {
+                ensure_entity_id(&mut item);
+                kept.push(item);
+            }
+            payload[key] = json!(kept);
+        }
+    }
+}
+
+fn ensure_entity_id(item: &mut Value) {
+    let has_id = item
+        .get("id")
+        .and_then(Value::as_str)
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    if !has_id && item.is_object() {
+        item["id"] = json!(format!("auto-{}", uuid_simple()));
+    }
 }
 
 fn resolve_refs(value: &mut Value, schemas: &serde_json::Map<String, Value>) {

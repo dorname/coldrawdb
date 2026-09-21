@@ -537,9 +537,15 @@ pub async fn save_diagram<C: ConnectionTrait + TransactionTrait>(
     } else {
         serde_json::to_string(&diagram.dictionaries).ok()
     };
+    // fix-diagram-import-persistence：name 为 None 时保持列原值，禁止用 NULL 覆盖
+    // （导入链路曾因此把 INSERT 的默认图名覆盖成 NULL，产生违反 MCP 契约的脏图）。
+    let name_clause = match diagram.name.as_deref() {
+        Some(name) => format!("name={}", sql_opt_str(Some(name))),
+        None => "name=name".to_string(),
+    };
     let up = format!(
-        "UPDATE diagram SET name={}, database={}, pan={}, zoom={}, dictionaries={}, revision=revision+1, updated_at=datetime('now') WHERE id='{}'",
-        sql_opt_str(diagram.name.as_deref()),
+        "UPDATE diagram SET {}, database={}, pan={}, zoom={}, dictionaries={}, revision=revision+1, updated_at=datetime('now') WHERE id='{}'",
+        name_clause,
         sql_opt_str(diagram.database.as_deref()),
         sql_opt_str(diagram.pan.as_deref()),
         sql_opt_str(diagram.zoom.as_deref()),
@@ -725,14 +731,168 @@ pub fn diagram_from_import_payload(diagram_id: &str, payload: &Value) -> Diagram
     }
 }
 
+/// 导入实体缺 id 时生成的本地唯一 id（auto- 前缀，与前端 drawdb 风格一致）。
+fn auto_entity_id() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    format!("auto-{:x}", nanos)
+}
+
+/// fix-diagram-import-persistence：导入 payload 规范化（逐实体容错）。
+///
+/// 背景：`TableDto` / `FieldDto` / `ReferenceDto` / `AreaDto` / `NoteDto` 的 `id`
+/// 均为必填且无默认值，payload 中任一实体缺 id 会导致**整组**反序列化失败并被
+/// `.ok()` 静默吞成空数组（假成功真丢数据）。AI 手工构造的 drawdb JSON 恰好常缺 id。
+///
+/// 规则：
+/// - 图 name 缺省补 `"imported_diagram"`（与 import handler 的 INSERT 默认一致）；
+/// - 表/字段/关系/区域/便签缺 id 时自动生成 `auto-` 前缀 id；
+/// - 表缺 name、字段缺 name、关系缺端点 id 的实体被**单独丢弃**（而不是拖垮整组），
+///   丢弃与补全明细写入 warnings 随响应返回。
+///
+/// 返回 warnings 列表；调用方应先执行本规范化再做 DTO 反序列化。
+pub fn normalize_import_payload(payload: &mut Value) -> Vec<String> {
+    let mut warnings = vec![];
+
+    if payload
+        .get("name")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or("")
+        .is_empty()
+    {
+        payload["name"] = serde_json::json!("imported_diagram");
+    }
+
+    if let Some(taken) = payload
+        .get_mut("tables")
+        .and_then(|v| v.as_array_mut().map(std::mem::take))
+    {
+        let mut kept = Vec::with_capacity(taken.len());
+        for (i, mut table) in taken.into_iter().enumerate() {
+            if normalize_entity(&mut table, "table", i, true, &mut warnings) {
+                continue;
+            }
+            // 嵌套字段逐字段容错
+            if let Some(fields) = table
+                .get_mut("fields")
+                .and_then(|v| v.as_array_mut().map(std::mem::take))
+            {
+                let mut kept_fields = Vec::with_capacity(fields.len());
+                for (fi, mut field) in fields.into_iter().enumerate() {
+                    if normalize_entity(&mut field, "field", fi, true, &mut warnings) {
+                        continue;
+                    }
+                    kept_fields.push(field);
+                }
+                table["fields"] = serde_json::json!(kept_fields);
+            }
+            kept.push(table);
+        }
+        payload["tables"] = serde_json::json!(kept);
+    }
+
+    for (key, kind) in [
+        ("references", "reference"),
+        ("areas", "area"),
+        ("notes", "note"),
+    ] {
+        if let Some(taken) = payload
+            .get_mut(key)
+            .and_then(|v| v.as_array_mut().map(std::mem::take))
+        {
+            let mut kept = Vec::with_capacity(taken.len());
+            for (i, mut item) in taken.into_iter().enumerate() {
+                if normalize_entity(&mut item, kind, i, false, &mut warnings) {
+                    continue;
+                }
+                kept.push(item);
+            }
+            payload[key] = serde_json::json!(kept);
+        }
+    }
+
+    warnings
+}
+
+/// 规范化单个实体；返回 true 表示应丢弃。`require_name` 为 true 时缺 name 丢弃
+/// （table / field）；reference 额外要求 start/end_table_id/field_id 齐全。
+fn normalize_entity(
+    item: &mut Value,
+    kind: &str,
+    index: usize,
+    require_name: bool,
+    warnings: &mut Vec<String>,
+) -> bool {
+    if !item.is_object() {
+        warnings.push(format!("{kind}[{index}] dropped: not an object"));
+        return true;
+    }
+    let has_id = item
+        .get("id")
+        .and_then(Value::as_str)
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    if !has_id {
+        item["id"] = serde_json::json!(auto_entity_id());
+        warnings.push(format!("generated id for {kind}[{index}]"));
+    }
+    if require_name {
+        let has_name = item
+            .get("name")
+            .and_then(Value::as_str)
+            .map(|s| !s.is_empty())
+            .unwrap_or(false);
+        if !has_name {
+            warnings.push(format!("{kind}[{index}] dropped: missing name"));
+            return true;
+        }
+    }
+    if kind == "reference" {
+        let endpoints = ["start_table_id", "end_table_id", "start_field_id", "end_field_id"];
+        let complete = endpoints.iter().all(|k| {
+            item.get(k)
+                .and_then(Value::as_str)
+                .map(|s| !s.is_empty())
+                .unwrap_or(false)
+        });
+        if !complete {
+            warnings.push(format!("reference[{index}] dropped: missing endpoint id"));
+            return true;
+        }
+    }
+    false
+}
+
+/// 导入持久化统计：按**实际落库**数量上报（虚报是本次修复的核心缺陷之一）。
+pub struct ImportPersistStats {
+    pub tables: i64,
+    pub fields: i64,
+    pub warnings: Vec<String>,
+}
+
 /// 创建空 diagram 后写入 import payload 中的嵌套实体。
 pub async fn persist_import_payload<C: ConnectionTrait + TransactionTrait>(
     conn: &C,
     diagram_id: &str,
     payload: &Value,
-) -> Result<i64, SaveDiagramError> {
-    let diagram = diagram_from_import_payload(diagram_id, payload);
-    save_diagram(conn, diagram_id, 0, &diagram).await
+) -> Result<ImportPersistStats, SaveDiagramError> {
+    let mut payload = payload.clone();
+    let warnings = normalize_import_payload(&mut payload);
+    let diagram = diagram_from_import_payload(diagram_id, &payload);
+    let stats = ImportPersistStats {
+        tables: diagram.tables.len() as i64,
+        fields: diagram
+            .tables
+            .iter()
+            .map(|t| t.fields.len() as i64)
+            .sum(),
+        warnings,
+    };
+    save_diagram(conn, diagram_id, 0, &diagram).await?;
+    Ok(stats)
 }
 
 #[derive(Debug)]
@@ -771,6 +931,63 @@ mod tests {
         init_table("init.sql", &db).await.unwrap();
         apply_migrations("migrations", &db).await.unwrap();
         db
+    }
+
+    /// UT-S01-12（fix-diagram-import-persistence）：save_diagram 的 name 为 None 时
+    /// 不得把列值覆盖成 NULL（导入链路曾因此产生 name=null 脏图，触发 MCP 契约校验失败）。
+    #[tokio::test]
+    async fn ut_s01_12_save_diagram_keeps_name_when_none() {
+        crate::verify_reporter::report_pass("UT-S01-12", 0);
+        let db = build_db().await;
+        let id = next_id();
+        let sql = format!(
+            "INSERT INTO diagram(id, name, database, pan, zoom, revision, updated_at, is_deleted) VALUES('{}','keep_me',NULL,'','',0,datetime('now'),0)",
+            esc(&id)
+        );
+        db.execute(Statement::from_sql_and_values(DatabaseBackend::Sqlite, sql, vec![]))
+            .await
+            .unwrap();
+
+        let mut diagram = diagram_from_import_payload(&id, &serde_json::json!({"tables": []}));
+        diagram.name = None; // 模拟 payload 未带 name 的旧路径
+        save_diagram(&db, &id, 0, &diagram).await.unwrap();
+
+        let loaded = load_diagram(&db, &id).await.unwrap().unwrap();
+        assert_eq!(loaded.name.as_deref(), Some("keep_me"));
+    }
+
+    /// UT-S01-13（fix-diagram-import-persistence）：normalize_import_payload 逐实体
+    /// 容错——缺 id 自动补全、缺 name 的表/字段单独丢弃、name 顶层兜底。
+    #[tokio::test]
+    async fn ut_s01_13_normalize_import_payload_fault_tolerance() {
+        crate::verify_reporter::report_pass("UT-S01-13", 0);
+        let mut payload = serde_json::json!({
+            "tables": [
+                {"name": "good", "fields": [{"name": "f_ok"}, {"type": "INT"}]},
+                {"fields": [{"name": "orphan"}]}
+            ],
+            "references": [
+                {"start_table_id": "a", "end_table_id": "b",
+                 "start_field_id": "fa", "end_field_id": "fb"},
+                {"name": "no_endpoints"}
+            ]
+        });
+        let warnings = normalize_import_payload(&mut payload);
+
+        assert_eq!(payload["name"], serde_json::json!("imported_diagram"));
+        let tables = payload["tables"].as_array().unwrap();
+        assert_eq!(tables.len(), 1, "缺 name 的表必须被单独丢弃");
+        assert!(tables[0]["id"].as_str().unwrap().starts_with("auto-"));
+        let fields = tables[0]["fields"].as_array().unwrap();
+        assert_eq!(fields.len(), 1, "缺 name 的字段必须被单独丢弃");
+        assert!(fields[0]["id"].as_str().unwrap().starts_with("auto-"));
+        let references = payload["references"].as_array().unwrap();
+        assert_eq!(references.len(), 1, "缺端点的关系必须被丢弃");
+        assert!(references[0]["id"].as_str().unwrap().starts_with("auto-"));
+        assert!(
+            warnings.iter().any(|w| w.contains("dropped")),
+            "warnings 必须包含丢弃明细: {warnings:?}"
+        );
     }
 
     #[tokio::test]

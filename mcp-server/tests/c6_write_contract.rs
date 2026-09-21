@@ -463,3 +463,162 @@ async fn st_mcp13_stdio_layout_structured_content() {
 
     record(&["ST-MCP-13"], started);
 }
+
+// ── UT-MCP-28: import_schema payload 前置规范化 ────────────────────────────
+
+#[tokio::test]
+async fn ut_mcp28_import_payload_normalized() {
+    let started = Instant::now();
+    // mock 后端应答一次 import 200，捕获 POST body
+    let import_result = json!({
+        "code":0,
+        "data":{"diagram_id":"d9","imported_tables":1,"imported_fields":1,
+                "warnings":[],"source":"mcp"},
+        "request_id":"r1"
+    });
+    let (base, captured) = scripted_backend(vec![import_result.clone()]).await;
+    let payload = json!({
+        "tables":[{"name":"t_ai","fields":[{"name":"f_ai","type":"INT"}]}]
+    });
+    let resp = service(base)
+        .call(
+            "import_schema",
+            json!({"format":"drawdb_json","payload":payload}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp["diagram_id"], json!("d9"));
+
+    let requests = captured.lock().unwrap();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].0, "POST");
+    assert_eq!(requests[0].1, "/api/v1/diagrams/import");
+    let sent = &requests[0].2["payload"];
+    // 顶层 name 兜底
+    assert_eq!(sent["name"], json!("imported_diagram"));
+    // 缺 id 的表/字段被补全（auto- 前缀）
+    let table_id = sent["tables"][0]["id"].as_str().unwrap_or("");
+    assert!(table_id.starts_with("auto-"), "表 id 必须自动补全: {table_id}");
+    let field_id = sent["tables"][0]["fields"][0]["id"].as_str().unwrap_or("");
+    assert!(field_id.starts_with("auto-"), "字段 id 必须自动补全: {field_id}");
+
+    // 已有 name/id 原样保留，不重复补全
+    let (base2, captured2) = scripted_backend(vec![import_result]).await;
+    let keep = json!({"name":"keep","tables":[{"id":"t1","name":"t","fields":[{"id":"f1","name":"f"}]}]});
+    service(base2)
+        .call("import_schema", json!({"format":"drawdb_json","payload":keep}))
+        .await
+        .unwrap();
+    let requests2 = captured2.lock().unwrap();
+    let sent2 = &requests2[0].2["payload"];
+    assert_eq!(sent2["name"], json!("keep"));
+    assert_eq!(sent2["tables"][0]["id"], json!("t1"));
+    assert_eq!(sent2["tables"][0]["fields"][0]["id"], json!("f1"));
+
+    record(&["UT-MCP-28"], started);
+}
+
+// ── UT-MCP-29: Diagram.name 可空契约（存量脏图防御）─────────────────────────
+
+#[tokio::test]
+async fn ut_mcp29_diagram_name_nullable_contract() {
+    let started = Instant::now();
+    let tools = McpService::tools().expect("tools/list 必须可解析");
+    let get_diagram = tools
+        .iter()
+        .find(|t| t["name"] == json!("get_diagram"))
+        .expect("必须存在 get_diagram 工具");
+    let schema = &get_diagram["outputSchema"];
+    // resolve_refs 后 outputSchema 即 DiagramResult → properties.diagram = Diagram
+    let diagram_schema = &schema["properties"]["diagram"];
+    let required = diagram_schema["required"]
+        .as_array()
+        .expect("Diagram 必须有 required 数组");
+    assert!(
+        required.iter().any(|r| r == &json!("name")),
+        "name 必须保留在 required 中（键存在，值可空）"
+    );
+    let name_type = &diagram_schema["properties"]["name"]["type"];
+    assert!(
+        name_type.as_array().map(|a| a.iter().any(|t| t == &json!("null"))).unwrap_or(false),
+        "Diagram.name 类型必须为 [string, null]（存量脏图防御），实际: {name_type}"
+    );
+
+    record(&["UT-MCP-29"], started);
+}
+
+// ── ST-MCP-14: stdio 端到端——缺 id payload 导入后结构校验 ──────────────────
+
+#[tokio::test(flavor = "multi_thread")]
+async fn st_mcp14_stdio_import_missing_ids_then_get() {
+    let started = Instant::now();
+    // mock 后端：依次应答 import 200、get 200（返回补全后的图）
+    let imported_id = "d-import-14";
+    let import_result = json!({
+        "code":0,
+        "data":{"diagram_id":imported_id,"imported_tables":1,"imported_fields":1,
+                "warnings":[],"source":"mcp"},
+        "request_id":"r-imp"
+    });
+    let imported_diagram = json!({
+        "id":imported_id,"name":"imported_diagram","revision":1,
+        "tables":[{"id":"auto-aaa","name":"t_ai","x":0.0,"y":0.0,
+                   "fields":[{"id":"auto-bbb","name":"f_ai","type":"INT"}]}],
+        "references":[]
+    });
+    let (base, captured) = scripted_backend(vec![
+        import_result,
+        json!({"code":0,"data":imported_diagram,"request_id":"r-get"}),
+    ])
+    .await;
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_coldrawdb-mcp"))
+        .env("COLDRAWDB_BASE_URL", &base)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn coldrawdb-mcp");
+    let mut stdin = child.stdin.take().unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let mut reader = BufReader::new(stdout);
+
+    let import_req = json!({
+        "jsonrpc":"2.0","id":1,"method":"tools/call",
+        "params":{"name":"import_schema","arguments":{"format":"drawdb_json","payload":{
+            "tables":[{"name":"t_ai","fields":[{"name":"f_ai","type":"INT"}]}]}}}
+    });
+    stdin.write_all(format!("{import_req}\n").as_bytes()).unwrap();
+    let mut line = String::new();
+    reader.read_line(&mut line).unwrap();
+    let import_resp: Value = serde_json::from_str(&line).unwrap();
+    assert_eq!(import_resp["result"]["isError"], json!(false));
+    assert_eq!(
+        import_resp["result"]["structuredContent"]["diagram_id"],
+        json!(imported_id)
+    );
+
+    let get_req = json!({
+        "jsonrpc":"2.0","id":2,"method":"tools/call",
+        "params":{"name":"get_diagram","arguments":{"id":imported_id}}
+    });
+    stdin.write_all(format!("{get_req}\n").as_bytes()).unwrap();
+    let mut line2 = String::new();
+    reader.read_line(&mut line2).unwrap();
+    let get_resp: Value = serde_json::from_str(&line2).unwrap();
+    let sc = &get_resp["result"]["structuredContent"];
+    assert!(sc["diagram"].is_object(), "structuredContent 必须含 diagram");
+    assert_eq!(sc["diagram"]["name"], json!("imported_diagram"));
+
+    // adapter 发出的 POST body：name 兜底 + 表/字段 id 补全（mock 捕获复核）
+    let requests = captured.lock().unwrap();
+    assert_eq!(requests.len(), 2);
+    let sent = &requests[0].2["payload"];
+    assert_eq!(sent["name"], json!("imported_diagram"));
+    assert!(sent["tables"][0]["id"].as_str().unwrap_or("").starts_with("auto-"));
+    assert!(sent["tables"][0]["fields"][0]["id"].as_str().unwrap_or("").starts_with("auto-"));
+
+    drop(stdin);
+    let _ = child.wait();
+
+    record(&["ST-MCP-14"], started);
+}

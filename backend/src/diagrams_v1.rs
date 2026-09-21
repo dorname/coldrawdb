@@ -181,36 +181,12 @@ async fn import_diagram_v1(db: web::Data<DatabaseConnection>, req: web::Json<Imp
     }
 
     let id = next_id();
-    let name = req.payload.get("name").and_then(|v| v.as_str()).unwrap_or("imported_diagram");
-    let imported_tables = req
-        .payload
-        .get("tables")
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.len() as i64)
-        .unwrap_or(0);
-
-    let imported_fields = req
-        .payload
-        .get("tables")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .map(|t| {
-                    t.get("fields")
-                        .and_then(|f| f.as_array())
-                        .map(|f| f.len() as i64)
-                        .unwrap_or(0)
-                })
-                .sum()
-        })
-        .unwrap_or(0);
-
-    let mut warnings = vec![];
-    if req.payload.get("tables").is_none() {
-        warnings.push("tables missing, imported as empty".to_string());
-    }
+    // fix-diagram-import-persistence：payload.name 缺省由持久化层统一兜底
+    // （normalize_import_payload 补 "imported_diagram"，与下方 INSERT 默认一致），
+    // 避免 save_diagram 用 NULL 覆盖默认名。
 
     let tx = db.begin().await?;
+    let name = req.payload.get("name").and_then(|v| v.as_str()).unwrap_or("imported_diagram");
     let sql = format!(
         "INSERT INTO diagram(id, name, database, pan, zoom, revision, updated_at, is_deleted) VALUES('{}','{}',NULL,'','',0,datetime('now'),0)",
         esc(&id), esc(name)
@@ -218,19 +194,43 @@ async fn import_diagram_v1(db: web::Data<DatabaseConnection>, req: web::Json<Imp
     tx.execute(Statement::from_sql_and_values(DatabaseBackend::Sqlite, sql, vec![])).await?;
     tx.commit().await?;
 
-    let _ = persist_import_payload(db.get_ref(), &id, &req.payload).await;
-
-    Ok(HttpResponse::Ok().json(ApiResp {
-        code: 0,
-        data: ImportResult {
-            diagram_id: id,
-            imported_tables,
-            imported_fields,
-            warnings,
-            source: req.source.clone(),
-        },
-        request_id,
-    }))
+    match persist_import_payload(db.get_ref(), &id, &req.payload).await {
+        Ok(stats) => {
+            // fix-diagram-import-persistence：数量按实际持久化上报，warnings 携带
+            // 丢弃/补全明细（修复虚报 imported_tables 的假成功缺陷）。
+            let mut warnings = stats.warnings;
+            if req.payload.get("tables").is_none() {
+                warnings.push("tables missing, imported as empty".to_string());
+            }
+            Ok(HttpResponse::Ok().json(ApiResp {
+                code: 0,
+                data: ImportResult {
+                    diagram_id: id,
+                    imported_tables: stats.tables,
+                    imported_fields: stats.fields,
+                    warnings,
+                    source: req.source.clone(),
+                },
+                request_id,
+            }))
+        }
+        Err(_) => {
+            // 不留下半成品图：持久化失败时回收刚插入的空图行，并如实返回 5xx。
+            let _ = db
+                .execute(Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    format!("UPDATE diagram SET is_deleted=1 WHERE id='{}'", esc(&id)),
+                    vec![],
+                ))
+                .await;
+            Ok(HttpResponse::InternalServerError().json(ApiErr {
+                code: 500,
+                message: "import persistence failed".into(),
+                request_id,
+                details: None,
+            }))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -318,21 +318,98 @@ mod tests {
         let app = test::init_service(
             App::new().app_data(web::Data::new(db)).service(web::scope("/api/v1").configure(diagrams_v1_routes))
         ).await;
+        // fix-diagram-import-persistence：表必须带 name（缺 name 会被逐表容错丢弃）；
+        // 表/字段缺 id 由服务端自动补全并如实持久化。
         let req = test::TestRequest::post().uri("/api/v1/diagrams/import")
             .set_json(serde_json::json!({
                 "source": "localStorage",
-                "payload": {"name":"import-1", "tables":[{"fields":[{"name":"id"},{"name":"n"}]}]}
+                "payload": {"name":"import-1", "tables":[{"name":"t1","fields":[{"name":"id"},{"name":"n"}]}]}
             }))
             .to_request();
         let ok: Value = test::call_and_read_body_json(&app, req).await;
         assert_eq!(ok["code"], 0);
         assert_eq!(ok["data"]["imported_tables"], 1);
         assert_eq!(ok["data"]["imported_fields"], 2);
+        let imported_id = ok["data"]["diagram_id"].as_str().unwrap().to_string();
+        // 数量按实际持久化上报：GET 必须能读到补全 id 后的表与字段
+        let req = test::TestRequest::get()
+            .uri(&format!("/api/v1/diagrams/{}", imported_id))
+            .to_request();
+        let loaded: Value = test::call_and_read_body_json(&app, req).await;
+        let table = &loaded["data"]["tables"][0];
+        assert!(table["id"].as_str().map(|s| s.starts_with("auto-")).unwrap_or(false));
+        assert_eq!(table["fields"].as_array().map(Vec::len), Some(2));
+        assert!(table["fields"][0]["id"].as_str().map(|s| !s.is_empty()).unwrap_or(false));
         let req = test::TestRequest::post().uri("/api/v1/diagrams/import")
             .set_json(serde_json::json!({"payload": "invalid"}))
             .to_request();
         let bad = test::call_service(&app, req).await;
         assert_eq!(bad.status(), 400);
+    }
+
+    /// ST-S01-04（fix-diagram-import-persistence）：payload 无 name、表/字段无 id
+    /// → name 兜底 imported_diagram、id 自动补全，GET 结构与契约一致。
+    #[actix_web::test]
+    async fn st_s01_04_import_missing_ids_and_name() {
+        mark_pass("ST-S01-04");
+        let db = build_db().await;
+        let app = test::init_service(
+            App::new().app_data(web::Data::new(db)).service(web::scope("/api/v1").configure(diagrams_v1_routes))
+        ).await;
+        let req = test::TestRequest::post().uri("/api/v1/diagrams/import")
+            .set_json(serde_json::json!({
+                "source": "mcp",
+                "payload": {"tables":[{"name":"t_no_id","x":0.0,"y":0.0,
+                                      "fields":[{"name":"f1","type":"INT"}]}]}
+            }))
+            .to_request();
+        let ok: Value = test::call_and_read_body_json(&app, req).await;
+        assert_eq!(ok["code"], 0);
+        assert_eq!(ok["data"]["imported_tables"], 1);
+        assert_eq!(ok["data"]["imported_fields"], 1);
+        let id = ok["data"]["diagram_id"].as_str().unwrap().to_string();
+        let req = test::TestRequest::get()
+            .uri(&format!("/api/v1/diagrams/{}", id))
+            .to_request();
+        let loaded: Value = test::call_and_read_body_json(&app, req).await;
+        assert_eq!(loaded["data"]["name"], "imported_diagram");
+        let table = &loaded["data"]["tables"][0];
+        assert!(table["id"].as_str().map(|s| s.starts_with("auto-")).unwrap_or(false));
+        assert!(table["fields"][0]["id"].as_str().map(|s| !s.is_empty()).unwrap_or(false));
+    }
+
+    /// ST-S01-05（fix-diagram-import-persistence）：坏表（缺 name）单独丢弃并计入
+    /// warnings，好表正常持久化；imported_tables 按实际落库数量上报。
+    #[actix_web::test]
+    async fn st_s01_05_import_bad_table_dropped_with_warning() {
+        mark_pass("ST-S01-05");
+        let db = build_db().await;
+        let app = test::init_service(
+            App::new().app_data(web::Data::new(db)).service(web::scope("/api/v1").configure(diagrams_v1_routes))
+        ).await;
+        let req = test::TestRequest::post().uri("/api/v1/diagrams/import")
+            .set_json(serde_json::json!({
+                "payload": {"name":"mix", "tables":[
+                    {"name":"good","fields":[]},
+                    {"fields":[{"name":"orphan"}]}
+                ]}
+            }))
+            .to_request();
+        let ok: Value = test::call_and_read_body_json(&app, req).await;
+        assert_eq!(ok["code"], 0);
+        assert_eq!(ok["data"]["imported_tables"], 1);
+        let warnings = ok["data"]["warnings"].as_array().cloned().unwrap_or_default();
+        assert!(
+            warnings.iter().any(|w| w.as_str().map(|s| s.contains("dropped")).unwrap_or(false)),
+            "warnings 必须包含丢弃明细: {warnings:?}"
+        );
+        let id = ok["data"]["diagram_id"].as_str().unwrap().to_string();
+        let req = test::TestRequest::get()
+            .uri(&format!("/api/v1/diagrams/{}", id))
+            .to_request();
+        let loaded: Value = test::call_and_read_body_json(&app, req).await;
+        assert_eq!(loaded["data"]["tables"].as_array().map(Vec::len), Some(1));
+        assert_eq!(loaded["data"]["tables"][0]["name"], "good");
     }
 
     #[actix_web::test]
