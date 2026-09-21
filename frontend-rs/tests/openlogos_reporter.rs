@@ -244,6 +244,7 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-CR-CLICK-01",
     "UT-CR-WIDTH-01",
     "UT-CR-WIDTH-02",
+    "UT-CR-WIDTH-03",
     "UT-CR-COLOR-02",
     "UT-CR-COLOR-03",
     "UT-PB-12",

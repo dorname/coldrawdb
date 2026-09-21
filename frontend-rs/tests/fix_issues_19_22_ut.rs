@@ -4,6 +4,7 @@
 //!   UT-CR-CLICK-01  有效拖动后 suppress click
 //!   UT-CR-WIDTH-01  None/0=auto；正数固定宽
 //!   UT-CR-WIDTH-02  长表名撑宽 ∈ (230, 480]
+//!   UT-CR-WIDTH-03  NameComment 中文注释并排撑宽（#25）
 //!   UT-CR-COLOR-02  picker hex → table_border_color
 //!   UT-PB-12        描边色：显式 > 源表 > palette
 //!   UT-PB-13        正交折线消费 pick_port_sides
@@ -15,10 +16,10 @@ mod verify_reporter;
 use frontend_rs::editor_core::types::{Field, Table};
 use frontend_rs::editor_core::CommentDisplay;
 use frontend_rs::editor_render::{
-    arm_suppress_next_click, calc_orthogonal_path, estimate_content_width, pick_port_sides,
-    relation_opacity, relation_stroke_color, resolve_table_width, should_suppress_click_after_drag,
-    stroke_dash_for_style, table_border_color, take_suppress_next_click, FieldPortSide,
-    DRAG_THRESHOLD, TABLE_WIDTH, TABLE_WIDTH_MAX,
+    arm_suppress_next_click, calc_orthogonal_path, estimate_content_width, measure_text_approx,
+    pick_port_sides, relation_opacity, relation_stroke_color, resolve_table_width,
+    should_suppress_click_after_drag, stroke_dash_for_style, table_border_color,
+    take_suppress_next_click, FieldPortSide, DRAG_THRESHOLD, TABLE_WIDTH, TABLE_WIDTH_MAX,
 };
 use std::time::Instant;
 
@@ -129,6 +130,56 @@ fn ut_cr_width_02_long_name() {
         "有效宽应 ∈ (230, 480]，got {w}"
     );
     report("UT-CR-WIDTH-02", start);
+}
+
+/// UT-CR-WIDTH-03（#25）：NameComment 下中文注释并排撑宽。
+#[test]
+fn ut_cr_width_03_comment_side_by_side() {
+    let start = Instant::now();
+    let mode = CommentDisplay::NameComment;
+
+    // 用较长中文注释，避免两者都被 TABLE_WIDTH 下界夹死而看不出差值
+    let mut with_cmt = make_table("t", None);
+    with_cmt.fields[0].name = "id".into();
+    with_cmt.fields[0].type_ = "VARCHAR(32)".into();
+    with_cmt.fields[0].comment = "主键标识符字段注释加长".into();
+    with_cmt.fields[0].primary = false; // 去掉 PK 偏移，便于下界公式对照
+
+    let mut no_cmt = with_cmt.clone();
+    no_cmt.fields[0].comment.clear();
+
+    let w_with = estimate_content_width(&with_cmt, mode);
+    let w_without = estimate_content_width(&no_cmt, mode);
+    assert!(
+        w_with > w_without,
+        "有中文注释估算应严格大于无注释：with={w_with} without={w_without}"
+    );
+
+    // 近似下界：名 + 注释 + 类型 + 间距×2 + 左右 pad（对齐 estimate_content_width 常量）
+    const LEFT_PAD: f64 = 11.0;
+    const RIGHT_PAD: f64 = 11.0;
+    const FIELD_GAP: f64 = 8.0;
+    let lower = LEFT_PAD
+        + measure_text_approx("id")
+        + FIELD_GAP
+        + measure_text_approx("主键标识符字段注释加长")
+        + FIELD_GAP
+        + measure_text_approx("VARCHAR(32)")
+        + RIGHT_PAD;
+    assert!(
+        w_with + 0.5 >= lower,
+        "并排累加下界：got {w_with} < lower {lower}"
+    );
+
+    // Name 模式无 secondary：有/无注释估算相等
+    let name_mode = CommentDisplay::Name;
+    assert_eq!(
+        estimate_content_width(&with_cmt, name_mode),
+        estimate_content_width(&no_cmt, name_mode),
+        "Name 模式不得因字段注释撑宽"
+    );
+
+    report("UT-CR-WIDTH-03", start);
 }
 
 /// UT-CR-COLOR-02：合法 hex 写入后 table_border_color 派生；清空回退 palette。

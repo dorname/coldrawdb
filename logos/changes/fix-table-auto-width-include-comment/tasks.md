@@ -8,4 +8,6 @@
 
 ## [code] 代码实现
 
-- [ ] 实现代码变更
+- [x] 修正 `frontend-rs/src/editor_render.rs`：`estimate_content_width` 在 NameComment 下对表头/字段注释横向累加（含 PK 偏移）
+- [x] 新增 UT-CR-WIDTH-03（`frontend-rs/tests/fix_issues_19_22_ut.rs` 或同目录）+ OpenLogos reporter 登记
+- [x] 确认 UT-CR-WIDTH-01 / UT-CR-WIDTH-02 不回归
