@@ -57,3 +57,6 @@ frontend-rs/scripts/debug-smoke.mjs
 /target/
 coldrawdb.tar
 nginx.tar
+
+# compose backup 侧车产出的本地备份归档（运行时产物，不入库）
+backups/
