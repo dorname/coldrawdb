@@ -152,6 +152,89 @@ measure_health "SMOKE-core-04" "frontend index.html available" \
 measure "SMOKE-core-05" "GET /api/v1/bridge/config (DB-backed)" \
     "http://127.0.0.1:${BACKEND_PORT}/api/v1/bridge/config"
 
+# ─── Stage 6b: SMOKE-core-07 导入缺 id payload 持久化验证 ───────────────────
+# fix-diagram-import-persistence：缺 id 表/字段不得静默丢数据；name 兜底不得为 NULL。
+imp07_start=$(date +%s%3N)
+imp07_status="pass"
+imp07_note="import missing-id payload persisted (auto id + name fallback)"
+imp07_body='{"source":"smoke","payload":{"tables":[{"name":"smoke_no_id","x":0,"y":0,"fields":[{"name":"id","type":"INT","primary":true}]}],"references":[]}}'
+imp07_out="$(curl --silent --max-time 5 -X POST -H 'Content-Type: application/json' -d "$imp07_body" \
+    -w '\n%{http_code}' "http://127.0.0.1:${BACKEND_PORT}/api/v1/diagrams/import" 2>&1)"
+imp07_http="$(printf '%s' "$imp07_out" | tail -n1)"
+imp07_resp="$(printf '%s' "$imp07_out" | sed '$d')"
+imp07_id=""
+
+if [[ ! "$imp07_http" =~ ^2[0-9][0-9]$ ]]; then
+    imp07_status="fail"
+    imp07_note="POST /diagrams/import failed (http=${imp07_http}, body=${imp07_resp:0:160})"
+else
+    imp07_id="$(IMP07_RESP="$imp07_resp" python3 -c 'import os,json
+try:
+    d=(json.loads(os.environ["IMP07_RESP"]).get("data") or {})
+except Exception:
+    print("")
+    raise SystemExit(1)
+if d.get("imported_tables")!=1 or d.get("imported_fields")!=1:
+    raise SystemExit(1)
+print(d.get("diagram_id") or "")' 2>/dev/null)"
+    if [[ -z "$imp07_id" ]]; then
+        imp07_status="fail"
+        imp07_note="import response: diagram_id empty or counts != 1 (body=${imp07_resp:0:160})"
+    fi
+fi
+
+if [[ "$imp07_status" == "pass" ]]; then
+    imp07_get="$(curl --silent --max-time 5 -w '\n%{http_code}' \
+        "http://127.0.0.1:${BACKEND_PORT}/api/v1/diagrams/${imp07_id}" 2>&1)"
+    imp07_get_http="$(printf '%s' "$imp07_get" | tail -n1)"
+    imp07_get_body="$(printf '%s' "$imp07_get" | sed '$d')"
+    imp07_assert="$(IMP07_GET="$imp07_get_body" python3 -c 'import os,json
+try:
+    r=json.loads(os.environ["IMP07_GET"]); d=r.get("data") or {}
+except Exception as e:
+    print(f"GET response not JSON: {e}")
+    raise SystemExit(1)
+if r.get("code")!=0:
+    print("GET code != 0")
+    raise SystemExit(1)
+tables=d.get("tables") or []
+if len(tables)!=1:
+    print(f"tables.length={len(tables)}")
+    raise SystemExit(1)
+t=tables[0]
+if not isinstance(t.get("id"),str) or not t["id"]:
+    print("tables[0].id empty")
+    raise SystemExit(1)
+fields=t.get("fields") or []
+if len(fields)!=1:
+    print(f"fields.length={len(fields)}")
+    raise SystemExit(1)
+if not isinstance(fields[0].get("id"),str) or not fields[0]["id"]:
+    print("fields[0].id empty")
+    raise SystemExit(1)
+if not isinstance(d.get("name"),str):
+    print("name not a string")
+    raise SystemExit(1)
+if not isinstance(d.get("revision"),int) or d["revision"]<1:
+    print("revision < 1")
+    raise SystemExit(1)
+print("ok")' 2>&1)"
+    if [[ "$imp07_get_http" != "200" || "$imp07_assert" != "ok" ]]; then
+        imp07_status="fail"
+        imp07_note="GET assert failed (http=${imp07_get_http}: ${imp07_assert})"
+    fi
+    # 清理：DELETE 导入的图
+    imp07_del="$(curl --silent --max-time 5 -o /dev/null -w '%{http_code}' -X DELETE \
+        "http://127.0.0.1:${BACKEND_PORT}/api/v1/diagrams/${imp07_id}" 2>&1)"
+    if [[ ! "$imp07_del" =~ ^2[0-9][0-9]$ ]]; then
+        imp07_status="fail"
+        imp07_note="cleanup DELETE failed (http=${imp07_del})"
+    fi
+fi
+
+imp07_end=$(date +%s%3N)
+run_smoke_case "SMOKE-core-07" "$imp07_status" "$((imp07_end - imp07_start))" "$imp07_note"
+
 # ─── Stage 7: stop services + SMOKE-core-06 ───────────────────────────────
 stop_start=$(date +%s%3N)
 stop_ok=0
@@ -166,6 +249,41 @@ if [[ "$stop_ok" -eq 1 ]]; then
 else
     run_smoke_case "SMOKE-core-06" "fail" "$stop_duration" "stop-local.sh returned non-zero"
 fi
+
+# ─── Stage 8: SMOKE-core-STABLE-01 稳定版 Compose 健康检查 ──────────────────
+# release-stable-win-linux-mac：compose 形态（本地构建镜像替代 GHCR 预构建镜像，
+# 同 Dockerfile 产物）经 nginx 宿主机 9080 验证 health 与 SPA 入口。
+# 无 Docker daemon 时按规格标注 SKIPPED。
+st_start=$(date +%s%3N)
+st_status="skip"
+st_note="no docker daemon"
+
+if docker info >/dev/null 2>&1; then
+    st_status="fail"
+    st_note="docker compose up failed (port 3000 busy after stop-local?)"
+    if (cd "$REPO_ROOT" && docker compose up -d >/dev/null 2>&1); then
+        st_health=""
+        for _ in $(seq 1 60); do
+            st_health="$(curl --silent --max-time 3 -o /dev/null -w '%{http_code}' \
+                "http://127.0.0.1:9080/api/v1/diagrams/health" 2>/dev/null)"
+            [[ "$st_health" == "200" ]] && break
+            sleep 2
+        done
+        st_home="$(curl --silent --max-time 5 -o /dev/null -w '%{http_code}' \
+            "http://127.0.0.1:9080/" 2>&1)"
+        (cd "$REPO_ROOT" && docker compose down >/dev/null 2>&1)
+        if [[ "$st_health" == "200" && "$st_home" =~ ^2[0-9][0-9]$ ]]; then
+            st_status="pass"
+            st_note="compose stack healthy via nginx :9080 (health=${st_health}, home=${st_home})"
+        else
+            st_status="fail"
+            st_note="compose health=${st_health}, home=${st_home}"
+        fi
+    fi
+fi
+
+st_end=$(date +%s%3N)
+run_smoke_case "SMOKE-core-STABLE-01" "$st_status" "$((st_end - st_start))" "$st_note"
 
 # 任意一条 fail 都让 smoke 退出非零（OpenLogos 读取 exit code）
 if grep -q '"status":"fail"' "$RESULTS" 2>/dev/null; then
