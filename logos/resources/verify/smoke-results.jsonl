@@ -1,6 +1,8 @@
-{"id":"SMOKE-core-01","status":"fail","duration_ms":0,"timestamp":"2026-09-20T05:56:33Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
-{"id":"SMOKE-core-02","status":"fail","duration_ms":0,"timestamp":"2026-09-20T05:56:33Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
-{"id":"SMOKE-core-03","status":"fail","duration_ms":0,"timestamp":"2026-09-20T05:56:33Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
-{"id":"SMOKE-core-04","status":"fail","duration_ms":0,"timestamp":"2026-09-20T05:56:33Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
-{"id":"SMOKE-core-05","status":"fail","duration_ms":0,"timestamp":"2026-09-20T05:56:33Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
-{"id":"SMOKE-core-06","status":"fail","duration_ms":0,"timestamp":"2026-09-20T05:56:33Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-01","status":"pass","duration_ms":15,"timestamp":"2026-09-22T01:26:46Z","scenario":"smoke","note":"backend health proxy (4xx on /non-existent is healthy) (http=404)"}
+{"id":"SMOKE-core-02","status":"pass","duration_ms":39,"timestamp":"2026-09-22T01:26:46Z","scenario":"smoke","note":"create/read/update/delete"}
+{"id":"SMOKE-core-03","status":"pass","duration_ms":46,"timestamp":"2026-09-22T01:26:46Z","scenario":"smoke","note":"POST /api/v1/bridge/import/local (SQL via payload) (http=200)"}
+{"id":"SMOKE-core-04","status":"pass","duration_ms":4242,"timestamp":"2026-09-22T01:26:50Z","scenario":"smoke","note":"frontend index.html available (http=200)"}
+{"id":"SMOKE-core-05","status":"pass","duration_ms":13,"timestamp":"2026-09-22T01:26:50Z","scenario":"smoke","note":"GET /api/v1/bridge/config (DB-backed) (http=200)"}
+{"id":"SMOKE-core-07","status":"pass","duration_ms":112,"timestamp":"2026-09-22T01:26:50Z","scenario":"smoke","note":"import missing-id payload persisted (auto id + name fallback)"}
+{"id":"SMOKE-core-06","status":"pass","duration_ms":2017,"timestamp":"2026-09-22T01:26:52Z","scenario":"smoke","note":"local start-local.sh + stop-local.sh round-trip"}
+{"id":"SMOKE-core-STABLE-01","status":"pass","duration_ms":15360,"timestamp":"2026-09-22T01:27:08Z","scenario":"smoke","note":"compose stack healthy via nginx :9080 (health=200, home=200)"}

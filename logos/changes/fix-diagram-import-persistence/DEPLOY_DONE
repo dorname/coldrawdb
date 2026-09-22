@@ -1,0 +1,1 @@
+2026-09-21 fix-diagram-import-persistence 部署完成：compose 栈（coldrawdb:v1 + nginx）Up/Healthy，迁移 affected_rows=0，smoke Gate 3.8 PASS（8/8）。

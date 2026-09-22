@@ -10,10 +10,10 @@
 
 ## [code] 代码实现
 
-- [ ] 实现代码变更
+- [x] 实现代码变更（backend 导入持久化修复 + mcp adapter 规范化 + 契约 name 可空，81+57 测试绿）
 
 ## [deploy] 部署任务
 
-- [ ] 重建并重启本地后端容器（docker compose up -d --build）
-- [ ] 执行存量数据迁移：`UPDATE diagram SET name='imported_diagram' WHERE name IS NULL`（幂等）
-- [ ] 确认迁移、服务启动正常
+- [x] 重建并重启本地后端容器（docker compose up -d；镜像 `coldrawdb:v1` 重建于修复后，功能实测通过）
+- [x] 执行存量数据迁移：`UPDATE diagram SET name='imported_diagram' WHERE name IS NULL`（幂等，affected_rows=0）
+- [x] 确认迁移、服务启动正常（coldrawdb Healthy；nginx 9080 health=200、SPA=200；smoke Gate 3.8 PASS 8/8）
