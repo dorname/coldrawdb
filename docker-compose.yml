@@ -4,8 +4,8 @@ services:
   coldrawdb:
     image: coldrawdb:v1
     build: .
-    ports:
-      - "3000:3000"
+    # compose-backend-port-internal-only：不映射宿主机端口，
+    # 后端仅经 compose 内部网络（coldrawdb:3000）供 nginx 反代；对外唯一入口为 nginx 9080。
     volumes:
       - ./data:/data
       - ./logs:/logs

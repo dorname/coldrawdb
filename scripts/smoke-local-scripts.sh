@@ -271,13 +271,16 @@ if docker info >/dev/null 2>&1; then
         done
         st_home="$(curl --silent --max-time 5 -o /dev/null -w '%{http_code}' \
             "http://127.0.0.1:9080/" 2>&1)"
+        # compose-backend-port-internal-only：宿主 3000 应无监听（后端仅内部网络）
+        st_direct="$(curl --silent --max-time 3 -o /dev/null -w '%{http_code}' \
+            "http://127.0.0.1:3000/api/v1/diagrams/health" 2>/dev/null)"
         (cd "$REPO_ROOT" && docker compose down >/dev/null 2>&1)
-        if [[ "$st_health" == "200" && "$st_home" =~ ^2[0-9][0-9]$ ]]; then
+        if [[ "$st_health" == "200" && "$st_home" =~ ^2[0-9][0-9]$ && "$st_direct" == "000" ]]; then
             st_status="pass"
-            st_note="compose stack healthy via nginx :9080 (health=${st_health}, home=${st_home})"
+            st_note="compose stack healthy via nginx :9080 (health=${st_health}, home=${st_home}, host:3000 closed)"
         else
             st_status="fail"
-            st_note="compose health=${st_health}, home=${st_home}"
+            st_note="compose health=${st_health}, home=${st_home}, host:3000=${st_direct} (expect 000=refused)"
         fi
     fi
 fi

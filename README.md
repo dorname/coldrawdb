@@ -147,7 +147,7 @@ $env:PUBLIC_BASE_URL="http://192.168.1.10:9080"; docker compose up -d
 PUBLIC_BASE_URL=http://192.168.1.10:9080 docker compose up -d
 ```
 
-健康检查：`GET http://localhost:9080/api/v1/diagrams/health`（经 nginx 默认映射）或 `GET http://localhost:3000/api/v1/diagrams/health`（直连后端）。
+健康检查（compose 形态，唯一对外入口 nginx 9080）：`GET http://localhost:9080/api/v1/diagrams/health`。后端容器端口不暴露宿主机，宿主 3000 应无监听；`GET http://localhost:3000/...`（直连后端）仅适用于下方单容器 `docker run` 形态或本地开发模式（`scripts/start-local.sh`）。
 
 从 Git 标签发布时，GitHub Actions（`.github/workflows/docker.yml`）会构建并推送：
 
