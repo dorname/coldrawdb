@@ -1,5 +1,5 @@
 {
-  "activeChange": "fix-diagram-import-persistence",
+  "activeChange": "compose-backend-port-internal-only",
   "module": "core",
-  "createdAt": "2026-09-21T09:37:47.688Z"
+  "createdAt": "2026-09-22T05:30:50.416Z"
 }
