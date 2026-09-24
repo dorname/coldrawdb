@@ -27,6 +27,6 @@
 
 ## [deploy] 部署任务
 
-- [ ] 重建镜像并重启本地 compose 栈（开关保持默认 off，生产无感）
-- [ ] 执行迁移：`ALTER TABLE diagram ADD COLUMN share_token VARCHAR`（随 0011 迁移由后端启动自动应用，schema_migrations 记账幂等）
-- [ ] 确认：off 模式行为不变；on 模式（临时开关验证后恢复 off）401 与分享豁免按规格生效
+- [x] 重建镜像并重启本地 compose 栈（开关保持默认 off，生产无感）
+- [x] 执行迁移：`ALTER TABLE diagram ADD COLUMN share_token VARCHAR`（随 0011 迁移由后端启动自动应用，schema_migrations 记账幂等）
+- [x] 确认：off 模式行为不变；on 模式（临时开关验证后恢复 off）401 与分享豁免按规格生效
