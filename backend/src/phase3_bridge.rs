@@ -8,6 +8,7 @@ use crate::bridge_introspect::{
     map_connect_status, map_execute_status,
 };
 use crate::diagram_persistence::persist_import_payload;
+use crate::diagrams_v1::{guard_diagrams_auth, DiagramsAuthFlag};
 use crate::error::DrawDBError;
 use crate::next_id;
 
@@ -177,9 +178,15 @@ struct QueryImportLogReq {
 #[get("/bridge/import/local/logs")]
 async fn query_import_logs(
     db: web::Data<DatabaseConnection>,
+    http: HttpRequest,
+    flag: Option<web::Data<DiagramsAuthFlag>>,
     query: web::Query<QueryImportLogReq>,
 ) -> Result<HttpResponse, DrawDBError> {
     let request_id = next_id();
+    // diagram-api-auth：flag=on 时强制 Bearer（与 diagrams 同策略）；off 维持现状匿名
+    if let Err(resp) = guard_diagrams_auth(flag.as_ref().map(|d| d.get_ref()), &http, &request_id) {
+        return Ok(resp);
+    }
     let mut sql = "SELECT id, source, imported_diagram_id, status, retry_count, error_message, created_at, updated_at FROM local_draft_import_log".to_string();
     if let Some(status) = &query.status {
         sql.push_str(&format!(" WHERE status='{}'", esc(status)));
@@ -221,8 +228,14 @@ async fn query_import_logs(
 async fn retry_import_log(
     db: web::Data<DatabaseConnection>,
     id: web::Path<String>,
+    http: HttpRequest,
+    flag: Option<web::Data<DiagramsAuthFlag>>,
 ) -> Result<HttpResponse, DrawDBError> {
     let request_id = next_id();
+    // diagram-api-auth：flag=on 时强制 Bearer（与 diagrams 同策略）；off 维持现状匿名
+    if let Err(resp) = guard_diagrams_auth(flag.as_ref().map(|d| d.get_ref()), &http, &request_id) {
+        return Ok(resp);
+    }
     let id = id.into_inner();
 
     let q = format!(
@@ -319,8 +332,16 @@ async fn retry_import_log(
 }
 
 #[get("/bridge/config")]
-async fn get_bridge_config(db: web::Data<DatabaseConnection>) -> Result<HttpResponse, DrawDBError> {
+async fn get_bridge_config(
+    db: web::Data<DatabaseConnection>,
+    http: HttpRequest,
+    flag: Option<web::Data<DiagramsAuthFlag>>,
+) -> Result<HttpResponse, DrawDBError> {
     let request_id = next_id();
+    // diagram-api-auth：flag=on 时强制 Bearer（与 diagrams 同策略）；off 维持现状匿名
+    if let Err(resp) = guard_diagrams_auth(flag.as_ref().map(|d| d.get_ref()), &http, &request_id) {
+        return Ok(resp);
+    }
     let sql = "SELECT db_read_preferred, db_write_enabled, dual_write_local, updated_at FROM bridge_config WHERE id=1 LIMIT 1";
     let row = db
         .query_one(Statement::from_sql_and_values(DatabaseBackend::Sqlite, sql, vec![]))
@@ -353,9 +374,15 @@ async fn get_bridge_config(db: web::Data<DatabaseConnection>) -> Result<HttpResp
 #[put("/bridge/config")]
 async fn update_bridge_config(
     db: web::Data<DatabaseConnection>,
+    http: HttpRequest,
+    flag: Option<web::Data<DiagramsAuthFlag>>,
     req: web::Json<UpdateBridgeConfigReq>,
 ) -> Result<HttpResponse, DrawDBError> {
     let request_id = next_id();
+    // diagram-api-auth：flag=on 时强制 Bearer（与 diagrams 同策略）；off 维持现状匿名
+    if let Err(resp) = guard_diagrams_auth(flag.as_ref().map(|d| d.get_ref()), &http, &request_id) {
+        return Ok(resp);
+    }
     let tx = db.begin().await?;
 
     let read = req
@@ -393,9 +420,15 @@ async fn update_bridge_config(
 #[post("/bridge/import/local")]
 async fn import_local_draft(
     db: web::Data<DatabaseConnection>,
+    http: HttpRequest,
+    flag: Option<web::Data<DiagramsAuthFlag>>,
     req: web::Json<ImportLocalDraftReq>,
 ) -> Result<HttpResponse, DrawDBError> {
     let request_id = next_id();
+    // diagram-api-auth：flag=on 时强制 Bearer（与 diagrams 同策略）；off 维持现状匿名
+    if let Err(resp) = guard_diagrams_auth(flag.as_ref().map(|d| d.get_ref()), &http, &request_id) {
+        return Ok(resp);
+    }
     if !req.payload.is_object() {
         return Ok(HttpResponse::BadRequest().json(ApiErr {
             code: 400,
@@ -537,5 +570,47 @@ mod tests {
         let retried: Value = test::call_and_read_body_json(&app, req).await;
         assert_eq!(retried["code"], 0);
         assert_eq!(retried["data"]["status"], "success");
+    }
+
+    /// UT-S01-AUTH-04：flag=on 时 bridge 7 操作无 token → 401；带 token 正常。
+    /// 覆盖 diagram-api-auth 新守卫的 5 操作（import/local、logs、retry、config get/put）
+    /// + 2 个既有强制鉴权操作（connect、export/execute，不受开关影响）。
+    #[actix_web::test]
+    async fn ut_s01_auth_04_bridge_flag_on_401() {
+        let db = build_db().await;
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(db))
+                .app_data(web::Data::new(DiagramsAuthFlag(true)))
+                .service(web::scope("/api/v1").configure(phase3_bridge_routes)),
+        )
+        .await;
+
+        let cases = vec![
+            test::TestRequest::post().uri("/api/v1/bridge/import/local")
+                .set_json(serde_json::json!({"payload":{}})).to_request(),
+            test::TestRequest::get().uri("/api/v1/bridge/import/local/logs").to_request(),
+            test::TestRequest::post().uri("/api/v1/bridge/import/local/retry/x").to_request(),
+            test::TestRequest::get().uri("/api/v1/bridge/config").to_request(),
+            test::TestRequest::put().uri("/api/v1/bridge/config")
+                .set_json(serde_json::json!({})).to_request(),
+            test::TestRequest::post().uri("/api/v1/bridge/import/connect")
+                .set_json(serde_json::json!({"engine":"sqlite","source":"/tmp/x.db"})).to_request(),
+            test::TestRequest::post().uri("/api/v1/bridge/export/execute")
+                .set_json(serde_json::json!({"engine":"sqlite","source":"/tmp/x.db","ddl":""})).to_request(),
+        ];
+        for req in cases {
+            let resp = test::call_service(&app, req).await;
+            assert_eq!(resp.status(), 401, "flag=on 无 token 应 401");
+        }
+
+        // 反证：带合法 token → 不再 401（logs 空表也返回 200 envelope）
+        let token = crate::auth::sign_access_token("ut-user").unwrap().0;
+        let logs: Value = test::call_and_read_body_json(&app, test::TestRequest::get()
+            .uri("/api/v1/bridge/import/local/logs")
+            .insert_header(("Authorization", format!("Bearer {token}"))).to_request()).await;
+        assert_eq!(logs["code"], 0, "带 token 应正常（反证）");
+
+        crate::verify_reporter::report_pass("UT-S01-AUTH-04", 0);
     }
 }

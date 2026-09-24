@@ -304,3 +304,15 @@ impl From<DrawDBError> for AuthServiceError {
         AuthServiceError::Db(e)
     }
 }
+
+// ─── diagram-api-auth：diagrams/bridge 强制鉴权开关 ─────────────────────────
+
+/// diagrams_v1 / phase3_bridge 端点的 Bearer JWT 强制开关：
+/// `COLDRAWDB_DIAGRAMS_AUTH=on` 时缺失/非法 token 一律 401（唯一豁免：GET /diagrams/{id}
+/// 携带匹配 share_token 的匿名分享读）；默认 off = 前端登录接线完成前的过渡态匿名直通。
+/// 测试不经 env（进程级竞态），由 handler 的 `Option<web::Data<DiagramsAuthFlag>>` 覆盖。
+pub fn diagrams_auth_required() -> bool {
+    std::env::var("COLDRAWDB_DIAGRAMS_AUTH")
+        .map(|v| v.eq_ignore_ascii_case("on"))
+        .unwrap_or(false)
+}

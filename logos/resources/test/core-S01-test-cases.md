@@ -328,4 +328,4 @@ pub fn make_diagram() -> DiagramCreateRequest {
 | ST-S01-04 | 导入缺 id/name payload 兜底补全 | `backend/src/diagrams_v1.rs::tests` |
 | ST-S01-05 | 导入坏表丢弃 + warnings 明细 | `backend/src/diagrams_v1.rs::tests` |
 | ST-S01-03 | 浏览器 wasm 渲染 | `frontend-rs/tests/wasm/` |
-| ST-S01-AUTH-01 | 登录态编辑保存全链路（编排 core-S01 v1.1.0：匿名 401 → 登录 CRUD → 409 → 删除） | `backend/tests/scenarios/s01.rs` |
+| ST-S01-AUTH-01 | 登录态编辑保存全链路（编排 core-S01 v1.1.0：匿名 401 → 登录 CRUD → 409 → 删除） | `backend/src/diagrams_v1.rs::tests` |

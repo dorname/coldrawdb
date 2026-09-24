@@ -108,6 +108,11 @@ async fn main() -> Result<(), DrawDBError> {
         None => tracing::warn!("COLDRAWDB_STATIC_DIR not ready; running in API-only mode"),
     }
 
+    // diagram-api-auth：启动日志明示强制鉴权模式（smoke/部署排查依据）
+    if crate::auth::diagrams_auth_required() {
+        tracing::warn!("COLDRAWDB_DIAGRAMS_AUTH=on: /api/v1/diagrams 与 /api/v1/bridge 端点强制 Bearer JWT（GET /diagrams/{{id}} 凭 share_token 匿名读除外）");
+    }
+
     HttpServer::new(move || {
         App::new()
             .wrap(Cors::permissive())

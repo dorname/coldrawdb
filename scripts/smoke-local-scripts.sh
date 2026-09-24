@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# SMOKE-core-01~06 本地 staging smoke runner（logos.config.json smoke.command 入口）
+# SMOKE-core-01~08 + STABLE-01 本地 staging smoke runner（logos.config.json smoke.command 入口）
 #
 # 流程：
-#   1) start-local.sh 启动 backend + frontend
-#   2) 在 services ready 期间跑 SMOKE-core-01~05（curl 打本地后端）
+#   1) start-local.sh 启动 backend + frontend（COLDRAWDB_DIAGRAMS_AUTH=on 强制鉴权模式）
+#   2) 在 services ready 期间跑 SMOKE-core-01~05 + 07 + 08（curl 打本地后端）
 #   3) stop-local.sh 关闭服务
 #   4) 把所有结果追加到 logos/resources/verify/smoke-results.jsonl
 #
@@ -27,6 +27,8 @@ export COLDRAWDB_FRONTEND_LOG="logs/smoke-frontend.log"
 export COLDRAWDB_BACKEND_PID="logs/smoke-backend.pid"
 export COLDRAWDB_FRONTEND_PID="logs/smoke-frontend.pid"
 export COLDRAWDB_HEALTH_TIMEOUT=120
+# diagram-api-auth：smoke 在强制鉴权模式执行（start-local.sh 继承该 env 注入后端）
+export COLDRAWDB_DIAGRAMS_AUTH=on
 
 mkdir -p "$(dirname "$RESULTS")"
 
@@ -87,8 +89,8 @@ if bash "$START_SCRIPT" >/dev/null 2>&1; then
 fi
 
 if [[ "$services_ok" -ne 1 ]]; then
-    # services 起不来 → 全部 6 条都 fail
-    for id in SMOKE-core-01 SMOKE-core-02 SMOKE-core-03 SMOKE-core-04 SMOKE-core-05 SMOKE-core-06; do
+    # services 起不来 → 全部用例都 fail
+    for id in SMOKE-core-01 SMOKE-core-02 SMOKE-core-03 SMOKE-core-04 SMOKE-core-05 SMOKE-core-06 SMOKE-core-07 SMOKE-core-08; do
         run_smoke_case "$id" "fail" 0 "start-local.sh failed; services unavailable"
     done
     bash "$STOP_SCRIPT" >/dev/null 2>&1 || true
@@ -102,6 +104,27 @@ fi
 measure_health "SMOKE-core-01" "backend health proxy (4xx on /non-existent is healthy)" \
     "http://127.0.0.1:${BACKEND_PORT}/api/v1/diagrams/__smoke_health__"
 
+# ─── Stage 2b: smoke token 获取（diagram-api-auth 前置：register/login）────────
+# 专用 smoke 用户；register 幂等（已存在则忽略冲突），login 取 accessToken。
+# 所有写操作与登录态读操作注入 "Authorization: Bearer ${SMOKE_TOKEN}"。
+SMOKE_EMAIL="smoke@test.local"
+SMOKE_PASSWORD="Smoke2026pass"
+curl --silent --max-time 5 -X POST -H 'Content-Type: application/json' \
+    -d "{\"email\":\"${SMOKE_EMAIL}\",\"password\":\"${SMOKE_PASSWORD}\"}" \
+    "http://127.0.0.1:${BACKEND_PORT}/api/v1/auth/register" >/dev/null 2>&1 || true
+SMOKE_TOKEN="$(curl --silent --max-time 5 -X POST -H 'Content-Type: application/json' \
+    -d "{\"email\":\"${SMOKE_EMAIL}\",\"password\":\"${SMOKE_PASSWORD}\"}" \
+    "http://127.0.0.1:${BACKEND_PORT}/api/v1/auth/login" 2>/dev/null \
+    | python3 -c 'import sys,json
+try:
+    print(json.load(sys.stdin).get("accessToken") or "")
+except Exception:
+    print("")')"
+AUTH_HEADER=()
+if [[ -n "$SMOKE_TOKEN" ]]; then
+    AUTH_HEADER=(-H "Authorization: Bearer ${SMOKE_TOKEN}")
+fi
+
 # ─── Stage 3: SMOKE-core-02 CRUD E2E ──────────────────────────────────────
 # 1) POST /api/v1/diagrams → 创建（body 字段：name；diagrams.yaml CreateRequest）
 crud_start=$(date +%s%3N)
@@ -110,11 +133,13 @@ crud_note="create/read/update/delete"
 
 create_resp="$(curl --silent --max-time 5 -X POST \
     -H 'Content-Type: application/json' \
+    "${AUTH_HEADER[@]}" \
     -d '{"name":"smoke"}' \
     "http://127.0.0.1:${BACKEND_PORT}/api/v1/diagrams" 2>&1)"
 created_id="$(echo "$create_resp" | grep -oE '"id":"[^"]+"' | head -1 | cut -d'"' -f4)"
 create_code="$(curl --silent --max-time 5 -o /dev/null -w '%{http_code}' -X POST \
     -H 'Content-Type: application/json' \
+    "${AUTH_HEADER[@]}" \
     -d '{"name":"smoke"}' \
     "http://127.0.0.1:${BACKEND_PORT}/api/v1/diagrams" 2>&1)"
 
@@ -126,6 +151,7 @@ fi
 # 2) DELETE /api/v1/diagrams/{id} → 清理
 if [[ "$crud_status" == "pass" && -n "$created_id" ]]; then
     del_code="$(curl --silent --max-time 5 -o /dev/null -w '%{http_code}' -X DELETE \
+        "${AUTH_HEADER[@]}" \
         "http://127.0.0.1:${BACKEND_PORT}/api/v1/diagrams/${created_id}" 2>&1)"
     if [[ ! "$del_code" =~ ^2[0-9][0-9]$ ]]; then
         crud_status="fail"
@@ -141,6 +167,7 @@ run_smoke_case "SMOKE-core-02" "$crud_status" "$crud_duration" "$crud_note"
 measure "SMOKE-core-03" "POST /api/v1/bridge/import/local (SQL via payload)" \
     -X POST \
     -H 'Content-Type: application/json' \
+    "${AUTH_HEADER[@]}" \
     -d '{"source":"smoke","payload":{"name":"smoke_users","tables":[{"name":"smoke_users","fields":[{"name":"id","type":"INT"},{"name":"name","type":"VARCHAR"}]}]}}' \
     "http://127.0.0.1:${BACKEND_PORT}/api/v1/bridge/import/local"
 
@@ -150,6 +177,7 @@ measure_health "SMOKE-core-04" "frontend index.html available" \
 
 # ─── Stage 6: SMOKE-core-05 数据库 schema（间接：bridge config 可达即代表 DB 在线）───
 measure "SMOKE-core-05" "GET /api/v1/bridge/config (DB-backed)" \
+    "${AUTH_HEADER[@]}" \
     "http://127.0.0.1:${BACKEND_PORT}/api/v1/bridge/config"
 
 # ─── Stage 6b: SMOKE-core-07 导入缺 id payload 持久化验证 ───────────────────
@@ -158,7 +186,7 @@ imp07_start=$(date +%s%3N)
 imp07_status="pass"
 imp07_note="import missing-id payload persisted (auto id + name fallback)"
 imp07_body='{"source":"smoke","payload":{"tables":[{"name":"smoke_no_id","x":0,"y":0,"fields":[{"name":"id","type":"INT","primary":true}]}],"references":[]}}'
-imp07_out="$(curl --silent --max-time 5 -X POST -H 'Content-Type: application/json' -d "$imp07_body" \
+imp07_out="$(curl --silent --max-time 5 -X POST -H 'Content-Type: application/json' "${AUTH_HEADER[@]}" -d "$imp07_body" \
     -w '\n%{http_code}' "http://127.0.0.1:${BACKEND_PORT}/api/v1/diagrams/import" 2>&1)"
 imp07_http="$(printf '%s' "$imp07_out" | tail -n1)"
 imp07_resp="$(printf '%s' "$imp07_out" | sed '$d')"
@@ -184,7 +212,7 @@ print(d.get("diagram_id") or "")' 2>/dev/null)"
 fi
 
 if [[ "$imp07_status" == "pass" ]]; then
-    imp07_get="$(curl --silent --max-time 5 -w '\n%{http_code}' \
+    imp07_get="$(curl --silent --max-time 5 -w '\n%{http_code}' "${AUTH_HEADER[@]}" \
         "http://127.0.0.1:${BACKEND_PORT}/api/v1/diagrams/${imp07_id}" 2>&1)"
     imp07_get_http="$(printf '%s' "$imp07_get" | tail -n1)"
     imp07_get_body="$(printf '%s' "$imp07_get" | sed '$d')"
@@ -225,6 +253,7 @@ print("ok")' 2>&1)"
     fi
     # 清理：DELETE 导入的图
     imp07_del="$(curl --silent --max-time 5 -o /dev/null -w '%{http_code}' -X DELETE \
+        "${AUTH_HEADER[@]}" \
         "http://127.0.0.1:${BACKEND_PORT}/api/v1/diagrams/${imp07_id}" 2>&1)"
     if [[ ! "$imp07_del" =~ ^2[0-9][0-9]$ ]]; then
         imp07_status="fail"
@@ -234,6 +263,53 @@ fi
 
 imp07_end=$(date +%s%3N)
 run_smoke_case "SMOKE-core-07" "$imp07_status" "$((imp07_end - imp07_start))" "$imp07_note"
+
+# ─── Stage 6c: SMOKE-core-08 强制鉴权 401 断言（diagram-api-auth，规格 §8.7）───
+# flag=on（Stage 1 注入）：匿名 diagrams 写/读、bridge、share 铸造一律 401；
+# 带 smoke token 反证创建成功（随后带 token 清理）。
+a08_start=$(date +%s%3N)
+a08_status="pass"
+a08_note="anonymous 401 on POST/GET diagrams + bridge import/local + share mint; token accepted"
+a08_bad=""
+
+c="$(curl --silent --max-time 5 -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+    -d '{"name":"anon"}' "http://127.0.0.1:${BACKEND_PORT}/api/v1/diagrams" 2>&1)"
+[[ "$c" == "401" ]] || a08_bad="$a08_bad POST /diagrams=${c}"
+
+c="$(curl --silent --max-time 5 -o /dev/null -w '%{http_code}' \
+    "http://127.0.0.1:${BACKEND_PORT}/api/v1/diagrams/__smoke_probe__" 2>&1)"
+[[ "$c" == "401" ]] || a08_bad="$a08_bad GET /diagrams/{id}=${c}"
+
+c="$(curl --silent --max-time 5 -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+    -d '{"source":"smoke","payload":{}}' "http://127.0.0.1:${BACKEND_PORT}/api/v1/bridge/import/local" 2>&1)"
+[[ "$c" == "401" ]] || a08_bad="$a08_bad POST /bridge/import/local=${c}"
+
+c="$(curl --silent --max-time 5 -o /dev/null -w '%{http_code}' -X POST \
+    "http://127.0.0.1:${BACKEND_PORT}/api/v1/diagrams/__smoke_probe__/share" 2>&1)"
+[[ "$c" == "401" ]] || a08_bad="$a08_bad POST /diagrams/{id}/share=${c}"
+
+if [[ -z "$SMOKE_TOKEN" ]]; then
+    a08_bad="$a08_bad no smoke token (register/login failed)"
+else
+    a08_resp="$(curl --silent --max-time 5 -X POST -H 'Content-Type: application/json' \
+        -H "Authorization: Bearer ${SMOKE_TOKEN}" -d '{"name":"smoke08"}' \
+        "http://127.0.0.1:${BACKEND_PORT}/api/v1/diagrams" 2>&1)"
+    a08_id="$(echo "$a08_resp" | grep -oE '"id":"[^"]+"' | head -1 | cut -d'"' -f4)"
+    if [[ -z "$a08_id" ]]; then
+        a08_bad="$a08_bad token POST /diagrams rejected (body=${a08_resp:0:120})"
+    else
+        curl --silent --max-time 5 -o /dev/null -X DELETE \
+            -H "Authorization: Bearer ${SMOKE_TOKEN}" \
+            "http://127.0.0.1:${BACKEND_PORT}/api/v1/diagrams/${a08_id}" >/dev/null 2>&1
+    fi
+fi
+
+if [[ -n "$a08_bad" ]]; then
+    a08_status="fail"
+    a08_note="401 assertion failed:${a08_bad}"
+fi
+a08_end=$(date +%s%3N)
+run_smoke_case "SMOKE-core-08" "$a08_status" "$((a08_end - a08_start))" "$a08_note"
 
 # ─── Stage 7: stop services + SMOKE-core-06 ───────────────────────────────
 stop_start=$(date +%s%3N)

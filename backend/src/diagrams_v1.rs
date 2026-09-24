@@ -23,6 +23,48 @@ struct ApiErr {
     details: Option<Value>,
 }
 
+/// diagram-api-auth：强制鉴权开关的 app_data 覆盖点。
+/// 生产不注册该 app_data → 回落读 `COLDRAWDB_DIAGRAMS_AUTH` 环境变量；
+/// 测试经 `Option<web::Data<DiagramsAuthFlag>>` 精确控制，避免进程级 env 竞态。
+pub struct DiagramsAuthFlag(pub bool);
+
+/// diagram-api-auth：flag=on 时要求有效 Bearer token（auth_v1 access_token），缺失/非法 401；
+/// flag=off（默认过渡态）匿名直通。Err 分支由 handler 直接作为响应返回。
+pub fn guard_diagrams_auth(
+    flag: Option<&DiagramsAuthFlag>,
+    http: &HttpRequest,
+    request_id: &str,
+) -> Result<(), HttpResponse> {
+    let required = flag
+        .map(|f| f.0)
+        .unwrap_or_else(crate::auth::diagrams_auth_required);
+    if !required {
+        return Ok(());
+    }
+    let token = http
+        .headers()
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .strip_prefix("Bearer ")
+        .unwrap_or("");
+    if token.is_empty() || crate::auth::verify_access_token(token).is_err() {
+        return Err(HttpResponse::Unauthorized().json(ApiErr {
+            code: 401,
+            message: "请先登录".into(),
+            request_id: request_id.to_string(),
+            details: None,
+        }));
+    }
+    Ok(())
+}
+
+/// diagram-api-auth：GET /diagrams/{id} 的匿名分享读凭证（S02 豁免）。
+#[derive(Deserialize)]
+struct ShareTokenQuery {
+    share_token: Option<String>,
+}
+
 #[derive(Deserialize)]
 struct CreateReq {
     name: String,
@@ -59,6 +101,7 @@ pub fn diagrams_v1_routes(config: &mut web::ServiceConfig) {
     config.service(save_diagram_v1);
     config.service(delete_diagram_v1);
     config.service(import_diagram_v1);
+    config.service(share_diagram_v1);
 }
 
 /// feat-docker-compose-deploy（SMOKE-core-01 / 部署方案 §6）：健康检查端点。
@@ -69,8 +112,17 @@ async fn health_v1() -> HttpResponse {
 }
 
 #[post("/diagrams")]
-async fn create_diagram_v1(db: web::Data<DatabaseConnection>, req: web::Json<CreateReq>) -> Result<HttpResponse, DrawDBError> {
+async fn create_diagram_v1(
+    db: web::Data<DatabaseConnection>,
+    http: HttpRequest,
+    flag: Option<web::Data<DiagramsAuthFlag>>,
+    req: web::Json<CreateReq>,
+) -> Result<HttpResponse, DrawDBError> {
     let request_id = next_id();
+    // diagram-api-auth：flag=on 时无/非法 token → 401（写端点无匿名豁免）
+    if let Err(resp) = guard_diagrams_auth(flag.as_ref().map(|d| d.get_ref()), &http, &request_id) {
+        return Ok(resp);
+    }
     let id = next_id();
     let tx = db.begin().await?;
     let sql = format!(
@@ -85,8 +137,46 @@ async fn create_diagram_v1(db: web::Data<DatabaseConnection>, req: web::Json<Cre
 }
 
 #[get("/diagrams/{id}")]
-async fn get_diagram_v1(db: web::Data<DatabaseConnection>, id: web::Path<String>) -> Result<HttpResponse, DrawDBError> {
+async fn get_diagram_v1(
+    db: web::Data<DatabaseConnection>,
+    id: web::Path<String>,
+    http: HttpRequest,
+    flag: Option<web::Data<DiagramsAuthFlag>>,
+    query: web::Query<ShareTokenQuery>,
+) -> Result<HttpResponse, DrawDBError> {
     let request_id = next_id();
+    // diagram-api-auth：flag=on 时优先 Bearer token；无/非法 token 的唯一匿名豁免是
+    // ?share_token= 匹配本图（S02 分享加载）；share_token 不匹配或图未开分享 → 404
+    // （不暴露图存在性）；无 token 且无 share_token → 401。flag=off 全部跳过（同 v1.1）。
+    if guard_diagrams_auth(flag.as_ref().map(|d| d.get_ref()), &http, &request_id).is_err() {
+        let Some(share_token) = query.share_token.as_deref().filter(|s| !s.is_empty()) else {
+            return Ok(HttpResponse::Unauthorized().json(ApiErr {
+                code: 401,
+                message: "请先登录".into(),
+                request_id,
+                details: None,
+            }));
+        };
+        let row = db
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Sqlite,
+                format!(
+                    "SELECT id FROM diagram WHERE id='{}' AND share_token='{}' AND is_deleted=0 LIMIT 1",
+                    esc(&id),
+                    esc(share_token)
+                ),
+                vec![],
+            ))
+            .await?;
+        if row.is_none() {
+            return Ok(HttpResponse::NotFound().json(ApiErr {
+                code: 404,
+                message: "not found".into(),
+                request_id,
+                details: None,
+            }));
+        }
+    }
     // fix-collab-autosave-race（方案 B 单写者）：room 绑定且已物化 → 直接返回物化文档
     // （与 op log 恒一致；revision 注入当前 head server_rev）。首连/刷新/全量重载恒正确。
     if let Some((mut doc, rev)) = get_room_document(db.get_ref(), &id).await? {
@@ -113,8 +203,12 @@ async fn get_diagram_v1(db: web::Data<DatabaseConnection>, id: web::Path<String>
 }
 
 #[put("/diagrams/{id}")]
-async fn save_diagram_v1(db: web::Data<DatabaseConnection>, id: web::Path<String>, _http: HttpRequest, req: web::Json<SaveReq>) -> Result<HttpResponse, DrawDBError> {
+async fn save_diagram_v1(db: web::Data<DatabaseConnection>, id: web::Path<String>, http: HttpRequest, flag: Option<web::Data<DiagramsAuthFlag>>, req: web::Json<SaveReq>) -> Result<HttpResponse, DrawDBError> {
     let request_id = next_id();
+    // diagram-api-auth：flag=on 时无/非法 token → 401（写端点无匿名豁免）
+    if let Err(resp) = guard_diagrams_auth(flag.as_ref().map(|d| d.get_ref()), &http, &request_id) {
+        return Ok(resp);
+    }
     let id = id.into_inner();
 
     // fix-collab-autosave-race（方案 B 单写者）：room 绑定 diagram 写收编——
@@ -159,8 +253,12 @@ async fn save_diagram_v1(db: web::Data<DatabaseConnection>, id: web::Path<String
 }
 
 #[delete("/diagrams/{id}")]
-async fn delete_diagram_v1(db: web::Data<DatabaseConnection>, id: web::Path<String>) -> Result<HttpResponse, DrawDBError> {
+async fn delete_diagram_v1(db: web::Data<DatabaseConnection>, id: web::Path<String>, http: HttpRequest, flag: Option<web::Data<DiagramsAuthFlag>>) -> Result<HttpResponse, DrawDBError> {
     let request_id = next_id();
+    // diagram-api-auth：flag=on 时无/非法 token → 401（写端点无匿名豁免）
+    if let Err(resp) = guard_diagrams_auth(flag.as_ref().map(|d| d.get_ref()), &http, &request_id) {
+        return Ok(resp);
+    }
     let tx = db.begin().await?;
     let sql = format!("UPDATE diagram SET is_deleted=1, updated_at=datetime('now') WHERE id='{}'", esc(&id));
     tx.execute(Statement::from_sql_and_values(DatabaseBackend::Sqlite, sql, vec![])).await?;
@@ -168,9 +266,55 @@ async fn delete_diagram_v1(db: web::Data<DatabaseConnection>, id: web::Path<Stri
     Ok(HttpResponse::Ok().json(ApiResp { code: 0, data: serde_json::json!({"id": id.into_inner()}), request_id }))
 }
 
-#[post("/diagrams/import")]
-async fn import_diagram_v1(db: web::Data<DatabaseConnection>, req: web::Json<ImportReq>) -> Result<HttpResponse, DrawDBError> {
+/// diagram-api-auth：铸造/轮换分享令牌（重复调用即轮换，旧分享链接立即失效）。
+/// flag=on 时需 Bearer token（401）；图不存在或已软删 → 404。
+/// 返回 data.{id, share_token}；share_token 为随机 URL-safe 串（uuid v4 simple）。
+#[post("/diagrams/{id}/share")]
+async fn share_diagram_v1(
+    db: web::Data<DatabaseConnection>,
+    id: web::Path<String>,
+    http: HttpRequest,
+    flag: Option<web::Data<DiagramsAuthFlag>>,
+) -> Result<HttpResponse, DrawDBError> {
     let request_id = next_id();
+    if let Err(resp) = guard_diagrams_auth(flag.as_ref().map(|d| d.get_ref()), &http, &request_id) {
+        return Ok(resp);
+    }
+    let id = id.into_inner();
+    let share_token = uuid::Uuid::new_v4().simple().to_string();
+    let res = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            format!(
+                "UPDATE diagram SET share_token='{}', updated_at=datetime('now') WHERE id='{}' AND is_deleted=0",
+                share_token,
+                esc(&id)
+            ),
+            vec![],
+        ))
+        .await?;
+    if res.rows_affected() == 0 {
+        return Ok(HttpResponse::NotFound().json(ApiErr {
+            code: 404,
+            message: "not found".into(),
+            request_id,
+            details: None,
+        }));
+    }
+    Ok(HttpResponse::Ok().json(ApiResp {
+        code: 0,
+        data: serde_json::json!({"id": id, "share_token": share_token}),
+        request_id,
+    }))
+}
+
+#[post("/diagrams/import")]
+async fn import_diagram_v1(db: web::Data<DatabaseConnection>, http: HttpRequest, flag: Option<web::Data<DiagramsAuthFlag>>, req: web::Json<ImportReq>) -> Result<HttpResponse, DrawDBError> {
+    let request_id = next_id();
+    // diagram-api-auth：flag=on 时无/非法 token → 401（写端点无匿名豁免）
+    if let Err(resp) = guard_diagrams_auth(flag.as_ref().map(|d| d.get_ref()), &http, &request_id) {
+        return Ok(resp);
+    }
     if !req.payload.is_object() {
         return Ok(HttpResponse::BadRequest().json(ApiErr {
             code: 400,
@@ -639,5 +783,402 @@ mod tests {
         assert_eq!(got2["code"], 0);
         assert_eq!(got2["data"]["name"], "d2");
         assert_eq!(got2["data"]["revision"], 0);
+    }
+
+    // ─── diagram-api-auth：鉴权开关 / share_token 豁免 UT/ST ─────────────────
+
+    fn ut_token() -> String {
+        crate::auth::sign_access_token("ut-user").unwrap().0
+    }
+
+    /// UT-S01-AUTH-01：flag=on 时 POST/PUT/DELETE/import 无 token → 401
+    #[actix_web::test]
+    async fn ut_s01_auth_01_flag_on_write_requires_token() {
+        let db = build_db().await;
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(db))
+                .app_data(web::Data::new(DiagramsAuthFlag(true)))
+                .service(web::scope("/api/v1").configure(diagrams_v1_routes)),
+        )
+        .await;
+
+        let resp = test::call_service(&app, test::TestRequest::post().uri("/api/v1/diagrams")
+            .set_json(serde_json::json!({"name":"x"})).to_request()).await;
+        assert_eq!(resp.status(), 401, "POST /diagrams 无 token 应 401");
+
+        let resp = test::call_service(&app, test::TestRequest::put().uri("/api/v1/diagrams/some-id")
+            .set_json(serde_json::json!({"expected_revision":0,"diagram":{"id":"some-id","name":"x"}})).to_request()).await;
+        assert_eq!(resp.status(), 401, "PUT /diagrams 无 token 应 401");
+
+        let resp = test::call_service(&app, test::TestRequest::delete().uri("/api/v1/diagrams/some-id").to_request()).await;
+        assert_eq!(resp.status(), 401, "DELETE /diagrams 无 token 应 401");
+
+        let resp = test::call_service(&app, test::TestRequest::post().uri("/api/v1/diagrams/import")
+            .set_json(serde_json::json!({"payload":{"tables":[]}})).to_request()).await;
+        assert_eq!(resp.status(), 401, "POST /diagrams/import 无 token 应 401");
+
+        mark_pass("UT-S01-AUTH-01");
+    }
+
+    /// UT-S01-AUTH-02：flag=on 时非法/过期/伪造签名 token → 401；合法 token → 200
+    #[actix_web::test]
+    async fn ut_s01_auth_02_flag_on_invalid_token_401() {
+        let db = build_db().await;
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(db))
+                .app_data(web::Data::new(DiagramsAuthFlag(true)))
+                .service(web::scope("/api/v1").configure(diagrams_v1_routes)),
+        )
+        .await;
+
+        for bad in [
+            "garbage-token".to_string(),
+            crate::auth::sign_access_token_with_ttl("ut-user", -120).unwrap().0, // 已过期（超出 jwt 校验 60s leeway）
+            format!("{}x", ut_token()),                                        // 伪造签名
+        ] {
+            let resp = test::call_service(&app, test::TestRequest::post().uri("/api/v1/diagrams")
+                .insert_header(("Authorization", format!("Bearer {bad}")))
+                .set_json(serde_json::json!({"name":"x"})).to_request()).await;
+            assert_eq!(resp.status(), 401, "非法 token 应 401: {bad}");
+        }
+
+        let resp = test::call_service(&app, test::TestRequest::post().uri("/api/v1/diagrams")
+            .insert_header(("Authorization", format!("Bearer {}", ut_token())))
+            .set_json(serde_json::json!({"name":"ok"})).to_request()).await;
+        assert_eq!(resp.status(), 200, "合法 token 应 200（反证）");
+
+        mark_pass("UT-S01-AUTH-02");
+    }
+
+    /// UT-S01-AUTH-03：flag=off（默认过渡态）匿名直通，行为同 v1.1
+    #[actix_web::test]
+    async fn ut_s01_auth_03_flag_off_anonymous_passthrough() {
+        let db = build_db().await;
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(db))
+                .app_data(web::Data::new(DiagramsAuthFlag(false)))
+                .service(web::scope("/api/v1").configure(diagrams_v1_routes)),
+        )
+        .await;
+
+        let created: Value = test::call_and_read_body_json(&app, test::TestRequest::post().uri("/api/v1/diagrams")
+            .set_json(serde_json::json!({"name":"anon-ok"})).to_request()).await;
+        assert_eq!(created["code"], 0, "flag=off 匿名创建应 200");
+        let id = created["data"]["id"].as_str().unwrap().to_string();
+
+        let got: Value = test::call_and_read_body_json(&app, test::TestRequest::get()
+            .uri(&format!("/api/v1/diagrams/{id}")).to_request()).await;
+        assert_eq!(got["code"], 0, "flag=off 匿名读应 200（share_token 校验整体跳过）");
+
+        mark_pass("UT-S01-AUTH-03");
+    }
+
+    /// UT-S01-AUTH-05：share 端点——off 匿名可调 / on 无 token 401；铸造-轮换-软删 404
+    #[actix_web::test]
+    async fn ut_s01_auth_05_share_endpoint() {
+        let db = build_db().await;
+        // flag=off：匿名铸造 + 轮换
+        let app_off = test::init_service(
+            App::new()
+                .app_data(web::Data::new(db.clone()))
+                .app_data(web::Data::new(DiagramsAuthFlag(false)))
+                .service(web::scope("/api/v1").configure(diagrams_v1_routes)),
+        )
+        .await;
+        let created: Value = test::call_and_read_body_json(&app_off, test::TestRequest::post().uri("/api/v1/diagrams")
+            .set_json(serde_json::json!({"name":"share-me"})).to_request()).await;
+        let id = created["data"]["id"].as_str().unwrap().to_string();
+
+        let mint: Value = test::call_and_read_body_json(&app_off, test::TestRequest::post()
+            .uri(&format!("/api/v1/diagrams/{id}/share")).to_request()).await;
+        assert_eq!(mint["code"], 0, "flag=off 匿名铸造 share_token 应 200");
+        assert_eq!(mint["data"]["id"], id.as_str());
+        let token_a = mint["data"]["share_token"].as_str().unwrap().to_string();
+        assert!(!token_a.is_empty());
+
+        let rotate: Value = test::call_and_read_body_json(&app_off, test::TestRequest::post()
+            .uri(&format!("/api/v1/diagrams/{id}/share")).to_request()).await;
+        let token_b = rotate["data"]["share_token"].as_str().unwrap().to_string();
+        assert_ne!(token_a, token_b, "重复调用即轮换");
+
+        // flag=on：无 token → 401
+        let app_on = test::init_service(
+            App::new()
+                .app_data(web::Data::new(db.clone()))
+                .app_data(web::Data::new(DiagramsAuthFlag(true)))
+                .service(web::scope("/api/v1").configure(diagrams_v1_routes)),
+        )
+        .await;
+        let resp = test::call_service(&app_on, test::TestRequest::post()
+            .uri(&format!("/api/v1/diagrams/{id}/share")).to_request()).await;
+        assert_eq!(resp.status(), 401, "flag=on 匿名铸造应 401");
+
+        // 软删图 share → 404；不存在 id share → 404
+        let req = test::TestRequest::delete().uri(&format!("/api/v1/diagrams/{id}")).to_request();
+        assert!(test::call_service(&app_off, req).await.status().is_success());
+        let resp = test::call_service(&app_off, test::TestRequest::post()
+            .uri(&format!("/api/v1/diagrams/{id}/share")).to_request()).await;
+        assert_eq!(resp.status(), 404, "软删图铸造应 404");
+        let resp = test::call_service(&app_off, test::TestRequest::post()
+            .uri("/api/v1/diagrams/no-such-id/share").to_request()).await;
+        assert_eq!(resp.status(), 404, "不存在图铸造应 404");
+
+        mark_pass("UT-S01-AUTH-05");
+    }
+
+    /// UT-S02-10：flag=on 时 GET 无 token 且无 share_token → 401
+    #[actix_web::test]
+    async fn ut_s02_10_flag_on_get_no_token_401() {
+        let db = build_db().await;
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(db))
+                .app_data(web::Data::new(DiagramsAuthFlag(true)))
+                .service(web::scope("/api/v1").configure(diagrams_v1_routes)),
+        )
+        .await;
+        let resp = test::call_service(&app, test::TestRequest::get()
+            .uri("/api/v1/diagrams/whatever").to_request()).await;
+        assert_eq!(resp.status(), 401);
+        mark_pass("UT-S02-10");
+    }
+
+    /// UT-S02-11：flag=on 时 GET 凭匹配 share_token → 200 匿名读（S02 豁免）
+    #[actix_web::test]
+    async fn ut_s02_11_share_token_anonymous_read() {
+        let db = build_db().await;
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(db))
+                .app_data(web::Data::new(DiagramsAuthFlag(true)))
+                .service(web::scope("/api/v1").configure(diagrams_v1_routes)),
+        )
+        .await;
+        let token = ut_token();
+        let created: Value = test::call_and_read_body_json(&app, test::TestRequest::post().uri("/api/v1/diagrams")
+            .insert_header(("Authorization", format!("Bearer {token}")))
+            .set_json(serde_json::json!({"name":"shared"})).to_request()).await;
+        let id = created["data"]["id"].as_str().unwrap().to_string();
+        let mint: Value = test::call_and_read_body_json(&app, test::TestRequest::post()
+            .uri(&format!("/api/v1/diagrams/{id}/share"))
+            .insert_header(("Authorization", format!("Bearer {token}"))).to_request()).await;
+        let share_token = mint["data"]["share_token"].as_str().unwrap().to_string();
+
+        // 匿名（无 Authorization）凭 share_token 读 → 200
+        let got: Value = test::call_and_read_body_json(&app, test::TestRequest::get()
+            .uri(&format!("/api/v1/diagrams/{id}?share_token={share_token}")).to_request()).await;
+        assert_eq!(got["code"], 0, "share_token 匹配应匿名可读");
+        assert_eq!(got["data"]["id"], id.as_str());
+
+        mark_pass("UT-S02-11");
+    }
+
+    /// UT-S02-12：flag=on 时 share_token 不匹配 / 图未开分享 → 404（不暴露存在性）
+    #[actix_web::test]
+    async fn ut_s02_12_share_token_mismatch_404() {
+        let db = build_db().await;
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(db))
+                .app_data(web::Data::new(DiagramsAuthFlag(true)))
+                .service(web::scope("/api/v1").configure(diagrams_v1_routes)),
+        )
+        .await;
+        let token = ut_token();
+        let auth = format!("Bearer {token}");
+        let created: Value = test::call_and_read_body_json(&app, test::TestRequest::post().uri("/api/v1/diagrams")
+            .insert_header(("Authorization", auth.clone()))
+            .set_json(serde_json::json!({"name":"unshared"})).to_request()).await;
+        let id = created["data"]["id"].as_str().unwrap().to_string();
+
+        // 图未开分享：任意 share_token → 404
+        let resp = test::call_service(&app, test::TestRequest::get()
+            .uri(&format!("/api/v1/diagrams/{id}?share_token=any-token")).to_request()).await;
+        assert_eq!(resp.status(), 404, "未开分享应 404");
+
+        // 开分享后错误 token → 404
+        let mint: Value = test::call_and_read_body_json(&app, test::TestRequest::post()
+            .uri(&format!("/api/v1/diagrams/{id}/share"))
+            .insert_header(("Authorization", auth)).to_request()).await;
+        assert_eq!(mint["code"], 0);
+        let resp = test::call_service(&app, test::TestRequest::get()
+            .uri(&format!("/api/v1/diagrams/{id}?share_token=wrong-token")).to_request()).await;
+        assert_eq!(resp.status(), 404, "share_token 不匹配应 404");
+
+        mark_pass("UT-S02-12");
+    }
+
+    /// UT-S02-13：轮换后旧 share_token 立即 404；软删图 share 铸造 → 404
+    #[actix_web::test]
+    async fn ut_s02_13_share_rotate_and_soft_delete() {
+        let db = build_db().await;
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(db))
+                .app_data(web::Data::new(DiagramsAuthFlag(true)))
+                .service(web::scope("/api/v1").configure(diagrams_v1_routes)),
+        )
+        .await;
+        let token = ut_token();
+        let auth = format!("Bearer {token}");
+        let created: Value = test::call_and_read_body_json(&app, test::TestRequest::post().uri("/api/v1/diagrams")
+            .insert_header(("Authorization", auth.clone()))
+            .set_json(serde_json::json!({"name":"rotate"})).to_request()).await;
+        let id = created["data"]["id"].as_str().unwrap().to_string();
+
+        let mint_a: Value = test::call_and_read_body_json(&app, test::TestRequest::post()
+            .uri(&format!("/api/v1/diagrams/{id}/share"))
+            .insert_header(("Authorization", auth.clone())).to_request()).await;
+        let token_a = mint_a["data"]["share_token"].as_str().unwrap().to_string();
+        let mint_b: Value = test::call_and_read_body_json(&app, test::TestRequest::post()
+            .uri(&format!("/api/v1/diagrams/{id}/share"))
+            .insert_header(("Authorization", auth.clone())).to_request()).await;
+        let token_b = mint_b["data"]["share_token"].as_str().unwrap().to_string();
+        assert_ne!(token_a, token_b);
+
+        let resp = test::call_service(&app, test::TestRequest::get()
+            .uri(&format!("/api/v1/diagrams/{id}?share_token={token_a}")).to_request()).await;
+        assert_eq!(resp.status(), 404, "轮换后旧 token 立即失效");
+        let got: Value = test::call_and_read_body_json(&app, test::TestRequest::get()
+            .uri(&format!("/api/v1/diagrams/{id}?share_token={token_b}")).to_request()).await;
+        assert_eq!(got["code"], 0, "新 token 可读");
+
+        // 软删后：share 铸造 404，凭 token 读也 404
+        let req = test::TestRequest::delete().uri(&format!("/api/v1/diagrams/{id}"))
+            .insert_header(("Authorization", auth.clone())).to_request();
+        assert!(test::call_service(&app, req).await.status().is_success());
+        let resp = test::call_service(&app, test::TestRequest::post()
+            .uri(&format!("/api/v1/diagrams/{id}/share"))
+            .insert_header(("Authorization", auth)).to_request()).await;
+        assert_eq!(resp.status(), 404, "软删图 share 铸造应 404");
+        let resp = test::call_service(&app, test::TestRequest::get()
+            .uri(&format!("/api/v1/diagrams/{id}?share_token={token_b}")).to_request()).await;
+        assert_eq!(resp.status(), 404, "软删图凭 share_token 读应 404");
+
+        mark_pass("UT-S02-13");
+    }
+
+    /// ST-S01-AUTH-01：登录态编辑保存全链路（编排 core-S01 v1.1.0：
+    /// 匿名 401 → 登录创建 → PUT 保存 → 过期 revision 409 → 删除 → 404）
+    #[actix_web::test]
+    async fn st_s01_auth_01_login_crud_orchestration() {
+        let db = build_db().await;
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(db))
+                .app_data(web::Data::new(DiagramsAuthFlag(true)))
+                .service(web::scope("/api/v1").configure(diagrams_v1_routes)),
+        )
+        .await;
+        let token = ut_token();
+        let auth = format!("Bearer {token}");
+
+        // 步骤 1：匿名创建 → 401
+        let resp = test::call_service(&app, test::TestRequest::post().uri("/api/v1/diagrams")
+            .set_json(serde_json::json!({"name":"anon"})).to_request()).await;
+        assert_eq!(resp.status(), 401);
+
+        // 步骤 2：登录创建 → 200
+        let created: Value = test::call_and_read_body_json(&app, test::TestRequest::post().uri("/api/v1/diagrams")
+            .insert_header(("Authorization", auth.clone()))
+            .set_json(serde_json::json!({"name":"S01 Auth"})).to_request()).await;
+        assert_eq!(created["code"], 0);
+        let id = created["data"]["id"].as_str().unwrap().to_string();
+
+        // 步骤 3：PUT 正确 revision → 200，revision 自增
+        let saved: Value = test::call_and_read_body_json(&app, test::TestRequest::put()
+            .uri(&format!("/api/v1/diagrams/{id}"))
+            .insert_header(("Authorization", auth.clone()))
+            .set_json(serde_json::json!({"expected_revision":0,"diagram":{"id":id,"name":"S01 Auth v2"}})).to_request()).await;
+        assert_eq!(saved["code"], 0);
+        assert_eq!(saved["data"]["revision"], 1);
+
+        // 步骤 4：PUT 过期 revision → 409
+        let resp = test::call_service(&app, test::TestRequest::put()
+            .uri(&format!("/api/v1/diagrams/{id}"))
+            .insert_header(("Authorization", auth.clone()))
+            .set_json(serde_json::json!({"expected_revision":0,"diagram":{"id":id,"name":"stale"}})).to_request()).await;
+        assert_eq!(resp.status(), 409);
+
+        // 步骤 5：GET 登录态读 → 200 revision=1
+        let got: Value = test::call_and_read_body_json(&app, test::TestRequest::get()
+            .uri(&format!("/api/v1/diagrams/{id}"))
+            .insert_header(("Authorization", auth.clone())).to_request()).await;
+        assert_eq!(got["data"]["revision"], 1);
+
+        // 步骤 6：DELETE → 200；步骤 7：GET → 404
+        let req = test::TestRequest::delete().uri(&format!("/api/v1/diagrams/{id}"))
+            .insert_header(("Authorization", auth.clone())).to_request();
+        assert!(test::call_service(&app, req).await.status().is_success());
+        let resp = test::call_service(&app, test::TestRequest::get()
+            .uri(&format!("/api/v1/diagrams/{id}"))
+            .insert_header(("Authorization", auth)).to_request()).await;
+        assert_eq!(resp.status(), 404);
+
+        mark_pass("ST-S01-AUTH-01");
+    }
+
+    /// ST-S02-07：分享匿名读全链路（编排 core-S02 v1.1.0：
+    /// 铸造 → 匿名读 → 无 token 401 / 错误 token 404 → 轮换失效 → 清理）
+    #[actix_web::test]
+    async fn st_s02_07_share_anonymous_read_orchestration() {
+        let db = build_db().await;
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(db))
+                .app_data(web::Data::new(DiagramsAuthFlag(true)))
+                .service(web::scope("/api/v1").configure(diagrams_v1_routes)),
+        )
+        .await;
+        let token = ut_token();
+        let auth = format!("Bearer {token}");
+
+        // A 创建（登录态）
+        let created: Value = test::call_and_read_body_json(&app, test::TestRequest::post().uri("/api/v1/diagrams")
+            .insert_header(("Authorization", auth.clone()))
+            .set_json(serde_json::json!({"name":"Shared"})).to_request()).await;
+        let id = created["data"]["id"].as_str().unwrap().to_string();
+
+        // A 铸造 share_token
+        let mint: Value = test::call_and_read_body_json(&app, test::TestRequest::post()
+            .uri(&format!("/api/v1/diagrams/{id}/share"))
+            .insert_header(("Authorization", auth.clone())).to_request()).await;
+        let share_token = mint["data"]["share_token"].as_str().unwrap().to_string();
+
+        // B 匿名凭 share_token 读 → 200
+        let got: Value = test::call_and_read_body_json(&app, test::TestRequest::get()
+            .uri(&format!("/api/v1/diagrams/{id}?share_token={share_token}")).to_request()).await;
+        assert_eq!(got["code"], 0);
+        assert_eq!(got["data"]["name"], "Shared");
+
+        // B 无 token 无 share_token → 401；错误 share_token → 404
+        let resp = test::call_service(&app, test::TestRequest::get()
+            .uri(&format!("/api/v1/diagrams/{id}")).to_request()).await;
+        assert_eq!(resp.status(), 401);
+        let resp = test::call_service(&app, test::TestRequest::get()
+            .uri(&format!("/api/v1/diagrams/{id}?share_token=wrong")).to_request()).await;
+        assert_eq!(resp.status(), 404);
+
+        // A 轮换 → 旧 token 404，新 token 200
+        let mint2: Value = test::call_and_read_body_json(&app, test::TestRequest::post()
+            .uri(&format!("/api/v1/diagrams/{id}/share"))
+            .insert_header(("Authorization", auth.clone())).to_request()).await;
+        let share_token2 = mint2["data"]["share_token"].as_str().unwrap().to_string();
+        let resp = test::call_service(&app, test::TestRequest::get()
+            .uri(&format!("/api/v1/diagrams/{id}?share_token={share_token}")).to_request()).await;
+        assert_eq!(resp.status(), 404, "轮换后旧 token 失效");
+        let got2: Value = test::call_and_read_body_json(&app, test::TestRequest::get()
+            .uri(&format!("/api/v1/diagrams/{id}?share_token={share_token2}")).to_request()).await;
+        assert_eq!(got2["code"], 0);
+
+        // A 清理
+        let req = test::TestRequest::delete().uri(&format!("/api/v1/diagrams/{id}"))
+            .insert_header(("Authorization", auth)).to_request();
+        assert!(test::call_service(&app, req).await.status().is_success());
+
+        mark_pass("ST-S02-07");
     }
 }

@@ -264,4 +264,4 @@ pub fn make_full_diagram() -> Diagram {
 | ST-S02-04 | 网络断开重试 | `backend/tests/scenarios/s02.rs` |
 | ST-S02-05 | 浏览器渲染 | `frontend-rs/tests/wasm/` |
 | ST-S02-06 | 并发分享会话 | `backend/tests/scenarios/s02.rs` |
-| ST-S02-07 | 分享匿名读全链路（编排 core-S02 v1.1.0：铸造→匿名读→401/404→轮换失效） | `backend/tests/scenarios/s02.rs` |
+| ST-S02-07 | 分享匿名读全链路（编排 core-S02 v1.1.0：铸造→匿名读→401/404→轮换失效） | `backend/src/diagrams_v1.rs::tests` |
