@@ -1,264 +1,172 @@
 <div align="center">
     <h1>coldrawdb</h1>
-    <p><b>自托管、浏览器端的数据库 ER 图设计工具</b><br>产品理念借鉴 drawDB 与 PDManer，开发中参考 drawDB 源码对齐，代码为纯 Rust 重新实现</p>
+    <p><b>自托管、浏览器端的数据库 ER 图设计工具</b><br>产品理念借鉴 drawDB 与 PDManer，开发中参考 drawDB 源码对齐，核心应用以 Rust 重新实现</p>
     <img width="700" style="border-radius:5px;" alt="coldrawdb 协作编辑器界面（暗色主题）" src="app-editor.png?v=2">
 </div>
 
 ## 简介
 
-coldrawdb 是一个纯 Rust 实现的数据库实体关系（DBER）编辑器：前端以 WASM + Leptos 在浏览器中自绘 Canvas 画布，后端以 actix-web + SQLite 提供图表持久化、SQL/DBML 导入导出、多引擎 DDL 生成，并逐步扩展用户鉴权、实时协作与 AI 客户端（MCP）接入能力。
+coldrawdb 使用 Rust + Leptos / WASM 构建浏览器编辑器，以 actix-web + SQLite 提供持久化、用户鉴权和实时协作。可以通过 Docker 自托管，也可以从源码运行，并通过本地 MCP 服务让 AI 客户端参与图表编辑。
 
-核心特性：
+- **可视化建模**：表、字段、关系、索引、枚举、自定义类型、区域、备注和待办；支持画布与列表视图、关系推断、自动布局、表尺寸调整、关系颜色与线型。
+- **导入导出**：多引擎 SQL、DBML、JSON，以及数据字典 Markdown 导出。
+- **连接数据库**：读取 PostgreSQL / SQLite 表结构，或向目标数据库执行 DDL；PostgreSQL 支持指定 schema。连接数据库能力与 SQL 文件支持的引擎范围不同。
+- **登录与协作**：注册、登录、Token 续期、房间、邀请、成员权限、回收站，以及前后端已接通的 WebSocket OT 实时协作。
+- **数据字典**：管理代码映射字典和字典项、绑定字段并持久化。
+- **MCP**：11 个工具，支持图表管理、表 / 字段 / 关系编辑、自动布局与房间图协作写入。
+- **编辑体验**：暗色模式、命令面板、Monaco 代码视图和撤销 / 重做。
 
-- **可视化 ER 编辑器**：表 / 字段 / 关系 / 索引 / 枚举 / 自定义类型 / 区域 / 备注 / 待办，9 类对象自由拖拽连线
-- **多引擎 SQL 与 DBML**：7 种引擎的 DDL 生成与导入（MySQL / PostgreSQL / SQLite 等），JSON 全量导入导出
-- **修订号乐观锁**：图表保存携带 `expected_revision`，并发冲突返回 409，不静默覆盖
-- **协作与鉴权（V2，后端已就绪）**：注册 / 登录 / Token 续期（JWT + Argon2）、协作房间与邀请、WebSocket OT 实时协作
-- **MCP 服务（S06，实现中）**：本地 stdio adapter，让 Claude / Codex / Cursor / OpenCode 直接管理图表
-- **数据字典（S07）**：代码映射字典 CRUD、字段绑定、Markdown 导出
-- **暗色模式**：`--cdb-*` 设计 token 体系驱动的 Light / Dark 全局主题
+## 快速运行：Docker 部署包
 
-## 技术栈
+正式部署使用 Docker 镜像与 Compose。Windows / macOS 可使用 Docker Desktop，Linux 使用 Docker Engine + Compose v2。镜像发布工作流配置了 `linux/amd64` 和 `linux/arm64`。
 
-> 前端为纯 Rust（WASM）实现，全仓库无 React / Node 前端构建链。
+从仓库的 GitHub Releases 页面下载 `coldrawdb-<tag>-deploy.zip`，解压到独立目录。压缩包内容位于根目录，可用系统解压工具，或执行：
 
-| 层 | 技术 |
-|---|---|
-| 前端 | **Rust + Leptos 0.5（CSR）+ WASM**，`frontend-rs/` crate，4 个逻辑模块：data_access / core / panels / render |
-| 前端构建 | `trunk`（WASM bundler） |
-| 渲染 | HTML5 `<canvas>` 自绘 + 贝塞尔连线，Leptos signals 细粒度响应式 |
-| 设计系统 | `--cdb-*` 设计 token（13 类约 100 个）+ SVG 图标库 + 8 类核心组件 + 动效 token |
-| 代码视图 | Monaco Editor + DBML 语法 |
-| 后端 | **Rust + actix-web 4 + tokio**，`backend/` crate，默认 `127.0.0.1:3000` |
-| 持久化 | SQLite（WAL 模式）+ SeaORM 0.12，8 个幂等迁移（`backend/migrations/`） |
-| 鉴权 | JWT（`jsonwebtoken`）+ Argon2 密码散列 + refresh token |
-| 协作 | actix-web-actors WebSocket + OT（Operation Transform） |
-| MCP | `mcp-server/` 独立 crate，stdio transport，仅调用 diagram HTTP API |
-| 部署 | 多阶段 Dockerfile（静态服务 + SPA 回源）+ docker-compose（nginx 默认宿主机 **9080** 反代 + 每日 SQLite 备份侧车） |
-| 测试 | `cargo test`（UT/ST）+ `wasm-pack test --chrome` + Playwright E2E |
-| CI | GitHub Actions：`build.yml`（cargo build + trunk build）与 `docker.yml`（镜像构建） |
+```bash
+# 将 <tag> 替换为下载的版本
+unzip 'coldrawdb-<tag>-deploy.zip' -d coldrawdb-deploy
+cd coldrawdb-deploy
+docker compose up -d
+```
 
-架构详情见 [架构概览](logos/resources/prd/3-technical-plan/1-architecture/core-01-architecture-overview.md)。
+浏览器访问 `http://localhost:9080/`，注册 / 登录后创建房间开始编辑。部署包会拉取对应版本的 GHCR 镜像，无需安装 Rust 或本地编译。停止服务使用 `docker compose down`。
 
-## 快速开始
+跨机器访问时，在部署目录的 `.env` 中设置实际可访问的前端地址；改变端口时同时更新邀请链接基址：
+
+```dotenv
+COLDRAWDB_HTTP_PORT=9080
+PUBLIC_BASE_URL=http://192.168.1.10:9080
+```
+
+然后重新运行 `docker compose up -d`。`PUBLIC_BASE_URL` 应指向浏览器访问的 SPA 入口。
+
+- `nginx` 默认通过宿主机 9080 端口提供统一入口。
+- SQLite 数据位于 `./data/`，日志位于 `./logs/`，备份侧车每日打包数据目录至 `./backups/`。
+- 健康检查：`http://localhost:9080/api/v1/diagrams/health`。
+- Compose 配置了 `restart: unless-stopped`；健康检查失败本身不会触发容器重启。
+
+源码构建部署：在仓库根目录运行 `docker compose up -d --build`。发布镜像与部署包分别由 [docker.yml](.github/workflows/docker.yml) 和 [release.yml](.github/workflows/release.yml) 生成。
+
+## 从源码运行
 
 ### 前置要求
 
-- Rust stable（建议经 [rustup](https://rustup.rs/) 安装）
-- `trunk`：`cargo install --locked trunk`
-- `wasm32-unknown-unknown` target（`rustup target add wasm32-unknown-unknown`）
-- 可选：`wasm-pack`（前端集成测试）、Playwright + Chromium（E2E）
+- Rust stable 与 Cargo。
+- Trunk：`cargo install --locked trunk`。
+- WASM 目标：`rustup target add wasm32-unknown-unknown`。
+- 启动脚本使用 Bash、curl；Windows 可使用 WSL2，或直接采用 Docker 部署。
+- 应用构建无需 Node.js / npm；Playwright 浏览器测试需要 Node.js / npm 和 Chromium，详见 [贡献指南](CONTRIBUTING.md)。
 
-无需 Node.js / npm。
+### 一键启动
 
-### 方式一：一键启动脚本
+在仓库根目录执行：
 
 ```bash
-./scripts/start-local.sh   # 启动后端 + 前端（可用 COLDRAWDB_BACKEND_PORT / COLDRAWDB_FRONTEND_PORT 改端口）
-./scripts/stop-local.sh    # 停止
+./scripts/start-local.sh
+# 前端：http://127.0.0.1:8080/editor
+# 后端：http://127.0.0.1:3000
+./scripts/stop-local.sh
 ```
 
-日志写入 `logs/`。
+脚本先编译后端，再启动后端与 Trunk，自动注入前端 API 地址及邀请链接基址。日志写入 `logs/`。可通过 `COLDRAWDB_BACKEND_PORT` / `COLDRAWDB_FRONTEND_PORT` 调整端口；首次前端编译较慢时可设置 `COLDRAWDB_FRONTEND_TIMEOUT=300`。
 
-### 方式二：手动启动
+### 手动启动
 
-**1) 启动后端**（Rust + SQLite，默认 `127.0.0.1:3000`，配置见 `backend/config.toml`）：
+从仓库根目录分别在两个终端执行：
 
 ```bash
+# 终端一：后端
 cd backend
-cargo run --release   # 性能测量必须使用 release 模式
+PUBLIC_BASE_URL=http://127.0.0.1:8080 cargo run --release
 ```
 
-首次启动会执行 `backend/init.sql` 基线建表，再按序执行 `backend/migrations/*.up.sql`（幂等，版本记录在 `schema_migrations` 表）。
+```bash
+# 终端二：前端
+cd frontend-rs
+COLDRAWDB_API_BASE=http://127.0.0.1:3000 trunk serve --port 8080
+```
 
-健康检查（无 DB 依赖）：
+后端读取 `backend/config.toml`；首次启动建立基线表，再执行 `backend/migrations/*.up.sql`，版本记录在 `schema_migrations`。本地默认数据库为 `backend/db.sqlite`。
+
+`COLDRAWDB_API_BASE` 是前端编译期配置，开发时必须与后端地址一致。生产同源部署构建时应取消该变量，使 API 与 WebSocket 使用页面所在域名。
+
+```bash
+# 以下命令均从仓库根目录执行
+(cd backend && cargo build --release)
+(cd frontend-rs && env -u COLDRAWDB_API_BASE trunk build --release --no-wasm-opt)
+# 前端产物：frontend-rs/dist/
+```
+
+接口检查：
 
 ```bash
 curl http://127.0.0.1:3000/api/v1/diagrams/health
-```
-
-**2) 启动前端**（新终端）：
-
-```bash
-cd frontend-rs
-trunk serve --port 8080   # 访问 http://localhost:8080
-```
-
-前后端联调说明：无代理层，前端经 `fetch` 直连 `127.0.0.1:3000`，CORS 由后端 `actix-cors` 管理（dev 全开）。数据流：`editor-data-access` → `editor-core`（1s debounce）→ `editor-panels` / `editor-render`。
-
-**3) 接口快速验证**：
-
-```bash
-# 创建图表
 curl -X POST http://127.0.0.1:3000/api/v1/diagrams \
   -H 'Content-Type: application/json' \
-  -d '{"name":"demo","engine":"mysql"}'
-
-# 查询 bridge 配置
-curl http://127.0.0.1:3000/api/v1/bridge/config
+  -d '{"name":"demo","database":"mysql"}'
 ```
 
-### 构建
+## MCP 接入
+
+`coldrawdb-mcp` 是独立的本地 stdio 服务，仓库提供 Claude、Codex、Cursor、OpenCode 的配置模板。
 
 ```bash
-# 后端 release
-cd backend && cargo build --release
-
-# 前端 release（trunk 0.21.x 需显式关闭 wasm-opt，见 frontend-rs/trunk.toml 注释）
-cd frontend-rs && trunk build --release --no-wasm-opt
-# 产物：frontend-rs/dist/
+./scripts/build-mcp.sh
+# 产物：mcp-server/target/release/coldrawdb-mcp
 ```
 
-## 稳定版运行（Windows / macOS / Linux）
+配置 `COLDRAWDB_BASE_URL` 为后端可访问的基址，例如本地开发的 `http://127.0.0.1:3000`，或 Compose 入口 `http://localhost:9080`；不要附加 `/api/v1`。
 
-coldrawdb 是**浏览器端自托管**应用：正式交付物是 **Docker 镜像 + Compose**，在三平台上通过 Docker 运行同一套 Linux 容器（CI 推送 `linux/amd64` 与 `linux/arm64`，覆盖 Intel/AMD PC 与 Apple Silicon）。
-
-| 平台 | 推荐入口 | 说明 |
-|---|---|---|
-| Windows | [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/) | 启用 WSL2 后端；浏览器访问宿主机映射端口 |
-| macOS | [Docker Desktop](https://docs.docker.com/desktop/setup/install/mac-install/) | Intel / Apple Silicon 均用多架构镜像 |
-| Linux | Docker Engine + Compose v2 | 直接 `docker compose` |
-
-**推荐（Release 一键部署包，含 nginx 反代与每日备份）**：
-
-```bash
-# 1) 从 GitHub Release 下载 coldrawdb-<tag>-deploy.zip，解压后进入该目录
-unzip coldrawdb-v0.1.0-deploy.zip && cd coldrawdb-v0.1.0
-
-# 2) 启动（自动从 GHCR 拉取预构建镜像，无需本地构建）
-docker compose up -d
-
-# 3) 浏览器打开（Windows / macOS / Linux 相同）
-#    http://localhost:9080/
-#
-# 可选：改宿主机 HTTP 端口（默认 9080，避免 80 被占用）
-#    COLDRAWDB_HTTP_PORT=8080 docker compose up -d
-```
-
-> 开发者 / staging：克隆本仓库后在根目录使用 `docker compose up -d --build`（staging 形态 compose，本地构建）。
-
-跨机或局域网邀请链接请设置公开 SPA 基址（不要指向裸后端 `:3000`；端口须与 `COLDRAWDB_HTTP_PORT` 一致）：
-
-```bash
-# Windows PowerShell
-$env:PUBLIC_BASE_URL="http://192.168.1.10:9080"; docker compose up -d
-
-# macOS / Linux
-PUBLIC_BASE_URL=http://192.168.1.10:9080 docker compose up -d
-```
-
-健康检查（compose 形态，唯一对外入口 nginx 9080）：`GET http://localhost:9080/api/v1/diagrams/health`。后端容器端口不暴露宿主机，宿主 3000 应无监听；`GET http://localhost:3000/...`（直连后端）仅适用于下方单容器 `docker run` 形态或本地开发模式（`scripts/start-local.sh`）。
-
-从 Git 标签发布时，GitHub Actions（`.github/workflows/docker.yml`）会构建并推送：
-
-- `ghcr.io/<owner>/coldrawdb:<tag>`
-- `ghcr.io/<owner>/coldrawdb:latest`
-- 平台：`linux/amd64,linux/arm64`
-
-稳定版用户侧获取方式（推荐方式 1）：
-
-1. **Release 一键部署包**（推荐）：下载 Release 资产 `coldrawdb-<tag>-deploy.zip` → 解压 → `docker compose up -d`（引用 GHCR 预构建镜像，无需本地构建）
-2. **GHCR 镜像**：`docker pull ghcr.io/dorname/coldrawdb:<tag>`
-3. **Compose 源码构建**（开发 / staging 形态）：克隆仓库后 `docker compose up -d --build`
-
-拉取已发布镜像（标签以实际 Release 为准）示例：
-
-```bash
-docker pull ghcr.io/dorname/coldrawdb:latest
-docker run -p 3000:3000 -v ./data:/data -e PUBLIC_BASE_URL=http://localhost:3000 ghcr.io/dorname/coldrawdb:latest
-```
-
-本地开发（非稳定版交付路径）：Linux / macOS / Windows WSL2 使用下方「快速开始」；原生 Windows 无 WSL 时请用 Docker。
-
-## Docker 部署（源码构建）
-
-单容器：
-
-```bash
-docker build -t coldrawdb .
-docker run -p 3000:3000 -v ./data:/data coldrawdb
-```
-
-staging 组合（推荐，含 nginx 反代与每日备份）：
-
-```bash
-docker compose up -d --build
-```
-
-- `nginx`（默认宿主机 **9080** → 容器 80）反代至 `coldrawdb`（3000 端口），静态资源 + SPA 回源
-- SQLite 数据落盘 `./data/`，日志落盘 `./logs/`
-- `backup` 侧车每日打包 `./data/` 至 `./backups/`
-- 健康检查：`GET /api/v1/diagrams/health`（30s 间隔，自动重启）
-
-## API 概览
-
-生产后端路由（`/api/v1` 前缀）：
-
-| 分组 | 端点数 | 说明 |
-|---|---|---|
-| diagrams | 5 | 图表 CRUD + health（含 409 revision 冲突语义） |
-| bridge | 5 | SQL / DBML / JSON 导入导出（7 引擎） |
-| auth | 5 | register / login / refresh / logout / me |
-| rooms | 11 | 房间 / 邀请 / 成员生命周期 |
-| collab | 2 + 1 WS | collab head / ops REST + WebSocket OT 帧协议 |
-
-另有遗留的 `/diagrams/*` 路由单列兼容。API 规格见 [`logos/resources/api/`](logos/resources/api/)（auth.yaml / rooms.yaml / collab.yaml / mcp-tools.yaml）。
-
-## MCP 服务（AI 客户端接入）
-
-`coldrawdb-mcp` 是本地 stdio adapter，支持 Claude、Codex、Cursor、OpenCode 四类客户端，MVP 提供 7 个工具：
-
-- 读取：`list_diagrams` / `get_diagram` / `export_schema`
-- 写入：`create_diagram` / `update_diagram`（携带 `expected_revision`，409 返回 `REVISION_CONFLICT`）/ `delete_diagram`（`destructiveHint` + 本地 confirm 双重约束）/ `import_schema`
-
-```bash
-./scripts/build-mcp.sh   # 产物：mcp-server/target/release/coldrawdb-mcp
-```
-
-必需环境变量 `COLDRAWDB_BASE_URL`；四客户端配置模板见 `mcp-server/examples/`。完整说明见 [`mcp-server/README.md`](mcp-server/README.md)。
-
-## 项目状态
-
-项目遵循 OpenLogos 方法论管理，场景状态（详见 [`logos/logos-project.yaml`](logos/logos-project.yaml)）：
-
-| 场景 | 名称 | 状态 |
-|---|---|---|
-| S01 | 编辑并保存图表 | ✅ launched |
-| S02 | 加载分享链接图表 | ✅ launched |
-| S03 | 用户注册 / 登录 / Token 续期 | 🚧 后端已实现，前端接入中 |
-| S04 | 创建/加入协作房间 | 🚧 后端已实现，前端接入中 |
-| S05 | OT 实时协作 | 🚧 后端已实现，前端接入中 |
-| S06 | AI 客户端通过 MCP 管理图表 | 🚧 实现中（MVP 7 工具，仅 stdio） |
-| S07 | 管理数据字典并绑定字段 | 🚧 实现中 |
-
-唯一现行 HTML 评审原型：`logos/resources/prd/2-product-design/2-page-design/core-01-editor-prototype.html`。
-
-### 常用命令
-
-```bash
-openlogos status   # 查看项目阶段进度
-openlogos next     # 查看下一步建议
-openlogos change <slug>   # 创建变更提案（修改源码前必须）
-```
-
-## 文档索引
-
-| 文档 | 说明 |
+| 类别 | 工具 |
 |---|---|
-| [`logos/logos-project.yaml`](logos/logos-project.yaml) | OpenLogos 资源索引（所有规格文档入口） |
-| [`RUST_WEB_REFACTOR_PLAN.md`](RUST_WEB_REFACTOR_PLAN.md) | React → Rust Web 重构计划 |
-| [`logos/resources/scenario/`](logos/resources/scenario/) | 端到端 API 编排测试定义 |
-| [`scripts/`](scripts/) | 本地启动 / MCP 构建 / 验证测试脚本 |
+| 读取与导出 | `list_diagrams`、`get_diagram`、`export_schema` |
+| 图表写入 | `create_diagram`、`update_diagram`、`delete_diagram`、`import_schema` |
+| 画布编辑 | `update_table`、`update_field`、`update_reference`、`layout_diagram` |
 
-## 致谢
+`update_diagram` 使用 `expected_revision` 防止覆盖并发修改；删除需要 `confirm=true`。房间图更新收到 `USE_OP_CHANNEL` 后会转为 WebSocket 差异操作，该路径需要有效的 `COLDRAWDB_ACCESS_TOKEN` 与房间写入权限。配置与边界见 [MCP README](mcp-server/README.md)。
 
-coldrawdb 的产品形态与交互设计深受以下两个优秀开源项目启发：
+## 技术栈与目录
 
-- [drawDB](https://github.com/drawdb-io/drawdb) —— 浏览器端数据库实体关系（DBER）编辑器
-- [PDManer 元数建模](https://gitee.com/robergroup/pdmaner) —— 跨平台关系数据库建模工具
+| 路径 | 内容 |
+|---|---|
+| `frontend-rs/` | Rust + Leptos 0.5 CSR / WASM、Canvas、协作客户端、数据字典、组件与主题；Trunk 构建 |
+| `backend/` | actix-web 4 + Tokio、SeaORM 0.12 + SQLite、JWT / Argon2、房间与 OT 协作 |
+| `mcp-server/` | Rust stdio MCP 服务，通过后端 HTTP API 与房间 WebSocket 访问图表 |
+| `logos/` | 需求、设计、API / 数据库规格、测试定义、变更与验收记录 |
+| `scripts/` | 本地服务启动、MCP 构建、验证等脚本 |
+| `.github/workflows/` | 构建、测试、镜像与部署包发布工作流 |
 
-coldrawdb 在整体产品理念上借鉴二者，开发过程中参考了 drawDB 的源码作为能力对齐参照，但未直接复用、未引用其任何代码；**全部代码均为纯 Rust 重新实现**，与二者的代码库不存在派生关系。感谢两个项目的作者与社区带来的设计启发。
+前端主体使用 Rust，Monaco 和浏览器测试包含 JavaScript / TypeScript。架构说明见 [架构概览](logos/resources/prd/3-technical-plan/1-architecture/core-01-architecture-overview.md)。
 
-## 许可证
+## API 与实现状态
 
-[MIT](LICENSE)
+以下 HTTP 分组挂载于 `/api/v1`，WebSocket 使用独立路径。端点数按当前路由注册统计：
+
+| 分组 | 数量 | 能力 |
+|---|---|---|
+| diagrams | 6 | 图表创建 / 读取 / 更新 / 删除、健康检查、完整图表导入 |
+| bridge | 7 | 配置、本地草稿导入 / 日志 / 重试、数据库连接导入、DDL 执行 |
+| auth | 5 | 注册、登录、续期、退出、当前用户 |
+| rooms | 13 | 房间、邀请、成员管理、回收站恢复与永久删除 |
+| collab | 2 | 房间协作 head / ops |
+| WebSocket | 1 | `/ws/rooms/{room_id}`，实时协作 |
+
+兼容路由还包括 `/diagrams/*`、`/tables/*`、`/todos/*`；MCP 列表读取使用 `/diagrams/queryAll`。契约入口为 [`logos/resources/api/`](logos/resources/api/)。
+
+当前代码已覆盖 S01 / S02 编辑保存与分享加载、S03 鉴权、S04 房间管理、S05 前端实时协作、S06 MCP 和 S07 数据字典。资源索引中 S03～S07 的流程状态仍为 `in-progress`；代码实现范围与正式验收状态应分别查看，不能据此视为所有场景已通过发布验收。
+
+## 参与贡献与文档
+
+请阅读 [贡献指南](CONTRIBUTING.md)，其中说明开发环境、测试入口、Issue / PR 要求及 OpenLogos 变更流程。源码变更需要先完成设计与变更提案。
+
+- [资源索引](logos/logos-project.yaml)：现行规格入口。
+- [API 编排测试](logos/resources/scenario/)：端到端场景定义。
+- [测试结果契约](logos/spec/test-results.md)：OpenLogos reporter 约定。
+- [统一交互原型](logos/resources/prd/2-product-design/2-page-design/core-01-editor-prototype.html)：现行 HTML 评审入口。
+- [历史重构计划](RUST_WEB_REFACTOR_PLAN.md)：历史背景，当前能力以实现与现行规格为准。
+
+## 致谢与许可证
+
+产品理念与交互设计借鉴 [drawDB](https://github.com/drawdb-io/drawdb) 与 [PDManer 元数建模](https://gitee.com/robergroup/pdmaner)。开发过程中参考 drawDB 源码进行能力对齐，核心应用以 Rust 重新实现；感谢这些项目提供的设计启发。
+
+本项目采用 [MIT 许可证](LICENSE)。

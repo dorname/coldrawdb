@@ -1,165 +1,159 @@
-# 参与贡献 coldrawdb
+# 贡献指南
 
-感谢你愿意为 coldrawdb 贡献力量。
+欢迎提交问题、改进文档、补充测试或参与功能开发。请先阅读 [README](README.md)、[项目资源索引](logos/logos-project.yaml) 与 [仓库协作规则](AGENTS.md)。本文以当前仓库的开发入口为依据；涉及产品行为的变更按 OpenLogos 的 Why → What → How 流程推进。
 
-本文说明本仓库的维护约定。项目按 **OpenLogos** 方法论管理规格与变更；文档语言为 **中文**（见 `logos/logos.config.json` → `locale: "zh"`）。贡献前请先阅读 [README.md](README.md) 与 [`logos/logos-project.yaml`](logos/logos-project.yaml)。
+## 报告问题与提出建议
 
-## 目录
+报告缺陷使用 [Bug 模板](.github/ISSUE_TEMPLATE/bug_report.md)，说明版本或提交号、操作系统、浏览器、部署方式、复现步骤、期望行为和实际行为。画布问题请补充浏览器缩放比例、设备像素比及截图；导入问题请提供最小脱敏样例。日志中应移除 Token、密码、数据库连接凭据及业务数据。
 
-1. [我能做什么](#我能做什么)
-2. [开发环境](#开发环境)
-3. [变更与 PR 流程](#变更与-pr-流程)
-4. [代码与文档规范](#代码与文档规范)
-5. [测试与验收](#测试与验收)
-6. [Issue / PR 标签](#issue--pr-标签)
-7. [获取帮助](#获取帮助)
+功能建议使用 [功能模板](.github/ISSUE_TEMPLATE/feature_request.md)，说明使用场景、现有问题、预期行为与范围。较大的功能或行为调整，先在 Issue 中与维护者确认方向，再实现。小型文档修正可以直接提交 PR。
 
-## 我能做什么
+疑似安全漏洞不要在公开 Issue 中贴出凭据、可利用细节或真实用户数据。若仓库提供 GitHub 私密漏洞报告入口，请使用该入口；否则先请求维护者提供私密沟通渠道。本文不约定尚未公布的安全邮箱或响应时限。
 
-### 报告缺陷（Bug）
+讨论和评审应尊重参与者，围绕可复现事实、设计约束和代码展开；遇到分歧时提供最小示例与取舍理由。
 
-请使用 GitHub Issue，标题建议以 `[BUG]` 开头，并尽量包含：
+## 准备开发环境
 
-- 清晰、可检索的标题
-- 完整复现步骤（环境：OS / 浏览器 / 缩放比例等）
-- 期望行为与实际行为
-- 截图或录屏（UI 问题强烈建议附上）
-- 若涉及导入，请附上可复现的样例文件（注意脱敏）
+Fork 仓库并从最新 `main` 创建主题分支，例如 `fix/import-persistence` 或 `docs/contributing`。以下命令均从仓库根目录执行，括号中的子目录切换不会改变当前终端位置。
 
-模板：[`.github/ISSUE_TEMPLATE/bug_report.md`](.github/ISSUE_TEMPLATE/bug_report.md)
-
-### 提出增强（Enhancement）
-
-标题建议以 `[Enhancement]` / `[FEATURE]` / `[UI]` 等前缀区分类型，并说明：
-
-- 要解决什么问题、对谁有用
-- 期望的交互或能力边界（可附原型截图）
-- 非目标（本期不做的范围）有助于评审
-
-模板：[`.github/ISSUE_TEMPLATE/feature_request.md`](.github/ISSUE_TEMPLATE/feature_request.md)
-
-### 提交代码（Pull Request）
-
-- **先 Issue 后实现**：较大功能或行为变更请先开 Issue / 讨论，避免与现行规格冲突。
-- **原子 PR**：一个 PR 只做一件事（修一个 bug 或交付一个可验收的小特性）。
-- 从最新 `main` 拉分支；PR 需说明动机、方案与测试方式，并链接相关 Issue。
-- 涉及规格的改动须走 OpenLogos 变更流程（见下节），不能只改代码不改规格。
-
-## 开发环境
-
-本地运行、构建与 Docker 说明以 [README.md](README.md) 为准。常用入口：
+项目没有根 Cargo workspace，三个 crate 分别位于 `backend/`、`frontend-rs/`、`mcp-server/`。
 
 ```bash
-./scripts/start-local.sh   # 后端 + 前端
-./scripts/stop-local.sh
+rustup target add wasm32-unknown-unknown
+cargo install --locked trunk
+./scripts/start-local.sh
+# 默认前端：http://127.0.0.1:8080/editor
+# 默认后端：http://127.0.0.1:3000
 ```
 
-技术栈摘要：
+脚本需要 Bash、curl、Rust / Cargo 与 Trunk；Windows 建议使用 WSL2 或 Docker。默认使用本地 SQLite，连接数据库相关测试可能还需要 PostgreSQL 或下载嵌入式 PostgreSQL。结束后运行 `./scripts/stop-local.sh`。
 
-| 层 | 路径 | 说明 |
-|---|---|---|
-| 前端 | `frontend-rs/` | Rust + Leptos CSR + WASM（`trunk`） |
-| 后端 | `backend/` | actix-web + SQLite / SeaORM |
-| MCP | `mcp-server/` | stdio MCP adapter |
-| 规格 | `logos/` | OpenLogos 资源与变更提案 |
-
-无 React / npm 前端构建链；请勿引入与现行栈冲突的前端框架。
-
-## 变更与 PR 流程
-
-本仓库用 `logos/.openlogos-guard` 追踪活跃变更：
-
-- **有 guard** → 可改源码，但须落在当前提案范围内
-- **无 guard** → **禁止**修改业务源码；须先 `openlogos change <slug>`
-
-维护者 / 使用 AI 协作时的标准流程：
-
-1. `cd` 到仓库根目录（含 `logos/logos.config.json`），再运行任何 `openlogos` 命令  
-2. `openlogos change <slug>` 创建提案并写入 guard  
-3. 填写 `logos/changes/<slug>/proposal.md` 与 `tasks.md`，确认后再产出 delta  
-4. 用户明确授权后执行 `openlogos merge <slug>`  
-5. 按合并后的规格实现代码与测试  
-6. 用户明确授权后执行 `openlogos verify`（及如有需要的 deploy / smoke / archive）  
-7. `openlogos merge` / `verify` / `smoke` / `archive` / `git push` 均为**人类确认点**，不可隐式自动执行
-
-外部贡献者若不便跑完整 OpenLogos CLI：请在 PR 中写清影响的场景/API/文档路径，并与维护者协调由维护者补齐变更提案与 merge。
-
-快速查看状态：
+前端主体使用 Rust / Leptos，浏览器测试使用 JavaScript / TypeScript。运行浏览器测试需要 Node.js / npm（CI 使用 Node.js 22），两个测试入口的依赖分别安装：
 
 ```bash
-openlogos status
-openlogos next
+# 原型与规格一致性脚本
+(cd frontend-rs && npm ci && npx playwright install chromium)
+
+# Playwright 场景测试
+(cd frontend-rs/tests/e2e && npm ci && npx playwright install chromium)
 ```
 
-## 代码与文档规范
+Linux 如缺浏览器系统依赖，可按环境需要使用 `npx playwright install --with-deps chromium`。应用启动、构建、端口及编译期 API 地址配置见 [README](README.md)。
 
-### 语言与范围
+## 找到改动位置
 
-- **规格、产品文档、用户可见文案**：中文
-- **代码标识符、API 字段名、测试 ID**：英文，与现有 crate / OpenAPI 一致
-- **新增代码注释**：建议中文（与项目 `locale: "zh"` 对齐）
-- 文件命名遵循 OpenLogos 约定（如 `core-SXX-*.md`）；场景编号全局唯一，勿在新模块从 S01 重新编号
-
-### Rust 风格
-
-- 使用 `rustfmt` 格式化；提交前对改动 crate 跑 `cargo fmt`
-- 关注 `clippy`（CI 中对 `backend/`、`frontend-rs/` 有检查）
-- 前端模块边界受 `frontend-rs/scripts/check_module_deps.sh` 约束，勿随意跨层依赖
-- 设计须源于场景时序与 API 规格；测试须带 OpenLogos reporter（见 [`logos/spec/test-results.md`](logos/spec/test-results.md)）
-
-### Git 提交说明
-
-- 使用祈使语气、现在时（如 `fix: 修复导入 dropzone 未绑定 drop`）
-- 首行概括「为什么 / 修什么」；正文可链 Issue（如 `Fixes #11`）
-- 避免无意义的巨型提交；规格合并与代码实现可按仓库惯例分 commit
-
-## 测试与验收
-
-改动应附带可验证证据，按影响面选择：
-
-```bash
-# 后端
-cargo test --manifest-path backend/Cargo.toml -- --test-threads=1
-
-# 前端（宿主）
-cargo test --manifest-path frontend-rs/Cargo.toml
-
-# 前端 WASM（可选）
-cd frontend-rs && wasm-pack test --chrome --headless
-
-# E2E（可选）
-cd frontend-rs && npx playwright test
-
-# 本地脚本冒烟（可选）
-./scripts/smoke-local-scripts.sh
-```
-
-- UT / ST 用例 ID 须与 `logos/resources/test/*.md` 对齐
-- 测试结果写入 `logos/resources/verify/test-results.jsonl`（OpenLogos reporter）
-- 大改动可分批，但**每批**须同时交付：业务代码 + 对应测试 + reporter，禁止把测试全部留到最后
-
-CI 参考：[`.github/workflows/build.yml`](.github/workflows/build.yml)。
-
-## Issue / PR 标签
-
-常用标签：
-
-| 标签 | 含义 |
+| 范围 | 主要入口 |
 |---|---|
-| `bug` | 缺陷 |
-| `enhancement` | 增强 / 新功能 |
-| `documentation` | 文档 |
-| `good first issue` | 适合新人 |
-| `help wanted` | 需要协助 |
-| `question` | 讨论 / 澄清 |
+| 编辑状态与持久化请求 | `frontend-rs/src/editor_core.rs`、`frontend-rs/src/editor_data_access.rs` |
+| 界面与画布 | `frontend-rs/src/editor_panels.rs`、`frontend-rs/src/editor_render.rs`、`frontend-rs/src/components/` |
+| 前端协作与数据字典 | `frontend-rs/src/collab_client.rs`、`frontend-rs/src/editor_dict.rs` |
+| HTTP 与协作路由 | `backend/src/main.rs`、`diagrams_v1.rs`、`auth_v1.rs`、`rooms_v1.rs`、`collab_v1.rs` |
+| 数据库迁移 | `backend/migrations/` |
+| MCP 协议、工具与房间写入 | `mcp-server/src/`、`mcp-server/tests/` |
+| 产品、API、测试设计 | `logos/resources/` |
+| 活跃与历史变更 | `logos/changes/`、`logos/changes/archive/` |
 
-标题前缀建议与近期 Issue 一致：`[BUG]`、`[Enhancement]`、`[UI]` 等。
+`logos/logos-project.yaml` 是设计资源入口；其中流程状态可能与已存在的代码实现范围不同。不要把历史原型或历史重构计划当作当前实现要求。
 
-## 获取帮助
+## 设计与变更流程
 
-- 先查 [README.md](README.md)、[`logos/resources/`](logos/resources/)、相关 Issue
-- 仍不清楚：在对应 Issue / PR 中提问，或新开 `question` Issue
+源码变更必须先完成设计。API 设计源于场景时序图；代码变更应有对应的 API 编排测试。涉及已有功能的迭代使用 Delta 流程。
 
----
+所有 `openlogos` 命令必须在包含 `logos/logos.config.json` 的仓库根目录执行。
 
-再次感谢你的贡献。
+1. 查看 `logos/.openlogos-guard` 和当前提案。已有 guard 时仅能修改提案范围内的源码，不覆盖或删除其他变更的 guard。
+2. 无活跃提案时运行 `openlogos change <slug>`，按 CLI 返回路径填写 `proposal.md` 与 `tasks.md`。AI 协作时使用 change-writer Skill。
+3. 等用户 / 维护者确认提案后产出 delta；明确授权执行 `openlogos merge <slug>` 后再按合并规格实现。
+4. 交付代码、对应 UT / ST 与 OpenLogos reporter。大任务可分批，但每批均须闭环；实现前列出与测试规格对应的用例 ID。
+5. 提交测试证据，明确授权后执行 `openlogos verify <slug>`。有部署任务时，部署与 `openlogos smoke` 分别需要明确授权。
+6. 验收通过且无部署任务，或部署后 smoke 通过，再明确授权 `openlogos archive <slug>`。规格合并、代码实现和归档按阶段分别提交；AI 按仓库规则自动提交并告知用户。
+7. AI 执行 `git push` 前仍需明确授权；维护者合并 PR 与发布也应遵循仓库审批安排。
+
+`merge`、`verify`、部署、`smoke`、`archive`、`git push` 是明确的人类确认点，“按流程走完”不替代授权。README、贡献指南等非方法论文档与不改变语义的纯 typo 可直接修订；产品规格或源码行为变更不能套用此例外。
+
+外部贡献者无法运行 OpenLogos 时，可先提交 Issue 或设计草案，请维护者创建并确认提案、合并规格，再在约定范围内实现。不要以事后补提案替代源码变更的前置设计。
+
+## 编码与文档约定
+
+- 文档、用户文案和新增代码注释使用中文；标识符、API 字段与测试 ID 延续已有命名。
+- 保持 Rust / Leptos 技术栈与现有模块边界，避免顺带重构或大面积格式化无关代码。
+- 对受影响 crate 使用 `cargo fmt`、`cargo clippy` 检查；已有告警需与新增问题区分，不批量压制告警。
+- API、MCP 契约、序列化字段、数据库迁移变更需说明兼容性与旧数据处理方式。已有迁移的历史语义不应随意改写。
+- 不提交数据库、日志、Token、真实业务样例、`node_modules/` 或本地产物；依赖变更同时维护对应锁文件。
+- 规格文件遵循模块前缀命名，如 `core-SXX-*.md`；场景编号由资源索引统一分配。
+- 修改 Markdown / 文本规格后，从磁盘读回受影响片段，并提供实际原文或 diff 供核对。
+- 提交标题简明说明变更，例如 `fix: 修复图表导入后字段丢失`；一个 PR 聚焦一个可评审的目标。
+
+## 测试与证据
+
+按改动影响面执行测试；只有文档变化时，检查链接、路径、命令与 diff 即可。后端部分测试依赖相对路径，建议在对应 crate 目录运行：
+
+```bash
+# Rust 测试
+(cd backend && cargo test -- --test-threads=1)
+(cd frontend-rs && cargo test)
+(cd mcp-server && cargo test)
+
+# 将 backend 替换为本次改动的 crate，可分别执行格式与静态检查
+(cd backend && cargo fmt --check)
+(cd backend && cargo clippy --all-targets -- -D warnings)
+
+# 前端模块依赖检查
+bash frontend-rs/scripts/check_module_deps.sh
+```
+
+WASM 浏览器测试需要另行安装 `wasm-pack` 及其所需的 Chrome / WebDriver 环境：
+
+```bash
+(cd frontend-rs && wasm-pack test --chrome --headless)
+```
+
+Playwright 场景测试使用独立配置与 OpenLogos reporter：
+
+```bash
+(cd frontend-rs/tests/e2e && npx playwright test)
+# 单个场景示例
+(cd frontend-rs/tests/e2e && npx playwright test specs/s03-auth.spec.ts)
+```
+
+配置默认访问 `http://127.0.0.1:8080`，会调用启动脚本，也会在非 CI 环境复用已启动服务。首次编译建议先手动运行启动脚本并等待就绪。测试会创建账号、房间等数据，应使用隔离的开发环境，避免指向生产服务。不要用 `--reporter=list` 覆盖配置，否则会丢失 OpenLogos reporter。
+
+原型或前端交互改动可按范围追加：
+
+```bash
+(cd frontend-rs && npm run test:unified-prototype)
+(cd frontend-rs && npm run test:spec-parity-a)
+# 其他入口见 frontend-rs/package.json，如 test:spec-parity-b～e、test:canvas-perf
+```
+
+UT / ST 用例 ID 必须与 `logos/resources/test/` 对齐，新增测试按 [结果契约](logos/spec/test-results.md) 写入 `logos/resources/verify/test-results.jsonl`。可参考 MCP 测试和 `frontend-rs/tests/e2e/reporter/openlogos.ts` 的接入方式。
+
+当前验证链存在以下限制，提交 PR 时须如实说明：
+
+- `build.yml` 中部分后端测试、Clippy、浏览器测试允许失败或忽略退出码；CI 绿色不等于这些检查全部通过。
+- `scripts/run-verify-tests.sh` 会跳过一个嵌入式 PostgreSQL 用例，部分浏览器回归失败不阻断，末尾还会重跑声明式 reporter 覆盖部分记录。因此账本中的 `pass` 不能单独作为真实执行成功的证明。
+- 报告应保留实际命令、退出状态、失败 / 跳过原因及必要日志。不要把未执行、声明式覆盖或环境失败写成验证通过；本次范围内的失败应修复或交由维护者明确评估。
+
+## 提交与评审 PR
+
+PR 描述应让未参与讨论的人也能复验变更，建议直接使用以下结构：
+
+```markdown
+## 问题与结果
+说明触发条件、原行为、修改后行为；关联 Issue 与变更提案。
+
+## 范围与兼容性
+列出受影响场景、API / 数据 / 配置变化和已知限制。
+
+## 验证
+列出实际运行的命令、用例 ID 与结果；标明未运行、失败或跳过项。
+界面变化附截图 / 录屏，性能变化附可复现的环境与测量方式。
+```
+
+提交前检查 `git diff --check`、确认没有凭据和无关产物、同步必要文档。未准备好合并时使用草稿 PR。根据评审意见补充测试或说明；涉及迁移与部署时附升级、回退和数据备份要求。
+
+贡献者不应在未确认的情况下重写他人的分支历史、推送标签或发布镜像。发布流程由维护者协调：`docker.yml` 负责镜像，`release.yml` 负责部署包；贡献 PR 无需触发发布。
+
+## 许可证与署名
+
+本项目采用 [MIT 许可证](LICENSE)。提交前确认有权贡献相关内容，贡献内容应与项目许可证兼容；引入第三方代码、图片、字体或依赖时保留必要的许可证与署名，并在 PR 中说明来源。不要把参考项目的代码或素材当作无授权限制的内容直接复制。
