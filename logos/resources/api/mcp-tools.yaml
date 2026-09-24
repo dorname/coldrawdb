@@ -17,7 +17,10 @@ server:
   instructions: >-
     仅操作 COLDRAWDB_BASE_URL 指向的 coldrawdb。修改前先读取最新 revision；
     delete_diagram 具有破坏性并需用户批准；禁止把本服务用于任意 SQL、文件或 HTTP 访问。
-
+    diagram-api-auth：当后端开启 COLDRAWDB_DIAGRAMS_AUTH=on 时，全部 11 个工具
+    均要求 COLDRAWDB_ACCESS_TOKEN（auth_v1 /auth/login 签发的 access_token，Bearer 注入）；
+    token 缺失或过期时所有工具调用将收到上游 401（映射为 UNAUTHENTICATED）。
+    flag=off（默认过渡态）时 token 仅 rooms/collab 写工具需要。
 configuration:
   COLDRAWDB_BASE_URL:
     required: true

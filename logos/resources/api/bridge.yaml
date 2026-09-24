@@ -4,17 +4,20 @@ info:
   description: |
     V1 bridge API for local draft import, import log management, and bridge runtime configuration.
 
-    **Coverage**: 5 endpoints under `/api/v1/bridge/*`.
+    **Coverage**: 5 endpoints under `/api/v1/bridge/*`（config 含 get/put 共 7 个操作）.
     **Alignment**: 与 `backend/src/phase3_bridge.rs` 5 个路由 handler 一一对应.
     **Storage**: `local_draft_import_log` 表存导入日志；`bridge_config` 表单例行配置.
     **Envelope**: 成功响应统一为 `{ code: 0, data: T, request_id: string }`；错误为 `{ code, message, request_id, details? }`.
-  version: 1.0.0
+
+    diagram-api-auth：本组全部端点支持 Bearer JWT 强制鉴权（auth_v1 access_token），
+    由 `COLDRAWDB_DIAGRAMS_AUTH` 控制：off（默认）= 现状匿名直通；
+    on = 全部端点缺失/非法 token 返回 401（`#/components/responses/Unauthorized`），无匿名豁免。
+  version: 1.1.0
 servers:
   - url: http://localhost:3000
     description: Local dev
   - url: https://staging.coldrawdb.example.com
     description: Staging
-
 paths:
   /api/v1/bridge/import/local:
     post:
@@ -48,7 +51,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiErr'
-
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /api/v1/bridge/import/connect:
     post:
       summary: Introspect a real database and return structured tables JSON
@@ -91,13 +95,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiErr'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '502':
           description: "Connection failed (file missing / unreachable / auth failed)"
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiErr'
-
   /api/v1/bridge/export/execute:
     post:
       summary: Execute generated DDL on a real database
@@ -132,13 +137,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiErr'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '502':
           description: "Connection or execution failed (engine error message attached)"
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiErr'
-
   /api/v1/bridge/import/local/logs:
     get:
       summary: List recent local draft import logs
@@ -167,7 +173,8 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/ImportLogEntry'
-
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /api/v1/bridge/import/local/retry/{id}:
     parameters:
       - $ref: '#/components/parameters/LogId'
@@ -196,13 +203,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiErr'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           description: Import log not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiErr'
-
   /api/v1/bridge/config:
     get:
       summary: Get bridge runtime configuration
@@ -222,6 +230,8 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/BridgeConfig'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           description: Bridge config row not found
           content:
@@ -252,8 +262,16 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/BridgeConfigUpdateResult'
-
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 components:
+  responses:
+    Unauthorized:
+      description: "未授权：COLDRAWDB_DIAGRAMS_AUTH=on 且缺少/非法 Authorization: Bearer（auth_v1 access_token）"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErr'
   parameters:
     LogId:
       name: id

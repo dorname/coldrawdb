@@ -1,3 +1,11 @@
+# Delta — core-S01-diagram-save.json（diagram-api-auth）
+
+> 模块：core | 提案：diagram-api-auth
+> 目标：编排切换为登录态模型（`COLDRAWDB_DIAGRAMS_AUTH=on` 下编排）；新增匿名写 401 前置断言，全部既有步骤注入 `Authorization: Bearer`。
+
+## MODIFIED — 全文件（scenario 定义）
+
+```json
 {
   "scenario_id": "core-S01",
   "scenario_name": "编辑 + 自动保存",
@@ -278,3 +286,4 @@
     "tolerance": "0 failures"
   }
 }
+```

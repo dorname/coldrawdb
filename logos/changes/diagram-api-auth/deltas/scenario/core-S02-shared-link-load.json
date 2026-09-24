@@ -1,3 +1,11 @@
+# Delta — core-S02-shared-link-load.json（diagram-api-auth）
+
+> 模块：core | 提案：diagram-api-auth
+> 目标：编排切换为「A 登录态 + share_token 匿名读」模型（`COLDRAWDB_DIAGRAMS_AUTH=on` 下编排）；新增 A 铸造分享令牌步骤，B 的匿名加载全部携带 `?share_token=`。
+
+## MODIFIED — 全文件（scenario 定义）
+
+```json
 {
   "scenario_id": "core-S02",
   "scenario_name": "分享链接加载",
@@ -279,3 +287,4 @@
     "tolerance": "0 failures"
   }
 }
+```

@@ -1,3 +1,11 @@
+# Delta — diagrams.yaml（diagram-api-auth）
+
+> 模块：core | 提案：diagram-api-auth
+> 目标：diagrams 全端点接入 Bearer JWT（auth_v1 体系），新增 share_token 匿名读豁免与分享令牌铸造端点；`COLDRAWDB_DIAGRAMS_AUTH` 开关控制（默认 off = 现状匿名）。
+
+## MODIFIED — info
+
+```yaml
 openapi: 3.0.3
 info:
   title: coldrawdb diagrams v1 API
@@ -14,7 +22,11 @@ info:
     本版本不做图级所有权授权：任何登录用户可读写任意 diagram（细粒度授权另案）。
 servers:
   - url: http://localhost:3000
-paths:
+```
+
+## MODIFIED — paths./api/v1/diagrams.post.responses
+
+```yaml
   /api/v1/diagrams:
     post:
       operationId: createDiagram
@@ -34,6 +46,11 @@ paths:
                 $ref: '#/components/schemas/CreateResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+```
+
+## MODIFIED — paths./api/v1/diagrams/{id}.get
+
+```yaml
   /api/v1/diagrams/{id}:
     parameters:
       - name: id
@@ -79,6 +96,11 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/ApiError'
+```
+
+## MODIFIED — paths./api/v1/diagrams/{id}.put.responses
+
+```yaml
     put:
       operationId: saveDiagram
       summary: 使用 revision 乐观锁全量保存
@@ -114,6 +136,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+```
+
+## MODIFIED — paths./api/v1/diagrams/{id}.delete.responses
+
+```yaml
     delete:
       operationId: deleteDiagram
       summary: 软删除 diagram
@@ -127,6 +154,11 @@ paths:
                 $ref: '#/components/schemas/DeleteResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+```
+
+## MODIFIED — paths./api/v1/diagrams/import.post.responses
+
+```yaml
   /api/v1/diagrams/import:
     post:
       operationId: importDiagram
@@ -154,6 +186,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+```
+
+## ADDED — paths./api/v1/diagrams/{id}/share
+
+```yaml
   /api/v1/diagrams/{id}/share:
     parameters:
       - name: id
@@ -192,7 +229,11 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/ApiError'
-components:
+```
+
+## ADDED — components.responses.Unauthorized
+
+```yaml
   responses:
     Unauthorized:
       description: "未授权：COLDRAWDB_DIAGRAMS_AUTH=on 且缺少/非法 Authorization: Bearer（auth_v1 access_token）"
@@ -200,222 +241,4 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
-    ApiError:
-      description: API 错误
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ErrorResponse'
-  schemas:
-    ApiResponse:
-      type: object
-      required: [code, data, request_id]
-      properties:
-        code:
-          type: integer
-          enum: [0]
-        data: {}
-        request_id:
-          type: string
-    ErrorResponse:
-      type: object
-      required: [code, message, request_id]
-      properties:
-        code:
-          type: integer
-        message:
-          type: string
-        request_id:
-          type: string
-        details:
-          type: object
-          nullable: true
-          additionalProperties: true
-    CreateRequest:
-      type: object
-      required: [name]
-      additionalProperties: false
-      properties:
-        name:
-          type: string
-        database:
-          type: string
-          nullable: true
-    CreateResponse:
-      allOf:
-        - $ref: '#/components/schemas/ApiResponse'
-        - type: object
-          properties:
-            data:
-              type: object
-              required: [id]
-              properties:
-                id:
-                  type: string
-    SaveRequest:
-      type: object
-      required: [expected_revision, diagram]
-      additionalProperties: false
-      properties:
-        expected_revision:
-          type: integer
-          format: int64
-          minimum: 0
-        diagram:
-          $ref: '#/components/schemas/Diagram'
-    SaveResponse:
-      allOf:
-        - $ref: '#/components/schemas/ApiResponse'
-        - type: object
-          properties:
-            data:
-              type: object
-              required: [id, revision]
-              properties:
-                id:
-                  type: string
-                revision:
-                  type: integer
-                  format: int64
-    DeleteResponse:
-      allOf:
-        - $ref: '#/components/schemas/ApiResponse'
-        - type: object
-          properties:
-            data:
-              type: object
-              required: [id]
-              properties:
-                id:
-                  type: string
-    ImportRequest:
-      type: object
-      required: [payload]
-      additionalProperties: false
-      properties:
-        source:
-          type: string
-          nullable: true
-        payload:
-          type: object
-    ImportResponse:
-      allOf:
-        - $ref: '#/components/schemas/ApiResponse'
-        - type: object
-          properties:
-            data:
-              type: object
-              required: [diagram_id, imported_tables, imported_fields, warnings]
-              properties:
-                diagram_id:
-                  type: string
-                imported_tables:
-                  type: integer
-                  description: "实际持久化到库的表数量（fix-diagram-import-persistence：不再按 payload 原始数量虚报）"
-                imported_fields:
-                  type: integer
-                  description: "实际持久化到库的字段数量"
-                warnings:
-                  type: array
-                  items:
-                    type: string
-                  description: "丢弃的坏表/坏字段明细与自动补全说明（如 'table[2] dropped: missing name'、'generated id for table[0]'）"
-                source:
-                  type: string
-                  nullable: true
-    Diagram:
-      type: object
-      required: [id]
-      properties:
-        id: { type: string }
-        name: { type: string, nullable: true }
-        database: { type: string, nullable: true }
-        pan: { type: string, nullable: true }
-        zoom: { type: string, nullable: true }
-        revision: { type: integer, format: int64, default: 0 }
-        tables:
-          type: array
-          items: { $ref: '#/components/schemas/Table' }
-        references:
-          type: array
-          items: { $ref: '#/components/schemas/Reference' }
-        areas:
-          type: array
-          items: { $ref: '#/components/schemas/Area' }
-        notes:
-          type: array
-          items: { $ref: '#/components/schemas/Note' }
-    Table:
-      type: object
-      required: [id, name]
-      properties:
-        id: { type: string }
-        name: { type: string }
-        x: { type: number, format: double, default: 0 }
-        y: { type: number, format: double, default: 0 }
-        color: { type: string, default: '' }
-        comment: { type: string, default: '' }
-        fields:
-          type: array
-          items: { $ref: '#/components/schemas/Field' }
-    Field:
-      type: object
-      required: [id, name]
-      properties:
-        id: { type: string }
-        name: { type: string }
-        type_: { type: string, default: '' }
-        default: { type: string, default: '' }
-        check: { type: string, default: '' }
-        primary: { type: boolean, default: false }
-        unique: { type: boolean, default: false }
-        not_null: { type: boolean, default: false }
-        increment: { type: boolean, default: false }
-        comment: { type: string, default: '' }
-    Reference:
-      type: object
-      required: [id, start_table_id, end_table_id, start_field_id, end_field_id]
-      properties:
-        id: { type: string }
-        name: { type: string, default: '' }
-        start_table_id: { type: string }
-        end_table_id: { type: string }
-        start_field_id: { type: string }
-        end_field_id: { type: string }
-        type_: { type: string, default: '' }
-        on_delete: { type: string, default: '' }
-        on_update: { type: string, default: '' }
-        color:
-          type: string
-          default: ''
-          description: "Relation stroke color. Empty = inherit start table color when set, else theme default."
-        line_type:
-          type: string
-          default: bezier
-          enum: [bezier, orthogonal, straight]
-          description: "Path style for the relation edge."
-        stroke_style:
-          type: string
-          default: solid
-          enum: [solid, dashed]
-          description: "Stroke dash pattern for the relation edge."
-    Area:
-      type: object
-      required: [id]
-      properties:
-        id: { type: string }
-        x: { type: number, default: 0 }
-        y: { type: number, default: 0 }
-        width: { type: number, default: 0 }
-        height: { type: number, default: 0 }
-        color: { type: string, default: '' }
-        name: { type: string, default: '' }
-    Note:
-      type: object
-      required: [id]
-      properties:
-        id: { type: string }
-        x: { type: number, default: 0 }
-        y: { type: number, default: 0 }
-        content: { type: string, default: '' }
-        color: { type: string, default: '' }
+```

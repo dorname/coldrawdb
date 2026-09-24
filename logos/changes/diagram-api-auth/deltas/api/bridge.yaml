@@ -1,0 +1,224 @@
+# Delta — bridge.yaml（diagram-api-auth）
+
+> 模块：core | 提案：diagram-api-auth
+> 目标：bridge 6 路径 7 操作全部接入 Bearer JWT（`COLDRAWDB_DIAGRAMS_AUTH=on` 时），与 diagrams 同策略；`off` 时维持现状匿名。
+
+## MODIFIED — info
+
+```yaml
+openapi: 3.0.3
+info:
+  title: coldrawdb bridge API
+  description: |
+    V1 bridge API for local draft import, import log management, and bridge runtime configuration.
+
+    **Coverage**: 5 endpoints under `/api/v1/bridge/*`（config 含 get/put 共 7 个操作）.
+    **Alignment**: 与 `backend/src/phase3_bridge.rs` 5 个路由 handler 一一对应.
+    **Storage**: `local_draft_import_log` 表存导入日志；`bridge_config` 表单例行配置.
+    **Envelope**: 成功响应统一为 `{ code: 0, data: T, request_id: string }`；错误为 `{ code, message, request_id, details? }`.
+
+    diagram-api-auth：本组全部端点支持 Bearer JWT 强制鉴权（auth_v1 access_token），
+    由 `COLDRAWDB_DIAGRAMS_AUTH` 控制：off（默认）= 现状匿名直通；
+    on = 全部端点缺失/非法 token 返回 401（`#/components/responses/Unauthorized`），无匿名豁免。
+  version: 1.1.0
+servers:
+  - url: http://localhost:3000
+    description: Local dev
+  - url: https://staging.coldrawdb.example.com
+    description: Staging
+```
+
+## MODIFIED — paths./api/v1/bridge/import/local.post.responses
+
+```yaml
+      responses:
+        '200':
+          description: Import succeeded
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResp'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ImportLocalData'
+        '400':
+          description: "Validation error (e.g. payload must be object)"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErr'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+```
+
+## MODIFIED — paths./api/v1/bridge/import/connect.post.responses
+
+```yaml
+      responses:
+        '200':
+          description: "Introspection succeeded (tables may be empty with table_count 0)"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResp'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ImportConnectData'
+        '400':
+          description: "Validation error (unsupported engine or empty source)"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErr'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '502':
+          description: "Connection failed (file missing / unreachable / auth failed)"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErr'
+```
+
+## MODIFIED — paths./api/v1/bridge/export/execute.post.responses
+
+```yaml
+      responses:
+        '200':
+          description: "DDL executed successfully"
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResp'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ExportExecuteData'
+        '400':
+          description: "Validation error (unsupported engine / empty source / empty ddl)"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErr'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '502':
+          description: "Connection or execution failed (engine error message attached)"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErr'
+```
+
+## MODIFIED — paths./api/v1/bridge/import/local/logs.get.responses
+
+```yaml
+      responses:
+        '200':
+          description: Import log list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResp'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ImportLogEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+```
+
+## MODIFIED — paths./api/v1/bridge/import/local/retry/{id}.post.responses
+
+```yaml
+      responses:
+        '200':
+          description: Retry succeeded
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResp'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RetryImportData'
+        '400':
+          description: Invalid stored payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErr'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Import log not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErr'
+```
+
+## MODIFIED — paths./api/v1/bridge/config.get.responses
+
+```yaml
+      responses:
+        '200':
+          description: Current bridge config
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResp'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/BridgeConfig'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Bridge config row not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErr'
+```
+
+## MODIFIED — paths./api/v1/bridge/config.put.responses
+
+```yaml
+      responses:
+        '200':
+          description: Config updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResp'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/BridgeConfigUpdateResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+```
+
+## ADDED — components.responses.Unauthorized
+
+```yaml
+  responses:
+    Unauthorized:
+      description: "未授权：COLDRAWDB_DIAGRAMS_AUTH=on 且缺少/非法 Authorization: Bearer（auth_v1 access_token）"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErr'
+```
