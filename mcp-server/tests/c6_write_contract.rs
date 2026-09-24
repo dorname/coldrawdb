@@ -398,6 +398,8 @@ async fn st_mcp13_stdio_layout_structured_content() {
     // 真实子进程 stdio 握手 + tools/call（沿用 ST-MCP-01 模式）。
     let mut child = Command::new(env!("CARGO_BIN_EXE_coldrawdb-mcp"))
         .env("COLDRAWDB_BASE_URL", &base_url)
+        // diagram-api-auth：剧本式 mock 只按序应答工具调用，关闭启动期鉴权探测
+        .env("COLDRAWDB_AUTH_PROBE", "off")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -574,6 +576,8 @@ async fn st_mcp14_stdio_import_missing_ids_then_get() {
 
     let mut child = Command::new(env!("CARGO_BIN_EXE_coldrawdb-mcp"))
         .env("COLDRAWDB_BASE_URL", &base)
+        // diagram-api-auth：剧本式 mock 只按序应答工具调用，关闭启动期鉴权探测
+        .env("COLDRAWDB_AUTH_PROBE", "off")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()

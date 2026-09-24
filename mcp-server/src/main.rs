@@ -18,7 +18,11 @@ async fn main() -> ExitCode {
     // 未配置 COLDRAWDB_ACCESS_TOKEN 会让全部工具调用收到上游 401 —— 启动期探测并明确报错。
     // 探测口径：匿名 GET /api/v1/diagrams/{不存在 id}，flag=on → 401，flag=off → 404。
     // 后端离线/网络异常不阻断启动（工具调用期再按上游错误如实上报）。
-    if config.access_token.is_none() {
+    // 探测可用 COLDRAWDB_AUTH_PROBE=off 关闭（剧本式 mock 后端等场景不适用）。
+    let probe_enabled = std::env::var("COLDRAWDB_AUTH_PROBE")
+        .map(|v| !v.eq_ignore_ascii_case("off"))
+        .unwrap_or(true);
+    if probe_enabled && config.access_token.is_none() {
         let auth_forced = match config.endpoint("/api/v1/diagrams/__mcp_probe__") {
             Ok(url) => match reqwest::Client::builder().no_proxy().build() {
                 Ok(client) => client
