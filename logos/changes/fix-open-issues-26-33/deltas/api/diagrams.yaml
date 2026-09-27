@@ -1,0 +1,14 @@
+# Delta — diagrams.yaml（fix-open-issues-26-33 / #28）
+
+> 模块：core | 提案：fix-open-issues-26-33
+> 目标：澄清 `line_type` 批量修改的持久化口径——复用既有整体保存（PUT diagram），不新增批量端点、不改 schema。
+
+## MODIFIED — components.schemas.Reference.properties.line_type
+
+```yaml
+        line_type:
+          type: string
+          default: bezier
+          enum: [bezier, orthogonal, straight]
+          description: "Path style for the relation edge. Bulk updates (apply line_type to all references of a diagram) are performed client-side as a single undoable command and persisted via the existing whole-diagram save (PUT /api/v1/diagrams/{id}); no dedicated batch endpoint exists."
+```

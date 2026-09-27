@@ -55,14 +55,18 @@ paths:
           $ref: '#/components/responses/Unauthorized'
   /api/v1/bridge/import/connect:
     post:
-      summary: Introspect a real database and return structured tables JSON
+      summary: Introspect a real database and return structured tables + references JSON
       description: |
         Connects to a user-supplied database (SQLite file path on the server host,
         or a PostgreSQL connection string), introspects its schema, and returns
         structured table objects (persistence-JSON compatible, including table
-        and column comments) plus the table count. The frontend consumes the
-        tables array via the JSON import pipeline (parse_json_import_tables or a
-        light adapter); no DDL text round-trip is involved.
+        and column comments), the table count, and a name-based references array
+        expanded from introspected foreign keys (fix-open-issues-26-33 / #29:
+        composite FKs are expanded into one entry per column pair; dangling FK
+        targets are omitted). The frontend consumes the tables array via the JSON
+        import pipeline (parse_json_import_tables or a light adapter) and resolves
+        references by table/column name into canvas Reference entities;
+        no DDL text round-trip is involved.
         Requires the standard auth middleware (Bearer).
         For PostgreSQL, the optional `schema` field scopes introspection to a
         single schema (default `public`); tables/columns/PKs/FKs/comments are
@@ -351,7 +355,7 @@ components:
           description: "PostgreSQL only: schema to introspect; defaults to 'public' when omitted. Ignored for sqlite."
     ImportConnectData:
       type: object
-      required: [engine, table_count, tables]
+      required: [engine, table_count, tables, references]
       properties:
         engine:
           type: string
@@ -364,6 +368,33 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/IntrospectedTable'
+        references:
+          type: array
+          description: "Name-based FK references expanded from introspection (fix-open-issues-26-33 / #29); always present (empty array when no FKs)"
+          items:
+            $ref: '#/components/schemas/IntrospectedReference'
+    IntrospectedReference:
+      type: object
+      required: [table, column, ref_table, ref_column, on_delete, on_update]
+      properties:
+        table:
+          type: string
+          description: "Table owning the foreign key (unquoted identifier)"
+        column:
+          type: string
+          description: "FK column in the owning table"
+        ref_table:
+          type: string
+          description: "Referenced table"
+        ref_column:
+          type: string
+          description: "Referenced column"
+        on_delete:
+          type: string
+          description: "ON DELETE rule (e.g. CASCADE); empty string when unspecified"
+        on_update:
+          type: string
+          description: "ON UPDATE rule; empty string when unspecified"
     IntrospectedTable:
       type: object
       required: [name, fields]

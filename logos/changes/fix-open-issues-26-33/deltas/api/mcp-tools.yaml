@@ -1,0 +1,75 @@
+# Delta — mcp-tools.yaml（fix-open-issues-26-33 / #26）
+
+> 模块：core | 提案：fix-open-issues-26-33
+> 目标：`update_diagram` 增加载荷软上限与分批指引；错误映射新增本地拦截码 `PAYLOAD_TOO_LARGE`；细粒度写工具标注其官方分片手段角色。
+
+## MODIFIED — protocol 头部注释
+
+```yaml
+# mcp-canvas-tools（2026-09-18）：新增 update_table / update_field / update_reference / layout_diagram 共 4 个画布编辑 tool。
+# 现有 tools 总数：11 个（7 个原始 + 4 个新增）。
+# fix-remote-github-issues-7-18（2026-09-18）：update_reference 新增 color 参数（#12）；
+# 写工具（update_diagram/update_table/update_field/update_reference/layout_diagram）成功响应约定：
+# 必须 normalize 为与各自 outputSchema 完全一致的瘦响应（update_* 恰好 { id, revision }；
+# layout_diagram 恰好 { id, revision, tables_repositioned }），不透传上游 envelope 或整图字段（#18）。
+# fix-open-issues-26-33（2026-09-27，#26）：update_diagram 新增载荷软上限
+# （COLDRAWDB_MCP_PAYLOAD_SOFT_LIMIT_BYTES，默认 256 KiB）：超限本地拦截返回
+# PAYLOAD_TOO_LARGE（details 含 payload_bytes / soft_limit_bytes / suggestion / batch_hint），
+# 不发送上游请求；大图官方分批路径 = update_table / update_field / update_reference / layout_diagram
+# 串行 expected_revision（见 core-S06-mcp-service-design.md §4.4）。
+```
+
+## MODIFIED — configuration（追加一项）
+
+```yaml
+  COLDRAWDB_MCP_PAYLOAD_SOFT_LIMIT_BYTES:
+    required: false
+    type: integer
+    minimum: 16384
+    default: 262144
+    description: "update_diagram 单次参数体积软上限（字节）；超限返回 PAYLOAD_TOO_LARGE 并建议分批"
+```
+
+## MODIFIED — tools.update_diagram.description
+
+```yaml
+  - name: update_diagram
+    title: 更新图表
+    description: >-
+      使用 expected_revision 全量保存 diagram；409 时不自动覆盖。
+      单次参数体积软上限 256 KiB（COLDRAWDB_MCP_PAYLOAD_SOFT_LIMIT_BYTES 可调）：
+      超限返回 PAYLOAD_TOO_LARGE 且不发送请求，details 给出当前体积与分片建议。
+      大图（数十表/关系或含批量布局颜色变更）请分批写入：按表用 update_table、
+      按字段用 update_field、按关系用 update_reference、布局用 layout_diagram，
+      每批携带最新 expected_revision 严格串行（并行分批必然 409）。
+```
+
+## MODIFIED — tools.update_table.description / update_field.description / update_reference.description / layout_diagram.description（追加角色标注）
+
+```yaml
+  # update_table.description 追加：
+  #   本工具是大图分批写入的官方分片手段之一（按表），详见 update_diagram 的分批指引。
+  # update_field.description 追加：
+  #   本工具是大图分批写入的官方分片手段之一（按字段），详见 update_diagram 的分批指引。
+  # update_reference.description 追加：
+  #   本工具是大图分批写入的官方分片手段之一（按关系），详见 update_diagram 的分批指引。
+  # layout_diagram.description 追加：
+  #   本工具承接分批写入中的布局写回，详见 update_diagram 的分批指引。
+```
+
+## MODIFIED — error_mapping（追加一行）
+
+```yaml
+error_mapping:
+  local_validation: VALIDATION_ERROR
+  local_payload_oversize: PAYLOAD_TOO_LARGE
+  network_connect: UPSTREAM_UNAVAILABLE
+  network_timeout: UPSTREAM_TIMEOUT
+  http_400: VALIDATION_ERROR
+  http_401: UNAUTHENTICATED
+  http_403: PERMISSION_DENIED
+  http_404: NOT_FOUND
+  http_409: REVISION_CONFLICT
+  http_422: VALIDATION_ERROR
+  http_5xx: UPSTREAM_ERROR
+```

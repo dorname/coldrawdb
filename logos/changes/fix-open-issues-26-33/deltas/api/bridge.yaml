@@ -1,0 +1,81 @@
+# Delta — bridge.yaml（fix-open-issues-26-33 / #29）
+
+> 模块：core | 提案：fix-open-issues-26-33
+> 目标：`/api/v1/bridge/import/connect` 响应 `data` 增加 `references` 名址数组（introspect fks 展开），前端合并为画布关系线。
+
+## MODIFIED — paths./api/v1/bridge/import/connect.post
+
+```yaml
+    post:
+      summary: Introspect a real database and return structured tables + references JSON
+      description: |
+        Connects to a user-supplied database (SQLite file path on the server host,
+        or a PostgreSQL connection string), introspects its schema, and returns
+        structured table objects (persistence-JSON compatible, including table
+        and column comments), the table count, and a name-based references array
+        expanded from introspected foreign keys (composite FKs are expanded into
+        one entry per column pair; dangling FK targets are omitted).
+        The frontend consumes the tables array via the JSON import pipeline and
+        resolves references by table/column name into canvas Reference entities;
+        no DDL text round-trip is involved.
+        Requires the standard auth middleware (Bearer).
+        For PostgreSQL, the optional `schema` field scopes introspection to a
+        single schema (default `public`); tables/columns/PKs/FKs/comments are
+        read from that schema only, so same-named tables in other schemas never
+        leak in. Table comments come from obj_description(); column comments
+        from col_description(). SQLite has no COMMENT syntax: comment fields
+        are always empty strings (engine limitation, not an error).
+      operationId: importFromConnection
+```
+
+## MODIFIED — components.schemas.ImportConnectData
+
+```yaml
+    ImportConnectData:
+      type: object
+      required: [engine, table_count, tables, references]
+      properties:
+        engine:
+          type: string
+          enum: [sqlite, postgres]
+        table_count:
+          type: integer
+          minimum: 0
+          description: "Number of business tables introspected (0 => tables is empty array)"
+        tables:
+          type: array
+          items:
+            $ref: '#/components/schemas/IntrospectedTable'
+        references:
+          type: array
+          description: "Name-based FK references expanded from introspection; always present (empty array when no FKs)"
+          items:
+            $ref: '#/components/schemas/IntrospectedReference'
+```
+
+## ADDED — components.schemas.IntrospectedReference
+
+```yaml
+    IntrospectedReference:
+      type: object
+      required: [table, column, ref_table, ref_column, on_delete, on_update]
+      properties:
+        table:
+          type: string
+          description: "Table owning the foreign key (unquoted identifier)"
+        column:
+          type: string
+          description: "FK column in the owning table"
+        ref_table:
+          type: string
+          description: "Referenced table"
+        ref_column:
+          type: string
+          description: "Referenced column"
+        on_delete:
+          type: string
+          description: "ON DELETE rule (e.g. CASCADE); empty string when unspecified"
+        on_update:
+          type: string
+          description: "ON UPDATE rule; empty string when unspecified"
+```

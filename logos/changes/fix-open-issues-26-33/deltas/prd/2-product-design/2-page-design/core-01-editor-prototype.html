@@ -1,0 +1,22 @@
+# Delta — core-01-editor-prototype.html（修改）
+
+> 模块：core | 提案：fix-open-issues-26-33
+> 关联 issue：#27、#28、#30、#31、#32、#33
+> 说明：唯一现行主原型对齐；不重做整页布局。渲染行为合同以功能规格为准（`core-01-editor-canvas.md` §5.11/§5.12、`core-01a` §1.7、`core-01b` §4.4/§4.6），本原型负责视觉与入口演示。
+
+## 变更要点
+
+1. **#33 视觉体系统一（本原型先导）**：
+   - 表卡：圆角 8px、shadow-1（hover shadow-2）、表头渐变 `135deg` 统一；字段行高 24px
+   - 语义图标：PK / FK / NOT NULL / UNIQUE 徽章改为统一线条图标族（12px / 1.5px 描边 / token 色板），替换字块角标
+   - 关系端点：crow's foot 基数记号统一几何族（10px）
+   - ToolRail：图标 stroke 1.5px、20px（IconBox 24px）、激活态主色描边 + 浅底
+2. **#31 选中高亮**：原型画布 demo 表选中时——相关连线 2× 加粗全亮、非相关表/线降透明度（线 ≤0.25 / 表 ≤0.5），取消选中恢复
+3. **#32 注释对比度**：蓝/绿/紫 demo 表头上注释增加可读性处理（前景自适应 + 必要时半透明衬底 chip）；字段行注释提亮加粗至 token 下限
+4. **#27 区域 resize**：原型 demo 区域选中后显示四角 + 四边中点手柄；Inspector 区域表单增加宽/高输入（`inspector-area-width` / `inspector-area-height`）
+5. **#28 批量线型**：原型关系 Inspector 线条类型控件旁增加「应用到全部关系」（`inspector-rel-line-type-apply-all`）；命令面板 demo 项可省略（生产行为以规格为准）
+6. **#30 LOD**：原型可演示缩放至 ≤50% 时表卡隐藏字段行、表名放大、关系线加粗的拓扑档样式（静态 demo 或 zoom 联动均可）
+
+## merge 指引
+
+在主原型对应 section（表卡 CSS、Inspector 区域表单、关系面板、ToolRail SVG、画布 demo 脚本）按上述要点插入/替换，保持现有 V2 布局（AppBar / ToolRail / Inspector）与既有 token 引用不变；新增样式值从 `core-07-design-tokens.md` §15.4/§15.5 取真值，禁止散值。

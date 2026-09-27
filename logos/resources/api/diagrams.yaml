@@ -393,7 +393,7 @@ components:
           type: string
           default: bezier
           enum: [bezier, orthogonal, straight]
-          description: "Path style for the relation edge."
+          description: "Path style for the relation edge. Bulk updates (apply line_type to all references of a diagram, fix-open-issues-26-33 / #28) are performed client-side as a single undoable command and persisted via the existing whole-diagram save (PUT /api/v1/diagrams/{id}); no dedicated batch endpoint exists."
         stroke_style:
           type: string
           default: solid
