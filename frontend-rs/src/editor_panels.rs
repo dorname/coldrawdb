@@ -923,26 +923,46 @@ fn apply_comment_on_stmt(stmt: &str, tables: &mut [Table]) {
     let Some(literal) = parse_sql_string_literal(literal_part) else {
         return;
     };
-    // schema 限定取末段；各段独立去引号
+    // schema 限定取末段（fix-open-issues-26-33 / #29：此处曾误取首段导致 `public.users`
+    // 永远匹配不上——「SQL 导入有关系无注释」根因）；各段独立去引号
     let segs: Vec<String> = name_part
         .split('.')
         .map(|s| strip_ident_quotes(s.trim()))
         .collect();
-    let tname = match segs.first() {
-        Some(t) if !t.is_empty() => t.clone(),
-        _ => return,
-    };
     if is_table {
+        let tname = match segs.last() {
+            Some(t) if !t.is_empty() => t.clone(),
+            _ => return,
+        };
         if let Some(t) = tables.iter_mut().find(|t| t.name == tname) {
             t.comment = literal;
         }
-    } else if let Some(cname) = segs.get(1).filter(|c| !c.is_empty()) {
-        if let Some(t) = tables.iter_mut().find(|t| t.name == tname) {
+    } else {
+        // COLUMN：表名取倒数第二段、列名取末段（`public.users.id` → users.id）
+        if segs.len() < 2 {
+            return;
+        }
+        let tname = &segs[segs.len() - 2];
+        let cname = &segs[segs.len() - 1];
+        if tname.is_empty() || cname.is_empty() {
+            return;
+        }
+        if let Some(t) = tables.iter_mut().find(|t| t.name == *tname) {
             if let Some(f) = t.fields.iter_mut().find(|f| f.name == *cname) {
                 f.comment = literal;
             }
         }
     }
+}
+
+/// 取点分隔标识符的末段并去引号（`public.users` / `"app"."orders"` → `users` / `orders`）。
+/// fix-open-issues-26-33（#29）：CREATE TABLE / REFERENCES / COMMENT ON 统一使用。
+fn last_ident_segment(name: &str) -> String {
+    name.split('.')
+        .map(|s| strip_ident_quotes(s.trim()))
+        .filter(|s| !s.is_empty())
+        .last()
+        .unwrap_or_default()
 }
 
 /// 大小写不敏感子串查找：返回 needle 首次出现的字节位置。
@@ -1049,7 +1069,9 @@ fn parse_create_table_stmt(
     let name_end = name_token
         .find(|c: char| c.is_whitespace() || c == '(')
         .unwrap_or(name_token.len());
-    let name = strip_ident_quotes(&name_token[..name_end]);
+    // fix-open-issues-26-33（#29 / UT-PC-33）：schema 限定表名取末段（`public.users` → `users`），
+    // 与 COMMENT ON / REFERENCES 的匹配口径一致
+    let name = last_ident_segment(&name_token[..name_end]);
     if name.is_empty() {
         return None;
     }
@@ -1102,7 +1124,7 @@ fn parse_create_table_stmt(
                     let tname_end = after
                         .find(|c: char| c.is_whitespace() || c == '(')
                         .unwrap_or(after.len());
-                    let ref_table = strip_ident_quotes(&after[..tname_end]);
+                    let ref_table = last_ident_segment(&after[..tname_end]);
                     if let Some((ref_cols, _)) = extract_paren_content(after, 0) {
                         if let (Some(c), Some(rc)) =
                             (parse_ident_list(&cols).first(), parse_ident_list(&ref_cols).first())
@@ -1279,7 +1301,7 @@ fn parse_ddl_column(
         let tname_end = after
             .find(|c: char| c.is_whitespace() || c == '(')
             .unwrap_or(after.len());
-        let ref_table = strip_ident_quotes(&after[..tname_end]);
+        let ref_table = last_ident_segment(&after[..tname_end]);
         if let Some((ref_cols, _)) = extract_paren_content(after, 0) {
             if let Some(rc) = parse_ident_list(&ref_cols).first() {
                 raw_fks.push((
@@ -1580,16 +1602,63 @@ pub fn parse_json_import_tables(content: &str) -> Result<(Vec<Table>, Vec<Refere
     Ok((tables, references))
 }
 
-/// import/connect 结构化响应消费（fix-canvas-zoom-invite-comment-resize：UT-PC-26，core-01d §4.4 3.5）。
+/// import/connect 结构化响应消费（fix-canvas-zoom-invite-comment-resize：UT-PC-26，core-01d §4.4 3.5；
+/// fix-open-issues-26-33 / #29：UT-PC-26 改写 + UT-PC-32，core-01d §4.8）。
 /// 后端 `POST /api/v1/bridge/import/connect` 直传结构化 tables（core-03 §13.1，
-/// 与 persistence / JSON 导入格式同构）；本函数将其序列化为 JSON 导入同构文本后
-/// 复用 `parse_json_import_tables` 同一纯函数——表/列 comment 原样透传，
-/// ID 仍为解析期确定性形式（重键在 `merge_import_into_store` 一次完成，UT-PC-20）。
+/// 与 persistence / JSON 导入格式同构）与名址 references；本函数把 references
+/// 解析为 JSON 导入同构的 ID 寻址形式后一并未序列化，复用 `parse_json_import_tables`
+/// 同一纯函数——表/列 comment 原样透传，ID 仍为解析期确定性形式
+/// （重键在 `merge_import_into_store` 一次完成，UT-PC-20）。
+/// `references` 传空切片时行为与旧版一致（仅表结构，不报错）。
 pub fn parse_bridge_import_tables(
     tables: &[crate::editor_data_access::ImportConnectTable],
+    references: &[crate::editor_data_access::ImportConnectReference],
 ) -> Result<(Vec<Table>, Vec<Reference>), String> {
-    let payload = serde_json::json!({ "tables": tables });
+    let payload = serde_json::json!({
+        "tables": tables,
+        "references": resolve_bridge_references(tables, references),
+    });
     parse_json_import_tables(&payload.to_string())
+}
+
+/// import/connect 名址 references → JSON 导入同构的 ID 寻址 references
+/// （core-01d §4.8，fix-open-issues-26-33 / #29，UT-PC-32）。
+/// ID 口径与 `parse_json_import_tables` 确定性派生一致：表 `import-j-t{i}`、
+/// 字段 `{tid}-f{j+1}`；cardinality 推导同 SQL 导入（core-01b §2：
+/// 目标列唯一/主键 → one_to_one，否则 one_to_many）。
+/// 表/列名无法解析的条目跳过（不报错、不产悬空引用）。
+pub fn resolve_bridge_references(
+    tables: &[crate::editor_data_access::ImportConnectTable],
+    refs: &[crate::editor_data_access::ImportConnectReference],
+) -> Vec<serde_json::Value> {
+    let find = |tname: &str, cname: &str| -> Option<(String, String)> {
+        let (ti, t) = tables.iter().enumerate().find(|(_, t)| t.name == tname)?;
+        let (fi, _) = t.fields.iter().enumerate().find(|(_, f)| f.name == cname)?;
+        let tid = format!("import-j-t{ti}");
+        Some((tid.clone(), format!("{tid}-f{}", fi + 1)))
+    };
+    refs.iter()
+        .filter_map(|r| {
+            let (start_table_id, start_field_id) = find(&r.table, &r.column)?;
+            let (end_table_id, end_field_id) = find(&r.ref_table, &r.ref_column)?;
+            let ref_tbl = tables.iter().find(|t| t.name == r.ref_table)?;
+            let ref_col = ref_tbl.fields.iter().find(|f| f.name == r.ref_column)?;
+            let type_ = if ref_col.primary || ref_col.unique {
+                "one_to_one"
+            } else {
+                "one_to_many"
+            };
+            Some(serde_json::json!({
+                "start_table_id": start_table_id,
+                "start_field_id": start_field_id,
+                "end_table_id": end_table_id,
+                "end_field_id": end_field_id,
+                "type": type_,
+                "on_delete": r.on_delete,
+                "on_update": r.on_update,
+            }))
+        })
+        .collect()
 }
 
 /// 导入合并（fix-appbar-roomname-back-and-import-merge：UT-PC-09）。
@@ -5629,7 +5698,13 @@ pub fn ImportDrawer(
                             db_result.set(None);
                             inline_error.set(Some("未检测到数据表".into()));
                         } else {
-                            let payload = serde_json::json!({ "tables": data.tables });
+                            // fix-open-issues-26-33（#29，core-01d §4.8）：名址 references
+                            // 一并解析为 ID 寻址形式存入 content，提交时随 tables 一起
+                            // 经 parse_json_import_tables 产出关系线
+                            let payload = serde_json::json!({
+                                "tables": data.tables,
+                                "references": resolve_bridge_references(&data.tables, &data.references),
+                            });
                             content.set(payload.to_string());
                             db_result.set(Some(data.table_count));
                         }
@@ -16944,13 +17019,14 @@ CREATE INDEX idx_x ON users (id);";
         assert_eq!(t2[0].fields[0].type_, "MONEY", "UT-PC-07: 未知类型保留");
     }
 
-    /// UT-PC-26: import/connect 结构化响应前端消费（fix-canvas-zoom-invite-comment-resize，
-    /// core-03 §13.1 + core-01d §4.4 3.5）：`data.tables` 序列化后复用 JSON 导入路径，comment 透传
+    /// UT-PC-26: import/connect 结构化响应前端消费（fix-canvas-zoom-invite-comment-resize 初版；
+    /// fix-open-issues-26-33 / #29 改写）：`data.tables` + 名址 `data.references` 经
+    /// `parse_bridge_import_tables` 产出表与关系线，comment 透传；空 references 回退仅表结构
     #[test]
     fn test_parse_bridge_import_tables_ut_pc_26() {
         let resp = r#"{
             "engine": "postgres",
-            "table_count": 1,
+            "table_count": 2,
             "tables": [
                 {
                     "name": "users",
@@ -16959,18 +17035,30 @@ CREATE INDEX idx_x ON users (id);";
                         {"name": "id", "type": "INTEGER", "primary": true, "not_null": true, "default": "", "comment": ""},
                         {"name": "status", "type": "TEXT", "comment": "状态"}
                     ]
+                },
+                {
+                    "name": "orders",
+                    "comment": "",
+                    "fields": [
+                        {"name": "id", "type": "INTEGER", "primary": true},
+                        {"name": "user_id", "type": "INTEGER"}
+                    ]
                 }
+            ],
+            "references": [
+                {"table": "orders", "column": "user_id", "ref_table": "users", "ref_column": "id", "on_delete": "", "on_update": ""}
             ]
         }"#;
         // 反序列化走与客户端相同的路径（gloo-net resp.json::<ApiResp<ImportConnectData>>()）
         let data: crate::editor_data_access::ImportConnectData =
             serde_json::from_str(resp).expect("UT-PC-26: 响应应反序列化成功");
-        assert_eq!(data.table_count, 1, "UT-PC-26: table_count 与 tables 一致");
-        assert_eq!(data.tables.len(), 1);
+        assert_eq!(data.table_count, 2, "UT-PC-26: table_count 与 tables 一致");
+        assert_eq!(data.tables.len(), 2);
+        assert_eq!(data.references.len(), 1, "UT-PC-26: references 键反序列化");
 
-        let (tables, refs) =
-            parse_bridge_import_tables(&data.tables).expect("UT-PC-26: 消费应解析成功");
-        assert_eq!(tables.len(), 1, "UT-PC-26: 产出 1 表");
+        let (tables, refs) = parse_bridge_import_tables(&data.tables, &data.references)
+            .expect("UT-PC-26: 消费应解析成功");
+        assert_eq!(tables.len(), 2, "UT-PC-26: 产出 2 表");
         assert_eq!(tables[0].name, "users");
         assert_eq!(tables[0].comment, "用户表", "UT-PC-26: 表 comment 透传");
         assert_eq!(tables[0].fields.len(), 2, "UT-PC-26: 产出 2 字段");
@@ -16982,10 +17070,14 @@ CREATE INDEX idx_x ON users (id);";
             tables[0].fields[1].comment, "状态",
             "UT-PC-26: 字段 comment 透传"
         );
-        assert!(
-            refs.is_empty(),
-            "UT-PC-26: import/connect 不产 references"
-        );
+        // #29：references 产出 1 条，端点解析到 orders.user_id → users.id 的确定性 ID
+        assert_eq!(refs.len(), 1, "UT-PC-26: import/connect 产 1 条 reference");
+        let orders = tables.iter().find(|t| t.name == "orders").unwrap();
+        let users = tables.iter().find(|t| t.name == "users").unwrap();
+        assert_eq!(refs[0].start_table_id, orders.id);
+        assert_eq!(refs[0].end_table_id, users.id);
+        assert_eq!(refs[0].start_field_id, orders.fields[1].id);
+        assert_eq!(refs[0].end_field_id, users.fields[0].id);
         // 表/字段 ID 仍为解析期确定性形式（重键在 merge_import_into_store 一次完成，UT-PC-20）
         assert!(
             tables[0].id.starts_with("import-j-t"),
@@ -16995,6 +17087,11 @@ CREATE INDEX idx_x ON users (id);";
             tables[0].fields[0].id.starts_with("import-j-t"),
             "UT-PC-26: 字段 ID 为解析期确定性形式"
         );
+        // references 传空切片 → 行为与旧版一致（仅表结构，不报错）
+        let (tables2, refs2) = parse_bridge_import_tables(&data.tables, &[])
+            .expect("UT-PC-26: 空 references 应解析成功");
+        assert_eq!(tables2.len(), 2);
+        assert!(refs2.is_empty(), "UT-PC-26: 空 references 回退仅表结构");
 
         // table_count=0 → tables 空数组仍可反序列化（前端走「未检测到数据表」提示路径）
         let empty: crate::editor_data_access::ImportConnectData =
@@ -17002,6 +17099,92 @@ CREATE INDEX idx_x ON users (id);";
                 .expect("UT-PC-26: 空 tables 应反序列化成功");
         assert_eq!(empty.table_count, 0);
         assert!(empty.tables.is_empty());
+    }
+
+    /// UT-PC-32（fix-open-issues-26-33 / #29，core-01d §4.8）：前端 bridge references
+    /// 名址解析与合并——合法条目解析为 Reference 并随 merge 重键；悬空条目跳过
+    #[test]
+    fn test_resolve_bridge_references_ut_pc_32() {
+        use crate::editor_data_access::{ImportConnectField as F, ImportConnectReference as R, ImportConnectTable as T};
+        let f = |name: &str, primary: bool| F {
+            name: name.into(),
+            type_: "INTEGER".into(),
+            primary,
+            unique: false,
+            not_null: false,
+            increment: false,
+            default: String::new(),
+            comment: String::new(),
+        };
+        let tables = vec![
+            T { name: "users".into(), comment: String::new(), fields: vec![f("id", true)] },
+            T { name: "orders".into(), comment: String::new(), fields: vec![f("id", true), f("user_id", false)] },
+        ];
+        let refs = vec![
+            R { table: "orders".into(), column: "user_id".into(), ref_table: "users".into(), ref_column: "id".into(), on_delete: "CASCADE".into(), on_update: String::new() },
+            // 指向不存在列 → 跳过
+            R { table: "orders".into(), column: "ghost".into(), ref_table: "users".into(), ref_column: "id".into(), on_delete: String::new(), on_update: String::new() },
+        ];
+        let resolved = resolve_bridge_references(&tables, &refs);
+        assert_eq!(resolved.len(), 1, "UT-PC-32: 悬空条目跳过");
+        assert_eq!(resolved[0]["start_table_id"], "import-j-t1");
+        assert_eq!(resolved[0]["start_field_id"], "import-j-t1-f2");
+        assert_eq!(resolved[0]["end_table_id"], "import-j-t0");
+        assert_eq!(resolved[0]["end_field_id"], "import-j-t0-f1");
+        assert_eq!(resolved[0]["on_delete"], "CASCADE");
+        // 目标列 primary → one_to_one（与 SQL 导入推导口径一致）
+        assert_eq!(resolved[0]["type"], "one_to_one");
+
+        // 经 parse + merge 全链路：reference 四端点重键后无 import-j- 残留、无悬空
+        let (new_tables, new_refs) =
+            parse_bridge_import_tables(&tables, &refs).expect("UT-PC-32: 解析应成功");
+        assert_eq!(new_refs.len(), 1);
+        let (merged_tables, merged_refs) =
+            merge_import_into_store(&[], &[], &new_tables, &new_refs);
+        assert_eq!(merged_tables.len(), 2);
+        assert_eq!(merged_refs.len(), 1);
+        let r = &merged_refs[0];
+        for ep in [&r.start_table_id, &r.end_table_id, &r.start_field_id, &r.end_field_id] {
+            assert!(!ep.starts_with("import-j-"), "UT-PC-32: 端点无 import-j- 残留");
+        }
+        let orders = merged_tables.iter().find(|t| t.name == "orders").unwrap();
+        let users = merged_tables.iter().find(|t| t.name == "users").unwrap();
+        assert_eq!(r.start_table_id, orders.id);
+        assert_eq!(r.end_table_id, users.id);
+        assert_eq!(r.start_field_id, orders.fields[1].id);
+        assert_eq!(r.end_field_id, users.fields[0].id);
+    }
+
+    /// UT-PC-33（fix-open-issues-26-33 / #29）：SQL 导入 schema 限定 COMMENT ON 解析加固
+    /// ——`public.users` / `"app"."orders"."id"` 取末段匹配；REFERENCES schema 限定目标同口径
+    #[test]
+    fn test_sql_import_schema_qualified_comment_ut_pc_33() {
+        let ddl = r#"
+            CREATE TABLE public.users (id INT PRIMARY KEY, status TEXT);
+            CREATE TABLE "app"."orders" (id INT PRIMARY KEY, user_id INT REFERENCES public.users(id));
+            COMMENT ON TABLE public.users IS '用户表';
+            COMMENT ON COLUMN "public"."users"."status" IS '状态';
+            COMMENT ON COLUMN orders.id IS '主键';
+            COMMENT ON TABLE ghost IS '不存在';
+            COMMENT ON COLUMN public.users.nope IS '不存在列';
+        "#;
+        let (tables, refs) =
+            parse_sql_import_tables(ddl).expect("UT-PC-33: 解析应成功");
+        assert_eq!(tables.len(), 2, "UT-PC-33: 产出 2 表");
+        // schema 限定表名取末段
+        let users = tables.iter().find(|t| t.name == "users").expect("users 应解析");
+        let orders = tables.iter().find(|t| t.name == "orders").expect("orders 应解析");
+        // schema 限定 / 引号混写 COMMENT ON 回填
+        assert_eq!(users.comment, "用户表", "UT-PC-33: schema 限定表注释回填");
+        assert_eq!(users.fields[1].comment, "状态", "UT-PC-33: 引号混写列注释回填");
+        assert_eq!(orders.fields[0].comment, "主键", "UT-PC-33: 非限定列注释不回归");
+        // 指向不存在表/列的注释跳过（不报错即通过，上面 expect 已覆盖）
+        // REFERENCES schema 限定目标 → 关系线解析到 users.id
+        assert_eq!(refs.len(), 1, "UT-PC-33: schema 限定 REFERENCES 产 1 条关系");
+        assert_eq!(refs[0].start_table_id, orders.id);
+        assert_eq!(refs[0].end_table_id, users.id);
+        assert_eq!(refs[0].start_field_id, orders.fields[1].id);
+        assert_eq!(refs[0].end_field_id, users.fields[0].id);
     }
 
     /// UT-PC-27: 导出 COMMENT ON TABLE（fix-canvas-zoom-invite-comment-resize，core-01d §5.2）
@@ -17170,7 +17353,7 @@ CREATE INDEX idx_x ON users (id);";
             },
         ];
         let (db_tables, _) =
-            parse_bridge_import_tables(&resp_tables).expect("UT-PC-28: 数据库路径应解析成功");
+            parse_bridge_import_tables(&resp_tables, &[]).expect("UT-PC-28: 数据库路径应解析成功");
         assert_eq!(db_tables.len(), 1);
         assert_eq!(db_tables[0].name, tables[0].name, "UT-PC-28: 表名一致");
         assert_eq!(

@@ -54,9 +54,9 @@
 
 ## [code] C1 批次 A — #29 导入对称实现
 
-- [ ] C1.1 列出本批覆盖 UT/ST ID（对齐 D1.4）并实现：后端 import/connect 响应序列化 references（`phase3_bridge.rs` / `tables_to_json` / `connect_response_data`）
-- [ ] C1.2 前端 `parse_bridge_import_tables` 合并 references 进导入 store；SQL 路径 COMMENT 解析加固（schema 限定名、dump 方言）
-- [ ] C1.3 同批补齐 UT/ST + OpenLogos reporter；改写 UT-PC-26 反向断言为正向验收
+- [x] C1.1 列出本批覆盖 UT/ST ID（对齐 D1.4）并实现：后端 import/connect 响应序列化 references（`phase3_bridge.rs` / `tables_to_json` / `connect_response_data`）
+- [x] C1.2 前端 `parse_bridge_import_tables` 合并 references 进导入 store；SQL 路径 COMMENT 解析加固（schema 限定名、dump 方言）
+- [x] C1.3 同批补齐 UT/ST + OpenLogos reporter；改写 UT-PC-26 反向断言为正向验收
 
 ## [code] C2 批次 B — #27 区域 resize 实现
 

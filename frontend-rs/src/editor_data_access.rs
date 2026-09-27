@@ -1789,6 +1789,24 @@ pub struct ImportConnectData {
     pub table_count: usize,
     #[serde(default)]
     pub tables: Vec<ImportConnectTable>,
+    /// fix-open-issues-26-33（#29，core-03 §13.1）：名址 FK 关系数组；
+    /// 键恒存在（无 FK 时空数组），旧后端/异常响应缺省按空数组回退（仅表结构）
+    #[serde(default)]
+    pub references: Vec<ImportConnectReference>,
+}
+
+/// import/connect 响应名址关系元素（core-03 §13.1，fix-open-issues-26-33 / #29）。
+/// 由后端 introspect fks 展开（复合 FK 按列对展开）；前端按表/列名解析为画布 Reference。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportConnectReference {
+    pub table: String,
+    pub column: String,
+    pub ref_table: String,
+    pub ref_column: String,
+    #[serde(default)]
+    pub on_delete: String,
+    #[serde(default)]
+    pub on_update: String,
 }
 
 /// import/connect 响应表元素（core-03 §13.1）：persistence 同构。

@@ -22,6 +22,10 @@ pub struct IntrospectedFk {
     pub columns: Vec<String>,
     pub ref_table: String,
     pub ref_columns: Vec<String>,
+    /// fix-open-issues-26-33（#29）：ON DELETE / ON UPDATE 规则；
+    /// 无规则（NO ACTION / 未指定）恒为空串
+    pub on_delete: String,
+    pub on_update: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -236,6 +240,9 @@ async fn introspect_sqlite(source: &str) -> Result<Vec<IntrospectedTable>, Intro
             let ref_table: String = f.get("table");
             let from: String = f.get("from");
             let to: String = f.get("to");
+            // fix-open-issues-26-33（#29）：PRAGMA 自带 on_update/on_delete（NO ACTION → 空串）
+            let on_delete = sqlite_fk_action(&f.get::<String, _>("on_delete"));
+            let on_update = sqlite_fk_action(&f.get::<String, _>("on_update"));
             if last_fk_id == Some(fk_id) {
                 if let Some(last) = fks.last_mut() {
                     last.columns.push(from);
@@ -247,6 +254,8 @@ async fn introspect_sqlite(source: &str) -> Result<Vec<IntrospectedTable>, Intro
                 columns: vec![from],
                 ref_table,
                 ref_columns: vec![to],
+                on_delete,
+                on_update,
             });
             last_fk_id = Some(fk_id);
         }
@@ -349,9 +358,11 @@ async fn introspect_postgres(source: &str, schema: &str) -> Result<Vec<Introspec
             .collect();
 
         // FK（pg_catalog unnest conkey/confkey 保序配对，复合 FK 按 conname 分组）
+        // fix-open-issues-26-33（#29）：同时采集 confdeltype/confupdtype（ON DELETE/UPDATE 规则）
         let fk_rows = sqlx::query(
             "SELECT con.conname AS fk_name, src.attname AS column_name, \
-                    ref_tbl.relname AS ref_table, ref.attname AS ref_column \
+                    ref_tbl.relname AS ref_table, ref.attname AS ref_column, \
+                    con.confdeltype::text AS del_action, con.confupdtype::text AS upd_action \
              FROM pg_constraint con \
              JOIN pg_class tbl ON tbl.oid = con.conrelid \
              JOIN pg_namespace ns ON ns.oid = tbl.relnamespace \
@@ -376,6 +387,8 @@ async fn introspect_postgres(source: &str, schema: &str) -> Result<Vec<Introspec
             let column: String = f.get("column_name");
             let ref_table: String = f.get("ref_table");
             let ref_column: String = f.get("ref_column");
+            let on_delete = pg_fk_action(&f.get::<String, _>("del_action"));
+            let on_update = pg_fk_action(&f.get::<String, _>("upd_action"));
             // 结果按 conname, ord.n 有序：同名约束连续，复合 FK 归并同组
             if last_fk_name.as_deref() == Some(fk_name.as_str()) {
                 if let Some(last) = fks.last_mut() {
@@ -388,6 +401,8 @@ async fn introspect_postgres(source: &str, schema: &str) -> Result<Vec<Introspec
                 columns: vec![column],
                 ref_table,
                 ref_columns: vec![ref_column],
+                on_delete: on_delete.to_string(),
+                on_update: on_update.to_string(),
             });
             last_fk_name = Some(fk_name);
         }
@@ -475,14 +490,66 @@ pub fn tables_to_json(tables: &[IntrospectedTable]) -> Vec<Value> {
         .collect()
 }
 
-/// `import/connect` 200 data 负载：`{engine, table_count, tables}`
-/// （table_count 恒等于 tables 长度；0 表时 tables 为空数组）
+/// `import/connect` 200 data 负载：`{engine, table_count, tables, references}`
+/// （table_count 恒等于 tables 长度；0 表时 tables 为空数组；
+/// fix-open-issues-26-33 / #29：references 键恒存在，无 FK 时为空数组）
 pub fn connect_response_data(engine: &str, tables: &[IntrospectedTable]) -> Value {
     serde_json::json!({
         "engine": engine,
         "table_count": tables.len(),
         "tables": tables_to_json(tables),
+        "references": references_to_json(tables),
     })
+}
+
+/// SQLite `PRAGMA foreign_key_list` 的 on_delete/on_update 值规整（NO ACTION → 空串）
+fn sqlite_fk_action(action: &str) -> String {
+    match action {
+        "NO ACTION" | "" => String::new(),
+        other => other.to_string(),
+    }
+}
+
+/// PG `confdeltype` / `confupdtype` 字符码 → 规则名（'a' NO ACTION → 空串）
+fn pg_fk_action(code: &str) -> &'static str {
+    match code {
+        "c" => "CASCADE",
+        "n" => "SET NULL",
+        "d" => "SET DEFAULT",
+        "r" => "RESTRICT",
+        _ => "", // 'a' NO ACTION 及未知码
+    }
+}
+
+/// IR `fks` → 名址 `references` JSON（core-03 §13.3，fix-open-issues-26-33 / #29）：
+/// 复合 FK 按列对展开（zip 截断至较短者，残缺列对自动跳过）；
+/// 指向未 introspect 到的表/列的条目跳过（不产悬空引用）；
+/// 输出顺序 = 表序 + FK 收集顺序（确定性，快照可比）。
+pub fn references_to_json(tables: &[IntrospectedTable]) -> Vec<Value> {
+    let mut out = Vec::new();
+    for t in tables {
+        for fk in &t.fks {
+            let Some(ref_tbl) = tables.iter().find(|x| x.name == fk.ref_table) else {
+                continue;
+            };
+            for (col, rcol) in fk.columns.iter().zip(fk.ref_columns.iter()) {
+                let own_col_ok = t.columns.iter().any(|c| &c.name == col);
+                let ref_col_ok = ref_tbl.columns.iter().any(|c| &c.name == rcol);
+                if !own_col_ok || !ref_col_ok {
+                    continue;
+                }
+                out.push(serde_json::json!({
+                    "table": t.name,
+                    "column": col,
+                    "ref_table": fk.ref_table,
+                    "ref_column": rcol,
+                    "on_delete": fk.on_delete,
+                    "on_update": fk.on_update,
+                }));
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -561,9 +628,97 @@ mod tests {
                     columns: vec!["order".into(), "orderB".into()],
                     ref_table: "orders".into(),
                     ref_columns: vec!["a".into(), "b".into()],
+                    on_delete: "CASCADE".into(),
+                    on_update: String::new(),
                 }],
             },
         ]
+    }
+
+    /// UT-PC-31（fix-open-issues-26-33 / #29）：后端 fks → references 序列化（含复合 FK 展开）
+    #[test]
+    fn ut_pc_31_fks_to_references_serialization() {
+        let col = |name: &str| IntrospectedColumn {
+            name: name.into(),
+            col_type: "INT".into(),
+            not_null: false,
+            default: None,
+            pk: false,
+            comment: String::new(),
+        };
+        let tables = vec![
+            IntrospectedTable {
+                name: "a".into(),
+                comment: String::new(),
+                columns: vec![col("x"), col("y")],
+                fks: vec![
+                    // 复合 FK → 展开 2 条
+                    IntrospectedFk {
+                        columns: vec!["x".into(), "y".into()],
+                        ref_table: "b".into(),
+                        ref_columns: vec!["x".into(), "y".into()],
+                        on_delete: "CASCADE".into(),
+                        on_update: "SET NULL".into(),
+                    },
+                    // 指向未 introspect 表 → 跳过
+                    IntrospectedFk {
+                        columns: vec!["x".into()],
+                        ref_table: "ghost".into(),
+                        ref_columns: vec!["id".into()],
+                        on_delete: String::new(),
+                        on_update: String::new(),
+                    },
+                    // 列数不一致 → zip 截短（仅 1 对）
+                    IntrospectedFk {
+                        columns: vec!["x".into(), "y".into()],
+                        ref_table: "b".into(),
+                        ref_columns: vec!["x".into()],
+                        on_delete: String::new(),
+                        on_update: String::new(),
+                    },
+                ],
+            },
+            IntrospectedTable {
+                name: "b".into(),
+                comment: String::new(),
+                columns: vec![col("x"), col("y")],
+                fks: vec![],
+            },
+            IntrospectedTable {
+                name: "c".into(),
+                comment: String::new(),
+                columns: vec![col("id")],
+                fks: vec![],
+            },
+        ];
+        let data = connect_response_data("postgres", &tables);
+        let refs = data["references"].as_array().expect("UT-PC-31: references 键应存在");
+        assert_eq!(refs.len(), 3, "复合 2 条 + 截短 1 条；ghost 跳过");
+        assert_eq!(
+            refs[0],
+            serde_json::json!({"table":"a","column":"x","ref_table":"b","ref_column":"x","on_delete":"CASCADE","on_update":"SET NULL"})
+        );
+        assert_eq!(refs[1]["column"], "y");
+        assert_eq!(refs[1]["ref_column"], "y");
+        assert_eq!(refs[1]["on_delete"], "CASCADE");
+        assert_eq!(
+            refs[2],
+            serde_json::json!({"table":"a","column":"x","ref_table":"b","ref_column":"x","on_delete":"","on_update":""})
+        );
+        assert!(refs.iter().all(|r| r["ref_table"] != "ghost"));
+        // 无 FK → 键存在且为空数组
+        let empty = connect_response_data("sqlite", &[]);
+        assert!(empty["references"].as_array().unwrap().is_empty());
+        // fixture_ir 复合 FK 同样展开（顺序确定：表序 + 收集序）
+        let fixture = connect_response_data("sqlite", &fixture_ir());
+        let frefs = fixture["references"].as_array().unwrap();
+        assert_eq!(frefs.len(), 2);
+        assert_eq!(frefs[0]["table"], "items");
+        assert_eq!(frefs[0]["column"], "order");
+        assert_eq!(frefs[0]["ref_column"], "a");
+        assert_eq!(frefs[0]["on_delete"], "CASCADE");
+        assert_eq!(frefs[1]["column"], "orderB");
+        assert_eq!(frefs[1]["ref_column"], "b");
     }
 
     /// UT-PC-12：响应序列化纯函数 + 端点错误映射

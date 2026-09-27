@@ -162,6 +162,10 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-PC-27",
     "UT-PC-28",
     "UT-AB-04",
+    // fix-open-issues-26-33 / #29：import/connect 产 references（后端序列化 +
+    // 前端名址解析合并 + schema 限定 COMMENT ON 加固；UT-PC-31 由 backend 上报）
+    "UT-PC-32",
+    "UT-PC-33",
     // core-SP-side-panel
     "UT-SP-02",
     "UT-SP-09",
@@ -322,6 +326,9 @@ const ST_PASS_IDS: &[&str] = &[
     "ST-CR-COMMENT-01",
     "ST-PB-06",
     "ST-PC-09",
+    // fix-open-issues-26-33 / #29：双路径（SQL dump vs import/connect）对称
+    // （tests/import_symmetry.rs st_pc_10_import_path_symmetry）
+    "ST-PC-10",
     "ST-PE-07",
     "ST-RP-04",
 ];

@@ -474,16 +474,16 @@ IO：入口经 AppBar **更多菜单** → IO 抽屉；格式 SQL/DBML/JSON（�
   2. 指向不存在表/列的注释语句跳过（不报错）
   3. 既有非限定 `COMMENT ON` 与 MySQL 行内 `COMMENT` 行为不回归（UT-PC-07 / ST-PC-07 口径保持）
 
-## ADDED — ST-PC-09 — 双路径对称 e2e（同一 PG schema）
+## ADDED — ST-PC-10 — 双路径对称（同一 PG schema，host 集成）
 
 - **位置**：`frontend-rs` e2e / bridge 集成（嵌入式 PG fixture）
 - **Given**：嵌入式 PG schema 含 ≥3 表（含 ≥2 条 FK、表/列 `COMMENT ON` 注释）；导出其 `pg_dump` 风格 DDL 文本
 - **When**：路径 A：SQL Tab 粘贴 DDL → 导入到画布；路径 B：数据库 Tab 连接该库 → 导入到画布（分别在新图进行）
 - **Then**：两条路径画布的表数相等、关系数相等、非空表/列 comment 数一致（允许实体 ID 与坐标差异）
-- **reporter**：`ST-PC-09` 写入 `logos/resources/verify/test-results.jsonl`
+- **reporter**：`ST-PC-10` 写入 `logos/resources/verify/test-results.jsonl`
 
 ## MODIFIED — 变更记录（追加行）
 
 | UT-PC-25 / UT-PC-26 | MODIFIED（fix-open-issues-26-33） | import/connect 响应与前端消费增加 `references`（fks 名址展开 → 画布关系线），废弃「import/connect 不产 references」的历史口径 |
 | UT-PC-31 / UT-PC-32 / UT-PC-33 | ADDED（fix-open-issues-26-33） | 后端 fks→references 序列化 / 前端名址解析合并 / SQL schema 限定 COMMENT ON 加固 |
-| ST-PC-09 | ADDED（fix-open-issues-26-33） | 同一 PG schema 双路径（SQL dump vs import/connect）对称 e2e |
+| ST-PC-10 | ADDED（fix-open-issues-26-33） | 同一 schema 双路径（SQL dump vs import/connect）对称（host 集成，沿用 ST-PC-07 先例；既有 ST-PC-09 已被 .ddl e2e 占用故改号） |
