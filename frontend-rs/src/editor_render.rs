@@ -3509,7 +3509,13 @@ pub fn draw_canvas(
 
     // R-PERF-06：refs 端点查找先建 id → &Table HashMap，O(refs + tables)
     let table_map: HashMap<&str, &Table> = tables.iter().map(|t| (t.id.as_str(), t)).collect();
-    // ST-PE-10 探针累计：相关线宽倍率最大值 / 非相关表 alpha 最小值
+    // #30 UT-CR-LOD-01：本帧 LOD 档与线宽补偿倍率（详情档恒 1.0 无回归）
+    let frame_tier = lod_tier(t.zoom, LodTier::Detail);
+    let lod_scale = match frame_tier {
+        LodTier::Detail => 1.0,
+        LodTier::Topology => lod_line_width(t.zoom, 2.0) / 2.0,
+    };
+    // ST-PE-10 / ST-CR-LOD-01 探针累计：相关线宽总倍率最大值 / 非相关表 alpha 最小值
     let mut rel_width_scale_max = 1.0f64;
     let mut table_alpha_min = 1.0f64;
     for r in refs {
@@ -3534,7 +3540,7 @@ pub fn draw_canvas(
                 selected_ref_id,
             );
             // #31 UT-PE-HL-01：选中表后相关连线加粗 1.5×；选中关系自身走 selected 3.5 不再叠加
-            let width_scale = if selected_ref_id == Some(&r.id) {
+            let hl_scale = if selected_ref_id == Some(&r.id) {
                 1.0
             } else {
                 relation_render_width(
@@ -3549,7 +3555,14 @@ pub fn draw_canvas(
                     ),
                 )
             };
-            rel_width_scale_max = rel_width_scale_max.max(width_scale);
+            // #30 R-LOD-04：拓扑档线宽补偿与 #31 高亮倍率叠乘（选中连线 3.5 也乘 lod）；
+            // 探针累计相对默认 2.0 世界线宽的总倍率（选中线为 3.5×lod / 2.0）
+            let frame_scale = if selected_ref_id == Some(&r.id) {
+                3.5 / 2.0 * lod_scale
+            } else {
+                hl_scale * lod_scale
+            };
+            rel_width_scale_max = rel_width_scale_max.max(frame_scale);
             draw_relation(
                 ctx,
                 from,
@@ -3563,7 +3576,8 @@ pub fn draw_canvas(
                 effective_line_type(&r.line_type),
                 effective_stroke_style(&r.stroke_style),
                 opacity,
-                width_scale,
+                hl_scale,
+                lod_scale,
             );
         }
     }
@@ -3622,6 +3636,8 @@ pub fn draw_canvas(
         table_alpha_min,
         rel_width_scale_max,
     );
+    // ST-CR-LOD-01 探针：暴露本帧 LOD 档位参数
+    update_lod_probe(t.zoom, frame_tier, lod_scale);
 
     ctx.restore();
 }
@@ -3673,6 +3689,32 @@ fn update_hl_probe(
 
 #[cfg(not(target_arch = "wasm32"))]
 fn update_hl_probe(_: bool, _: bool, _: usize, _: f64, _: f64) {}
+
+/// ST-CR-LOD-01 探针（#30）：每帧把 LOD 档位参数写入 `window.__cdb_lod_probe`
+/// （JSON 字符串：zoom / tier / font_world / lod_scale），供 e2e 断言拓扑档
+/// 「字段行隐藏、表名屏幕字号 ≥11px、关系线宽补偿」在真实渲染路径生效。
+#[cfg(target_arch = "wasm32")]
+fn update_lod_probe(zoom: f64, tier: LodTier, lod_scale: f64) {
+    if let Some(win) = web_sys::window() {
+        let target: &js_sys::Object = win.unchecked_ref();
+        let key = wasm_bindgen::JsValue::from_str("__cdb_lod_probe");
+        let tier_str = match tier {
+            LodTier::Detail => "detail",
+            LodTier::Topology => "topology",
+        };
+        let json = format!(
+            "{{\"zoom\":{},\"tier\":\"{}\",\"font_world\":{},\"lod_scale\":{}}}",
+            zoom,
+            tier_str,
+            lod_table_font_size(zoom, tier),
+            lod_scale
+        );
+        let _ = js_sys::Reflect::set(target, &key, &wasm_bindgen::JsValue::from_str(&json));
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn update_lod_probe(_: f64, _: LodTier, _: f64) {}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RemotePresence {
@@ -3828,6 +3870,69 @@ const SPRITE_MARGIN: f64 = 24.0;
 /// R-PERF-07：zoom → 精灵分辨率分档（UT-CR-SPRITE-01）。
 pub fn sprite_zoom_bucket(zoom: f64) -> u32 {
     if zoom <= 1.0 { 1 } else { 2 }
+}
+
+// ─── #30 UT-CR-LOD-01：小缩放 LOD 分档（core-CR §6.y / R-LOD-01~04） ──────────
+
+/// LOD 拓扑档阈值：zoom 低于该值进入拓扑档（字段行隐藏、仅表头+大字表名）。
+/// core-07 §15.4 token `canvas.lod.topology-zoom`。
+pub const LOD_TOPOLOGY_ZOOM: f64 = 0.55;
+/// 滞回半宽：阈值 ±0.03 内保持原档，避免边界缩放抖动（R-LOD-02）。
+pub const LOD_HYSTERESIS: f64 = 0.03;
+/// 拓扑档表名屏幕字号下限（px，R-LOD-03）。
+pub const LOD_MIN_SCREEN_FONT_PX: f64 = 11.0;
+/// 拓扑档表名世界字号夹紧上限（px）——极小 zoom 下避免单表占满视口。
+pub const LOD_TABLE_FONT_WORLD_MAX: f64 = 30.0;
+/// 详情档表名默认世界字号（draw_table_body 表名 13px，R-LOD-01 回默认锚点）。
+pub const TABLE_NAME_FONT_PX: f64 = 13.0;
+/// LOD 线宽补偿目标屏幕线宽（px，R-LOD-04）。
+pub const LOD_MIN_SCREEN_LINE_PX: f64 = 1.5;
+/// LOD 线宽补偿倍率夹紧上限（相对 base）。
+pub const LOD_LINE_WIDTH_COMP_MAX: f64 = 4.0;
+
+/// LOD 档位：详情档（现状渲染）/ 拓扑档（字段行隐藏、大字表名、线宽补偿）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LodTier {
+    Detail,
+    Topology,
+}
+
+/// #30 UT-CR-LOD-01：LOD 档位判定（带滞回）。滞回带 [0.52, 0.58) 内保持 prev 不抖动。
+pub fn lod_tier(zoom: f64, prev: LodTier) -> LodTier {
+    if zoom >= LOD_TOPOLOGY_ZOOM - LOD_HYSTERESIS && zoom < LOD_TOPOLOGY_ZOOM + LOD_HYSTERESIS {
+        return prev;
+    }
+    if zoom < LOD_TOPOLOGY_ZOOM {
+        LodTier::Topology
+    } else {
+        LodTier::Detail
+    }
+}
+
+/// #30 UT-CR-LOD-01：表名世界字号——拓扑档按 11px 屏幕字号下限放大（夹紧 30px）；
+/// 详情档返回默认 13px。
+pub fn lod_table_font_size(zoom: f64, tier: LodTier) -> f64 {
+    match tier {
+        LodTier::Detail => TABLE_NAME_FONT_PX,
+        LodTier::Topology => {
+            (LOD_MIN_SCREEN_FONT_PX / zoom.max(0.01)).min(LOD_TABLE_FONT_WORLD_MAX)
+        }
+    }
+}
+
+/// #30 UT-CR-LOD-01：LOD 线宽补偿——世界线宽保证屏幕 ≥1.5px（max(base, 1.5/zoom)），
+/// 补偿倍率相对 base 夹紧 ≤4×。纯数学：调用处仅在拓扑档启用（详情档 lod_scale=1 无回归）。
+pub fn lod_line_width(zoom: f64, base: f64) -> f64 {
+    let target = LOD_MIN_SCREEN_LINE_PX / zoom.max(0.01);
+    base.max(target).min(base * LOD_LINE_WIDTH_COMP_MAX)
+}
+
+/// 拓扑档卡体尺寸：宽同详情（布局不变），高仅表头（字段行隐藏，R-LOD-01）。
+pub fn lod_table_size(table: &Table, comment_mode: CommentDisplay, tier: LodTier) -> (f64, f64) {
+    match tier {
+        LodTier::Detail => compute_table_render_size_for(table, comment_mode),
+        LodTier::Topology => (resolve_table_width(table, comment_mode), TABLE_HEADER_HEIGHT),
+    }
 }
 
 /// R-PERF-07：卡体内容指纹（UT-CR-SPRITE-01）。位置（x/y）与选中态不参与——
@@ -4184,7 +4289,9 @@ fn draw_comment_chip(ctx: &CanvasRenderingContext2d, chip_color: &str, x: f64, y
 
 /// R-PERF-07：表精灵指纹（变化触发重光栅）。fix-remote-github-issues-7-18：
 /// 表/字段 comment 与注释显示模式混入指纹（R-CMT-03——注释内容/模式变化必须重光栅）。
-pub fn table_sprite_fingerprint(table: &Table, theme_dark: bool, dpr_x100: u32, zoom_bucket: u32, comment_mode: CommentDisplay) -> u64 {
+/// #30 UT-CR-LOD-01：LOD 档位混入指纹（R-LOD-01——跨档重光栅；同档内指纹相同，
+/// 拖动/同档 zoom 微调不触发重光栅）。
+pub fn table_sprite_fingerprint(table: &Table, theme_dark: bool, dpr_x100: u32, zoom_bucket: u32, comment_mode: CommentDisplay, lod: LodTier) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     let mut mix = |bytes: &[u8]| {
         for &b in bytes {
@@ -4207,6 +4314,7 @@ pub fn table_sprite_fingerprint(table: &Table, theme_dark: bool, dpr_x100: u32, 
     mix(&[theme_dark as u8]);
     mix(&dpr_x100.to_le_bytes());
     mix(&(zoom_bucket as u32).to_le_bytes());
+    mix(&[lod as u8]);
     h
 }
 
@@ -4243,6 +4351,8 @@ fn render_table_sprite(
     shadow_boost: f64,
     fingerprint: u64,
     comment_mode: CommentDisplay,
+    lod: LodTier,
+    zoom: f64,
 ) -> Option<TableSprite> {
     let doc = web_sys::window()?.document()?;
     let canvas: web_sys::HtmlCanvasElement = doc
@@ -4250,7 +4360,8 @@ fn render_table_sprite(
         .ok()?
         .dyn_into()
         .ok()?;
-    let (w, h) = compute_table_render_size_for(table, comment_mode);
+    // #30：拓扑档卡体仅表头高（字段行隐藏），精灵尺寸按档位取
+    let (w, h) = lod_table_size(table, comment_mode, lod);
     let w_world = w + SPRITE_MARGIN * 2.0;
     let h_world = h + SPRITE_MARGIN * 2.0;
     canvas.set_width((w_world * scale).ceil().max(1.0) as u32);
@@ -4264,7 +4375,14 @@ fn render_table_sprite(
         (SPRITE_MARGIN - table.x) * scale,
         (SPRITE_MARGIN - table.y) * scale,
     );
-    draw_table_body(&off, table, palette, shadow_boost, comment_mode);
+    match lod {
+        LodTier::Detail => draw_table_body(&off, table, palette, shadow_boost, comment_mode),
+        // #30：拓扑档字体世界尺寸 = lod_table_font_size（屏幕 ≥11px）；zoom 由调用处经
+        // scale/CTM 自然缩放，光栅只需世界字号
+        LodTier::Topology => draw_table_topology_body(
+            &off, table, palette, shadow_boost, comment_mode, lod_table_font_size(zoom, lod),
+        ),
+    }
     Some(TableSprite {
         canvas,
         fingerprint,
@@ -4281,6 +4399,7 @@ fn blit_table_sprite(
     palette: &CanvasPalette,
     zoom: f64,
     comment_mode: CommentDisplay,
+    lod: LodTier,
 ) -> bool {
     // R-PERF-10 修正：精灵恒以真实 dpr 渲染/取指纹——backing 分辨率与主画布有效 dpr
     // 解耦（位块传输按世界坐标 dw/dh 绘制，主画布降采样时由 CTM 自然缩小，观感不劣化）。
@@ -4294,6 +4413,7 @@ fn blit_table_sprite(
         (dpr * 100.0).round() as u32,
         bucket,
         comment_mode,
+        lod,
     );
     let sprite = TABLE_SPRITES.with(|c| {
         let mut map = c.borrow_mut();
@@ -4304,7 +4424,7 @@ fn blit_table_sprite(
         if !fresh {
             // shadow_boost = bucket / zoom（见 render_table_sprite 注释）
             let boost = bucket as f64 / zoom.max(0.01);
-            if let Some(s) = render_table_sprite(table, palette, scale, boost, fp, comment_mode) {
+            if let Some(s) = render_table_sprite(table, palette, scale, boost, fp, comment_mode, lod, zoom) {
                 map.insert(table.id.clone(), s);
             }
         }
@@ -4418,7 +4538,9 @@ fn create_table_ghost(
     let bucket = sprite_zoom_bucket(t.zoom);
     let scale = dpr * bucket as f64;
     let boost = bucket as f64 / t.zoom.max(0.01);
-    let sprite = render_table_sprite(table, palette, scale, boost, 0, comment_mode)?;
+    // #30：幽灵层卡体与被拖表同档位（拓扑档拖的是拓扑卡）
+    let tier = lod_tier(t.zoom, LodTier::Detail);
+    let sprite = render_table_sprite(table, palette, scale, boost, 0, comment_mode, tier, t.zoom)?;
     let el = sprite.canvas;
     let parent = canvas.parent_element()?;
     let css_w = sprite.w_world * t.zoom;
@@ -4436,7 +4558,7 @@ fn create_table_ghost(
                 (sprite.margin - table.x) * scale,
                 (sprite.margin - table.y) * scale,
             );
-            draw_table_selection(&off, table, palette);
+            draw_table_selection(&off, table, palette, comment_mode, tier);
         }
     }
     // will-change 提示合成器把幽灵层提升为独立层，transform 移动纯合成器完成
@@ -4460,16 +4582,23 @@ fn create_table_ghost(
 }
 
 fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool, palette: &CanvasPalette, zoom: f64, comment_mode: CommentDisplay) {
+    // #30 UT-CR-LOD-01：每帧按 zoom 判档（渲染层无状态，滞回带内偏 Detail 防抖动）
+    let tier = lod_tier(zoom, LodTier::Detail);
     // R-PERF-07：zoom ≤ SPRITE_CACHE_MAX_ZOOM 走精灵缓存；超出回退活画
-    if zoom <= SPRITE_CACHE_MAX_ZOOM && blit_table_sprite(ctx, table, palette, zoom, comment_mode) {
+    if zoom <= SPRITE_CACHE_MAX_ZOOM && blit_table_sprite(ctx, table, palette, zoom, comment_mode, tier) {
         if selected {
-            draw_table_selection(ctx, table, palette);
+            draw_table_selection(ctx, table, palette, comment_mode, tier);
         }
         return;
     }
-    draw_table_body(ctx, table, palette, 1.0, comment_mode);
+    match tier {
+        LodTier::Detail => draw_table_body(ctx, table, palette, 1.0, comment_mode),
+        LodTier::Topology => draw_table_topology_body(
+            ctx, table, palette, 1.0, comment_mode, lod_table_font_size(zoom, tier),
+        ),
+    }
     if selected {
-        draw_table_selection(ctx, table, palette);
+        draw_table_selection(ctx, table, palette, comment_mode, tier);
     }
 }
 
@@ -4670,10 +4799,79 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
     }
 }
 
+/// #30 UT-CR-LOD-01（R-LOD-01/03）：拓扑档卡体——字段行隐藏，仅表头高度圆角卡 +
+/// 大字表名（font_world 由 lod_table_font_size 给出，屏幕字号 ≥11px）；
+/// 投影/底色/边框/表头渐变/R-COLOR-04 前景与详情档同源。
+fn draw_table_topology_body(
+    ctx: &CanvasRenderingContext2d,
+    table: &Table,
+    palette: &CanvasPalette,
+    shadow_boost: f64,
+    comment_mode: CommentDisplay,
+    font_world: f64,
+) {
+    let (width, height) = lod_table_size(table, comment_mode, LodTier::Topology);
+    let x = table.x;
+    let y = table.y;
+
+    ctx.save();
+    let _ = ctx.set_shadow_color("rgba(0, 0, 0, 0.18)");
+    let _ = ctx.set_shadow_blur(16.0 * shadow_boost);
+    let _ = ctx.set_shadow_offset_x(0.0);
+    let _ = ctx.set_shadow_offset_y(6.0 * shadow_boost);
+    let _ = ctx.set_fill_style_str(palette.table_bg);
+    ctx.begin_path();
+    round_rect(ctx, x, y, width, height, 14.0);
+    ctx.fill();
+    ctx.restore();
+
+    let _ = ctx.set_stroke_style_str(table_border_color(&table.color, palette.table_border));
+    ctx.set_line_width(1.0);
+    ctx.begin_path();
+    round_rect(ctx, x, y, width, height, 14.0);
+    ctx.stroke();
+
+    // 表头渐变（拓扑档整卡即表头，全圆角裁剪）
+    let header_tint = if table.color.trim().is_empty() {
+        palette.header_tint
+    } else {
+        table.color.as_str()
+    };
+    ctx.save();
+    ctx.begin_path();
+    round_rect(ctx, x, y, width, height, 14.0);
+    ctx.clip();
+    let gradient = ctx.create_linear_gradient(x, y, x + width, y);
+    gradient.add_color_stop(0.0, header_tint).ok();
+    gradient.add_color_stop(1.0, "rgba(0,0,0,0)").ok();
+    let _ = ctx.set_fill_style_str("rgba(0,0,0,0)");
+    ctx.set_fill_style_canvas_gradient(&gradient);
+    ctx.fill_rect(x, y, width, height);
+    ctx.restore();
+
+    // 表名：R-CMT-01 主文本（comment 模式显示注释），750 大字 + R-COLOR-04 前景
+    let header_fg = header_foreground_colors(
+        header_tint,
+        palette.table_bg,
+        PALETTE_LIGHT.text_strong,
+        PALETTE_LIGHT.text_muted,
+        PALETTE_DARK.text_strong,
+        PALETTE_DARK.text_muted,
+        !current_theme_dark(),
+    );
+    let label = comment_mode.primary(&table.name, &table.comment);
+    let _ = ctx.set_fill_style_str(header_fg.strong);
+    let _ = ctx.set_font(&dpr_font(750, font_world, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
+    let _ = ctx.set_text_baseline("middle");
+    let _ = ctx.set_text_align("left");
+    let _ = ctx.fill_text(&truncate_to_width(ctx, label, width - 22.0), x + 11.0, y + height / 2.0);
+}
+
 /// 选中态：主原型 .is-selected —— brand 描边 + 3px brand-soft 外环。
 /// R-PERF-07：选中环每帧活画（不含在精灵缓存内），选中切换不失效卡体缓存。
-fn draw_table_selection(ctx: &CanvasRenderingContext2d, table: &Table, palette: &CanvasPalette) {
-    let (width, total_height) = compute_table_render_size(table);
+fn draw_table_selection(ctx: &CanvasRenderingContext2d, table: &Table, palette: &CanvasPalette, comment_mode: CommentDisplay, tier: LodTier) {
+    // #30：选中环尺寸按档位取（拓扑档仅表头高，避免圈出隐藏的字段区）
+    let (width, total_height) = lod_table_size(table, comment_mode, tier);
     let x = table.x;
     let y = table.y;
     let _ = ctx.set_stroke_style_str(palette.selected_soft);
@@ -4728,8 +4926,9 @@ fn clear_stroke_dash(ctx: &CanvasRenderingContext2d) {
 }
 
 /// #21/#22：按 line_type / stroke_style / 源表色 / 密度 alpha 绘制关系。
-/// #31 UT-PE-HL-01：`width_scale` 为相关态线宽倍率（1.0 或 1.5），仅作用于非选中态；
-/// 选中态 3.5/10.0 已是最强高亮，不再叠加。
+/// #31 UT-PE-HL-01：`hl_scale` 为相关态线宽倍率（1.0 或 1.5），仅作用于非选中态；
+/// #30 UT-CR-LOD-01（R-LOD-04）：`lod_scale` 为拓扑档线宽补偿倍率，选中/非选中均叠乘
+/// （详情档恒 1.0 无回归）。
 fn draw_relation(
     ctx: &CanvasRenderingContext2d,
     from: &Table,
@@ -4743,7 +4942,8 @@ fn draw_relation(
     line_type: &str,
     stroke_style: &str,
     opacity: f64,
-    width_scale: f64,
+    hl_scale: f64,
+    lod_scale: f64,
 ) {
     let stroke = relation_stroke_color(ref_color, source_table_color, palette.relation);
     ctx.save();
@@ -4751,8 +4951,8 @@ fn draw_relation(
 
     let stroke_main = if selected { palette.selected } else { stroke };
     let halo = if selected { palette.selected_soft } else { palette.relation_halo };
-    let halo_w = if selected { 10.0 } else { 7.0 * width_scale };
-    let main_w = if selected { 3.5 } else { 2.0 * width_scale };
+    let halo_w = if selected { 10.0 } else { 7.0 * hl_scale } * lod_scale;
+    let main_w = if selected { 3.5 } else { 2.0 * hl_scale } * lod_scale;
 
     match line_type {
         "orthogonal" => {
@@ -6371,31 +6571,31 @@ mod tests {
         moved.x = 999.0;
         moved.y = -40.0;
         assert_eq!(
-            table_sprite_fingerprint(&t, true, 200, 1, crate::editor_core::CommentDisplay::NameComment),
-            table_sprite_fingerprint(&moved, true, 200, 1, crate::editor_core::CommentDisplay::NameComment),
+            table_sprite_fingerprint(&t, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail),
+            table_sprite_fingerprint(&moved, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail),
             "UT-CR-SPRITE-01: 位置变化不得改变指纹"
         );
 
         // 内容变更失效：改名 / 改字段类型 / 改主键 / 改色 / 改宽 / 主题 / dpr / 分档
-        let base = table_sprite_fingerprint(&t, true, 200, 1, crate::editor_core::CommentDisplay::NameComment);
+        let base = table_sprite_fingerprint(&t, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail);
         let mut renamed = t.clone();
         renamed.name = "other".into();
-        assert_ne!(table_sprite_fingerprint(&renamed, true, 200, 1, crate::editor_core::CommentDisplay::NameComment), base, "改名失效");
+        assert_ne!(table_sprite_fingerprint(&renamed, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail), base, "改名失效");
         let mut retyped = t.clone();
         retyped.fields[0].type_ = "UUID".into();
-        assert_ne!(table_sprite_fingerprint(&retyped, true, 200, 1, crate::editor_core::CommentDisplay::NameComment), base, "改字段类型失效");
+        assert_ne!(table_sprite_fingerprint(&retyped, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail), base, "改字段类型失效");
         let mut unpk = t.clone();
         unpk.fields[0].primary = false;
-        assert_ne!(table_sprite_fingerprint(&unpk, true, 200, 1, crate::editor_core::CommentDisplay::NameComment), base, "改主键失效");
+        assert_ne!(table_sprite_fingerprint(&unpk, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail), base, "改主键失效");
         let mut recolor = t.clone();
         recolor.color = "#fff".into();
-        assert_ne!(table_sprite_fingerprint(&recolor, true, 200, 1, crate::editor_core::CommentDisplay::NameComment), base, "改色失效");
+        assert_ne!(table_sprite_fingerprint(&recolor, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail), base, "改色失效");
         let mut resized = t.clone();
         resized.width = Some(320);
-        assert_ne!(table_sprite_fingerprint(&resized, true, 200, 1, crate::editor_core::CommentDisplay::NameComment), base, "改宽失效");
-        assert_ne!(table_sprite_fingerprint(&t, false, 200, 1, crate::editor_core::CommentDisplay::NameComment), base, "主题切换失效");
-        assert_ne!(table_sprite_fingerprint(&t, true, 100, 1, crate::editor_core::CommentDisplay::NameComment), base, "dpr 变化失效");
-        assert_ne!(table_sprite_fingerprint(&t, true, 200, 2, crate::editor_core::CommentDisplay::NameComment), base, "zoom 分档切换失效");
+        assert_ne!(table_sprite_fingerprint(&resized, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail), base, "改宽失效");
+        assert_ne!(table_sprite_fingerprint(&t, false, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail), base, "主题切换失效");
+        assert_ne!(table_sprite_fingerprint(&t, true, 100, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail), base, "dpr 变化失效");
+        assert_ne!(table_sprite_fingerprint(&t, true, 200, 2, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail), base, "zoom 分档切换失效");
     }
 
     /// UT-CR-GUARD-01 — DOM 写守护：值未变不写（R-PERF-08）
@@ -6632,6 +6832,66 @@ mod tests {
             "UT-PE-CMT-01: 空注释不渲染"
         );
         assert_eq!(crate::editor_core::CommentDisplay::NameComment.secondary("  "), None);
+    }
+
+    /// UT-CR-LOD-01 — LOD 档位判定与参数纯函数（#30，core-CR §6.y / R-LOD-01~04）
+    #[test]
+    fn ut_cr_lod_01_lod_tier_and_params() {
+        // 断言 1：0.5 / 0.35 → 拓扑档；0.56 / 1.0 → 详情档；滞回带 ±0.03 内保持原档
+        assert_eq!(lod_tier(0.5, LodTier::Detail), LodTier::Topology, "UT-CR-LOD-01: 0.5 必须拓扑档");
+        assert_eq!(lod_tier(0.35, LodTier::Detail), LodTier::Topology, "UT-CR-LOD-01: 0.35 必须拓扑档");
+        assert_eq!(lod_tier(0.56, LodTier::Detail), LodTier::Detail, "UT-CR-LOD-01: 0.56 滞回带内保持详情档");
+        assert_eq!(lod_tier(1.0, LodTier::Detail), LodTier::Detail, "UT-CR-LOD-01: 1.0 必须详情档");
+        assert_eq!(lod_tier(0.56, LodTier::Topology), LodTier::Topology, "UT-CR-LOD-01: 0.56 滞回带内保持拓扑档（不抖动）");
+        assert_eq!(lod_tier(0.53, LodTier::Topology), LodTier::Topology, "UT-CR-LOD-01: 0.53 滞回带内保持拓扑档");
+        assert_eq!(lod_tier(0.51, LodTier::Detail), LodTier::Topology, "UT-CR-LOD-01: 0.51 出滞回带必须切拓扑档");
+        assert_eq!(lod_tier(0.59, LodTier::Topology), LodTier::Detail, "UT-CR-LOD-01: 0.59 出滞回带必须切详情档");
+
+        // 断言 2：拓扑档表名世界字号保证屏幕 ≥11px（22px@0.5）；0.35 触发夹紧上限；详情档默认 13px
+        let f50 = lod_table_font_size(0.5, LodTier::Topology);
+        assert!((f50 - 22.0).abs() < 1e-9, "UT-CR-LOD-01: 0.5 世界字号必须 22px（实际 {f50}）");
+        assert!(f50 * 0.5 >= 11.0 - 1e-9, "UT-CR-LOD-01: 屏幕字号必须 ≥11px");
+        let f35 = lod_table_font_size(0.35, LodTier::Topology);
+        assert!((f35 - LOD_TABLE_FONT_WORLD_MAX).abs() < 1e-9, "UT-CR-LOD-01: 0.35 必须触发夹紧上限 {LOD_TABLE_FONT_WORLD_MAX}（实际 {f35}）");
+        assert_eq!(lod_table_font_size(0.5, LodTier::Detail), TABLE_NAME_FONT_PX, "UT-CR-LOD-01: 详情档必须返回默认字号");
+        assert_eq!(lod_table_font_size(1.0, LodTier::Detail), TABLE_NAME_FONT_PX);
+
+        // 断言 3：lod_line_width(0.5, base=2) ≥ 1.5/0.5=3px 世界宽；补偿倍率夹紧 ≤4×
+        let w50 = lod_line_width(0.5, 2.0);
+        assert!(w50 >= 1.5 / 0.5 - 1e-9, "UT-CR-LOD-01: 0.5 世界线宽必须 ≥3px（实际 {w50}）");
+        let w01 = lod_line_width(0.1, 2.0);
+        assert!(w01 <= 2.0 * 4.0 + 1e-9, "UT-CR-LOD-01: 补偿倍率必须夹紧 ≤4×（实际 {w01}）");
+        assert!((w01 - 8.0).abs() < 1e-9, "UT-CR-LOD-01: 0.1 必须夹到 base×4=8（实际 {w01}）");
+
+        // 断言 4：LOD 档位进入精灵指纹——跨档不同、同档内相同（拖动不触发重光栅）
+        let t = Table {
+            id: "t1".into(),
+            name: "orders".into(),
+            x: 0.0,
+            y: 0.0,
+            color: String::new(),
+            comment: String::new(),
+            fields: vec![],
+            indices: vec![],
+            width: None,
+            min_height: None,
+        };
+        let mode = crate::editor_core::CommentDisplay::NameComment;
+        let fp_detail = table_sprite_fingerprint(&t, true, 200, 1, mode, LodTier::Detail);
+        let fp_topo = table_sprite_fingerprint(&t, true, 200, 1, mode, LodTier::Topology);
+        assert_ne!(fp_detail, fp_topo, "UT-CR-LOD-01: 跨档指纹必须不同（触发重光栅）");
+        assert_eq!(
+            table_sprite_fingerprint(&t, true, 200, 1, mode, LodTier::Topology),
+            fp_topo,
+            "UT-CR-LOD-01: 同档内指纹必须相同"
+        );
+        // 同档内移动（x/y 变化）指纹不变——拖动不触发重光栅
+        let moved = Table { x: 40.0, y: 80.0, ..t.clone() };
+        assert_eq!(
+            table_sprite_fingerprint(&moved, true, 200, 1, mode, LodTier::Topology),
+            fp_topo,
+            "UT-CR-LOD-01: 同档内拖动指纹必须相同"
+        );
     }
 
     /// ST-CR-MULTI-01：多选集合内表必须有选中视觉（对齐 #5 reopen）

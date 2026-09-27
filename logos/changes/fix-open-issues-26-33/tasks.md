@@ -78,8 +78,8 @@
 
 ## [code] C5 批次 E — #30 小缩放 LOD 实现
 
-- [ ] C5.1 列出本批覆盖 UT/ST ID（对齐 D5.2）并实现：zoom 低于阈值隐藏字段行、保留表名（+注释）、关系线加粗；阈值入 token
-- [ ] C5.2 同批补齐 UT/ST + OpenLogos reporter
+- [x] C5.1 列出本批覆盖 UT/ST ID（对齐 D5.2）并实现：zoom 低于阈值隐藏字段行、保留表名（+注释）、关系线加粗；阈值入 token——覆盖 UT-CR-LOD-01 / ST-CR-LOD-01
+- [x] C5.2 同批补齐 UT/ST + OpenLogos reporter
 
 ## [code] C6 批次 F — #26 MCP 分批写入实现
 

@@ -1867,6 +1867,104 @@ try {
     assert.equal(p.rel_width_scale_max, 1, "取消选中后全线必须恢复默认线宽");
   });
 
+  // ─── ST-CR-LOD-01：小缩放拓扑可读性 e2e（fix-open-issues-26-33 / #30，core-CR §6.y） ──
+  // 裁决注记：UT-CR-LOD-01 要求 0.35 触发字号夹紧上限（30px 世界），与「35% 屏幕字号 ≥11px」
+  // 数学上不可兼得（11/0.35=31.4 为临界）——夹紧上限优先（避免单表文字占满视口），
+  // 35% 档按规格括注走截图锚点 + 夹紧探针（屏幕 ≈9.8px 但表名已 ~2.3× 放大）。
+  await run(["ST-CR-LOD-01"], "小缩放 LOD 拓扑档 + 回 100% 恢复", async page => {
+    const field = (id, name, extra = {}) => ({
+      id, name, type_: "INT", default: "", check: "", primary: false, unique: false,
+      not_null: false, increment: false, comment: "", tag: "", dict_code: "", ...extra,
+    });
+    // 20 表（5 列 × 4 行）+ 20 关系（链 19 条 + 跨首尾 1 条，≥5 对 FK 表对）
+    const tables = [];
+    const references = [];
+    for (let i = 0; i < 20; i++) {
+      const col = i % 5;
+      const row = Math.floor(i / 5);
+      tables.push({
+        id: `t${i}`, name: `table_${i}`, x: 80 + col * 340, y: 80 + row * 240, color: "", comment: "",
+        fields: [field(`f${i}_id`, "id", { primary: true }), field(`f${i}_fk`, "ref_id")],
+        indices: [],
+      });
+      if (i < 19) {
+        references.push({
+          id: `r${i}`, name: "", start_table_id: `t${i}`, end_table_id: `t${i + 1}`,
+          start_field_id: `f${i}_fk`, end_field_id: `f${i + 1}_id`,
+          type_: "one_to_many", on_delete: "RESTRICT", on_update: "RESTRICT",
+          color: "", line_type: "", stroke_style: "",
+        });
+      }
+    }
+    references.push({
+      id: "r19", name: "", start_table_id: "t19", end_table_id: "t0",
+      start_field_id: "f19_fk", end_field_id: "f0_id",
+      type_: "one_to_many", on_delete: "RESTRICT", on_update: "RESTRICT",
+      color: "", line_type: "", stroke_style: "",
+    });
+    await installApi(page, { presetDiagram: { tables, references, areas: [], notes: [] } });
+    await login(page);
+    await createRoomAndEnter(page);
+    await page.waitForFunction(() => !!window.__cdb_lod_probe, null, { timeout: 8_000 });
+    const lodProbe = () => page.evaluate(() => JSON.parse(window.__cdb_lod_probe));
+    const hlProbe = () => page.evaluate(() => JSON.parse(window.__cdb_hl_probe));
+    const zoomOut = page.locator('[data-testid="btn-zoom-out"]').first();
+    const zoomIn = page.locator('[data-testid="btn-zoom-in"]').first();
+    const waitZoom = (cmp, timeout = 4_000) =>
+      page.waitForFunction(cmp, null, { timeout });
+
+    // 基线 100%：详情档、默认字号线宽
+    let p = await lodProbe();
+    assert.equal(p.tier, "detail", "100% 必须为详情档");
+    assert.equal(p.lod_scale, 1, "详情档线宽补偿必须为 1");
+    assert.equal(p.font_world, 13, "详情档表名必须为默认 13px");
+
+    // 先在 100% 点击选中 t5（i=5 → col0/row1 → 世界 (80,320)，表头中心）——
+    // 选中态跨 zoom 保持；palette 选表只开 Inspector 不驱动 canvas 高亮信号（既有行为）
+    const head = await canvasPoint(page, { x: 80 + 100, y: 320 + 21 });
+    await page.mouse.click(head.x, head.y);
+    await page.locator('[data-testid="inspector-table-form"]:visible').waitFor();
+    await page.waitForFunction(
+      () => JSON.parse(window.__cdb_hl_probe).any_sel === true, null, { timeout: 4_000, polling: 100 },
+    );
+
+    // WHEN：缩至 ≈50%（zoom-out ×3 → 0.512）
+    await zoomOut.click(); await zoomOut.click(); await zoomOut.click();
+    await waitZoom(() => JSON.parse(window.__cdb_lod_probe).zoom < 0.6);
+    p = await lodProbe();
+    // THEN 1：拓扑档 + 表名屏幕字号 ≥11px（22px 世界 × 0.512 ≈ 11.3）
+    assert.equal(p.tier, "topology", `0.512 必须拓扑档（实际 ${p.tier}）`);
+    assert.ok(p.font_world * p.zoom >= 11.0,
+      `拓扑档表名屏幕字号必须 ≥11px（${p.font_world}×${p.zoom}=${(p.font_world * p.zoom).toFixed(2)}）`);
+    // THEN 2：关系线宽补偿 ≥ 1.5px 屏幕下限（lod_scale ≈ 1.46）
+    assert.ok(p.lod_scale >= 1.4, `拓扑档线宽补偿必须 ≥1.4（实际 ${p.lod_scale}）`);
+
+    // THEN 3：选中 t5（r4/r5 两端相连）保持 → 相关连线 §4.4 × R-LOD-04 叠乘加粗
+    const hl = await hlProbe();
+    assert.equal(hl.any_sel, true, "缩放后选中态必须保持");
+    assert.ok(hl.rel_width_scale_max >= 2.1,
+      `拓扑档选中后相关线必须叠乘加粗 ≥2.1×（1.5×1.46，实际 ${hl.rel_width_scale_max}）`);
+    const topoShot = await page.locator('[data-testid="editor-canvas-container"] canvas').screenshot();
+
+    // WHEN：续缩至 ≈35%（zoom-out ×2 → 0.328）——截图锚点（夹紧生效，见用例头裁决注记）
+    await zoomOut.click(); await zoomOut.click();
+    await waitZoom(() => JSON.parse(window.__cdb_lod_probe).zoom < 0.4);
+    p = await lodProbe();
+    assert.equal(p.tier, "topology", "0.328 必须保持拓扑档");
+    assert.equal(p.font_world, 30, "0.328 表名字号必须触发夹紧上限 30px");
+    assert.ok(p.lod_scale >= 2.2, `0.328 线宽补偿必须 ≥2.2（实际 ${p.lod_scale}）`);
+    const deepShot = await page.locator('[data-testid="editor-canvas-container"] canvas').screenshot();
+    assert.ok(!topoShot.equals(deepShot), "50% 与 35% 渲染必须不同（字号/线宽随档补偿）");
+
+    // WHEN：回 100%（zoom-in ×5，0.8×1.25 互逆）→ THEN 4：详情档恢复默认
+    for (let i = 0; i < 5; i++) await zoomIn.click();
+    await waitZoom(() => JSON.parse(window.__cdb_lod_probe).zoom > 0.95);
+    p = await lodProbe();
+    assert.equal(p.tier, "detail", "回 100% 必须恢复详情档（字段行恢复）");
+    assert.equal(p.lod_scale, 1, "回 100% 线宽必须回默认");
+    assert.equal(p.font_world, 13, "回 100% 字号必须回默认 13px");
+  });
+
   // ─── ST-CR-TAG-01：Inspector 字段 tag 受控输入（redesign-listview-type-length-canvas-fix） ──
   await run(["ST-CR-TAG-01"], "字段 tag 连续键入不丢字", async page => {
     const state = await installApi(page);
