@@ -6467,6 +6467,9 @@ pub fn Inspector(
     /// fix-open-issues-26-33（issue #27，R-ARESZ-04）：区域矩形落账
     /// (area_id, before(x,y,w,h), after(x,y,w,h)) → Command::SetAreaRect（单次 Undo 还原）
     on_resize_area: Rc<dyn Fn(String, (f64, f64, f64, f64), (f64, f64, f64, f64))>,
+    /// fix-open-issues-26-33（issue #28，core-01b §4.6）：批量 line_type 落账
+    /// (目标 line_type) → Command::SetAllLineType 单条命令（一次 Undo 全部还原）
+    on_apply_line_type_all: Rc<dyn Fn(String)>,
     on_update_note: Rc<dyn Fn(String, String)>,
     // redesign-listview-type-length-canvas-fix：字段 tag 落账通路（table_id, field_id, tag）——
     // 原 tag blur 只写 store + dirty 不触发保存，PUT 不落账（ST-CR-TAG-01）
@@ -7122,7 +7125,9 @@ pub fn Inspector(
                         }
                     }
                     SelectionKind::Reference(ref_id) => {
+                        let ro = read_only();
                         let refs = store.references.get();
+                        let refs_empty = refs.is_empty();
                         let reference = refs.iter().find(|r| r.id == ref_id);
                         if let Some(r) = reference {
                             let rid = ref_id.clone();
@@ -7159,6 +7164,9 @@ pub fn Inspector(
                             } else {
                                 r.line_type.clone()
                             };
+                            // fix-open-issues-26-33（issue #28，core-01b §4.6）：批量应用取当前控件值
+                            let apply_line_type = ref_line_type.clone();
+                            let on_apply_all = on_apply_line_type_all.clone();
                             let ref_stroke_style = if r.stroke_style.is_empty() {
                                 "solid".to_string()
                             } else {
@@ -7246,6 +7254,16 @@ pub fn Inspector(
                                                 view! { <option value=value selected=sel>{label}</option> }
                                             } />
                                         </select>
+                                        // fix-open-issues-26-33（issue #28，core-01b §4.6）：
+                                        // 以当前控件值批量应用到全部关系（单条 SetAllLineType 命令）
+                                        <button
+                                            class="cdb-btn cdb-btn--sm cdb-btn--block"
+                                            data-testid="inspector-rel-line-type-apply-all"
+                                            disabled=ro || refs_empty
+                                            on:click=move |_| on_apply_all(apply_line_type.clone())
+                                        >
+                                            "应用到全部关系"
+                                        </button>
                                     </div>
                                     <div class="cdb-form-group">
                                         <label>"线型"</label>
@@ -12492,6 +12510,54 @@ pub fn AppRoot(
             on_resize_area(area_id, before, after);
         }))
     };
+    // fix-open-issues-26-33（issue #28，core-01b §4.6）：批量 line_type 落账——
+    // Inspector「应用到全部关系」与 Command Palette 三命令统一走 Command::SetAllLineType
+    // 单条命令（一次 Undo 全部还原）；无关系 toast 提示；全部已是目标值不产生命令。
+    let on_apply_line_type_all = {
+        let store = store.clone();
+        let debouncer = debouncer.clone();
+        let client_for_bulk_line = client.clone();
+        let import_notice = import_notice.clone();
+        Rc::new(move |line_type: String| {
+            if editor_is_read_only(share_mode, current_room) {
+                return;
+            }
+            let refs = store.references.get();
+            if refs.is_empty() {
+                import_notice.set(Some("当前图无关系".to_string()));
+                return;
+            }
+            let before = crate::editor_core::line_type_bulk_diff(&refs, &line_type);
+            if before.is_empty() {
+                return;
+            }
+            let cmd = crate::editor_core::Command::SetAllLineType {
+                before,
+                after: line_type,
+            };
+            let stack_rc = command_stack.get();
+            let mut stack = stack_rc.borrow_mut();
+            if crate::editor_core::CommandStack::apply(&store, &mut stack, cmd).is_err() {
+                return;
+            }
+            drop(stack);
+            schedule_save(
+                client_for_bulk_line.clone(),
+                store.clone(),
+                current_diagram_id.clone(),
+                current_title.clone(),
+                debouncer.clone(),
+                conflict.clone(),
+                error.clone(),
+                is_saving.clone(),
+                save_offline.clone(),
+                collab_state,
+                activity_feed,
+                current_room.clone(),
+                auth_session.clone(),
+            );
+        })
+    };
     let on_update_note = {
         let store = store.clone();
         let debouncer = debouncer.clone();
@@ -12634,6 +12700,7 @@ pub fn AppRoot(
         let view_mode = view_mode;
         let client = client.clone();
         let debouncer = debouncer.clone();
+        let on_apply_line_type_all = on_apply_line_type_all.clone();
         Callback::new(move |item: PaletteItem| match item.kind {
             crate::command_palette::PaletteKind::Table => {
                 let id = item.id.clone();
@@ -12673,6 +12740,13 @@ pub fn AppRoot(
                     current_room.clone(),
                     auth_session.clone(),
                 );
+            }
+            crate::command_palette::PaletteKind::Action
+                if item.id.starts_with("action:line-type-") =>
+            {
+                // fix-open-issues-26-33（issue #28，core-01b §4.6）：批量线型命令
+                let line_type = item.id.trim_start_matches("action:line-type-").to_string();
+                on_apply_line_type_all(line_type);
             }
             _ => {}
         })
@@ -13028,6 +13102,7 @@ pub fn AppRoot(
                     on_delete_ref=on_delete_ref.clone()
                     on_update_area=on_update_area.clone()
                     on_resize_area=on_resize_area.clone()
+                    on_apply_line_type_all=on_apply_line_type_all.clone()
                     on_update_note=on_update_note.clone()
                     on_update_field_tag=on_update_field_tag.clone()
                     on_set_field_dict=on_set_field_dict.clone()

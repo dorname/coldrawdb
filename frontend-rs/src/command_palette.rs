@@ -46,14 +46,36 @@ pub fn filter_palette_items(items: &[PaletteItem], query: &str) -> Vec<PaletteIt
 }
 
 /// 从 diagram 表 / 关系构建 palette 列表。
-/// 固定前置 Action：`action:layout`（整理布局，#23）。
+/// 固定前置 Action：`action:layout`（整理布局，#23）+
+/// fix-open-issues-26-33（#28，core-01b §4.6）：`action:line-type-straight/orthogonal/bezier`
+/// （批量线型，testid `palette-action-line-type-*`）。
 pub fn build_palette_items(tables: &[Table], references: &[Reference]) -> Vec<PaletteItem> {
-    let mut items: Vec<PaletteItem> = vec![PaletteItem {
-        kind: PaletteKind::Action,
-        id: "action:layout".into(),
-        label: "整理布局".into(),
-        subtitle: Some("力导向 · 对齐 MCP".into()),
-    }];
+    let mut items: Vec<PaletteItem> = vec![
+        PaletteItem {
+            kind: PaletteKind::Action,
+            id: "action:layout".into(),
+            label: "整理布局".into(),
+            subtitle: Some("力导向 · 对齐 MCP".into()),
+        },
+        PaletteItem {
+            kind: PaletteKind::Action,
+            id: "action:line-type-straight".into(),
+            label: "将全部关系设为直线".into(),
+            subtitle: Some("批量线条类型".into()),
+        },
+        PaletteItem {
+            kind: PaletteKind::Action,
+            id: "action:line-type-orthogonal".into(),
+            label: "将全部关系设为正交线".into(),
+            subtitle: Some("批量线条类型".into()),
+        },
+        PaletteItem {
+            kind: PaletteKind::Action,
+            id: "action:line-type-bezier".into(),
+            label: "将全部关系设为贝塞尔曲线".into(),
+            subtitle: Some("批量线条类型".into()),
+        },
+    ];
     for t in tables {
         items.push(PaletteItem {
             kind: PaletteKind::Table,
@@ -260,12 +282,24 @@ mod tests {
             min_height: None,
         }];
         let items = build_palette_items(&tables, &[]);
-        // Action「整理布局」固定前置 + 1 张表
-        assert_eq!(items.len(), 2);
+        // 固定前置 Action（整理布局 + fix-open-issues-26-33 / #28 批量线型 ×3）+ 1 张表
+        assert_eq!(items.len(), 5);
         assert_eq!(items[0].id, "action:layout");
         assert_eq!(items[0].kind, PaletteKind::Action);
         assert_eq!(items[0].label, "整理布局");
-        assert_eq!(items[1].label, "orders");
+        // #28：三个批量线型命令齐备且为 Action 类
+        for (idx, id) in [
+            "action:line-type-straight",
+            "action:line-type-orthogonal",
+            "action:line-type-bezier",
+        ]
+        .iter()
+        .enumerate()
+        {
+            assert_eq!(items[idx + 1].id, *id);
+            assert_eq!(items[idx + 1].kind, PaletteKind::Action);
+        }
+        assert_eq!(items[4].label, "orders");
     }
 
     /// ST-PB-09：palette 含整理布局 Action，触发后连通表坐标变化

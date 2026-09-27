@@ -66,9 +66,9 @@
 
 ## [code] C3 批次 C — #28 批量线型实现
 
-- [ ] C3.1 列出本批覆盖 UT/ST ID（对齐 D3.3）并实现：Inspector「应用到全部关系」+ 命令面板命令
-- [ ] C3.2 批量修改走一次 CommandStack 事务（单次 Undo）；只读禁用；保存刷新保持
-- [ ] C3.3 同批补齐 UT/ST + OpenLogos reporter
+- [x] C3.1 列出本批覆盖 UT/ST ID（对齐 D3.3）并实现：Inspector「应用到全部关系」+ 命令面板命令
+- [x] C3.2 批量修改走一次 CommandStack 事务（单次 Undo）；只读禁用；保存刷新保持
+- [x] C3.3 同批补齐 UT/ST + OpenLogos reporter
 
 ## [code] C4 批次 D — #31/#32 可读性渲染实现
 

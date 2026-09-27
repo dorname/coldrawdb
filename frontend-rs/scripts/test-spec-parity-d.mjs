@@ -197,12 +197,16 @@ async function installApi(page, options = {}) {
       // fix-open-issues-26-33（ST-CR-AREA-02）：persistGet 时回放最近一次 PUT 落账文档
       // （刷新持久性断言；缺省保持空图，既有用例回归不破）
       const persisted = options.persistGet ? state.lastPutBody?.diagram : null;
+      // fix-open-issues-26-33（ST-PB-10 只读段）：presetDiagram 预置图文档（只读房间造图用）
+      const preset = options.presetDiagram ?? null;
       return response(route, 200, {
         code: 0, request_id: "load-diagram",
         // fix-pg-types-listview-zindex-lock-engine: diagramDatabase 透传（缺省 null = Generic 缺省，回归不破）
-        data: persisted
-          ? { id: "diagram-new", name: "架构评审室", database: options.diagramDatabase ?? null, revision: diagramRev, ...persisted }
-          : { id: "diagram-new", name: "架构评审室", database: options.diagramDatabase ?? null, revision: diagramRev, tables: [], references: [], areas: [], notes: [] },
+        data: preset
+          ? { id: "diagram-new", name: "架构评审室", database: options.diagramDatabase ?? null, revision: diagramRev, ...preset }
+          : persisted
+            ? { id: "diagram-new", name: "架构评审室", database: options.diagramDatabase ?? null, revision: diagramRev, ...persisted }
+            : { id: "diagram-new", name: "架构评审室", database: options.diagramDatabase ?? null, revision: diagramRev, tables: [], references: [], areas: [], notes: [] },
       });
     }
     if (url.pathname === "/api/v1/diagrams/diagram-new" && request.method() === "PUT") {
@@ -1653,6 +1657,126 @@ try {
     await page.locator('[data-testid="inspector-area-form"]:visible').waitFor();
     const wAfter = parseFloat(await page.locator('[data-testid="inspector-area-width"]').inputValue());
     assert.ok(Math.abs(wAfter - undone.width) < 1, `刷新后宽度必须保持（${undone.width} → ${wAfter}）`);
+  });
+
+  // ─── ST-PB-10：批量线型 apply-all + 命令面板（fix-open-issues-26-33 / #28，core-01b §4.6） ──
+  await run(["ST-PB-10"], "批量线型 apply-all + 命令面板", async page => {
+    const state = await installApi(page, { persistGet: true });
+    await login(page);
+    await createRoomAndEnter(page);
+
+    // 导入 3 表 3 FK（line_type 全默认 bezier）
+    await page.locator('[data-testid="btn-more-menu"]').click();
+    await page.locator('[data-testid="btn-import"]').click();
+    await page.locator('[data-testid="import-drawer"]:visible').waitFor();
+    await page.locator('[data-testid="import-textarea"]').fill(
+      "CREATE TABLE users (id UUID PRIMARY KEY);\n" +
+      "CREATE TABLE orders (id UUID PRIMARY KEY, user_id UUID REFERENCES users(id));\n" +
+      "CREATE TABLE items (id UUID PRIMARY KEY, order_id UUID REFERENCES orders(id), owner_id UUID REFERENCES users(id));",
+    );
+    await page.locator('[data-testid="import-parse-summary"]:visible').waitFor();
+    await page.locator('[data-testid="import-submit"]').click();
+    await waitSaved(page);
+    assert.equal(state.lastPutBody?.diagram?.references?.length, 3, "导入必须落账 3 条关系");
+    const rid0 = state.lastPutBody.diagram.references[0].id;
+
+    // Command Palette 选中首条关系 → Inspector 关系面板（不依赖画布连线命中）
+    await page.keyboard.press("Control+k");
+    await page.locator(`[data-testid="palette-item-${rid0}"]`).click();
+    await page.locator('[data-testid="inspector-reference-form"]:visible').waitFor();
+
+    // 制造混合线型：首条改 straight（单条落账），其余保持默认 bezier
+    await page.locator('[data-testid="inspector-rel-line-type"]').selectOption("straight");
+    await waitSaved(page);
+    assert.equal(state.lastPutBody?.diagram?.references?.[0]?.line_type, "straight", "单条改线型必须落账");
+
+    // apply-all → 全部 straight（单条命令事务）
+    const beforeAll = state.lastPutBody?.diagram?.references ?? [];
+    await page.locator('[data-testid="inspector-rel-line-type-apply-all"]').click();
+    await waitSaved(page);
+    const afterAll = state.lastPutBody?.diagram?.references ?? [];
+    assert.ok(afterAll.every(r => r.line_type === "straight"), "apply-all 后全部关系必须为 straight");
+
+    // 一次 Undo 恢复批量前各自值（rid0=straight 不变，其余恢复 apply-all 前各自原值）
+    await page.keyboard.press("Control+z");
+    await waitSaved(page);
+    const undone = state.lastPutBody?.diagram?.references ?? [];
+    assert.equal(undone.find(r => r.id === rid0)?.line_type, "straight", "Undo 不得串改单条直改的值");
+    for (const b of beforeAll.filter(r => r.id !== rid0)) {
+      assert.equal(
+        undone.find(r => r.id === b.id)?.line_type ?? "",
+        b.line_type ?? "",
+        `Undo 必须恢复 ${b.id} 到批量前原值（${b.line_type ?? '""'}）`,
+      );
+    }
+
+    // 再 apply-all → 刷新后保持（persistGet 回放 + Inspector 控件回显）
+    await page.locator('[data-testid="inspector-rel-line-type-apply-all"]').click();
+    await waitSaved(page);
+    await page.reload();
+    await createRoomAndEnter(page);
+    await page.keyboard.press("Control+k");
+    await page.locator(`[data-testid="palette-item-${rid0}"]`).click();
+    await page.locator('[data-testid="inspector-reference-form"]:visible').waitFor();
+    assert.equal(
+      await page.locator('[data-testid="inspector-rel-line-type"]').inputValue(),
+      "straight",
+      "刷新后线型必须保持 straight",
+    );
+
+    // palette 命令：全部关系设为 orthogonal
+    await page.keyboard.press("Escape"); // 关 Inspector 焦点干扰
+    await page.keyboard.press("Control+k");
+    await page.locator('[data-testid="palette-action-line-type-orthogonal"]').click();
+    await waitSaved(page);
+    const afterPalette = state.lastPutBody?.diagram?.references ?? [];
+    assert.ok(afterPalette.every(r => r.line_type === "orthogonal"), "palette 命令后全部关系必须为 orthogonal");
+  });
+
+  // ─── ST-PB-10（只读段）：viewer 房间入口禁用 / 命令不生效 ──
+  await run(["ST-PB-10"], "只读房间批量线型入口禁用", async page => {
+    const presetDiagram = {
+      tables: [
+        { id: "t1", name: "books", x: 100, y: 100, color: "", comment: "",
+          fields: [{ id: "f1", name: "id", type_: "INT", default: "", check: "", primary: true, unique: false, not_null: true, increment: false, comment: "", tag: "", dict_code: "" }],
+          indices: [] },
+        { id: "t2", name: "authors", x: 420, y: 100, color: "", comment: "",
+          fields: [{ id: "f2", name: "id", type_: "INT", default: "", check: "", primary: true, unique: false, not_null: true, increment: false, comment: "", tag: "", dict_code: "" },
+                   { id: "f3", name: "book_id", type_: "INT", default: "", check: "", primary: false, unique: false, not_null: false, increment: false, comment: "", tag: "", dict_code: "" }],
+          indices: [] },
+      ],
+      references: [
+        { id: "r-ro", name: "", start_table_id: "t2", end_table_id: "t1", start_field_id: "f3", end_field_id: "f1",
+          type_: "one_to_many", on_delete: "RESTRICT", on_update: "RESTRICT", color: "", line_type: "", stroke_style: "" },
+      ],
+      areas: [], notes: [],
+    };
+    const state = await installApi(page, {
+      roomsList: [{
+        id: "room-view", name: "只读评审室", diagramId: "diagram-new", diagramTitle: "只读评审室",
+        myRole: "viewer", memberCount: 2, updatedAt: "2026-08-23T00:02:00Z",
+      }],
+      presetDiagram,
+    });
+    await login(page);
+    await page.locator('[data-testid="room-card-room-view"]:visible').click();
+    await page.locator('[data-testid="room-editor-page"]:visible').waitFor();
+
+    // palette 选中关系（只读可选中查看）→ apply-all 按钮禁用
+    await page.keyboard.press("Control+k");
+    await page.locator('[data-testid="palette-item-r-ro"]').click();
+    await page.locator('[data-testid="inspector-reference-form"]:visible').waitFor();
+    assert.ok(
+      await page.locator('[data-testid="inspector-rel-line-type-apply-all"]').isDisabled(),
+      "只读房间 apply-all 必须禁用",
+    );
+
+    // palette 命令不生效（read_only 守卫）：执行后无任何 PUT
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Control+k");
+    await page.locator('[data-testid="palette-action-line-type-orthogonal"]').click();
+    await page.waitForTimeout(600);
+    assert.equal(state.putCalls, 0, "只读房间批量线型命令不得产生 PUT");
   });
 
   // ─── ST-CR-TAG-01：Inspector 字段 tag 受控输入（redesign-listview-type-length-canvas-fix） ──

@@ -551,6 +551,43 @@ pub enum Command {
         before: (f64, f64, f64, f64),
         after: (f64, f64, f64, f64),
     },
+    /// fix-open-issues-26-33（issue #28，core-01b §4.6）：批量 line_type 单条命令。
+    /// before 仅含实际变化的关系 (id, 旧 line_type 原样)；execute/apply 置 after，
+    /// revert 逐条恢复各自旧值（不串味、不丢条）。
+    SetAllLineType {
+        before: Vec<(String, String)>,
+        after: String,
+    },
+}
+
+/// fix-open-issues-26-33（issue #28，core-01b §4.6，UT-PB-17）：
+/// 批量 line_type 纯映射——全部关系设为目标值，其余字段（stroke_style / color 等）不变。
+pub fn apply_line_type_to_all(references: &[Reference], line_type: &str) -> Vec<Reference> {
+    references
+        .iter()
+        .map(|r| Reference {
+            line_type: line_type.to_string(),
+            ..r.clone()
+        })
+        .collect()
+}
+
+/// fix-open-issues-26-33（issue #28，UT-PB-17）：批量 diff——仅实际变化的关系
+/// (id, 旧值原样)。空串按默认 bezier 参与比较；空 references / 全部已是目标值 → 空
+/// （调用方据此不产生命令）。
+pub fn line_type_bulk_diff(references: &[Reference], line_type: &str) -> Vec<(String, String)> {
+    references
+        .iter()
+        .filter(|r| {
+            let cur = if r.line_type.is_empty() {
+                "bezier"
+            } else {
+                r.line_type.as_str()
+            };
+            cur != line_type
+        })
+        .map(|r| (r.id.clone(), r.line_type.clone()))
+        .collect()
 }
 
 /// S07：把字典集合 + 字段绑定快照写回 store（DictSnapshot apply/revert/execute 共用）。
@@ -866,6 +903,17 @@ impl CommandStack {
                 area.height = after.3;
                 store.areas.set(areas);
             }
+            Command::SetAllLineType { before, after } => {
+                let mut refs = store.references.get();
+                for (rid, _) in before {
+                    let r = refs
+                        .iter_mut()
+                        .find(|r| r.id == *rid)
+                        .ok_or_else(|| CoreError::new(format!("reference '{}' not found", rid)))?;
+                    r.line_type = after.clone();
+                }
+                store.references.set(refs);
+            }
         }
         store.dirty.set(true);
         stack.undo.push(cmd);
@@ -951,6 +999,17 @@ impl CommandStack {
                 area.height = before.3;
                 store.areas.set(areas);
             }
+            Command::SetAllLineType { before, .. } => {
+                let mut refs = store.references.get();
+                for (rid, old) in before {
+                    let r = refs
+                        .iter_mut()
+                        .find(|r| r.id == *rid)
+                        .ok_or_else(|| CoreError::new(format!("reference '{}' not found", rid)))?;
+                    r.line_type = old.clone();
+                }
+                store.references.set(refs);
+            }
         }
         store.dirty.set(true);
         Ok(())
@@ -1023,6 +1082,17 @@ impl CommandStack {
                 area.width = after.2;
                 area.height = after.3;
                 store.areas.set(areas);
+            }
+            Command::SetAllLineType { before, after } => {
+                let mut refs = store.references.get();
+                for (rid, _) in before {
+                    let r = refs
+                        .iter_mut()
+                        .find(|r| r.id == *rid)
+                        .ok_or_else(|| CoreError::new(format!("reference '{}' not found", rid)))?;
+                    r.line_type = after.clone();
+                }
+                store.references.set(refs);
             }
         }
         store.dirty.set(true);
@@ -1118,6 +1188,77 @@ mod tests {
 
     use super::*;
     use crate::editor_core::types::Field;
+
+    /// UT-PB-17 — 批量 line_type 命令纯函数与单次 Undo（fix-open-issues-26-33 / #28，core-01b §4.6）
+    #[test]
+    fn test_bulk_line_type_ut_pb_17() {
+        let mk_ref = |id: &str, line_type: &str| Reference {
+            id: id.into(),
+            name: format!("ref-{id}"),
+            start_table_id: "a".into(),
+            end_table_id: "b".into(),
+            start_field_id: "af".into(),
+            end_field_id: "bf".into(),
+            type_: "one_to_many".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+            color: "#ff0000".into(),
+            line_type: line_type.into(),
+            stroke_style: "dashed".into(),
+        };
+        let refs = vec![
+            mk_ref("r1", "bezier"),
+            mk_ref("r2", "orthogonal"),
+            mk_ref("r3", ""), // 空串 = 默认 bezier
+        ];
+
+        // 1) apply_line_type_to_all：全部设为目标值，其余字段（stroke_style/color）不变
+        let all = apply_line_type_to_all(&refs, "straight");
+        assert!(
+            all.iter().all(|r| r.line_type == "straight"),
+            "UT-PB-17: 批量后全部 line_type 必须为 straight"
+        );
+        assert!(
+            all.iter().all(|r| r.stroke_style == "dashed" && r.color == "#ff0000"),
+            "UT-PB-17: stroke_style / color 不得被批量改动"
+        );
+
+        // 2) 空 references → 无 diff（入口禁用口径的纯函数侧保证）
+        assert!(line_type_bulk_diff(&[], "straight").is_empty());
+
+        // 4) 已是目标值的关系不产生多余 diff；全部已是目标值 → 无命令
+        let diff = line_type_bulk_diff(&refs, "straight");
+        assert_eq!(diff.len(), 3, "UT-PB-17: 3 条均非 straight 应全部入 diff");
+        let mixed = vec![mk_ref("r1", "straight"), mk_ref("r2", "orthogonal")];
+        let diff2 = line_type_bulk_diff(&mixed, "straight");
+        assert_eq!(diff2, vec![("r2".to_string(), "orthogonal".to_string())]);
+        assert!(line_type_bulk_diff(&all, "straight").is_empty());
+        // 空串视为默认 bezier：目标 bezier 时空串条目不产生 diff
+        assert!(line_type_bulk_diff(&refs, "bezier")
+            .iter()
+            .all(|(id, _)| id != "r3"));
+
+        // 3) 批量入栈为单条命令 → 一次 undo 逐条恢复批量前值（不串味、不丢条）
+        let store = EditorStore::new();
+        store.references.set(refs.clone());
+        let mut stack = CommandStack::new();
+        let cmd = Command::SetAllLineType {
+            before: line_type_bulk_diff(&refs, "straight"),
+            after: "straight".to_string(),
+        };
+        CommandStack::apply(&store, &mut stack, cmd).expect("UT-PB-17: apply 应成功");
+        assert_eq!(stack.undo_len(), 1, "UT-PB-17: 批量必须恰为单条命令");
+        assert!(
+            store.references.get().iter().all(|r| r.line_type == "straight"),
+            "UT-PB-17: apply 后 store 全部 straight"
+        );
+        let popped = stack.undo().expect("UT-PB-17: undo 栈非空");
+        CommandStack::revert(&store, &popped).expect("UT-PB-17: revert 应成功");
+        let restored = store.references.get();
+        assert_eq!(restored[0].line_type, "bezier");
+        assert_eq!(restored[1].line_type, "orthogonal");
+        assert_eq!(restored[2].line_type, "", "UT-PB-17: 空串旧值必须原样恢复");
+    }
 
     /// UT-S01-07 — 表创建触发 undo 栈
     /// Spec: `core-S01-test-cases.md` line 107
