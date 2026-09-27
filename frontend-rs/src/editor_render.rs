@@ -38,6 +38,19 @@ pub const DRAG_THRESHOLD: f64 = 4.0;
 const CANVAS_FONT: &str = "\"Plus Jakarta Sans\", sans-serif";
 const CANVAS_FONT_MONO: &str = "ui-monospace, monospace";
 
+// ─── #33 视觉体系统一（core-07 §15.5 / core-08 §11，UT-PE-VIS-01）────────────
+/// 语义图标徽章统一外接尺寸（PK 钥匙 / FK 链环 / NN 星号 / UQ 菱形同源引用，无散值）。
+pub const BADGE_SIZE: f64 = 12.0;
+/// 徽章图标统一描边（与 ToolRail 图标 stroke 1.5 同一视觉语言）。
+pub const BADGE_STROKE: f64 = 1.5;
+/// 关系端点 crow's foot 记号统一外接尺寸（一/多端同一几何族）。
+pub const REL_ENDPOINT_SIZE: f64 = 10.0;
+/// 表卡圆角统一值（原 14/16 多值并存收敛为 8；选中环 = 本值 + 2.5 外扩）。
+pub const TABLE_CORNER_RADIUS: f64 = 8.0;
+/// 徽章间距 / 徽章组与字段名间距（draw_field_badges 与 estimate_content_width 同源）。
+const BADGE_GAP: f64 = 3.0;
+const BADGE_NAME_GAP: f64 = 4.0;
+
 /// 返回当前 `window.devicePixelRatio`（fallback 1）。封装于一处便于单测 mock。
 pub fn current_device_pixel_ratio() -> f64 {
     web_sys::window()
@@ -273,8 +286,12 @@ struct CanvasPalette {
     text_muted: &'static str,
     /// 字段行分隔线
     row_separator: &'static str,
-    /// PK 标记（amber）
+    /// PK 标记（amber，semantic.warning 系）
     pk_color: &'static str,
+    /// #33：FK 徽章（semantic.info 系，原型 --blue）
+    fk_color: &'static str,
+    /// #33：NOT NULL / UNIQUE 徽章（grey 系，与 text_muted 同阶）
+    constraint_color: &'static str,
     /// 关系主线（brand 72% × text-2）
     relation: &'static str,
     /// 关系底层光晕（surface-solid 70%，7px）
@@ -302,6 +319,8 @@ const PALETTE_LIGHT: CanvasPalette = CanvasPalette {
     text_muted: "#7b8d93",
     row_separator: "rgba(49,78,88,.09)",
     pk_color: "#e59b24",
+    fk_color: "#3788e5",
+    constraint_color: "#7b8d93",
     relation: "rgb(34,115,129)",
     relation_halo: "rgba(255,255,255,.7)",
     selected: "#1e8393",
@@ -324,6 +343,8 @@ const PALETTE_DARK: CanvasPalette = CanvasPalette {
     text_muted: "#86a3ab",
     row_separator: "rgba(194,232,238,.10)",
     pk_color: "#f5c45c",
+    fk_color: "#7ab8f5",
+    constraint_color: "#86a3ab",
     relation: "rgb(128,234,225)",
     relation_halo: "rgba(16,38,45,.7)",
     selected: "#5ee9dc",
@@ -3090,7 +3111,6 @@ pub fn estimate_content_width(table: &Table, comment_mode: CommentDisplay) -> f6
     const HEADER_NAME_CMT_GAP: f64 = 6.0;
     const HEADER_COUNT_RESERVE: f64 = 15.0; // 字段计数右对齐占位
     const FIELD_GAP: f64 = 8.0; // 名称↔注释、注释↔类型
-    const PK_NAME_EXTRA: f64 = 25.0; // primary 时 name_x 36−11
 
     let table_label = comment_mode.primary(&table.name, &table.comment);
     let mut max_w = LEFT_PAD + measure_text_approx(table_label) + HEADER_COUNT_RESERVE + RIGHT_PAD;
@@ -3105,12 +3125,16 @@ pub fn estimate_content_width(table: &Table, comment_mode: CommentDisplay) -> f6
 
     for field in &table.fields {
         let label = comment_mode.primary(&field.name, &field.comment);
-        let pk_extra = if field.primary { PK_NAME_EXTRA } else { 0.0 };
+        // #33：徽章占位与 draw_field_badges 同源（field_badges_width）。
+        // 纯函数无 refs 上下文，FK 徽章按 false 估算（仅 FK 无其他徽章的字段最多
+        // 低估 BADGE_SIZE+GAP≈15px，名称截断由 draw 侧留白吸收）。
+        let badges_extra =
+            field_badges_width(field_badges(field.primary, false, field.not_null, field.unique).len());
         let label_w = measure_text_approx(label);
         let type_w = measure_text_approx(&field.type_);
         let row = if let Some(fc) = comment_mode.secondary(&field.comment) {
             LEFT_PAD
-                + pk_extra
+                + badges_extra
                 + label_w
                 + FIELD_GAP
                 + measure_text_approx(fc)
@@ -3118,7 +3142,7 @@ pub fn estimate_content_width(table: &Table, comment_mode: CommentDisplay) -> f6
                 + type_w
                 + RIGHT_PAD
         } else {
-            LEFT_PAD + pk_extra + label_w + FIELD_GAP + type_w + RIGHT_PAD
+            LEFT_PAD + badges_extra + label_w + FIELD_GAP + type_w + RIGHT_PAD
         };
         max_w = max_w.max(row);
     }
@@ -3333,6 +3357,73 @@ pub fn relation_opacity(
 pub const RELATED_RELATION_WIDTH_FACTOR: f64 = 1.5;
 /// #31 UT-PE-HL-01：非相关表 alpha 上限（≤ 0.5，退到背景层）。
 pub const UNRELATED_TABLE_ALPHA: f64 = 0.5;
+
+// ─── #33 语义图标统一族（core-08 §11 / core-07 §15.5，UT-PE-VIS-01）──────────
+
+/// 字段语义徽章种类（渲染顺序固定 PK → FK → NN → UQ）。
+/// 图标族：钥匙 / 链环 / 星号 / 菱形线条图标（替代字块角标）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FieldBadge {
+    Pk,
+    Fk,
+    Nn,
+    Uq,
+}
+
+/// #33 UT-PE-VIS-01：字段语义徽章清单（同源尺寸 BADGE_SIZE / 描边 BADGE_STROKE）。
+/// `foreign` 由调用处经 fk_field_ids 推导（渲染纯函数不反向依赖 refs）。
+pub fn field_badges(primary: bool, foreign: bool, not_null: bool, unique: bool) -> Vec<FieldBadge> {
+    let mut badges = Vec::with_capacity(4);
+    if primary {
+        badges.push(FieldBadge::Pk);
+    }
+    if foreign {
+        badges.push(FieldBadge::Fk);
+    }
+    if not_null {
+        badges.push(FieldBadge::Nn);
+    }
+    if unique {
+        badges.push(FieldBadge::Uq);
+    }
+    badges
+}
+
+/// #33 UT-PE-VIS-01：徽章组占位宽（n 枚徽章 + 与字段名间距），
+/// draw_field_badges 与 estimate_content_width 同源引用，无散值。
+pub fn field_badges_width(count: usize) -> f64 {
+    if count == 0 {
+        0.0
+    } else {
+        count as f64 * (BADGE_SIZE + BADGE_GAP) + BADGE_NAME_GAP
+    }
+}
+
+/// #33 UT-PE-VIS-01：从关系推导 FK 字段集——many 侧字段为 FK；
+/// many_to_one → start_field_id，其余（one_to_many / one_to_one / 未知）→ end_field_id。
+pub fn fk_field_ids(refs: &[Reference]) -> std::collections::HashSet<&str> {
+    refs.iter()
+        .map(|r| {
+            if r.type_ == "many_to_one" {
+                r.start_field_id.as_str()
+            } else {
+                r.end_field_id.as_str()
+            }
+        })
+        .collect()
+}
+
+/// #33 UT-PE-VIS-01：cardinality → (start_many, end_many) 端点重数，
+/// crow's foot 端点按此绘制（"多"端三叉爪、"一"端单杠）；未知值按 one_to_many 处理。
+pub fn endpoint_multiplicity(cardinality: &str) -> (bool, bool) {
+    match cardinality {
+        "many_to_one" => (true, false),
+        "one_to_one" => (false, false),
+        // one_to_many / 空串 / 未知 → 默认一对多
+        _ => (false, true),
+    }
+}
+
 
 /// #31 UT-PE-HL-01：相关态判定——选中关系自身，或两端表之一被选中（含多选集合）。
 /// 无选中时返回 false（调用处据此保持默认线宽）。
@@ -3578,13 +3669,24 @@ pub fn draw_canvas(
                 opacity,
                 hl_scale,
                 lod_scale,
+                &r.type_,
             );
         }
     }
 
     // R-PERF-07：清理已删除表的精灵缓存
     evict_stale_sprites(tables);
+    // #33 UT-PE-VIS-01：FK 字段集（many 侧），供字段行徽章图标族渲染
+    let fk_fields = fk_field_ids(refs);
+    let mut badges_drawn = 0_usize;
     for table in collect_visible_tables(tables, vp) {
+        badges_drawn += table
+            .fields
+            .iter()
+            .map(|f| {
+                field_badges(f.primary, fk_fields.contains(f.id.as_str()), f.not_null, f.unique).len()
+            })
+            .sum::<usize>();
         // R-PERF-11：幽灵层接管中的表不在主画布绘制（拖拽期间主画布保持静态零损伤）
         if ghost_skip == Some(table.id.as_str()) {
             continue;
@@ -3604,10 +3706,10 @@ pub fn draw_canvas(
         if alpha < 0.999 {
             ctx.save();
             ctx.set_global_alpha(alpha);
-            draw_table(ctx, &visual, is_sel, palette, t.zoom, comment_mode);
+            draw_table(ctx, &visual, is_sel, palette, t.zoom, comment_mode, &fk_fields);
             ctx.restore();
         } else {
-            draw_table(ctx, &visual, is_sel, palette, t.zoom, comment_mode);
+            draw_table(ctx, &visual, is_sel, palette, t.zoom, comment_mode, &fk_fields);
         }
     }
 
@@ -3638,6 +3740,8 @@ pub fn draw_canvas(
     );
     // ST-CR-LOD-01 探针：暴露本帧 LOD 档位参数
     update_lod_probe(t.zoom, frame_tier, lod_scale);
+    // #33 ST-PE-09：视觉体系探针（本帧徽章绘制计数在表循环累计）
+    update_vis_probe(badges_drawn);
 
     ctx.restore();
 }
@@ -3715,6 +3819,28 @@ fn update_lod_probe(zoom: f64, tier: LodTier, lod_scale: f64) {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn update_lod_probe(_: f64, _: LodTier, _: f64) {}
+
+/// #33 ST-PE-09：视觉体系统一探针——e2e 经 window.__cdb_vis_probe 读取徽章/端点/圆角
+/// 常量与绘制口径（字块角标已移除，端点为 crow's foot 族）。
+#[cfg(target_arch = "wasm32")]
+fn update_vis_probe(badges_drawn: usize) {
+    if let Some(win) = web_sys::window() {
+        let target: &js_sys::Object = win.unchecked_ref();
+        let key = wasm_bindgen::JsValue::from_str("__cdb_vis_probe");
+        let json = format!(
+            "{{\"badge_size\":{},\"badge_stroke\":{},\"endpoint_size\":{},\"corner_radius\":{},\"endpoint_style\":\"crowsfoot\",\"text_badge\":false,\"badges_drawn\":{}}}",
+            BADGE_SIZE,
+            BADGE_STROKE,
+            REL_ENDPOINT_SIZE,
+            TABLE_CORNER_RADIUS,
+            badges_drawn
+        );
+        let _ = js_sys::Reflect::set(target, &key, &wasm_bindgen::JsValue::from_str(&json));
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn update_vis_probe(_: usize) {}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RemotePresence {
@@ -4287,11 +4413,81 @@ fn draw_comment_chip(ctx: &CanvasRenderingContext2d, chip_color: &str, x: f64, y
     ctx.restore();
 }
 
+/// #33 UT-PE-VIS-01（core-08 §11）：绘制字段语义徽章图标族（线条图标，非字块角标）。
+/// 统一 BADGE_SIZE 外接尺寸与 BADGE_STROKE 描边；色值仅取 palette 语义色阶
+/// （PK=warning 系 / FK=info 系 / NN·UQ=grey 系）。返回占用宽度（field_badges_width 同源）。
+fn draw_field_badges(
+    ctx: &CanvasRenderingContext2d,
+    badges: &[FieldBadge],
+    palette: &CanvasPalette,
+    x: f64,
+    y_center: f64,
+) -> f64 {
+    for (i, badge) in badges.iter().enumerate() {
+        let bx = x + i as f64 * (BADGE_SIZE + BADGE_GAP);
+        let by = y_center - BADGE_SIZE / 2.0;
+        let color = match badge {
+            FieldBadge::Pk => palette.pk_color,
+            FieldBadge::Fk => palette.fk_color,
+            FieldBadge::Nn | FieldBadge::Uq => palette.constraint_color,
+        };
+        ctx.save();
+        let _ = ctx.translate(bx, by);
+        let _ = ctx.set_stroke_style_str(color);
+        ctx.set_line_width(BADGE_STROKE);
+        ctx.set_line_cap("round");
+        ctx.set_line_join("round");
+        ctx.begin_path();
+        match badge {
+            // 钥匙：环 + 柄 + 两齿
+            FieldBadge::Pk => {
+                ctx.arc(4.0, 4.0, 2.3, 0.0, std::f64::consts::TAU).ok();
+                ctx.move_to(5.6, 5.6);
+                ctx.line_to(10.0, 10.0);
+                ctx.move_to(8.1, 8.1);
+                ctx.line_to(9.4, 6.8);
+                ctx.move_to(9.4, 9.4);
+                ctx.line_to(10.7, 8.1);
+                ctx.stroke();
+            }
+            // 链环：两个错位圆角矩形相扣
+            FieldBadge::Fk => {
+                round_rect(ctx, 1.0, 5.0, 5.5, 4.0, 2.0);
+                ctx.stroke();
+                ctx.begin_path();
+                round_rect(ctx, 5.5, 3.0, 5.5, 4.0, 2.0);
+                ctx.stroke();
+            }
+            // 星号：竖线 + 两条对角线
+            FieldBadge::Nn => {
+                ctx.move_to(6.0, 1.5);
+                ctx.line_to(6.0, 10.5);
+                ctx.move_to(2.1, 3.75);
+                ctx.line_to(9.9, 8.25);
+                ctx.move_to(9.9, 3.75);
+                ctx.line_to(2.1, 8.25);
+                ctx.stroke();
+            }
+            // 菱形：旋转正方形轮廓
+            FieldBadge::Uq => {
+                ctx.move_to(6.0, 1.5);
+                ctx.line_to(10.5, 6.0);
+                ctx.line_to(6.0, 10.5);
+                ctx.line_to(1.5, 6.0);
+                ctx.close_path();
+                ctx.stroke();
+            }
+        }
+        ctx.restore();
+    }
+    field_badges_width(badges.len())
+}
+
 /// R-PERF-07：表精灵指纹（变化触发重光栅）。fix-remote-github-issues-7-18：
 /// 表/字段 comment 与注释显示模式混入指纹（R-CMT-03——注释内容/模式变化必须重光栅）。
 /// #30 UT-CR-LOD-01：LOD 档位混入指纹（R-LOD-01——跨档重光栅；同档内指纹相同，
 /// 拖动/同档 zoom 微调不触发重光栅）。
-pub fn table_sprite_fingerprint(table: &Table, theme_dark: bool, dpr_x100: u32, zoom_bucket: u32, comment_mode: CommentDisplay, lod: LodTier) -> u64 {
+pub fn table_sprite_fingerprint(table: &Table, theme_dark: bool, dpr_x100: u32, zoom_bucket: u32, comment_mode: CommentDisplay, lod: LodTier, fk_bits: &[bool]) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     let mut mix = |bytes: &[u8]| {
         for &b in bytes {
@@ -4304,11 +4500,17 @@ pub fn table_sprite_fingerprint(table: &Table, theme_dark: bool, dpr_x100: u32, 
     mix(table.comment.as_bytes());
     mix(&table.width.unwrap_or(0).to_le_bytes());
     mix(&table.min_height.unwrap_or(0).to_le_bytes());
-    for f in &table.fields {
+    for (i, f) in table.fields.iter().enumerate() {
         mix(f.name.as_bytes());
         mix(f.type_.as_bytes());
         mix(f.comment.as_bytes());
-        mix(&[f.primary as u8]);
+        // #33：primary/unique/not_null/FK 均影响徽章渲染，全部混入指纹（缺位 FK 视为 false）
+        mix(&[
+            f.primary as u8,
+            f.unique as u8,
+            f.not_null as u8,
+            fk_bits.get(i).copied().unwrap_or(false) as u8,
+        ]);
     }
     mix(&[comment_mode as u8]);
     mix(&[theme_dark as u8]);
@@ -4353,6 +4555,7 @@ fn render_table_sprite(
     comment_mode: CommentDisplay,
     lod: LodTier,
     zoom: f64,
+    fk_fields: &std::collections::HashSet<&str>,
 ) -> Option<TableSprite> {
     let doc = web_sys::window()?.document()?;
     let canvas: web_sys::HtmlCanvasElement = doc
@@ -4376,7 +4579,7 @@ fn render_table_sprite(
         (SPRITE_MARGIN - table.y) * scale,
     );
     match lod {
-        LodTier::Detail => draw_table_body(&off, table, palette, shadow_boost, comment_mode),
+        LodTier::Detail => draw_table_body(&off, table, palette, shadow_boost, comment_mode, fk_fields),
         // #30：拓扑档字体世界尺寸 = lod_table_font_size（屏幕 ≥11px）；zoom 由调用处经
         // scale/CTM 自然缩放，光栅只需世界字号
         LodTier::Topology => draw_table_topology_body(
@@ -4400,6 +4603,7 @@ fn blit_table_sprite(
     zoom: f64,
     comment_mode: CommentDisplay,
     lod: LodTier,
+    fk_fields: &std::collections::HashSet<&str>,
 ) -> bool {
     // R-PERF-10 修正：精灵恒以真实 dpr 渲染/取指纹——backing 分辨率与主画布有效 dpr
     // 解耦（位块传输按世界坐标 dw/dh 绘制，主画布降采样时由 CTM 自然缩小，观感不劣化）。
@@ -4407,6 +4611,11 @@ fn blit_table_sprite(
     let dpr = current_device_pixel_ratio();
     let bucket = sprite_zoom_bucket(zoom);
     let scale = dpr * bucket as f64;
+    let fk_bits: Vec<bool> = table
+        .fields
+        .iter()
+        .map(|f| fk_fields.contains(f.id.as_str()))
+        .collect();
     let fp = table_sprite_fingerprint(
         table,
         current_theme_dark(),
@@ -4414,6 +4623,7 @@ fn blit_table_sprite(
         bucket,
         comment_mode,
         lod,
+        &fk_bits,
     );
     let sprite = TABLE_SPRITES.with(|c| {
         let mut map = c.borrow_mut();
@@ -4424,7 +4634,7 @@ fn blit_table_sprite(
         if !fresh {
             // shadow_boost = bucket / zoom（见 render_table_sprite 注释）
             let boost = bucket as f64 / zoom.max(0.01);
-            if let Some(s) = render_table_sprite(table, palette, scale, boost, fp, comment_mode, lod, zoom) {
+            if let Some(s) = render_table_sprite(table, palette, scale, boost, fp, comment_mode, lod, zoom, fk_fields) {
                 map.insert(table.id.clone(), s);
             }
         }
@@ -4540,13 +4750,15 @@ fn create_table_ghost(
     let boost = bucket as f64 / t.zoom.max(0.01);
     // #30：幽灵层卡体与被拖表同档位（拓扑档拖的是拓扑卡）
     let tier = lod_tier(t.zoom, LodTier::Detail);
-    let sprite = render_table_sprite(table, palette, scale, boost, 0, comment_mode, tier, t.zoom)?;
+    // #33：幽灵层仅在「无关系表」拖拽时创建（见调用处 table_has_references 守卫），
+    // 无关系即无 FK 徽章，fk 传空集
+    let sprite = render_table_sprite(table, palette, scale, boost, 0, comment_mode, tier, t.zoom, &std::collections::HashSet::new())?;
     let el = sprite.canvas;
     let parent = canvas.parent_element()?;
     let css_w = sprite.w_world * t.zoom;
     let css_h = sprite.h_world * t.zoom;
     // fix-remote-github-issues-7-18（issue #17，R-HL-01/02）：高亮环改为幽灵 canvas 内
-    // round_rect 描边（与 draw_table_selection 同一函数、同一 16/14 圆角口径）——
+    // round_rect 描边（与 draw_table_selection 同一函数、同一 TABLE_CORNER_RADIUS 口径）——
     // CSS outline 不贴合 border-radius，拖动时呈直角。幽灵层不再携带任何 outline 样式。
     if let Ok(Some(ctx)) = el.get_context("2d") {
         if let Ok(off) = ctx.dyn_into::<CanvasRenderingContext2d>() {
@@ -4581,18 +4793,18 @@ fn create_table_ghost(
     Some(ghost)
 }
 
-fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool, palette: &CanvasPalette, zoom: f64, comment_mode: CommentDisplay) {
+fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool, palette: &CanvasPalette, zoom: f64, comment_mode: CommentDisplay, fk_fields: &std::collections::HashSet<&str>) {
     // #30 UT-CR-LOD-01：每帧按 zoom 判档（渲染层无状态，滞回带内偏 Detail 防抖动）
     let tier = lod_tier(zoom, LodTier::Detail);
     // R-PERF-07：zoom ≤ SPRITE_CACHE_MAX_ZOOM 走精灵缓存；超出回退活画
-    if zoom <= SPRITE_CACHE_MAX_ZOOM && blit_table_sprite(ctx, table, palette, zoom, comment_mode, tier) {
+    if zoom <= SPRITE_CACHE_MAX_ZOOM && blit_table_sprite(ctx, table, palette, zoom, comment_mode, tier, fk_fields) {
         if selected {
             draw_table_selection(ctx, table, palette, comment_mode, tier);
         }
         return;
     }
     match tier {
-        LodTier::Detail => draw_table_body(ctx, table, palette, 1.0, comment_mode),
+        LodTier::Detail => draw_table_body(ctx, table, palette, 1.0, comment_mode, fk_fields),
         LodTier::Topology => draw_table_topology_body(
             ctx, table, palette, 1.0, comment_mode, lod_table_font_size(zoom, tier),
         ),
@@ -4602,13 +4814,14 @@ fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool, pal
     }
 }
 
-fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &CanvasPalette, shadow_boost: f64, comment_mode: CommentDisplay) {
+fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &CanvasPalette, shadow_boost: f64, comment_mode: CommentDisplay, fk_fields: &std::collections::HashSet<&str>) {
     let field_count = table.fields.len().max(2);
     let (width, total_height) = compute_table_render_size_for(table, comment_mode);
     let x = table.x;
     let y = table.y;
 
-    // 表体：主原型 .db-table —— radius 14、surface-solid 底、line-strong 描边、柔和投影
+    // 表体：主原型 .db-table —— #33 统一 radius 8（TABLE_CORNER_RADIUS）、surface-solid 底、
+    // line-strong 描边、柔和投影
     // 阴影为设备像素口径（不随 CTM 缩放），shadow_boost 用于精灵离屏渲染的预补偿
     ctx.save();
     let _ = ctx.set_shadow_color("rgba(0, 0, 0, 0.18)");
@@ -4618,7 +4831,7 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
 
     let _ = ctx.set_fill_style_str(palette.table_bg);
     ctx.begin_path();
-    round_rect(ctx, x, y, width, total_height, 14.0);
+    round_rect(ctx, x, y, width, total_height, TABLE_CORNER_RADIUS);
     ctx.fill();
     ctx.restore();
 
@@ -4626,10 +4839,10 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
     let _ = ctx.set_stroke_style_str(table_border_color(&table.color, palette.table_border));
     ctx.set_line_width(1.0);
     ctx.begin_path();
-    round_rect(ctx, x, y, width, total_height, 14.0);
+    round_rect(ctx, x, y, width, total_height, TABLE_CORNER_RADIUS);
     ctx.stroke();
 
-    // 表头：主原型 .table-head —— 自左向右的 tint 渐变（表色或 brand-soft → 透明），非实心填充
+    // 表头：主原型 .table-head —— #33 统一 135° 对角 tint 渐变（表色或 brand-soft → 透明），非实心填充
     let header_tint = if table.color.trim().is_empty() {
         palette.header_tint
     } else {
@@ -4647,9 +4860,10 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
     );
     ctx.save();
     ctx.begin_path();
-    round_rect_top(ctx, x, y, width, TABLE_HEADER_HEIGHT, 14.0);
+    round_rect_top(ctx, x, y, width, TABLE_HEADER_HEIGHT, TABLE_CORNER_RADIUS);
     ctx.clip();
-    let gradient = ctx.create_linear_gradient(x, y, x + width, y);
+    // 135° 族对角渐变：左上 → 右下（水平为主、带纵向分量，对齐 CSS 135deg 观感）
+    let gradient = ctx.create_linear_gradient(x, y, x + width, y + TABLE_HEADER_HEIGHT);
     gradient.add_color_stop(0.0, header_tint).ok();
     gradient.add_color_stop(1.0, "rgba(0,0,0,0)").ok();
     let _ = ctx.set_fill_style_str("rgba(0,0,0,0)");
@@ -4712,17 +4926,19 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
     ctx.line_to(x + width, y + TABLE_HEADER_HEIGHT);
     ctx.stroke();
 
-    // 字段行：PK 纯文本琥珀标 + 名称 650/11px + 类型等宽 10px text-3（主原型 .table-field）
+    // 字段行：#33 语义徽章图标族（PK/FK/NN/UQ 线条图标）+ 名称 650/11px + 类型等宽 10px text-3
+    // （主原型 .table-field；字块角标路径已按 core-08 §11 移除）
     for (i, field) in table.fields.iter().enumerate() {
         let fy = y + TABLE_HEADER_HEIGHT + i as f64 * FIELD_ROW_HEIGHT;
 
-        if field.primary {
-            let _ = ctx.set_fill_style_str(palette.pk_color);
-            let _ = ctx.set_font(&dpr_font(900, 9.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
-            let _ = ctx.fill_text("PK", x + 11.0, fy + FIELD_ROW_HEIGHT / 2.0);
-        }
-
-        let name_x = if field.primary { x + 36.0 } else { x + 11.0 };
+        let badges = field_badges(
+            field.primary,
+            fk_fields.contains(field.id.as_str()),
+            field.not_null,
+            field.unique,
+        );
+        let badges_w = draw_field_badges(ctx, &badges, palette, x + 11.0, fy + FIELD_ROW_HEIGHT / 2.0);
+        let name_x = x + 11.0 + badges_w;
         // R-CMT-02：主文本按显示模式取值（comment 模式且有注释 → 注释；否则英文名）
         let field_label = comment_mode.primary(&field.name, &field.comment);
         let _ = ctx.set_fill_style_str(palette.text_strong);
@@ -4821,17 +5037,17 @@ fn draw_table_topology_body(
     let _ = ctx.set_shadow_offset_y(6.0 * shadow_boost);
     let _ = ctx.set_fill_style_str(palette.table_bg);
     ctx.begin_path();
-    round_rect(ctx, x, y, width, height, 14.0);
+    round_rect(ctx, x, y, width, height, TABLE_CORNER_RADIUS);
     ctx.fill();
     ctx.restore();
 
     let _ = ctx.set_stroke_style_str(table_border_color(&table.color, palette.table_border));
     ctx.set_line_width(1.0);
     ctx.begin_path();
-    round_rect(ctx, x, y, width, height, 14.0);
+    round_rect(ctx, x, y, width, height, TABLE_CORNER_RADIUS);
     ctx.stroke();
 
-    // 表头渐变（拓扑档整卡即表头，全圆角裁剪）
+    // 表头渐变（拓扑档整卡即表头，全圆角裁剪；#33 统一 135° 对角）
     let header_tint = if table.color.trim().is_empty() {
         palette.header_tint
     } else {
@@ -4839,9 +5055,9 @@ fn draw_table_topology_body(
     };
     ctx.save();
     ctx.begin_path();
-    round_rect(ctx, x, y, width, height, 14.0);
+    round_rect(ctx, x, y, width, height, TABLE_CORNER_RADIUS);
     ctx.clip();
-    let gradient = ctx.create_linear_gradient(x, y, x + width, y);
+    let gradient = ctx.create_linear_gradient(x, y, x + width, y + height);
     gradient.add_color_stop(0.0, header_tint).ok();
     gradient.add_color_stop(1.0, "rgba(0,0,0,0)").ok();
     let _ = ctx.set_fill_style_str("rgba(0,0,0,0)");
@@ -4877,13 +5093,14 @@ fn draw_table_selection(ctx: &CanvasRenderingContext2d, table: &Table, palette: 
     let _ = ctx.set_stroke_style_str(palette.selected_soft);
     ctx.set_line_width(3.0);
     ctx.begin_path();
-    round_rect(ctx, x - 2.5, y - 2.5, width + 5.0, total_height + 5.0, 16.0);
+    // #33：外环圆角 = 表卡圆角 + 2.5 外扩（与 TABLE_CORNER_RADIUS 同一口径）
+    round_rect(ctx, x - 2.5, y - 2.5, width + 5.0, total_height + 5.0, TABLE_CORNER_RADIUS + 2.5);
     ctx.stroke();
 
     let _ = ctx.set_stroke_style_str(palette.selected);
     ctx.set_line_width(1.0);
     ctx.begin_path();
-    round_rect(ctx, x, y, width, total_height, 14.0);
+    round_rect(ctx, x, y, width, total_height, TABLE_CORNER_RADIUS);
     ctx.stroke();
 }
 
@@ -4944,8 +5161,11 @@ fn draw_relation(
     opacity: f64,
     hl_scale: f64,
     lod_scale: f64,
+    cardinality: &str,
 ) {
     let stroke = relation_stroke_color(ref_color, source_table_color, palette.relation);
+    // #33 UT-PE-VIS-01：端点统一 crow's foot 几何族（替代旧箭头+圆点）
+    let (start_many, end_many) = endpoint_multiplicity(cardinality);
     ctx.save();
     ctx.set_global_alpha(opacity);
 
@@ -4970,13 +5190,11 @@ fn draw_relation(
             clear_stroke_dash(ctx);
             if pts.len() >= 2 {
                 let (x1, y1) = pts[0];
+                let (sx, sy) = pts[1];
                 let (x2, y2) = pts[pts.len() - 1];
                 let (px, py) = pts[pts.len() - 2];
-                draw_arrow_head(ctx, px, py, x2, y2, stroke);
-                let _ = ctx.set_fill_style_str(stroke);
-                ctx.begin_path();
-                ctx.arc(x1, y1, 4.0, 0.0, std::f64::consts::TAU).ok();
-                ctx.fill();
+                draw_endpoint_notation(ctx, px, py, x2, y2, end_many, stroke, main_w);
+                draw_endpoint_notation(ctx, sx, sy, x1, y1, start_many, stroke, main_w);
             }
         }
         "straight" => {
@@ -4996,11 +5214,8 @@ fn draw_relation(
             ctx.line_to(x2, y2);
             ctx.stroke();
             clear_stroke_dash(ctx);
-            draw_arrow_head(ctx, x1, y1, x2, y2, stroke);
-            let _ = ctx.set_fill_style_str(stroke);
-            ctx.begin_path();
-            ctx.arc(x1, y1, 4.0, 0.0, std::f64::consts::TAU).ok();
-            ctx.fill();
+            draw_endpoint_notation(ctx, x1, y1, x2, y2, end_many, stroke, main_w);
+            draw_endpoint_notation(ctx, x2, y2, x1, y1, start_many, stroke, main_w);
         }
         _ => {
             // bezier 默认
@@ -5020,14 +5235,52 @@ fn draw_relation(
             ctx.bezier_curve_to(path.cx1, path.cy1, path.cx2, path.cy2, path.x2, path.y2);
             ctx.stroke();
             clear_stroke_dash(ctx);
-            draw_arrow_head(ctx, path.cx2, path.cy2, path.x2, path.y2, stroke);
-            let _ = ctx.set_fill_style_str(stroke);
-            ctx.begin_path();
-            ctx.arc(path.x1, path.y1, 4.0, 0.0, std::f64::consts::TAU).ok();
-            ctx.fill();
+            draw_endpoint_notation(ctx, path.cx2, path.cy2, path.x2, path.y2, end_many, stroke, main_w);
+            draw_endpoint_notation(ctx, path.cx1, path.cy1, path.x1, path.y1, start_many, stroke, main_w);
         }
     }
     ctx.restore();
+}
+
+/// #33 UT-PE-VIS-01（core-07 §15.5 canvas.rel.endpoint-style）：关系端点统一
+/// crow's foot 几何族——"一"端垂直单杠、"多"端三叉爪，外接尺寸 REL_ENDPOINT_SIZE，
+/// 与主线同色同宽（替代旧箭头 + 圆点，禁止混用箭头与字块角标）。
+/// (fromx, fromy) → (tox, toy) 为端点处切线方向，记号画在 (tox, toy)。
+fn draw_endpoint_notation(
+    ctx: &CanvasRenderingContext2d,
+    fromx: f64,
+    fromy: f64,
+    tox: f64,
+    toy: f64,
+    many: bool,
+    stroke: &str,
+    line_w: f64,
+) {
+    let angle = (toy - fromy).atan2(tox - fromx);
+    let (ux, uy) = (angle.cos(), angle.sin());
+    let (px, py) = (-uy, ux);
+    let _ = ctx.set_stroke_style_str(stroke);
+    ctx.set_line_width(line_w);
+    ctx.set_line_cap("round");
+    ctx.begin_path();
+    if many {
+        // 三叉爪：基点沿切线回退 SIZE，三股散开至端点带（中股抵端点，两侧 ±SIZE/2）
+        let bx = tox - ux * REL_ENDPOINT_SIZE;
+        let by = toy - uy * REL_ENDPOINT_SIZE;
+        let spread = REL_ENDPOINT_SIZE / 2.0;
+        ctx.move_to(bx, by);
+        ctx.line_to(tox, toy);
+        ctx.move_to(bx, by);
+        ctx.line_to(tox + px * spread - ux * 1.5, toy + py * spread - uy * 1.5);
+        ctx.move_to(bx, by);
+        ctx.line_to(tox - px * spread - ux * 1.5, toy - py * spread - uy * 1.5);
+    } else {
+        // 单杠：端点处垂直线，半长 SIZE/2
+        let half = REL_ENDPOINT_SIZE / 2.0;
+        ctx.move_to(tox + px * half, toy + py * half);
+        ctx.line_to(tox - px * half, toy - py * half);
+    }
+    ctx.stroke();
 }
 
 fn stroke_polyline(ctx: &CanvasRenderingContext2d, pts: &[(f64, f64)]) {
@@ -5088,25 +5341,6 @@ fn draw_marquee_rect(
     let _ = ctx.set_line_dash(&dash);
     ctx.stroke_rect(x, y, w, h);
     let _ = ctx.set_line_dash(&js_sys::Array::new());
-}
-
-fn draw_arrow_head(ctx: &CanvasRenderingContext2d, fromx: f64, fromy: f64, tox: f64, toy: f64, stroke: &str) {
-    let angle = (toy - fromy).atan2(tox - fromx);
-    let arrow_len = 10.0;
-    let arrow_angle = std::f64::consts::TAU / 6.0;
-
-    let ax1 = tox - arrow_len * (angle - arrow_angle).cos();
-    let ay1 = toy - arrow_len * (angle - arrow_angle).sin();
-    let ax2 = tox - arrow_len * (angle + arrow_angle).cos();
-    let ay2 = toy - arrow_len * (angle + arrow_angle).sin();
-
-    let _ = ctx.set_fill_style_str(stroke);
-    ctx.begin_path();
-    ctx.move_to(tox, toy);
-    ctx.line_to(ax1, ay1);
-    ctx.line_to(ax2, ay2);
-    ctx.close_path();
-    ctx.fill();
 }
 
 fn draw_area(
@@ -6571,31 +6805,31 @@ mod tests {
         moved.x = 999.0;
         moved.y = -40.0;
         assert_eq!(
-            table_sprite_fingerprint(&t, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail),
-            table_sprite_fingerprint(&moved, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail),
+            table_sprite_fingerprint(&t, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[]),
+            table_sprite_fingerprint(&moved, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[]),
             "UT-CR-SPRITE-01: 位置变化不得改变指纹"
         );
 
         // 内容变更失效：改名 / 改字段类型 / 改主键 / 改色 / 改宽 / 主题 / dpr / 分档
-        let base = table_sprite_fingerprint(&t, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail);
+        let base = table_sprite_fingerprint(&t, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[]);
         let mut renamed = t.clone();
         renamed.name = "other".into();
-        assert_ne!(table_sprite_fingerprint(&renamed, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail), base, "改名失效");
+        assert_ne!(table_sprite_fingerprint(&renamed, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[]), base, "改名失效");
         let mut retyped = t.clone();
         retyped.fields[0].type_ = "UUID".into();
-        assert_ne!(table_sprite_fingerprint(&retyped, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail), base, "改字段类型失效");
+        assert_ne!(table_sprite_fingerprint(&retyped, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[]), base, "改字段类型失效");
         let mut unpk = t.clone();
         unpk.fields[0].primary = false;
-        assert_ne!(table_sprite_fingerprint(&unpk, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail), base, "改主键失效");
+        assert_ne!(table_sprite_fingerprint(&unpk, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[]), base, "改主键失效");
         let mut recolor = t.clone();
         recolor.color = "#fff".into();
-        assert_ne!(table_sprite_fingerprint(&recolor, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail), base, "改色失效");
+        assert_ne!(table_sprite_fingerprint(&recolor, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[]), base, "改色失效");
         let mut resized = t.clone();
         resized.width = Some(320);
-        assert_ne!(table_sprite_fingerprint(&resized, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail), base, "改宽失效");
-        assert_ne!(table_sprite_fingerprint(&t, false, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail), base, "主题切换失效");
-        assert_ne!(table_sprite_fingerprint(&t, true, 100, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail), base, "dpr 变化失效");
-        assert_ne!(table_sprite_fingerprint(&t, true, 200, 2, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail), base, "zoom 分档切换失效");
+        assert_ne!(table_sprite_fingerprint(&resized, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[]), base, "改宽失效");
+        assert_ne!(table_sprite_fingerprint(&t, false, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[]), base, "主题切换失效");
+        assert_ne!(table_sprite_fingerprint(&t, true, 100, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[]), base, "dpr 变化失效");
+        assert_ne!(table_sprite_fingerprint(&t, true, 200, 2, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[]), base, "zoom 分档切换失效");
     }
 
     /// UT-CR-GUARD-01 — DOM 写守护：值未变不写（R-PERF-08）
@@ -6877,20 +7111,115 @@ mod tests {
             min_height: None,
         };
         let mode = crate::editor_core::CommentDisplay::NameComment;
-        let fp_detail = table_sprite_fingerprint(&t, true, 200, 1, mode, LodTier::Detail);
-        let fp_topo = table_sprite_fingerprint(&t, true, 200, 1, mode, LodTier::Topology);
+        let fp_detail = table_sprite_fingerprint(&t, true, 200, 1, mode, LodTier::Detail, &[]);
+        let fp_topo = table_sprite_fingerprint(&t, true, 200, 1, mode, LodTier::Topology, &[]);
         assert_ne!(fp_detail, fp_topo, "UT-CR-LOD-01: 跨档指纹必须不同（触发重光栅）");
         assert_eq!(
-            table_sprite_fingerprint(&t, true, 200, 1, mode, LodTier::Topology),
+            table_sprite_fingerprint(&t, true, 200, 1, mode, LodTier::Topology, &[]),
             fp_topo,
             "UT-CR-LOD-01: 同档内指纹必须相同"
         );
         // 同档内移动（x/y 变化）指纹不变——拖动不触发重光栅
         let moved = Table { x: 40.0, y: 80.0, ..t.clone() };
         assert_eq!(
-            table_sprite_fingerprint(&moved, true, 200, 1, mode, LodTier::Topology),
+            table_sprite_fingerprint(&moved, true, 200, 1, mode, LodTier::Topology, &[]),
             fp_topo,
             "UT-CR-LOD-01: 同档内拖动指纹必须相同"
+        );
+    }
+
+    /// #33 UT-PE-VIS-01 — 语义图标统一族锚点（core-08 §11 / core-07 §15.5）
+    #[test]
+    fn ut_pe_vis_01_semantic_icon_family_anchors() {
+        // ── 断言 1：徽章族映射 + 统一尺寸/描边常量同源（无散值）──
+        assert_eq!(BADGE_SIZE, 12.0, "UT-PE-VIS-01: 徽章统一外接尺寸 12px");
+        assert_eq!(BADGE_STROKE, 1.5, "UT-PE-VIS-01: 徽章统一描边 1.5px");
+        assert_eq!(REL_ENDPOINT_SIZE, 10.0, "UT-PE-VIS-01: 端点统一外接尺寸 10px");
+        assert_eq!(TABLE_CORNER_RADIUS, 8.0, "UT-PE-VIS-01: 表卡圆角统一 8px");
+        assert_eq!(field_badges(true, false, false, false), vec![FieldBadge::Pk]);
+        assert_eq!(
+            field_badges(true, true, true, true),
+            vec![FieldBadge::Pk, FieldBadge::Fk, FieldBadge::Nn, FieldBadge::Uq],
+            "UT-PE-VIS-01: 徽章顺序固定 PK→FK→NN→UQ"
+        );
+        assert_eq!(field_badges(false, false, false, false), Vec::<FieldBadge>::new());
+        assert_eq!(field_badges_width(0), 0.0);
+        assert!(field_badges_width(1) > BADGE_SIZE);
+        assert!(field_badges_width(2) > field_badges_width(1));
+
+        // ── 断言 2：FK 推导与端点重数（crow's foot 族）──
+        let mk = |id: &str, sf: &str, ef: &str, card: &str| Reference {
+            id: id.to_string(),
+            name: String::new(),
+            start_table_id: String::new(),
+            end_table_id: String::new(),
+            start_field_id: sf.to_string(),
+            end_field_id: ef.to_string(),
+            type_: card.to_string(),
+            on_delete: String::new(),
+            on_update: String::new(),
+            color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
+        };
+        let refs = vec![
+            mk("r1", "users-id", "orders-uid", "one_to_many"),
+            mk("r2", "posts-author", "users-id", "many_to_one"),
+            mk("r3", "a-id", "b-aid", "one_to_one"),
+        ];
+        let fk = fk_field_ids(&refs);
+        assert!(fk.contains("orders-uid"), "one_to_many → FK 在 end 侧");
+        assert!(fk.contains("posts-author"), "many_to_one → FK 在 start 侧");
+        assert!(fk.contains("b-aid"), "one_to_one → FK 归 end 侧");
+        assert!(!fk.contains("users-id"));
+        assert_eq!(endpoint_multiplicity("one_to_many"), (false, true));
+        assert_eq!(endpoint_multiplicity("many_to_one"), (true, false));
+        assert_eq!(endpoint_multiplicity("one_to_one"), (false, false));
+        assert_eq!(endpoint_multiplicity(""), (false, true), "未知值按一对多");
+
+        // ── 断言 3：源码锚点——字块角标渲染路径已移除；徽章绘制色值仅取 palette 语义色阶 ──
+        let src = include_str!("editor_render.rs");
+        assert!(
+            !src.contains("fill_text(\"PK\""),
+            "UT-PE-VIS-01: 字块角标 fill_text(\"PK\") 必须移除（core-08 §11 deprecated/移除）"
+        );
+        let badge_fn = src
+            .split("fn draw_field_badges")
+            .nth(1)
+            .expect("draw_field_badges 必须存在");
+        let badge_body = badge_fn.split("\nfn ").next().unwrap();
+        for color in ["palette.pk_color", "palette.fk_color", "palette.constraint_color"] {
+            assert!(badge_body.contains(color), "UT-PE-VIS-01: 徽章色必须取 {color}");
+        }
+        assert!(
+            !badge_body.contains("\"#"),
+            "UT-PE-VIS-01: 徽章绘制函数体内禁止裸 hex 散值"
+        );
+
+        // ── 断言 4：ToolRail 图标统一 stroke 1.5 / IconBox 20px(md) / 激活态规则存在 ──
+        let icons = include_str!("icons.rs");
+        assert!(
+            icons.contains("#[prop(default = 1.5)]"),
+            "UT-PE-VIS-01: ToolRail 图标统一 stroke 1.5（Icon 默认）"
+        );
+        let css = include_str!("styles.css");
+        assert!(
+            css.contains("--cdb-icon-size-md: 20px"),
+            "UT-PE-VIS-01: IconBox md = 20px"
+        );
+        assert!(
+            css.contains(".cdb-tool-btn.cdb-is-active"),
+            "UT-PE-VIS-01: ToolRail 激活态规则必须存在（主色描边 + 浅底）"
+        );
+
+        // ── 断言 5：关系端点 crow's foot 族渲染路径存在；旧箭头已移除 ──
+        assert!(src.contains("fn draw_endpoint_notation"), "crow's foot 端点函数必须存在");
+        // concat! 避免断言字面量自匹配
+        assert!(!src.contains(concat!("fn draw_arrow", "_head")), "旧箭头端点必须移除");
+        let rel_call = src.split("fn draw_relation").nth(1).expect("draw_relation 必须存在");
+        assert!(
+            rel_call.contains("draw_endpoint_notation"),
+            "UT-PE-VIS-01: draw_relation 必须走 crow's foot 端点族"
         );
     }
 

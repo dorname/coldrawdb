@@ -237,9 +237,10 @@ fn ut_cr_ghost_02_ghost_highlight_is_rounded() {
         "R-HL-02：幽灵层不得使用 CSS outline 画高亮（不贴合 border-radius）"
     );
 
-    // 2) 改用幽灵 canvas 内 round_rect 描边（draw_table_selection 同一函数：16/14 圆角口径）
+    // 2) 改用幽灵 canvas 内 round_rect 描边（draw_table_selection 同一函数；
+    //    #30 起带 comment_mode/tier 参数；#33 圆角口径 TABLE_CORNER_RADIUS）
     assert!(
-        ghost_block.contains("draw_table_selection(&off, table, palette)"),
+        ghost_block.contains("draw_table_selection(&off, table, palette, comment_mode, tier)"),
         "R-HL-01/02：幽灵层必须在 canvas 内用 draw_table_selection 画圆角选中环"
     );
     // set_transform 与 sprite 渲染同参数（环落在表体世界坐标处）
@@ -248,12 +249,14 @@ fn ut_cr_ghost_02_ghost_highlight_is_rounded() {
         "幽灵层选中环 transform 必须与 sprite 渲染同口径"
     );
 
-    // 3) draw_table_selection 自身锚点：round_rect 16（外扩环）+ 14（表体）
+    // 3) draw_table_selection 自身锚点：#33 起圆角同源 TABLE_CORNER_RADIUS（外环 +2.5 外扩）
     let sel_idx = RENDER.find("fn draw_table_selection").expect("draw_table_selection 存在");
-    let sel_block: String = RENDER[sel_idx..].chars().take(700).collect();
+    let sel_block: String = RENDER[sel_idx..].chars().take(900).collect();
     assert!(
-        sel_block.contains("round_rect") && sel_block.contains("16.0") && sel_block.contains("14.0"),
-        "R-HL-01：选中环必须为 16/14 圆角描边"
+        sel_block.contains("round_rect")
+            && sel_block.contains("TABLE_CORNER_RADIUS + 2.5")
+            && sel_block.contains("width, total_height, TABLE_CORNER_RADIUS"),
+        "R-HL-01 / #33：选中环圆角必须同源 TABLE_CORNER_RADIUS（外环 +2.5）"
     );
 
     report("UT-CR-GHOST-02", start);

@@ -405,8 +405,8 @@ SVG 内部 `width/height` 由容器 100% 撑满，`stroke="currentColor"` 继承
 |---|---|---|---|
 | 表卡 | `canvas.table.corner-radius` | 8px | 表卡圆角统一值（现状多值并存收敛） |
 | 表卡 | `canvas.table.shadow` | 复用 §8 shadow-1（hover shadow-2） | 表卡投影统一，不再自定义散值 |
-| 表卡 | `canvas.table.header-gradient` | `linear-gradient(135deg, color → color@0.82)` | 表头渐变方向与止境统一；注释区按 R-CMT-CONTRAST-02 可弱化为近实色 |
-| 表卡 | `canvas.table.field-row-height` | 24px | 字段行高统一（含 LOD 详情档） |
+| 表卡 | `canvas.table.header-gradient` | `linear-gradient(135deg, color → transparent)` | 表头渐变方向统一 135°；止境沿用两实现既有的透明止境（C7 勘误：原 `color@0.82` 与原型/生产不符）；注释区按 R-CMT-CONTRAST-02 可弱化为近实色 |
+| 表卡 | `canvas.table.field-row-height` | 35px | 字段行高统一（含 LOD 详情档）（C7 勘误：原 24px 与原型 `.table-field` 及生产 `FIELD_ROW_HEIGHT` 均不符，两实现事实为 35px） |
 | 语义图标 | `canvas.badge.size` | 12px（LOD 详情档） | PK / FK / NOT NULL / UNIQUE 徽章统一外接尺寸 |
 | 语义图标 | `canvas.badge.stroke` | 1.5px | 徽章图标描边统一 |
 | 语义图标 | `canvas.badge.palette` | PK=`semantic.warning` 系 / FK=`semantic.info` 系 / NN·UQ=`grey.6` | 徽章色板统一，亮/暗成对 |

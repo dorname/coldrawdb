@@ -17,7 +17,7 @@ use frontend_rs::editor_core::types::Table;
 use frontend_rs::editor_core::{CommentDisplay, COMMENT_DISPLAY_STORAGE_KEY};
 use frontend_rs::editor_render::{
     composited_relative_luminance, header_foreground_colors, parse_css_color_rgba,
-    relation_stroke_color, table_border_color, table_sprite_fingerprint,
+    relation_stroke_color, table_border_color, table_sprite_fingerprint, LodTier,
     HEADER_FG_LUMINANCE_THRESHOLD,
 };
 use std::time::Instant;
@@ -87,23 +87,23 @@ fn ut_cr_comment_01_display_mode_semantics() {
 
     // 3) R-CMT-03：注释参与精灵指纹——表 comment / 字段 comment / 显示模式变化 → 指纹不同
     let t = table_with_comment("用户表", "主键");
-    let base = table_sprite_fingerprint(&t, true, 200, 1, CommentDisplay::NameComment);
+    let base = table_sprite_fingerprint(&t, true, 200, 1, CommentDisplay::NameComment, LodTier::Detail, &[]);
     let mut t2 = t.clone();
     t2.comment = "账户表".into();
     assert_ne!(
-        table_sprite_fingerprint(&t2, true, 200, 1, CommentDisplay::NameComment),
+        table_sprite_fingerprint(&t2, true, 200, 1, CommentDisplay::NameComment, LodTier::Detail, &[]),
         base,
         "表 comment 变化必须触发重光栅"
     );
     let mut t3 = t.clone();
     t3.fields[0].comment = "编号".into();
     assert_ne!(
-        table_sprite_fingerprint(&t3, true, 200, 1, CommentDisplay::NameComment),
+        table_sprite_fingerprint(&t3, true, 200, 1, CommentDisplay::NameComment, LodTier::Detail, &[]),
         base,
         "字段 comment 变化必须触发重光栅"
     );
     assert_ne!(
-        table_sprite_fingerprint(&t, true, 200, 1, CommentDisplay::Name),
+        table_sprite_fingerprint(&t, true, 200, 1, CommentDisplay::Name, LodTier::Detail, &[]),
         base,
         "显示模式切换必须触发重光栅（R-CMT-04 切换即重绘）"
     );
@@ -280,8 +280,8 @@ fn ut_pb_11_relation_color_render_contract() {
         "关系线必须经 relation_stroke_color(显式, 源表, palette) 取色"
     );
     assert!(
-        bez_block.contains("draw_arrow_head"),
-        "箭头必须绘制"
+        bez_block.contains("draw_endpoint_notation"),
+        "#33：关系端点必须绘制 crow's foot 族（core-08 §11 替代旧箭头）"
     );
     assert!(
         RENDER.contains("if selected { palette.selected } else { stroke }")

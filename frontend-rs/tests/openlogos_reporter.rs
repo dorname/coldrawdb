@@ -120,6 +120,8 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-PE-CMT-01",
     // fix-open-issues-26-33 / #30：LOD 档位判定与参数纯函数（ST-CR-LOD-01 由 parity-d 上报）
     "UT-CR-LOD-01",
+    // fix-open-issues-26-33 / #33：语义图标统一族锚点（徽章 12px/1.5px 同源、色板、激活态、字块角标移除；ST-PE-09 由 parity-d 上报）
+    "UT-PE-VIS-01",
     "UT-NOTE-01", // p0-fix 定点 2: build_note 默认值 + hit_test_note 固定 180×100 命中
     "UT-MM-35", // list-view-table-structure: group_tables ByTable 按表分桶（桶键=表名 / 桶序保持 / 空表出桶 / 空输入 0 桶）
     "UT-MM-36", // diagram-database-dialect: types_for_database 三组清单（Generic 对齐既有 5 项 / MySQL 含 DATETIME 无 SERIAL / PostgreSQL 含 SERIAL 无 DATETIME / 未暴露引擎回落 Generic）

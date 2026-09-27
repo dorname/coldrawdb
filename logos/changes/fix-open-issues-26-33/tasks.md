@@ -89,9 +89,9 @@
 
 ## [code] C7 批次 G — #33 视觉体系统一实现
 
-- [ ] C7.1 列出本批覆盖 UT/ST ID（对齐 D7.4）并实现：主原型 + 设计 token 更新先导
-- [ ] C7.2 前端 canvas 绘制与图标组件对齐新视觉体系（表卡、语义图标、关系端点、ToolRail）
-- [ ] C7.3 同批补齐 UT/ST + OpenLogos reporter
+- [x] C7.1 列出本批覆盖 UT/ST ID（对齐 D7.4）并实现：主原型 + 设计 token 更新先导——覆盖 UT-PE-VIS-01 / ST-PE-09；主原型圆角 8px/135° 渐变/徽章图标族/crow's foot marker 已对齐；§15.5 勘误 field-row-height 35px、渐变透明止境
+- [x] C7.2 前端 canvas 绘制与图标组件对齐新视觉体系（表卡、语义图标、关系端点、ToolRail）
+- [x] C7.3 同批补齐 UT/ST + OpenLogos reporter
 
 ## [follow-up] 关闭 issue 与归档
 

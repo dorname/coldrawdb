@@ -1867,6 +1867,92 @@ try {
     assert.equal(p.rel_width_scale_max, 1, "取消选中后全线必须恢复默认线宽");
   });
 
+  // ─── ST-PE-09：视觉体系统一目视锚点（fix-open-issues-26-33 / #33，
+  //     core-07 §15.5 / core-08 §11；UT-PE-VIS-01 的 e2e 面） ──────────────────
+  await run(["ST-PE-09"], "徽章图标族 + crow's foot 端点 + ToolRail 统一 + 双主题无漂移", async page => {
+    const field = (id, name, extra = {}) => ({
+      id, name, type_: "INT", default: "", check: "", primary: false, unique: false,
+      not_null: false, increment: false, comment: "", tag: "", dict_code: "", ...extra,
+    });
+    // GIVEN：≥2 张表（PK/FK/NOT NULL/UNIQUE 字段各一）+ ≥1 条关系。
+    // 徽章台账：t1.id=PK+NN、t1.email=UQ、t2.id=PK+NN、t2.user_id=FK（one_to_many → end 侧）= 6 枚
+    const presetDiagram = {
+      tables: [
+        { id: "t1", name: "users", x: 120, y: 140, color: "#3788e5", comment: "用户表",
+          fields: [field("f1", "id", { primary: true, not_null: true }),
+                   field("f2", "email", { unique: true, type_: "VARCHAR" })], indices: [] },
+        { id: "t2", name: "orders", x: 520, y: 160, color: "#19a974", comment: "订单表",
+          fields: [field("f3", "id", { primary: true, not_null: true }),
+                   field("f4", "user_id", { not_null: false })], indices: [] },
+      ],
+      references: [
+        { id: "r1", name: "", start_table_id: "t1", end_table_id: "t2", start_field_id: "f1", end_field_id: "f4",
+          type_: "one_to_many", on_delete: "RESTRICT", on_update: "RESTRICT", color: "", line_type: "", stroke_style: "" },
+      ],
+      areas: [], notes: [],
+    };
+    await installApi(page, { presetDiagram });
+    await login(page);
+    await createRoomAndEnter(page);
+    await page.waitForFunction(() => !!window.__cdb_vis_probe, null, { timeout: 8_000 });
+    const probe = () => page.evaluate(() => JSON.parse(window.__cdb_vis_probe));
+
+    // THEN 1：表卡/徽章/端点统一常量（canvas 参数探针）+ 徽章图标族计数（无字块角标）
+    let p = await probe();
+    assert.equal(p.badge_size, 12, "徽章统一外接尺寸 12px");
+    assert.equal(p.badge_stroke, 1.5, "徽章统一描边 1.5px");
+    assert.equal(p.endpoint_size, 10, "关系端点统一 10px");
+    assert.equal(p.corner_radius, 8, "表卡圆角统一 8px");
+    assert.equal(p.endpoint_style, "crowsfoot", "关系端点必须为 crow's foot 族");
+    assert.equal(p.text_badge, false, "字块角标渲染路径必须移除");
+    assert.equal(p.badges_drawn, 6, `徽章图标族计数必须为 6（实际 ${p.badges_drawn}）`);
+
+    // THEN 2：ToolRail 图标描边/尺寸/激活态一致（DOM 断言）
+    const railIconCheck = () => page.evaluate(() => {
+      const svgs = [...document.querySelectorAll(".cdb-tool-rail svg")];
+      const wraps = [...document.querySelectorAll(".cdb-tool-rail .cdb-icon-wrap--md")];
+      const active = document.querySelector(".cdb-tool-btn.cdb-is-active");
+      const activeStyle = active ? getComputedStyle(active) : null;
+      return {
+        svgCount: svgs.length,
+        allStroke15: svgs.every(el => el.getAttribute("stroke-width") === "1.5"),
+        wrapCount: wraps.length,
+        allWrap20: wraps.every(el => {
+          const r = el.getBoundingClientRect();
+          return Math.abs(r.width - 20) < 0.5 && Math.abs(r.height - 20) < 0.5;
+        }),
+        hasActive: !!active,
+        activeBordered: !!activeStyle && !/rgba?\(0, 0, 0, 0\)|transparent/.test(activeStyle.borderColor),
+      };
+    });
+    // 激活态：点框选工具使其进入激活
+    await page.locator('[data-testid="tool-marquee"]').click();
+    let rail = await railIconCheck();
+    assert.ok(rail.svgCount >= 6, `ToolRail 图标数 ≥6（实际 ${rail.svgCount}）`);
+    assert.ok(rail.allStroke15, "ToolRail 全部图标描边必须为 1.5");
+    assert.ok(rail.wrapCount >= 6 && rail.allWrap20, "ToolRail IconBox 必须统一 20px");
+    assert.ok(rail.hasActive && rail.activeBordered, "激活态必须存在且为主色描边（非透明边框）");
+
+    // THEN 3：暗主题截图锚点 → 切亮主题 → 参数无漂移 + 画布重绘 + ToolRail 一致
+    const canvas = page.locator('[data-testid="editor-canvas-container"] canvas');
+    const darkShot = await canvas.screenshot();
+    await page.keyboard.press("Escape");
+    await page.locator('[data-testid="btn-more-menu"]').click();
+    await page.locator('[data-testid="btn-theme-toggle"]').click();
+    await page.waitForTimeout(250); // 等 theme effect 重绘一帧
+    assert.equal(await page.locator("html").getAttribute("data-mode"), "light", "必须切到亮主题");
+    const lightShot = await canvas.screenshot();
+    assert.ok(!darkShot.equals(lightShot), "主题切换后画布必须重绘（亮暗调色板不同）");
+    p = await probe();
+    assert.equal(p.badge_size, 12, "亮主题徽章尺寸无漂移");
+    assert.equal(p.badge_stroke, 1.5, "亮主题徽章描边无漂移");
+    assert.equal(p.corner_radius, 8, "亮主题圆角无漂移");
+    assert.equal(p.badges_drawn, 6, "亮主题徽章计数无漂移");
+    rail = await railIconCheck();
+    assert.ok(rail.allStroke15 && rail.allWrap20, "亮主题 ToolRail 描边/尺寸无漂移");
+    assert.ok(rail.hasActive && rail.activeBordered, "亮主题激活态规则无漂移");
+  });
+
   // ─── ST-CR-LOD-01：小缩放拓扑可读性 e2e（fix-open-issues-26-33 / #30，core-CR §6.y） ──
   // 裁决注记：UT-CR-LOD-01 要求 0.35 触发字号夹紧上限（30px 世界），与「35% 屏幕字号 ≥11px」
   // 数学上不可兼得（11/0.35=31.4 为临界）——夹紧上限优先（避免单表文字占满视口），
