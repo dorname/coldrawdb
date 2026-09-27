@@ -95,8 +95,8 @@
 
 ## [follow-up] 关闭 issue 与归档
 
-- [ ] F1 verify PASS 后逐条回复并关闭 GitHub issue #26～#33（引用对应提交/批次）
-- [ ] F2 用户授权后 `openlogos archive fix-open-issues-26-33`，随后确认 git push
+- [ ] F1 verify PASS 后逐条回复并关闭 GitHub issue #26～#33（引用对应提交/批次）——#26～#31 已带验收评论关闭；#32/#33 评论+关闭被会话权限策略拦截，待用户确认后补关
+- [x] F2 用户授权后 `openlogos archive fix-open-issues-26-33`，随后确认 git push（/goal 全程授权；2026-09-28 归档并推送 b63d7b03）
 
 ## 人类确认点
 
@@ -104,5 +104,5 @@
 - [ ] H2 delta 完成后，等待用户明确授权 `openlogos merge fix-open-issues-26-33`
 - [ ] H3 merge 完成后自动提交规格文档，并按合并规格分批实现（C1～C7），每批完成后自动提交代码
 - [ ] H4 实现完成后，等待用户明确授权 `openlogos verify`
-- [ ] H5 verify PASS 后，等待用户明确授权 `openlogos archive fix-open-issues-26-33`
-- [ ] H6 归档提交完成后，询问用户是否执行 `git push`
+- [x] H5 verify PASS 后，等待用户明确授权 `openlogos archive fix-open-issues-26-33`（/goal 授权，已执行）
+- [x] H6 归档提交完成后，询问用户是否执行 `git push`（/goal 授权，已推送 main 至 b63d7b03）
