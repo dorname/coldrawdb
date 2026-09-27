@@ -4,6 +4,7 @@ pub mod config;
 pub mod error;
 pub mod export;
 pub mod layout;
+pub mod payload_limit;
 pub mod protocol;
 pub mod reporter;
 pub mod service;

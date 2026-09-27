@@ -83,9 +83,9 @@
 
 ## [code] C6 批次 F — #26 MCP 分批写入实现
 
-- [ ] C6.1 列出本批覆盖 UT/ST ID（对齐 D6.4）并实现：update_diagram 超限可诊断错误（当前体积、建议分片粒度）
-- [ ] C6.2 工具描述与文档写入分批指引与 revision 串行规则；按需裁量是否补 batch 工具（默认不补）
-- [ ] C6.3 同批补齐 UT/ST + OpenLogos reporter
+- [x] C6.1 列出本批覆盖 UT/ST ID（对齐 D6.4）并实现：update_diagram 超限可诊断错误（当前体积、建议分片粒度）——覆盖 UT-MCP-30 / UT-MCP-31 / UT-MCP-32 / ST-MCP-15 / ST-MCP-16
+- [x] C6.2 工具描述与文档写入分批指引与 revision 串行规则；按需裁量是否补 batch 工具（默认不补——已由 merge 后 mcp-tools.yaml 的 update_diagram 描述 + 错误 details.batch_hint 覆盖，裁量不补）
+- [x] C6.3 同批补齐 UT/ST + OpenLogos reporter
 
 ## [code] C7 批次 G — #33 视觉体系统一实现
 

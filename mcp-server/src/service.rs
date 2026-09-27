@@ -91,6 +91,17 @@ impl McpService {
                     .filter(|value| value.is_object())
                     .cloned()
                     .ok_or_else(|| ToolError::validation("diagram 必须是 object"))?;
+                // fix-open-issues-26-33（#26 / UT-MCP-30）：参数体积软上限本地拦截。
+                // 超限返回 PAYLOAD_TOO_LARGE（details 含体积/上限/分片建议），不发上游请求。
+                let payload_bytes = crate::payload_limit::estimate_payload_bytes(&diagram);
+                let soft_limit = self.api.payload_soft_limit_bytes();
+                if payload_bytes > soft_limit {
+                    return Err(crate::payload_limit::payload_too_large_error(
+                        payload_bytes,
+                        soft_limit,
+                        &diagram,
+                    ));
+                }
                 // fix-remote-github-issues-7-18（#18）：统一 normalize 为瘦响应
                 let data = self.api.update(id, expected_revision, diagram).await?;
                 slim_write_response(&data, id)

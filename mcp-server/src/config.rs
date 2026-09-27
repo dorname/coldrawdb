@@ -10,6 +10,8 @@ pub struct Config {
     pub base_url: Url,
     pub access_token: Option<String>,
     pub timeout: Duration,
+    /// fix-open-issues-26-33（#26）：update_diagram 参数体积软上限（字节）。
+    pub payload_soft_limit_bytes: usize,
 }
 
 impl std::fmt::Debug for Config {
@@ -22,6 +24,7 @@ impl std::fmt::Debug for Config {
                 &self.access_token.as_ref().map(|_| "[REDACTED]"),
             )
             .field("timeout", &self.timeout)
+            .field("payload_soft_limit_bytes", &self.payload_soft_limit_bytes)
             .finish()
     }
 }
@@ -59,6 +62,16 @@ impl Config {
             return Err(ToolError::config("请求超时必须是 1～120 的整数"));
         }
 
+        // fix-open-issues-26-33（#26 / UT-MCP-31）：软上限非法值回退默认并 warn（stderr）。
+        let (payload_soft_limit_bytes, soft_limit_warn) = crate::payload_limit::parse_soft_limit(
+            values
+                .get(crate::payload_limit::ENV_SOFT_LIMIT)
+                .map(String::as_str),
+        );
+        if let Some(warn) = soft_limit_warn {
+            eprintln!("coldrawdb-mcp config: {warn}");
+        }
+
         Ok(Self {
             base_url,
             access_token: values
@@ -66,6 +79,7 @@ impl Config {
                 .filter(|value| !value.is_empty())
                 .cloned(),
             timeout: Duration::from_secs(timeout_secs),
+            payload_soft_limit_bytes,
         })
     }
 

@@ -25,6 +25,11 @@ impl ApiClient {
         Ok(Self { config, client })
     }
 
+    /// fix-open-issues-26-33（#26）：update_diagram 参数体积软上限（字节）。
+    pub fn payload_soft_limit_bytes(&self) -> usize {
+        self.config.payload_soft_limit_bytes
+    }
+
     async fn request(
         &self,
         method: Method,
