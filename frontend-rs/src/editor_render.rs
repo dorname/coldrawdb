@@ -1907,6 +1907,12 @@ mod leptos_canvas {
                     selected_ref_id.set(None);
                     selected_area_id.set(None);
                     selected_note_id.set(None);
+                    // fix-open-issues-26-33（#31，ST-PE-10 THEN 3）：纯点击空白必须同时清空
+                    // 多选集合——否则 multi 残留导致选中环与高亮（含 #31 非相关表降透明度）
+                    // 在取消选中后无法恢复默认
+                    selected_table_ids.set(Vec::new());
+                    selected_note_ids.set(Vec::new());
+                    selected_area_ids.set(Vec::new());
                     if let Some(cb) = on_deselect.as_ref() {
                         cb();
                     }
@@ -3323,6 +3329,76 @@ pub fn relation_opacity(
     }
 }
 
+/// #31 UT-PE-HL-01：相关关系线线宽倍率（选中表后相关连线加粗 ≥ 默认 1.5×）。
+pub const RELATED_RELATION_WIDTH_FACTOR: f64 = 1.5;
+/// #31 UT-PE-HL-01：非相关表 alpha 上限（≤ 0.5，退到背景层）。
+pub const UNRELATED_TABLE_ALPHA: f64 = 0.5;
+
+/// #31 UT-PE-HL-01：相关态判定——选中关系自身，或两端表之一被选中（含多选集合）。
+/// 无选中时返回 false（调用处据此保持默认线宽）。
+pub fn relation_is_related(
+    ref_id: &str,
+    start_table_id: &str,
+    end_table_id: &str,
+    selected_table_ids: &[String],
+    selected_id: Option<&str>,
+    selected_ref_id: Option<&str>,
+) -> bool {
+    if selected_ref_id == Some(ref_id) {
+        return true;
+    }
+    selected_id
+        .map(|id| id == start_table_id || id == end_table_id)
+        .unwrap_or(false)
+        || selected_table_ids
+            .iter()
+            .any(|id| id == start_table_id || id == end_table_id)
+}
+
+/// #31 UT-PE-HL-01：相关关系线渲染线宽——相关 → base × 1.5；否则原样。
+/// 纯函数无只读入参：只读模式同样输入产生同样视觉参数（高亮反馈不因只读关闭）。
+pub fn relation_render_width(base: f64, related: bool) -> f64 {
+    if related {
+        base * RELATED_RELATION_WIDTH_FACTOR
+    } else {
+        base
+    }
+}
+
+/// #31 UT-PE-HL-01：表渲染 alpha——无选中 / 选中表自身 / 邻接表（与选中表相连的对端表、
+/// 或选中关系的两端表）→ 1.0；其余非相关表 → 0.5（退到背景层）。
+pub fn table_render_alpha(
+    table_id: &str,
+    refs: &[Reference],
+    selected_table_ids: &[String],
+    selected_id: Option<&str>,
+    selected_ref_id: Option<&str>,
+) -> f64 {
+    let any_sel =
+        selected_id.is_some() || !selected_table_ids.is_empty() || selected_ref_id.is_some();
+    if !any_sel {
+        return 1.0;
+    }
+    if selected_id == Some(table_id) || selected_table_ids.iter().any(|id| id == table_id) {
+        return 1.0;
+    }
+    let adjacent = refs.iter().any(|r| {
+        relation_is_related(
+            &r.id,
+            &r.start_table_id,
+            &r.end_table_id,
+            selected_table_ids,
+            selected_id,
+            selected_ref_id,
+        ) && (r.start_table_id == table_id || r.end_table_id == table_id)
+    });
+    if adjacent {
+        1.0
+    } else {
+        UNRELATED_TABLE_ALPHA
+    }
+}
+
 /// 框选矩形：对角点 → 归一化 (x, y, w, h)（UT-CR-MULTI / #5：预览必须是框而非线）。
 pub fn normalize_marquee_rect(x1: f64, y1: f64, x2: f64, y2: f64) -> (f64, f64, f64, f64) {
     let min_x = x1.min(x2);
@@ -3433,6 +3509,9 @@ pub fn draw_canvas(
 
     // R-PERF-06：refs 端点查找先建 id → &Table HashMap，O(refs + tables)
     let table_map: HashMap<&str, &Table> = tables.iter().map(|t| (t.id.as_str(), t)).collect();
+    // ST-PE-10 探针累计：相关线宽倍率最大值 / 非相关表 alpha 最小值
+    let mut rel_width_scale_max = 1.0f64;
+    let mut table_alpha_min = 1.0f64;
     for r in refs {
         let visible = match (
             table_map.get(r.start_table_id.as_str()),
@@ -3454,6 +3533,23 @@ pub fn draw_canvas(
                 selected_id,
                 selected_ref_id,
             );
+            // #31 UT-PE-HL-01：选中表后相关连线加粗 1.5×；选中关系自身走 selected 3.5 不再叠加
+            let width_scale = if selected_ref_id == Some(&r.id) {
+                1.0
+            } else {
+                relation_render_width(
+                    1.0,
+                    relation_is_related(
+                        &r.id,
+                        &r.start_table_id,
+                        &r.end_table_id,
+                        selected_table_ids,
+                        selected_id,
+                        selected_ref_id,
+                    ),
+                )
+            };
+            rel_width_scale_max = rel_width_scale_max.max(width_scale);
             draw_relation(
                 ctx,
                 from,
@@ -3467,6 +3563,7 @@ pub fn draw_canvas(
                 effective_line_type(&r.line_type),
                 effective_stroke_style(&r.stroke_style),
                 opacity,
+                width_scale,
             );
         }
     }
@@ -3481,7 +3578,23 @@ pub fn draw_canvas(
         let is_sel = table_visually_selected(table.id.as_str(), selected_id, selected_table_ids);
         // R-PERF-04：被拖表以覆盖坐标绘制（一帧至多一张表的一次克隆）
         let visual = table_with_override(table, table_override);
-        draw_table(ctx, &visual, is_sel, palette, t.zoom, comment_mode);
+        // #31 UT-PE-HL-01：非相关表 alpha ≤ 0.5 退到背景层；邻接表/选中表保持 1.0
+        let alpha = table_render_alpha(
+            table.id.as_str(),
+            refs,
+            selected_table_ids,
+            selected_id,
+            selected_ref_id,
+        );
+        table_alpha_min = table_alpha_min.min(alpha);
+        if alpha < 0.999 {
+            ctx.save();
+            ctx.set_global_alpha(alpha);
+            draw_table(ctx, &visual, is_sel, palette, t.zoom, comment_mode);
+            ctx.restore();
+        } else {
+            draw_table(ctx, &visual, is_sel, palette, t.zoom, comment_mode);
+        }
     }
 
     for note in collect_visible_notes(notes, vp) {
@@ -3500,6 +3613,15 @@ pub fn draw_canvas(
     if let Some((x1, y1, x2, y2)) = marquee_preview {
         draw_marquee_rect(ctx, x1, y1, x2, y2, palette);
     }
+
+    // ST-PE-10 探针：暴露本帧高亮参数供 e2e 断言
+    update_hl_probe(
+        selected_id.is_some(),
+        selected_ref_id.is_some(),
+        selected_table_ids.len(),
+        table_alpha_min,
+        rel_width_scale_max,
+    );
 
     ctx.restore();
 }
@@ -3520,6 +3642,37 @@ fn bump_paint_counter() {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn bump_paint_counter() {}
+
+/// ST-PE-10 探针（#31/#32）：每帧把选中高亮参数写入 `window.__cdb_hl_probe`
+/// （JSON 字符串：any_sel / sel_table / sel_ref / multi_n / table_alpha_min /
+/// rel_width_scale_max），供 e2e 断言「相关线加粗提亮、非相关表/线退到背景层」
+/// 在真实渲染路径生效。
+#[cfg(target_arch = "wasm32")]
+fn update_hl_probe(
+    sel_table: bool,
+    sel_ref: bool,
+    multi_n: usize,
+    table_alpha_min: f64,
+    rel_width_scale_max: f64,
+) {
+    if let Some(win) = web_sys::window() {
+        let target: &js_sys::Object = win.unchecked_ref();
+        let key = wasm_bindgen::JsValue::from_str("__cdb_hl_probe");
+        let json = format!(
+            "{{\"any_sel\":{},\"sel_table\":{},\"sel_ref\":{},\"multi_n\":{},\"table_alpha_min\":{},\"rel_width_scale_max\":{}}}",
+            sel_table || sel_ref || multi_n > 0,
+            sel_table,
+            sel_ref,
+            multi_n,
+            table_alpha_min,
+            rel_width_scale_max
+        );
+        let _ = js_sys::Reflect::set(target, &key, &wasm_bindgen::JsValue::from_str(&json));
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn update_hl_probe(_: bool, _: bool, _: usize, _: f64, _: f64) {}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RemotePresence {
@@ -3858,6 +4011,148 @@ pub fn header_foreground_colors<'a>(
     }
 }
 
+/// #32 UT-PE-CMT-01：注释文本最小对比度（WCAG AA 正文 4.5:1，R-CMT-CONTRAST-02）。
+pub const COMMENT_CONTRAST_MIN: f64 = 4.5;
+/// #32 UT-PE-CMT-01：chip 衬底纱罩 alpha（core-07 §15.4 token `canvas.comment.chip-bg-alpha`，
+/// R-CMT-CONTRAST-02 允许区间 0.35–0.55；取上限以数学保证兜底后对比度达标）。
+pub const COMMENT_CHIP_BG_ALPHA: f64 = 0.55;
+/// chip 深纱罩（浅前景文字下垫深色，盖住表头渐变）。
+pub const COMMENT_CHIP_DARK: &str = "rgba(10,20,24,0.55)";
+/// chip 浅纱罩（深前景文字下垫浅色）。
+pub const COMMENT_CHIP_LIGHT: &str = "rgba(255,255,255,0.55)";
+
+/// #32 UT-PE-CMT-01：注释渲染样式——前景色 + 可选 chip 衬底色。
+#[derive(Clone, Debug, PartialEq)]
+pub struct CommentStyle {
+    pub fg: String,
+    /// None = 无衬底直接绘制；Some = 先绘制该色圆角衬底再绘制文字。
+    pub chip: Option<String>,
+}
+
+/// 单色串相对亮度（无 alpha 通道时视为不透明；解析失败 → None）。
+pub fn color_relative_luminance(color: &str) -> Option<f64> {
+    let (r, g, b, _) = parse_css_color_rgba(color)?;
+    Some(relative_luminance_rgb(r, g, b))
+}
+
+/// WCAG 对比度 (L_hi + 0.05) / (L_lo + 0.05)。
+pub fn contrast_ratio_luminance(l1: f64, l2: f64) -> f64 {
+    let (lo, hi) = if l1 < l2 { (l1, l2) } else { (l2, l1) };
+    (hi + 0.05) / (lo + 0.05)
+}
+
+/// #32 UT-PE-CMT-01：注释前景 fg 相对「tint 合成到 table_bg」有效背景的对比度。
+/// 任一色解析失败 → None。
+pub fn comment_contrast_ratio(fg: &str, header_tint: &str, table_bg: &str) -> Option<f64> {
+    let fg_l = color_relative_luminance(fg)?;
+    let bg_l = composited_relative_luminance(header_tint, table_bg)?;
+    Some(contrast_ratio_luminance(fg_l, bg_l))
+}
+
+/// #32 UT-PE-CMT-01：对比度 < 4.5:1 → 需要 chip 衬底兜底（R-CMT-CONTRAST-02）。
+pub fn needs_comment_chip(contrast: f64) -> bool {
+    contrast < COMMENT_CONTRAST_MIN
+}
+
+/// #32 UT-PE-CMT-01：注释前景/衬底决策（R-CMT-CONTRAST-01/02）。
+/// 入参为 R-COLOR-04 同一对深/浅前景组（dark_* 用于亮背景，light_* 用于深背景）：
+/// 1. 按 HEADER_FG_LUMINANCE_THRESHOLD 选定方向后，muted 达标 → muted 无衬底；
+/// 2. 该方向 strong 达标 → strong 无衬底；
+/// 3. 反方向 strong 达标（中间亮度表头，如实色琥珀）→ 反方向 strong 无衬底；
+/// 4. 否则 chip 兜底：浅 strong + 深纱罩 或 深 strong + 浅纱罩，取兜底后对比更高者。
+pub fn comment_foreground(
+    header_tint: &str,
+    table_bg: &str,
+    dark_strong: &str,
+    dark_muted: &str,
+    light_strong: &str,
+    light_muted: &str,
+    fallback_dark_fg: bool,
+) -> CommentStyle {
+    let pair = header_foreground_colors(
+        header_tint,
+        table_bg,
+        dark_strong,
+        dark_muted,
+        light_strong,
+        light_muted,
+        fallback_dark_fg,
+    );
+    if let Some(c) = comment_contrast_ratio(pair.muted, header_tint, table_bg) {
+        if !needs_comment_chip(c) {
+            return CommentStyle {
+                fg: pair.muted.to_string(),
+                chip: None,
+            };
+        }
+    }
+    if let Some(c) = comment_contrast_ratio(pair.strong, header_tint, table_bg) {
+        if !needs_comment_chip(c) {
+            return CommentStyle {
+                fg: pair.strong.to_string(),
+                chip: None,
+            };
+        }
+    }
+    // 反方向 strong（中间亮度表头：两个方向的字直绘都可能不足，反方向常可免 chip）
+    let alt_strong = if pair.strong == dark_strong {
+        light_strong
+    } else {
+        dark_strong
+    };
+    if let Some(c) = comment_contrast_ratio(alt_strong, header_tint, table_bg) {
+        if !needs_comment_chip(c) {
+            return CommentStyle {
+                fg: alt_strong.to_string(),
+                chip: None,
+            };
+        }
+    }
+    // chip 兜底：浅字 + 深纱罩 vs 深字 + 浅纱罩，合成 chip 背景后取对比更高者
+    let light_chip_l = chip_composited_luminance(COMMENT_CHIP_DARK, header_tint, table_bg);
+    let dark_chip_l = chip_composited_luminance(COMMENT_CHIP_LIGHT, header_tint, table_bg);
+    let light_fg_score = light_chip_l.map(|bg| {
+        contrast_ratio_luminance(color_relative_luminance(light_strong).unwrap_or(1.0), bg)
+    });
+    let dark_fg_score = dark_chip_l.map(|bg| {
+        contrast_ratio_luminance(color_relative_luminance(dark_strong).unwrap_or(0.0), bg)
+    });
+    match (light_fg_score, dark_fg_score) {
+        (Some(l), Some(d)) if l >= d => CommentStyle {
+            fg: light_strong.to_string(),
+            chip: Some(COMMENT_CHIP_DARK.to_string()),
+        },
+        (Some(_), Some(_)) => CommentStyle {
+            fg: dark_strong.to_string(),
+            chip: Some(COMMENT_CHIP_LIGHT.to_string()),
+        },
+        // 解析失败回退：按阈值方向取 strong + 对应纱罩
+        _ => {
+            if pair.strong == light_strong {
+                CommentStyle {
+                    fg: light_strong.to_string(),
+                    chip: Some(COMMENT_CHIP_DARK.to_string()),
+                }
+            } else {
+                CommentStyle {
+                    fg: dark_strong.to_string(),
+                    chip: Some(COMMENT_CHIP_LIGHT.to_string()),
+                }
+            }
+        }
+    }
+}
+
+/// chip 纱罩先合成到 tint，再合成到 table_bg 的最终背景亮度。
+fn chip_composited_luminance(chip: &str, header_tint: &str, table_bg: &str) -> Option<f64> {
+    let chip_rgba = parse_css_color_rgba(chip)?;
+    let tint_rgba = parse_css_color_rgba(header_tint)?;
+    let base_rgba = parse_css_color_rgba(table_bg).unwrap_or((0.0, 0.0, 0.0, 1.0));
+    let under = composite_over(tint_rgba, base_rgba);
+    let (r, g, b) = composite_over(chip_rgba, (under.0, under.1, under.2, 1.0));
+    Some(relative_luminance_rgb(r, g, b))
+}
+
 /// R-CMT-01/02：单行省略截断——逐字符测量，超出 max_w 时截断并追加 …（canvas 无原生省略）。
 fn truncate_to_width(ctx: &CanvasRenderingContext2d, text: &str, max_w: f64) -> String {
     let full_w = ctx.measure_text(text).map(|m| m.width()).unwrap_or(0.0);
@@ -3874,6 +4169,17 @@ fn truncate_to_width(ctx: &CanvasRenderingContext2d, text: &str, max_w: f64) -> 
         out.push(ch);
     }
     format!("{out}…")
+}
+
+/// #32 UT-PE-CMT-01（R-CMT-CONTRAST-02）：注释 chip 衬底——圆角纱罩垫在注释文字下，
+/// 盖住表头渐变以数学保证前景对比度达标（chip 色由 comment_foreground 决策给出）。
+fn draw_comment_chip(ctx: &CanvasRenderingContext2d, chip_color: &str, x: f64, y_center: f64, text_w: f64) {
+    ctx.save();
+    let _ = ctx.set_fill_style_str(chip_color);
+    ctx.begin_path();
+    round_rect(ctx, x - 3.0, y_center - 8.5, text_w + 6.0, 17.0, 8.0);
+    ctx.fill();
+    ctx.restore();
 }
 
 /// R-PERF-07：表精灵指纹（变化触发重光栅）。fix-remote-github-issues-7-18：
@@ -4234,13 +4540,29 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
     // 空 comment 不渲染、不留占位（R-CMT-03）。canvas 无 DOM title——截断省略与原型一致。
     if let Some(cmt) = comment_mode.secondary(&table.comment) {
         let label_w = ctx.measure_text(table_label).map(|m| m.width()).unwrap_or(0.0);
-        let _ = ctx.set_fill_style_str(header_fg.muted);
-        let _ = ctx.set_font(&dpr_font(500, 10.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
+        // #32 UT-PE-CMT-01（R-CMT-CONTRAST-01/02/04/05）：注释前景按表头有效背景对比度决策
+        // （≥4.5:1，不足时 chip 衬底兜底）；字号 11px ≥ 表名 13px 的 0.8× 且 ≥11px，字重 600 ≥400
+        let cmt_style = comment_foreground(
+            header_tint,
+            palette.table_bg,
+            PALETTE_LIGHT.text_strong,
+            PALETTE_LIGHT.text_muted,
+            PALETTE_DARK.text_strong,
+            PALETTE_DARK.text_muted,
+            !current_theme_dark(),
+        );
+        let _ = ctx.set_font(&dpr_font(600, 11.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
         let cmt_x = x + 11.0 + label_w + 6.0;
         // 26 = 右边距 11 + 字段计数预留 15
         let max_w = (x + width - 26.0) - cmt_x;
         if max_w > 12.0 {
-            let _ = ctx.fill_text(&truncate_to_width(ctx, cmt, max_w), cmt_x, y + TABLE_HEADER_HEIGHT / 2.0 + 0.5);
+            let shown = truncate_to_width(ctx, cmt, max_w);
+            let cmt_w = ctx.measure_text(&shown).map(|m| m.width()).unwrap_or(0.0);
+            if let Some(chip) = &cmt_style.chip {
+                draw_comment_chip(ctx, chip, cmt_x, y + TABLE_HEADER_HEIGHT / 2.0 + 0.5, cmt_w);
+            }
+            let _ = ctx.set_fill_style_str(&cmt_style.fg);
+            let _ = ctx.fill_text(&shown, cmt_x, y + TABLE_HEADER_HEIGHT / 2.0 + 0.5);
         }
     }
     let _ = ctx.set_fill_style_str(header_fg.muted);
@@ -4294,8 +4616,25 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
             let type_left = x + width - 11.0 - type_w;
             let cmt_max_w = type_left - 8.0 - (name_x + name_w + 8.0);
             if cmt_max_w > 10.0 {
-                let _ = ctx.set_font(&dpr_font(500, 9.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
+                // #32 UT-PE-CMT-01（R-CMT-CONTRAST-01/02/05）：字段行背景为表体实底（tint 全透明），
+                // 同样按对比度决策前景（亮主题 muted 灰不足 4.5:1 时升级 strong）；字号 10px ≥ 字段名
+                // 11px 的 0.85×，字重 500 ≥400
+                let f_style = comment_foreground(
+                    "rgba(0,0,0,0)",
+                    palette.table_bg,
+                    PALETTE_LIGHT.text_strong,
+                    PALETTE_LIGHT.text_muted,
+                    PALETTE_DARK.text_strong,
+                    PALETTE_DARK.text_muted,
+                    !current_theme_dark(),
+                );
+                let _ = ctx.set_font(&dpr_font(500, 10.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
                 let shown = truncate_to_width(ctx, f_cmt, cmt_max_w);
+                if let Some(chip) = &f_style.chip {
+                    let cmt_w = ctx.measure_text(&shown).map(|m| m.width()).unwrap_or(0.0);
+                    draw_comment_chip(ctx, chip, type_left - 8.0 - cmt_w, fy + FIELD_ROW_HEIGHT / 2.0 + 0.5, cmt_w);
+                }
+                let _ = ctx.set_fill_style_str(&f_style.fg);
                 let _ = ctx.fill_text(&shown, type_left - 8.0, fy + FIELD_ROW_HEIGHT / 2.0 + 0.5);
             }
         }
@@ -4389,6 +4728,8 @@ fn clear_stroke_dash(ctx: &CanvasRenderingContext2d) {
 }
 
 /// #21/#22：按 line_type / stroke_style / 源表色 / 密度 alpha 绘制关系。
+/// #31 UT-PE-HL-01：`width_scale` 为相关态线宽倍率（1.0 或 1.5），仅作用于非选中态；
+/// 选中态 3.5/10.0 已是最强高亮，不再叠加。
 fn draw_relation(
     ctx: &CanvasRenderingContext2d,
     from: &Table,
@@ -4402,6 +4743,7 @@ fn draw_relation(
     line_type: &str,
     stroke_style: &str,
     opacity: f64,
+    width_scale: f64,
 ) {
     let stroke = relation_stroke_color(ref_color, source_table_color, palette.relation);
     ctx.save();
@@ -4409,18 +4751,20 @@ fn draw_relation(
 
     let stroke_main = if selected { palette.selected } else { stroke };
     let halo = if selected { palette.selected_soft } else { palette.relation_halo };
+    let halo_w = if selected { 10.0 } else { 7.0 * width_scale };
+    let main_w = if selected { 3.5 } else { 2.0 * width_scale };
 
     match line_type {
         "orthogonal" => {
             let pts = calc_orthogonal_path(from, from_field_id, to, to_field_id);
             // 光晕
             let _ = ctx.set_stroke_style_str(halo);
-            ctx.set_line_width(if selected { 10.0 } else { 7.0 });
+            ctx.set_line_width(halo_w);
             clear_stroke_dash(ctx);
             stroke_polyline(ctx, &pts);
             // 主线
             let _ = ctx.set_stroke_style_str(stroke_main);
-            ctx.set_line_width(if selected { 3.5 } else { 2.0 });
+            ctx.set_line_width(main_w);
             apply_stroke_dash(ctx, stroke_style);
             stroke_polyline(ctx, &pts);
             clear_stroke_dash(ctx);
@@ -4438,14 +4782,14 @@ fn draw_relation(
         "straight" => {
             let (x1, y1, x2, y2) = calc_straight_path(from, from_field_id, to, to_field_id);
             let _ = ctx.set_stroke_style_str(halo);
-            ctx.set_line_width(if selected { 10.0 } else { 7.0 });
+            ctx.set_line_width(halo_w);
             clear_stroke_dash(ctx);
             ctx.begin_path();
             ctx.move_to(x1, y1);
             ctx.line_to(x2, y2);
             ctx.stroke();
             let _ = ctx.set_stroke_style_str(stroke_main);
-            ctx.set_line_width(if selected { 3.5 } else { 2.0 });
+            ctx.set_line_width(main_w);
             apply_stroke_dash(ctx, stroke_style);
             ctx.begin_path();
             ctx.move_to(x1, y1);
@@ -4462,14 +4806,14 @@ fn draw_relation(
             // bezier 默认
             let path = calc_path(from, from_field_id, to, to_field_id);
             let _ = ctx.set_stroke_style_str(halo);
-            ctx.set_line_width(if selected { 10.0 } else { 7.0 });
+            ctx.set_line_width(halo_w);
             clear_stroke_dash(ctx);
             ctx.begin_path();
             ctx.move_to(path.x1, path.y1);
             ctx.bezier_curve_to(path.cx1, path.cy1, path.cx2, path.cy2, path.x2, path.y2);
             ctx.stroke();
             let _ = ctx.set_stroke_style_str(stroke_main);
-            ctx.set_line_width(if selected { 3.5 } else { 2.0 });
+            ctx.set_line_width(main_w);
             apply_stroke_dash(ctx, stroke_style);
             ctx.begin_path();
             ctx.move_to(path.x1, path.y1);
@@ -6156,6 +6500,138 @@ mod tests {
             !prefer_selection_over_field_rel(false, &["a".into()], "a"),
             "ST-CR-MULTI-01: 单选不抢字段连线"
         );
+    }
+
+    /// UT-PE-HL-01 — 选中高亮参数纯函数（#31，core-01b §4.4）
+    #[test]
+    fn ut_pe_hl_01_highlight_render_params() {
+        let mk = |id: &str, s: &str, e: &str| Reference {
+            id: id.to_string(),
+            name: String::new(),
+            start_table_id: s.to_string(),
+            end_table_id: e.to_string(),
+            start_field_id: String::new(),
+            end_field_id: String::new(),
+            type_: String::new(),
+            on_delete: String::new(),
+            on_update: String::new(),
+            color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
+        };
+        // 拓扑：r1(a-b) r2(a-c) r3(c-d)
+        let refs = vec![mk("r1", "a", "b"), mk("r2", "a", "c"), mk("r3", "c", "d")];
+
+        // 断言 1：选中表 a —— 相关线 ≥1.5× 且 alpha=1；非相关线 ≤0.25；非相关表 ≤0.5；邻接表=1
+        let sel_a = Some("a");
+        assert!(relation_is_related("r1", "a", "b", &[], sel_a, None));
+        assert!(relation_is_related("r2", "a", "c", &[], sel_a, None));
+        assert!(!relation_is_related("r3", "c", "d", &[], sel_a, None));
+        let w_rel = relation_render_width(2.0, true);
+        assert!(
+            w_rel >= 2.0 * 1.5 - 1e-9,
+            "UT-PE-HL-01: 相关线宽 {w_rel} 必须 ≥ 默认 1.5×"
+        );
+        assert_eq!(relation_render_width(2.0, false), 2.0, "UT-PE-HL-01: 非相关线保持默认线宽");
+        assert_eq!(
+            relation_opacity("r1", "a", "b", &[], sel_a, None),
+            1.0,
+            "UT-PE-HL-01: 相关线 alpha = 1"
+        );
+        assert!(
+            relation_opacity("r3", "c", "d", &[], sel_a, None) <= 0.25,
+            "UT-PE-HL-01: 非相关线 alpha ≤ 0.25"
+        );
+        assert_eq!(table_render_alpha("a", &refs, &[], sel_a, None), 1.0, "选中表自身 alpha=1");
+        assert_eq!(table_render_alpha("b", &refs, &[], sel_a, None), 1.0, "邻接表 b alpha=1");
+        assert_eq!(table_render_alpha("c", &refs, &[], sel_a, None), 1.0, "邻接表 c alpha=1");
+        assert!(
+            table_render_alpha("d", &refs, &[], sel_a, None) <= 0.5,
+            "UT-PE-HL-01: 非相关表 d alpha ≤ 0.5"
+        );
+
+        // 断言 2：选中关系 r1 —— 该关系及两端表 a/b 相关；c/d 非相关
+        let sel_r1 = Some("r1");
+        assert!(relation_is_related("r1", "a", "b", &[], None, sel_r1));
+        assert!(!relation_is_related("r2", "a", "c", &[], None, sel_r1));
+        assert_eq!(table_render_alpha("a", &refs, &[], None, sel_r1), 1.0);
+        assert_eq!(table_render_alpha("b", &refs, &[], None, sel_r1), 1.0);
+        assert!(table_render_alpha("c", &refs, &[], None, sel_r1) <= 0.5);
+        assert!(table_render_alpha("d", &refs, &[], None, sel_r1) <= 0.5);
+
+        // 断言 3：无选中 —— 全部恢复默认线宽与 alpha=1
+        assert!(!relation_is_related("r1", "a", "b", &[], None, None));
+        assert_eq!(relation_render_width(2.0, relation_is_related("r1", "a", "b", &[], None, None)), 2.0);
+        for t in ["a", "b", "c", "d"] {
+            assert_eq!(table_render_alpha(t, &refs, &[], None, None), 1.0, "无选中 {t} alpha=1");
+            assert_eq!(relation_opacity("r1", "a", "b", &[], None, None), 1.0);
+        }
+
+        // 断言 4：只读不改变高亮反馈——纯函数无只读入参，同样输入必然同样输出
+        assert_eq!(
+            table_render_alpha("d", &refs, &[], sel_a, None),
+            table_render_alpha("d", &refs, &[], sel_a, None),
+            "UT-PE-HL-01: 只读同参数（幂等）"
+        );
+    }
+
+    /// UT-PE-CMT-01 — 注释对比度前景计算纯函数（#32，core-01a R-CMT-CONTRAST-01~05）
+    #[test]
+    fn ut_pe_cmt_01_comment_contrast_foreground() {
+        let light_bg = "rgba(255,255,255,.84)";
+        let dark_bg = "rgba(16,38,45,.94)";
+        let (ls, lm) = (PALETTE_LIGHT.text_strong, PALETTE_LIGHT.text_muted);
+        let (ds, dm) = (PALETTE_DARK.text_strong, PALETTE_DARK.text_muted);
+
+        // 断言 1：有效背景亮度高于阈值 → 深前景对；低于阈值 → 浅前景对（R-COLOR-04 同阈值口径）
+        // 亮主题默认低 alpha tint（合成背景亮）→ 深色系前景（亮主题 muted 仅 ~2.6:1 → 升级 strong，无 chip）
+        let bright = comment_foreground("rgba(30,131,147,.13)", light_bg, ls, lm, ds, dm, true);
+        assert_eq!(bright.fg, ls, "UT-PE-CMT-01: 亮背景必须选深前景对");
+        assert_eq!(bright.chip, None, "UT-PE-CMT-01: 深 strong 在亮背景直绘达标，无需 chip");
+        // 实色深青表头（合成背景暗）→ 浅前景对（浅 muted 在此深度直绘达标）
+        let dark = comment_foreground("#12374a", dark_bg, ls, lm, ds, dm, false);
+        assert_eq!(dark.fg, dm, "UT-PE-CMT-01: 深背景必须选浅前景对");
+
+        // 断言 2：needs_comment_chip 阈值边界
+        assert!(needs_comment_chip(4.4), "UT-PE-CMT-01: <4.5 必须兜底");
+        assert!(!needs_comment_chip(4.5), "UT-PE-CMT-01: ≥4.5 不兜底");
+        assert!(!needs_comment_chip(4.6));
+        assert!(needs_comment_chip(3.0));
+
+        // 断言 3：蓝/绿/紫实色表头 × 亮/暗主题 6 组，决策输出前景对有效背景（含 chip 合成）≥4.5:1
+        let eff_bg_lum = |tint: &str, bg: &str, chip: &Option<String>| -> f64 {
+            let base = parse_css_color_rgba(bg).unwrap();
+            let tint_rgba = parse_css_color_rgba(tint).unwrap();
+            let under = composite_over(tint_rgba, base);
+            match chip {
+                Some(c) => {
+                    let chip_rgba = parse_css_color_rgba(c).unwrap();
+                    let (r, g, b) = composite_over(chip_rgba, (under.0, under.1, under.2, 1.0));
+                    relative_luminance_rgb(r, g, b)
+                }
+                None => relative_luminance_rgb(under.0, under.1, under.2),
+            }
+        };
+        for tint in ["#3788e5", "#19a974", "#aa8cff"] {
+            for (bg, fallback_dark) in [(light_bg, true), (dark_bg, false)] {
+                let style = comment_foreground(tint, bg, ls, lm, ds, dm, fallback_dark);
+                let fg_l = color_relative_luminance(&style.fg).unwrap();
+                let bg_l = eff_bg_lum(tint, bg, &style.chip);
+                let ratio = contrast_ratio_luminance(fg_l, bg_l);
+                assert!(
+                    ratio >= COMMENT_CONTRAST_MIN,
+                    "UT-PE-CMT-01: tint={tint} bg={bg} 输出对比度 {ratio:.2} 必须 ≥ 4.5（style={style:?}）"
+                );
+            }
+        }
+
+        // 断言 4：空注释不产生任何注释渲染参数（R-CMT-03 不占位）
+        assert_eq!(
+            crate::editor_core::CommentDisplay::NameComment.secondary(""),
+            None,
+            "UT-PE-CMT-01: 空注释不渲染"
+        );
+        assert_eq!(crate::editor_core::CommentDisplay::NameComment.secondary("  "), None);
     }
 
     /// ST-CR-MULTI-01：多选集合内表必须有选中视觉（对齐 #5 reopen）

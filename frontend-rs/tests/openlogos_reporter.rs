@@ -114,6 +114,10 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-AREA-03",
     // fix-open-issues-26-33 / #28：批量 line_type 纯函数与单次 Undo（ST-PB-10 由 parity-d 上报）
     "UT-PB-17",
+    // fix-open-issues-26-33 / #31：选中高亮参数纯函数（相关线 ≥1.5× / 非相关线 ≤0.25 / 非相关表 ≤0.5）
+    "UT-PE-HL-01",
+    // fix-open-issues-26-33 / #32：注释对比度前景计算纯函数（分区背景 + 4.5:1 + chip 衬底兜底）
+    "UT-PE-CMT-01",
     "UT-NOTE-01", // p0-fix 定点 2: build_note 默认值 + hit_test_note 固定 180×100 命中
     "UT-MM-35", // list-view-table-structure: group_tables ByTable 按表分桶（桶键=表名 / 桶序保持 / 空表出桶 / 空输入 0 桶）
     "UT-MM-36", // diagram-database-dialect: types_for_database 三组清单（Generic 对齐既有 5 项 / MySQL 含 DATETIME 无 SERIAL / PostgreSQL 含 SERIAL 无 DATETIME / 未暴露引擎回落 Generic）

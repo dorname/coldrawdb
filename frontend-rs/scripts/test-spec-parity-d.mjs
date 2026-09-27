@@ -1779,6 +1779,94 @@ try {
     assert.equal(state.putCalls, 0, "只读房间批量线型命令不得产生 PUT");
   });
 
+  // ─── ST-PE-10：选中高亮与注释可读性目视锚点（fix-open-issues-26-33 / #31 #32，
+  //     core-PE UT-PE-HL-01 / UT-PE-CMT-01 的 e2e 面） ──────────────────────────
+  await run(["ST-PE-10"], "选中高亮参数探针 + 双主题注释可读性锚点", async page => {
+    const field = (id, name, extra = {}) => ({
+      id, name, type_: "INT", default: "", check: "", primary: false, unique: false,
+      not_null: false, increment: false, comment: "", tag: "", dict_code: "", ...extra,
+    });
+    const presetDiagram = {
+      tables: [
+        // 三张实色表头（蓝/绿/紫）+ 一张默认色；ta 为 ≥3 关系中心表（r1/r2 直出、经 tc 间接 r3）
+        { id: "ta", name: "orders", x: 120, y: 140, color: "#3788e5", comment: "订单主表",
+          fields: [field("fa1", "id", { primary: true, comment: "主键" }),
+                   field("fa2", "user_id", { comment: "下单用户" })], indices: [] },
+        { id: "tb", name: "users", x: 480, y: 100, color: "#19a974", comment: "用户表",
+          fields: [field("fb1", "id", { primary: true, comment: "用户主键" })], indices: [] },
+        { id: "tc", name: "items", x: 480, y: 360, color: "#aa8cff", comment: "订单明细",
+          fields: [field("fc1", "id", { primary: true })], indices: [] },
+        { id: "td", name: "audit_log", x: 880, y: 360, color: "", comment: "",
+          fields: [field("fd1", "id", { primary: true })], indices: [] },
+      ],
+      references: [
+        { id: "r1", name: "", start_table_id: "ta", end_table_id: "tb", start_field_id: "fa2", end_field_id: "fb1",
+          type_: "one_to_many", on_delete: "RESTRICT", on_update: "RESTRICT", color: "", line_type: "", stroke_style: "" },
+        { id: "r2", name: "", start_table_id: "ta", end_table_id: "tc", start_field_id: "fa2", end_field_id: "fc1",
+          type_: "one_to_many", on_delete: "RESTRICT", on_update: "RESTRICT", color: "", line_type: "", stroke_style: "" },
+        { id: "r3", name: "", start_table_id: "tc", end_table_id: "td", start_field_id: "fc1", end_field_id: "fd1",
+          type_: "one_to_many", on_delete: "RESTRICT", on_update: "RESTRICT", color: "", line_type: "", stroke_style: "" },
+      ],
+      areas: [], notes: [],
+    };
+    await installApi(page, { presetDiagram });
+    await login(page);
+    await createRoomAndEnter(page);
+    // 首帧渲染后探针可用
+    await page.waitForFunction(() => !!window.__cdb_hl_probe, null, { timeout: 8_000 });
+    const probe = () => page.evaluate(() => JSON.parse(window.__cdb_hl_probe));
+
+    // GIVEN：注释显示模式 = 英文名+注释（默认 NameComment，按钮文案锚点）
+    const cmtBtnText = await page.locator('[data-testid="canvas-comment-display"]').innerText();
+    assert.ok(cmtBtnText.includes("英文名+注释"), `注释模式必须为英文名+注释（实际：${cmtBtnText}）`);
+
+    // 无选中基线：全部默认参数
+    let p = await probe();
+    assert.equal(p.any_sel, false, "未选中时 any_sel 必须为 false");
+    assert.equal(p.table_alpha_min, 1, "未选中时全表 alpha=1");
+    assert.equal(p.rel_width_scale_max, 1, "未选中时全线默认线宽");
+
+    // WHEN：点击选中中心表 ta（表头区域，避开字段连接点）
+    const head = await canvasPoint(page, { x: 120 + 100, y: 140 + 16 });
+    await page.mouse.click(head.x, head.y);
+    await page.locator('[data-testid="inspector-table-form"]:visible').waitFor();
+    await page.waitForFunction(
+      () => JSON.parse(window.__cdb_hl_probe).any_sel === true, null, { timeout: 4_000 },
+    );
+
+    // THEN 1：相关线 1.5× 提亮、非相关表 alpha 0.5 退背景（canvas 参数探针）
+    p = await probe();
+    assert.ok(Math.abs(p.rel_width_scale_max - 1.5) < 1e-9,
+      `相关连线必须加粗 1.5×（实际 ${p.rel_width_scale_max}）`);
+    assert.ok(Math.abs(p.table_alpha_min - 0.5) < 1e-9,
+      `非相关表必须降透明度至 0.5（实际 ${p.table_alpha_min}）`);
+
+    // THEN 2：三种表头色 × 亮/暗主题注释可读性——截图锚点（UT-PE-CMT-01 保证对比度参数）
+    const canvas = page.locator('[data-testid="editor-canvas-container"] canvas');
+    const darkShot = await canvas.screenshot();
+    await page.locator('[data-testid="btn-more-menu"]').click();
+    await page.locator('[data-testid="btn-theme-toggle"]').click();
+    await page.waitForTimeout(250); // 等 theme effect 重绘一帧
+    assert.equal(await page.locator("html").getAttribute("data-mode"), "light", "必须切到亮主题");
+    const lightShot = await canvas.screenshot();
+    assert.ok(!darkShot.equals(lightShot), "主题切换后画布必须重绘（亮暗调色板不同）");
+    // 高亮参数不随主题漂移（同样的输入产生同样的视觉参数）
+    p = await probe();
+    assert.ok(Math.abs(p.rel_width_scale_max - 1.5) < 1e-9, "亮主题下相关线仍必须 1.5×");
+    assert.ok(Math.abs(p.table_alpha_min - 0.5) < 1e-9, "亮主题下非相关表仍必须 0.5");
+
+    // THEN 3：取消选中（Escape 收拢可能开着的更多菜单 + 点击左下空旷区）→ 全图恢复默认
+    await page.keyboard.press("Escape");
+    const blank = await canvasPoint(page, { x: 200, y: 600 });
+    await page.mouse.click(blank.x, blank.y);
+    await page.waitForFunction(
+      () => JSON.parse(window.__cdb_hl_probe).any_sel === false, null, { timeout: 4_000 },
+    );
+    p = await probe();
+    assert.equal(p.table_alpha_min, 1, "取消选中后全表必须恢复 alpha=1");
+    assert.equal(p.rel_width_scale_max, 1, "取消选中后全线必须恢复默认线宽");
+  });
+
   // ─── ST-CR-TAG-01：Inspector 字段 tag 受控输入（redesign-listview-type-length-canvas-fix） ──
   await run(["ST-CR-TAG-01"], "字段 tag 连续键入不丢字", async page => {
     const state = await installApi(page);
