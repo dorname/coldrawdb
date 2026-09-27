@@ -6464,6 +6464,9 @@ pub fn Inspector(
     on_delete_ref: Rc<dyn Fn(String)>,
     // p0-fix 定点 2：区域 / 便签编辑与删除
     on_update_area: Rc<dyn Fn(String, &str, String)>,
+    /// fix-open-issues-26-33（issue #27，R-ARESZ-04）：区域矩形落账
+    /// (area_id, before(x,y,w,h), after(x,y,w,h)) → Command::SetAreaRect（单次 Undo 还原）
+    on_resize_area: Rc<dyn Fn(String, (f64, f64, f64, f64), (f64, f64, f64, f64))>,
     on_update_note: Rc<dyn Fn(String, String)>,
     // redesign-listview-type-length-canvas-fix：字段 tag 落账通路（table_id, field_id, tag）——
     // 原 tag blur 只写 store + dirty 不触发保存，PUT 不落账（ST-CR-TAG-01）
@@ -6491,6 +6494,9 @@ pub fn Inspector(
     let note_content_draft = create_rw_signal(String::new());
     // 区域名称草稿（同源问题：on:input 每击键 store.areas.set）
     let area_name_draft = create_rw_signal(String::new());
+    // fix-open-issues-26-33（issue #27，R-ARESZ-04）：区域宽高草稿（blur 才落账 SetAreaRect）
+    let area_width_draft = create_rw_signal(String::new());
+    let area_height_draft = create_rw_signal(String::new());
     create_effect(move |_| {
         match selection.get() {
             SelectionKind::Field { table_id, field_id } => {
@@ -6513,9 +6519,13 @@ pub fn Inspector(
                 }
             }
             SelectionKind::Area(area_id) => {
-                let areas = store.areas.get_untracked();
+                // fix-open-issues-26-33（issue #27，R-ARESZ-04）：get() 跟踪 areas——
+                // 画布 resize 落账后表单草稿同步新值（双向一致）；拖动中不写 store 不扰草稿
+                let areas = store.areas.get();
                 if let Some(a) = areas.iter().find(|a| a.id == area_id) {
                     area_name_draft.set(a.name.clone());
+                    area_width_draft.set(format!("{}", a.width));
+                    area_height_draft.set(format!("{}", a.height));
                 }
             }
             _ => {}
@@ -7279,12 +7289,21 @@ pub fn Inspector(
                         if let Some(a) = areas.iter().find(|x| x.id == area_id) {
                             let area_name = a.name.clone();
                             let area_color = a.color.clone();
+                            // fix-open-issues-26-33（issue #27，R-ARESZ-04）：宽高输入落账用矩形快照
+                            let area_x = a.x;
+                            let area_y = a.y;
+                            let area_w = a.width;
+                            let area_h = a.height;
                             let aid_tag = area_id.clone();
                             let aid_name = area_id.clone();
                             let aid_color = area_id.clone();
+                            let aid_w = area_id.clone();
+                            let aid_h = area_id.clone();
                             let aid_delete = area_id.clone();
                             let on_upd_name = on_update_area.clone();
                             let on_upd_color = on_update_area.clone();
+                            let on_upd_resize_w = on_resize_area.clone();
+                            let on_upd_resize_h = on_resize_area.clone();
                             let on_del_area = on_delete_area.clone();
                             view! {
                                 <div data-testid="inspector-area-form">
@@ -7320,6 +7339,58 @@ pub fn Inspector(
                                                 value=area_color
                                                 disabled=ro
                                                 on:change=move |ev| on_upd_color(aid_color.clone(), "color", event_target_value(&ev))
+                                            />
+                                        </div>
+                                        <div class="cdb-form-group">
+                                            <label>"宽度"</label>
+                                            // fix-open-issues-26-33（issue #27，R-ARESZ-04）：
+                                            // blur 落账 SetAreaRect；小于下限夹紧，非数值回显当前值
+                                            <input
+                                                class="cdb-form-input"
+                                                data-testid="inspector-area-width"
+                                                prop:value=move || area_width_draft.get()
+                                                disabled=ro
+                                                on:input=move |ev| area_width_draft.set(event_target_value(&ev))
+                                                on:blur=move |_| {
+                                                    let v = area_width_draft.get_untracked();
+                                                    if let Ok(w) = v.trim().parse::<f64>() {
+                                                        let w = w.max(crate::editor_render::AREA_MIN_WIDTH);
+                                                        if (w - area_w).abs() > 1e-6 {
+                                                            on_upd_resize_w(
+                                                                aid_w.clone(),
+                                                                (area_x, area_y, area_w, area_h),
+                                                                (area_x, area_y, w, area_h),
+                                                            );
+                                                        }
+                                                    } else {
+                                                        area_width_draft.set(format!("{}", area_w));
+                                                    }
+                                                }
+                                            />
+                                        </div>
+                                        <div class="cdb-form-group">
+                                            <label>"高度"</label>
+                                            <input
+                                                class="cdb-form-input"
+                                                data-testid="inspector-area-height"
+                                                prop:value=move || area_height_draft.get()
+                                                disabled=ro
+                                                on:input=move |ev| area_height_draft.set(event_target_value(&ev))
+                                                on:blur=move |_| {
+                                                    let v = area_height_draft.get_untracked();
+                                                    if let Ok(h) = v.trim().parse::<f64>() {
+                                                        let h = h.max(crate::editor_render::AREA_MIN_HEIGHT);
+                                                        if (h - area_h).abs() > 1e-6 {
+                                                            on_upd_resize_h(
+                                                                aid_h.clone(),
+                                                                (area_x, area_y, area_w, area_h),
+                                                                (area_x, area_y, area_w, h),
+                                                            );
+                                                        }
+                                                    } else {
+                                                        area_height_draft.set(format!("{}", area_h));
+                                                    }
+                                                }
                                             />
                                         </div>
                                         <button
@@ -12367,6 +12438,60 @@ pub fn AppRoot(
             );
         })
     };
+    // fix-open-issues-26-33（issue #27，core-01 §5.11 R-ARESZ-02/04）：区域矩形落账——
+    // 画布 resize 手柄与 Inspector 宽高输入统一走 Command::SetAreaRect（单次 Undo 还原
+    // 整次 resize），保存链路与其他属性一致（dirty + schedule_save + 协作 OT 通道）。
+    let on_resize_area = {
+        let store = store.clone();
+        let debouncer = debouncer.clone();
+        let client_for_resize_area = client.clone();
+        Rc::new(
+            move |area_id: String,
+                  before: (f64, f64, f64, f64),
+                  after: (f64, f64, f64, f64)| {
+                if editor_is_read_only(share_mode, current_room) {
+                    return;
+                }
+                if before == after {
+                    return;
+                }
+                let cmd = crate::editor_core::Command::SetAreaRect {
+                    area_id,
+                    before,
+                    after,
+                };
+                let stack_rc = command_stack.get();
+                let mut stack = stack_rc.borrow_mut();
+                if crate::editor_core::CommandStack::apply(&store, &mut stack, cmd).is_err() {
+                    return;
+                }
+                drop(stack);
+                schedule_save(
+                    client_for_resize_area.clone(),
+                    store.clone(),
+                    current_diagram_id.clone(),
+                    current_title.clone(),
+                    debouncer.clone(),
+                    conflict.clone(),
+                    error.clone(),
+                    is_saving.clone(),
+                    save_offline.clone(),
+                    collab_state,
+                    activity_feed,
+                    current_room.clone(),
+                    auth_session.clone(),
+                );
+            },
+        )
+    };
+    let on_area_resize: Option<
+        Box<dyn Fn(String, (f64, f64, f64, f64), (f64, f64, f64, f64)) + 'static>,
+    > = {
+        let on_resize_area = on_resize_area.clone();
+        Some(Box::new(move |area_id, before, after| {
+            on_resize_area(area_id, before, after);
+        }))
+    };
     let on_update_note = {
         let store = store.clone();
         let debouncer = debouncer.clone();
@@ -12871,6 +12996,7 @@ pub fn AppRoot(
                         create_tool=create_tool
                         marquee_active=marquee_active
                         on_area_create=on_area_create
+                        on_area_resize=on_area_resize
                         on_note_create=on_note_create
                         on_area_pick=on_area_pick
                         on_note_pick=on_note_pick
@@ -12901,6 +13027,7 @@ pub fn AppRoot(
                     on_flip_ref=on_flip_ref.clone()
                     on_delete_ref=on_delete_ref.clone()
                     on_update_area=on_update_area.clone()
+                    on_resize_area=on_resize_area.clone()
                     on_update_note=on_update_note.clone()
                     on_update_field_tag=on_update_field_tag.clone()
                     on_set_field_dict=on_set_field_dict.clone()

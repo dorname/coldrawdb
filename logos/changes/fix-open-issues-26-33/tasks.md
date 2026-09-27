@@ -60,9 +60,9 @@
 
 ## [code] C2 批次 B — #27 区域 resize 实现
 
-- [ ] C2.1 列出本批覆盖 UT/ST ID（对齐 D2.2）并实现：区域边/角 resize 手柄命中、拖拽改宽高、落账/撤销与 area_drag 路径一致
-- [ ] C2.2 Inspector 增加区域宽高编辑，与画布双向一致；只读模式禁用；最小尺寸约束生效
-- [ ] C2.3 同批补齐 UT/ST + OpenLogos reporter
+- [x] C2.1 列出本批覆盖 UT/ST ID（对齐 D2.2）并实现：区域边/角 resize 手柄命中、拖拽改宽高、落账/撤销与 area_drag 路径一致
+- [x] C2.2 Inspector 增加区域宽高编辑，与画布双向一致；只读模式禁用；最小尺寸约束生效
+- [x] C2.3 同批补齐 UT/ST + OpenLogos reporter
 
 ## [code] C3 批次 C — #28 批量线型实现
 

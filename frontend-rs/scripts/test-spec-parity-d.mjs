@@ -25,6 +25,7 @@
 //   ST-AN-02         点击放置便签 → Inspector 编辑内容 → 按钮删除落账 0 个
 //   ST-CR-NOTE-01    便签拖动落账（mousemove 不 PUT）+ 内容连续键入不丢字
 //   ST-CR-AREA-01    区域拖动落账（宽高不变）
+//   ST-CR-AREA-02    区域 resize 手柄 + Inspector 宽高双向（fix-open-issues-26-33 / #27）
 //   ST-CR-TAG-01     Inspector 字段 tag 受控输入连续键入不丢字
 //   ST-LV-01         ListView 表树+单表网格（树节点选中表；行内编辑控件；组头锚点移除）
 //   ST-SP-LIST-01    列表视图全屏渲染（网格定位 + 层叠遮挡 + 树+单表 10 列编辑网格）
@@ -193,10 +194,15 @@ async function installApi(page, options = {}) {
       });
     }
     if (url.pathname === "/api/v1/diagrams/diagram-new" && request.method() === "GET") {
+      // fix-open-issues-26-33（ST-CR-AREA-02）：persistGet 时回放最近一次 PUT 落账文档
+      // （刷新持久性断言；缺省保持空图，既有用例回归不破）
+      const persisted = options.persistGet ? state.lastPutBody?.diagram : null;
       return response(route, 200, {
         code: 0, request_id: "load-diagram",
         // fix-pg-types-listview-zindex-lock-engine: diagramDatabase 透传（缺省 null = Generic 缺省，回归不破）
-        data: { id: "diagram-new", name: "架构评审室", database: options.diagramDatabase ?? null, revision: diagramRev, tables: [], references: [], areas: [], notes: [] },
+        data: persisted
+          ? { id: "diagram-new", name: "架构评审室", database: options.diagramDatabase ?? null, revision: diagramRev, ...persisted }
+          : { id: "diagram-new", name: "架构评审室", database: options.diagramDatabase ?? null, revision: diagramRev, tables: [], references: [], areas: [], notes: [] },
       });
     }
     if (url.pathname === "/api/v1/diagrams/diagram-new" && request.method() === "PUT") {
@@ -1571,6 +1577,82 @@ try {
     assert.equal(dragged.height, created.height, "拖动后区域高度必须不变");
     // Inspector 区域表单仍选中
     await page.locator('[data-testid="inspector-area-form"]:visible').waitFor();
+  });
+
+  // ─── ST-CR-AREA-02：区域 resize 手柄 + Inspector 双向（fix-open-issues-26-33 / #27） ──
+  await run(["ST-CR-AREA-02"], "区域 resize 手柄 + Inspector 双向", async page => {
+    const state = await installApi(page, { persistGet: true });
+    await login(page);
+    await createRoomAndEnter(page);
+    await createTwoTables(page);
+
+    // 拖框创建区域（避开两表）
+    await page.locator('[data-testid="tool-new-area"]').click();
+    const from = await canvasPoint(page, { x: 600, y: 400 });
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 300, from.y + 200, { steps: 5 });
+    await page.mouse.up();
+    await page.locator('[data-testid="inspector-area-form"]:visible').waitFor();
+    await waitSaved(page);
+    const created = state.lastPutBody?.diagram?.areas?.[0];
+    assert.ok(created, "拖框松开后必须落账 1 个区域");
+
+    // R-ARESZ-01：未选中不渲染/不命中手柄——先点击区域中心选中（<4px 纯点击不落账）
+    const center0 = await canvasPoint(page, { x: created.x + created.width / 2, y: created.y + created.height / 2 });
+    const putsBeforePick = state.putCalls;
+    await page.mouse.click(center0.x, center0.y);
+    assert.equal(state.putCalls, putsBeforePick, "纯点击选中不得触发 PUT");
+
+    // 拖 SE 角手柄放大：mousemove 期间不落账，mouseup 一次写回（R-ARESZ-02）
+    const se = await canvasPoint(page, { x: created.x + created.width, y: created.y + created.height });
+    const putsBeforeResize = state.putCalls;
+    await page.mouse.move(se.x, se.y);
+    await page.mouse.down();
+    await page.mouse.move(se.x + 60, se.y + 50, { steps: 6 });
+    assert.equal(state.putCalls, putsBeforeResize, "resize mousemove 期间不得触发 PUT");
+    await page.mouse.up();
+    await waitSaved(page);
+    const resized = state.lastPutBody?.diagram?.areas?.[0];
+    assert.ok(resized.width >= created.width + 40, `SE 拖拽后宽度必须增大（${created.width} → ${resized.width}）`);
+    assert.ok(resized.height >= created.height + 30, `SE 拖拽后高度必须增大（${created.height} → ${resized.height}）`);
+    assert.equal(resized.x, created.x, "SE 拖拽 x 必须锚定不变");
+    assert.equal(resized.y, created.y, "SE 拖拽 y 必须锚定不变");
+
+    // Inspector 宽高显示画布新值（双向之 画布→表单，R-ARESZ-04）
+    const wInput = page.locator('[data-testid="inspector-area-width"]');
+    const hInput = page.locator('[data-testid="inspector-area-height"]');
+    assert.ok(Math.abs(parseFloat(await wInput.inputValue()) - resized.width) < 1,
+      `Inspector 宽度必须显示画布新值（${resized.width}）`);
+    assert.ok(Math.abs(parseFloat(await hInput.inputValue()) - resized.height) < 1,
+      `Inspector 高度必须显示画布新值（${resized.height}）`);
+
+    // 表单改宽度 blur → 画布同步（双向之 表单→画布，R-ARESZ-04）
+    const putsBeforeForm = state.putCalls;
+    const formWidth = Math.round(resized.width) + 40;
+    await wInput.fill(String(formWidth));
+    await page.locator('[data-testid="inspector-title"]').click();
+    await waitSaved(page);
+    assert.ok(state.putCalls > putsBeforeForm, "表单 blur 必须触发落账");
+    const fromForm = state.lastPutBody?.diagram?.areas?.[0];
+    assert.equal(fromForm.width, formWidth, "表单宽度必须落账到画布");
+    assert.equal(fromForm.height, resized.height, "表单改宽不得改高");
+
+    // Undo 一次恢复表单修改前宽度（SetAreaRect 单条命令 = 一次撤销单元）
+    await page.keyboard.press("Control+z");
+    await waitSaved(page);
+    const undone = state.lastPutBody?.diagram?.areas?.[0];
+    assert.ok(Math.abs(undone.width - resized.width) < 1,
+      `一次 Undo 必须恢复表单改前宽度（${resized.width} → ${undone.width}）`);
+
+    // 刷新后尺寸保持（persistGet 回放最近 PUT 文档；token 在 localStorage 跨刷新存活，无需重登）
+    await page.reload();
+    await createRoomAndEnter(page);
+    const center = await canvasPoint(page, { x: undone.x + undone.width / 2, y: undone.y + undone.height / 2 });
+    await page.mouse.click(center.x, center.y);
+    await page.locator('[data-testid="inspector-area-form"]:visible').waitFor();
+    const wAfter = parseFloat(await page.locator('[data-testid="inspector-area-width"]').inputValue());
+    assert.ok(Math.abs(wAfter - undone.width) < 1, `刷新后宽度必须保持（${undone.width} → ${wAfter}）`);
   });
 
   // ─── ST-CR-TAG-01：Inspector 字段 tag 受控输入（redesign-listview-type-length-canvas-fix） ──

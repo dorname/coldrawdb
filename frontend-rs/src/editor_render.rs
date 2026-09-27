@@ -727,6 +727,10 @@ struct DragState {
     // 修复「命中只选中、无拖拽分支」；拖动中只写视觉层，松手才落账（对齐表拖动三段式）
     note_drag: Option<(String, f64, f64)>,
     area_drag: Option<(String, f64, f64)>,
+    /// fix-open-issues-26-33（issue #27，R-ARESZ-02）：区域 resize 拖拽——
+    /// (area_id, 方位, 起始 x, 起始 y, 起始 width, 起始 height)；
+    /// 拖动中只写视觉层，pointerup 一次写回并进 CommandStack（UT-AREA-03）
+    area_resize: Option<(String, AreaResizeDir, f64, f64, f64, f64)>,
     pointer_id: i32,
     start_mouse_x: f64,
     start_mouse_y: f64,
@@ -767,6 +771,7 @@ impl Default for DragState {
             create_drag: None,
             note_drag: None,
             area_drag: None,
+            area_resize: None,
             pointer_id: 0,
             start_mouse_x: 0.0,
             start_mouse_y: 0.0,
@@ -837,6 +842,12 @@ mod leptos_canvas {
         marquee_active: RwSignal<bool>,
         /// p0-fix 定点 2：区域拖框落账（x, y, width, height）
         on_area_create: Option<Box<dyn Fn(f64, f64, f64, f64) + 'static>>,
+        /// fix-open-issues-26-33（issue #27，R-ARESZ-02）：区域 resize 松手落账——
+        /// (area_id, before(x,y,w,h), after(x,y,w,h))，调用方走 Command::SetAreaRect
+        /// 单条命令（一次 Undo 还原整次 resize）+ 既有保存/协作通道
+        on_area_resize: Option<
+            Box<dyn Fn(String, (f64, f64, f64, f64), (f64, f64, f64, f64)) + 'static>,
+        >,
         /// p0-fix 定点 2：便签点击放置落账（x, y）
         on_note_create: Option<Box<dyn Fn(f64, f64) + 'static>>,
         /// p0-fix 定点 2：点击区域命中（返回 area id）→ 选中 + Inspector
@@ -872,6 +883,7 @@ mod leptos_canvas {
         let on_relation_drag_start = Rc::new(on_relation_drag_start);
         let on_relation_drop = Rc::new(on_relation_drop);
         let on_relation_drag_cancel = Rc::new(on_relation_drag_cancel);
+        let on_area_resize = Rc::new(on_area_resize);
         let on_table_drop = Rc::new(on_table_drop);
         let on_reference_pick = Rc::new(on_reference_pick);
         let on_area_create = Rc::new(on_area_create);
@@ -1143,6 +1155,8 @@ mod leptos_canvas {
                                     table_override,
                                     ghost_skip.as_deref(),
                                     comment_mode,
+                                    // R-ARESZ-05：只读模式不渲染 resize 手柄
+                                    !read_only,
                                 );
                             });
                         });
@@ -1230,6 +1244,11 @@ mod leptos_canvas {
                     dragging_pan,
                     dragging_tool,
                 );
+                // fix-open-issues-26-33（issue #27，R-ARESZ-01）：resize 拖拽期间按方位显示 resize 光标
+                let cursor = match drag.as_ref().and_then(|d| d.area_resize.as_ref()) {
+                    Some((_, dir, ..)) => dir.cursor(),
+                    None => cursor,
+                };
                 if let Some(canvas) = canvas_ref.get() {
                     let ws: &web_sys::HtmlCanvasElement = &canvas;
                     let el: &web_sys::HtmlElement = ws.unchecked_ref();
@@ -1330,6 +1349,7 @@ mod leptos_canvas {
                             create_drag: None,
                             note_drag: None,
                             area_drag: None,
+                            area_resize: None,
                             pointer_id: ev.pointer_id(),
                             start_mouse_x: ev.client_x() as f64,
                             start_mouse_y: ev.client_y() as f64,
@@ -1360,6 +1380,7 @@ mod leptos_canvas {
                         create_drag: None,
                         note_drag: None,
                         area_drag: None,
+                        area_resize: None,
                         pointer_id: ev.pointer_id(),
                         start_mouse_x: ev.client_x() as f64,
                         start_mouse_y: ev.client_y() as f64,
@@ -1404,6 +1425,7 @@ mod leptos_canvas {
                                 create_drag: None,
                                 note_drag: None,
                                 area_drag: None,
+                                area_resize: None,
                                 pointer_id: ev.pointer_id(),
                                 start_mouse_x: ev.client_x() as f64,
                                 start_mouse_y: ev.client_y() as f64,
@@ -1438,6 +1460,7 @@ mod leptos_canvas {
                             }),
                             note_drag: None,
                             area_drag: None,
+                            area_resize: None,
                             pointer_id: ev.pointer_id(),
                             start_mouse_x: ev.client_x() as f64,
                             start_mouse_y: ev.client_y() as f64,
@@ -1462,6 +1485,7 @@ mod leptos_canvas {
                         create_drag: None,
                         note_drag: None,
                         area_drag: None,
+                        area_resize: None,
                         pointer_id: ev.pointer_id(),
                         start_mouse_x: ev.client_x() as f64,
                         start_mouse_y: ev.client_y() as f64,
@@ -1476,6 +1500,38 @@ mod leptos_canvas {
                 // 1) 已选中的区域：整区可拖（含表叠盖处）；若在多选集合内则整组拖
                 // 2) 便签在表之上；未选中区域仍可用标题栏拖动
                 if !read_only {
+                    // fix-open-issues-26-33（issue #27，R-ARESZ-01/06）：已选中区域的
+                    // resize 手柄命中优先于区域内部整框拖动（手柄 > 内部拖动 > 区域外）
+                    if let Some(sel_area) = selected_area_id.get_untracked() {
+                        let areas_now = store.areas.get_untracked();
+                        if let Some(a) = areas_now.iter().find(|a| a.id == sel_area) {
+                            let rect = (a.x, a.y, a.width, a.height);
+                            if let Some(dir) = super::hit_test_area_resize(a, dx, dy, false) {
+                                capture_pointer(&canvas, ev.pointer_id());
+                                drag_state.set(Some(DragState {
+                                    table_id: None,
+                                    multi_starts: None,
+                                    multi_note_starts: None,
+                                    multi_area_starts: None,
+                                    marquee_start: None,
+                                    endpoint_drag: None,
+                                    rel_drag: None,
+                                    create_drag: None,
+                                    note_drag: None,
+                                    area_drag: None,
+                                    area_resize: Some((sel_area.clone(), dir, rect.0, rect.1, rect.2, rect.3)),
+                                    pointer_id: ev.pointer_id(),
+                                    start_mouse_x: ev.client_x() as f64,
+                                    start_mouse_y: ev.client_y() as f64,
+                                    start_pan_x: 0.0,
+                                    start_pan_y: 0.0,
+                                    start_table_x: 0.0,
+                                    start_table_y: 0.0,
+                                }));
+                                return;
+                            }
+                        }
+                    }
                     if let Some(sel_area) = selected_area_id.get_untracked() {
                         if super::hit_test_area(&store.areas.get_untracked(), dx, dy)
                             .as_deref()
@@ -1535,6 +1591,7 @@ mod leptos_canvas {
                                 create_drag: None,
                                 note_drag: None,
                                 area_drag: Some((sel_area, area_x, area_y)),
+                                area_resize: None,
                                 pointer_id: ev.pointer_id(),
                                 start_mouse_x: ev.client_x() as f64,
                                 start_mouse_y: ev.client_y() as f64,
@@ -1603,6 +1660,7 @@ mod leptos_canvas {
                             create_drag: None,
                             note_drag: Some((note_id, note_x, note_y)),
                             area_drag: None,
+                            area_resize: None,
                             pointer_id: ev.pointer_id(),
                             start_mouse_x: ev.client_x() as f64,
                             start_mouse_y: ev.client_y() as f64,
@@ -1671,6 +1729,7 @@ mod leptos_canvas {
                             create_drag: None,
                             note_drag: None,
                             area_drag: Some((area_id, area_x, area_y)),
+                            area_resize: None,
                             pointer_id: ev.pointer_id(),
                             start_mouse_x: ev.client_x() as f64,
                             start_mouse_y: ev.client_y() as f64,
@@ -1745,6 +1804,7 @@ mod leptos_canvas {
                         create_drag: None,
                         note_drag: None,
                         area_drag: None,
+                        area_resize: None,
                         pointer_id: ev.pointer_id(),
                         start_mouse_x: ev.client_x() as f64,
                         start_mouse_y: ev.client_y() as f64,
@@ -1793,6 +1853,7 @@ mod leptos_canvas {
                         create_drag: None,
                         note_drag: Some((note_id, note_x, note_y)),
                         area_drag: None,
+                        area_resize: None,
                         pointer_id: ev.pointer_id(),
                         start_mouse_x: ev.client_x() as f64,
                         start_mouse_y: ev.client_y() as f64,
@@ -1831,6 +1892,7 @@ mod leptos_canvas {
                         create_drag: None,
                         note_drag: None,
                         area_drag: Some((area_id, area_x, area_y)),
+                        area_resize: None,
                         pointer_id: ev.pointer_id(),
                         start_mouse_x: ev.client_x() as f64,
                         start_mouse_y: ev.client_y() as f64,
@@ -1871,6 +1933,7 @@ mod leptos_canvas {
                         create_drag: None,
                         note_drag: None,
                         area_drag: None,
+                        area_resize: None,
                         pointer_id: ev.pointer_id(),
                         start_mouse_x: ev.client_x() as f64,
                         start_mouse_y: ev.client_y() as f64,
@@ -2089,6 +2152,26 @@ mod leptos_canvas {
                         live.borrow_mut().notes = Some(visual);
                         schedule_paint();
                     }
+                } else if let Some((area_id, dir, ox, oy, ow, oh)) = &drag.area_resize {
+                    // fix-open-issues-26-33（issue #27，R-ARESZ-02）：resize 拖动中只写视觉层，
+                    // pointermove 不落账（与 area_drag 同一拖拽状态机口径）
+                    let (diag_x, diag_y) = screen_to_diagram(
+                        ev.client_x() as f64,
+                        ev.client_y() as f64,
+                        &canvas,
+                        &t_now,
+                    );
+                    let (nx, ny, nw, nh) =
+                        super::area_rect_from_resize(*dir, *ox, *oy, *ow, *oh, diag_x, diag_y);
+                    let mut visual = store.areas.get_untracked();
+                    if let Some(a) = visual.iter_mut().find(|a| a.id == *area_id) {
+                        a.x = nx;
+                        a.y = ny;
+                        a.width = nw;
+                        a.height = nh;
+                    }
+                    live.borrow_mut().areas = Some(visual);
+                    schedule_paint();
                 } else if let Some((area_id, start_x, start_y)) = &drag.area_drag {
                     // redesign-listview-type-length-canvas-fix：区域拖动中只写视觉层（ST-CR-AREA-01）
                     let ddx = dx / t_now.zoom;
@@ -2260,6 +2343,7 @@ mod leptos_canvas {
             let on_relation_drop = on_relation_drop.clone();
             let on_relation_drag_cancel = on_relation_drag_cancel.clone();
             let on_table_drop = on_table_drop.clone();
+            let on_area_resize = on_area_resize.clone();
             let on_area_create = on_area_create.clone();
             let on_note_create = on_note_create.clone();
             let on_select = on_select.clone();
@@ -2446,6 +2530,51 @@ mod leptos_canvas {
                     if let Some(cb) = on_table_drop.as_ref() {
                         cb();
                     }
+                    return;
+                }
+
+                if let Some((area_id, dir, ox, oy, ow, oh)) = drag.area_resize.clone() {
+                    // fix-open-issues-26-33（issue #27，R-ARESZ-02/03）：resize 松手一次写回，
+                    // 走 on_area_resize → Command::SetAreaRect 单条命令（一次 Undo 还原）
+                    let dx = ev.client_x() as f64 - drag.start_mouse_x;
+                    let dy = ev.client_y() as f64 - drag.start_mouse_y;
+                    live.borrow_mut().areas = None;
+                    drag_state.set(None);
+                    if !super::is_relation_drag(dx, dy, super::DRAG_THRESHOLD) {
+                        schedule_paint();
+                        return;
+                    }
+                    // R-ARESZ-06 / R-DRAG-CLICK-04：resize 拖拽后抑制紧随 click
+                    super::arm_suppress_next_click();
+                    let Some(canvas_html) = canvas.as_ref() else {
+                        schedule_paint();
+                        return;
+                    };
+                    let canvas_el: &web_sys::HtmlCanvasElement = canvas_html.unchecked_ref();
+                    let (diag_x, diag_y) = screen_to_diagram(
+                        ev.client_x() as f64,
+                        ev.client_y() as f64,
+                        canvas_el,
+                        &t_now,
+                    );
+                    let after = super::area_rect_from_resize(dir, ox, oy, ow, oh, diag_x, diag_y);
+                    if let Some(cb) = on_area_resize.as_ref() {
+                        cb(area_id, (ox, oy, ow, oh), after);
+                    } else {
+                        // 无落账通道（宿主未接）时直接写 store + 复用表拖动持久化通路
+                        let mut areas = store.areas.get_untracked();
+                        if let Some(a) = areas.iter_mut().find(|a| a.id == area_id) {
+                            a.x = after.0;
+                            a.y = after.1;
+                            a.width = after.2;
+                            a.height = after.3;
+                        }
+                        store.areas.set(areas);
+                        if let Some(cb) = on_table_drop.as_ref() {
+                            cb();
+                        }
+                    }
+                    schedule_paint();
                     return;
                 }
 
@@ -3257,6 +3386,8 @@ pub fn draw_canvas(
     ghost_skip: Option<&str>,
     // fix-remote-github-issues-7-18（issue #10，R-CMT-04）：画布注释显示模式（视图偏好）
     comment_mode: CommentDisplay,
+    // fix-open-issues-26-33（issue #27，R-ARESZ-01/05）：选中区域是否渲染 resize 手柄（只读=false）
+    area_handles: bool,
 ) {
     bump_paint_counter();
 
@@ -3280,7 +3411,7 @@ pub fn draw_canvas(
 
     for area in collect_visible_areas(areas, vp) {
         let is_sel = table_visually_selected(area.id.as_str(), selected_area_id, selected_area_ids);
-        draw_area(ctx, area, palette, is_sel);
+        draw_area(ctx, area, palette, is_sel, is_sel && area_handles);
     }
 
     if let Some((x, y, w, h)) = area_preview {
@@ -4434,7 +4565,13 @@ fn draw_arrow_head(ctx: &CanvasRenderingContext2d, fromx: f64, fromy: f64, tox: 
     ctx.fill();
 }
 
-fn draw_area(ctx: &CanvasRenderingContext2d, area: &Area, palette: &CanvasPalette, selected: bool) {
+fn draw_area(
+    ctx: &CanvasRenderingContext2d,
+    area: &Area,
+    palette: &CanvasPalette,
+    selected: bool,
+    show_handles: bool,
+) {
     let _ = ctx.set_fill_style_str(palette.area_bg);
     ctx.fill_rect(area.x, area.y, area.width, area.height);
 
@@ -4456,6 +4593,19 @@ fn draw_area(ctx: &CanvasRenderingContext2d, area: &Area, palette: &CanvasPalett
     let _ = ctx.set_font(&dpr_font(750, 11.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
     let _ = ctx.set_text_baseline("top");
     let _ = ctx.fill_text(&area.name, area.x + 10.0, area.y + 10.0);
+
+    // fix-open-issues-26-33（issue #27，R-ARESZ-01/05）：选中且非只读 → 8 个 resize 手柄
+    // （4 角 + 4 边中点，白底 selected 描边，与 hit_test_area_resize 热区同中心）
+    if show_handles {
+        for (_, hx, hy) in area_resize_handles(area) {
+            let hs = AREA_HANDLE_HALF;
+            let _ = ctx.set_fill_style_str("#ffffff");
+            ctx.fill_rect(hx - hs, hy - hs, hs * 2.0, hs * 2.0);
+            let _ = ctx.set_stroke_style_str(palette.selected);
+            ctx.set_line_width(1.0);
+            ctx.stroke_rect(hx - hs, hy - hs, hs * 2.0, hs * 2.0);
+        }
+    }
 }
 
 fn draw_note(ctx: &CanvasRenderingContext2d, note: &Note, palette: &CanvasPalette, selected: bool) {
@@ -4673,6 +4823,116 @@ pub fn hit_test_area_header(areas: &[Area], x: f64, y: f64) -> Option<String> {
     }
     None
 }
+
+// ─── fix-open-issues-26-33（issue #27，core-01 §5.11 R-ARESZ）：区域 resize ───
+
+/// R-ARESZ-03：resize 下限（保证区域标题行可读；创建防误触阈值 10px 仅用于拖框创建）
+pub const AREA_MIN_WIDTH: f64 = 40.0;
+pub const AREA_MIN_HEIGHT: f64 = 30.0;
+/// resize 手柄命中热区半径（diagram 坐标）
+pub const AREA_HANDLE_HALF: f64 = 5.0;
+
+/// 区域 resize 方位（4 角 + 4 边中点，R-ARESZ-01）
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AreaResizeDir {
+    N,
+    S,
+    E,
+    W,
+    NE,
+    NW,
+    SE,
+    SW,
+}
+
+impl AreaResizeDir {
+    /// R-ARESZ-01：方位对应的 CSS resize 光标
+    pub fn cursor(self) -> &'static str {
+        match self {
+            AreaResizeDir::N | AreaResizeDir::S => "ns-resize",
+            AreaResizeDir::E | AreaResizeDir::W => "ew-resize",
+            AreaResizeDir::NE | AreaResizeDir::SW => "nesw-resize",
+            AreaResizeDir::NW | AreaResizeDir::SE => "nwse-resize",
+        }
+    }
+
+    fn affects_east(self) -> bool {
+        matches!(self, AreaResizeDir::E | AreaResizeDir::NE | AreaResizeDir::SE)
+    }
+
+    fn affects_west(self) -> bool {
+        matches!(self, AreaResizeDir::W | AreaResizeDir::NW | AreaResizeDir::SW)
+    }
+
+    fn affects_south(self) -> bool {
+        matches!(self, AreaResizeDir::S | AreaResizeDir::SE | AreaResizeDir::SW)
+    }
+
+    fn affects_north(self) -> bool {
+        matches!(self, AreaResizeDir::N | AreaResizeDir::NE | AreaResizeDir::NW)
+    }
+}
+
+/// R-ARESZ-01：8 个 resize 命中面（4 角 + 4 边中点）的方位与中心坐标（diagram 坐标）。
+/// 返回顺序固定（角优先），便于命中判定角优先于边。
+pub fn area_resize_handles(area: &Area) -> [(AreaResizeDir, f64, f64); 8] {
+    let (x, y, w, h) = (area.x, area.y, area.width, area.height);
+    let (cx, cy) = (x + w / 2.0, y + h / 2.0);
+    [
+        (AreaResizeDir::NW, x, y),
+        (AreaResizeDir::NE, x + w, y),
+        (AreaResizeDir::SE, x + w, y + h),
+        (AreaResizeDir::SW, x, y + h),
+        (AreaResizeDir::N, cx, y),
+        (AreaResizeDir::E, x + w, cy),
+        (AreaResizeDir::S, cx, y + h),
+        (AreaResizeDir::W, x, cy),
+    ]
+}
+
+/// R-ARESZ-01/05/06：点命中选中区域的 resize 手柄（角优先）。
+/// 只读模式恒不命中；区域内部非手柄处返回 None（回退整框拖动），区域外返回 None。
+pub fn hit_test_area_resize(area: &Area, x: f64, y: f64, read_only: bool) -> Option<AreaResizeDir> {
+    if read_only {
+        return None;
+    }
+    for (dir, hx, hy) in area_resize_handles(area) {
+        if (x - hx).abs() <= AREA_HANDLE_HALF && (y - hy).abs() <= AREA_HANDLE_HALF {
+            return Some(dir);
+        }
+    }
+    None
+}
+
+/// R-ARESZ-02/03：按方位把指针位置换算为新矩形——锚定对侧角/边，
+/// 宽/高夹紧到 AREA_MIN_WIDTH / AREA_MIN_HEIGHT，不产生负尺寸/翻转。
+pub fn area_rect_from_resize(
+    dir: AreaResizeDir,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    cursor_x: f64,
+    cursor_y: f64,
+) -> (f64, f64, f64, f64) {
+    let right = x + w;
+    let bottom = y + h;
+    let (mut nx, mut ny, mut nw, mut nh) = (x, y, w, h);
+    if dir.affects_east() {
+        nw = (cursor_x - x).max(AREA_MIN_WIDTH);
+    } else if dir.affects_west() {
+        nx = cursor_x.min(right - AREA_MIN_WIDTH);
+        nw = right - nx;
+    }
+    if dir.affects_south() {
+        nh = (cursor_y - y).max(AREA_MIN_HEIGHT);
+    } else if dir.affects_north() {
+        ny = cursor_y.min(bottom - AREA_MIN_HEIGHT);
+        nh = bottom - ny;
+    }
+    (nx, ny, nw, nh)
+}
+
 
 /// p0-fix 定点 2：纯函数 — 点命中便签（180×100 渲染矩形，后创建优先）
 pub fn hit_test_note(notes: &[Note], x: f64, y: f64) -> Option<String> {
@@ -5140,6 +5400,139 @@ mod tests {
             Some("a2".to_string()),
             "UT-AREA-01: 重叠区域后创建优先"
         );
+    }
+
+    /// UT-AREA-02: 区域 resize 几何纯函数（fix-open-issues-26-33 / #27，R-ARESZ-01/03/05）
+    /// 命中面坐标 / 方位命中 / 锚定 / 夹紧 / 只读不命中
+    #[test]
+    fn test_area_resize_geometry_ut_area_02() {
+        let area = build_area("a1".into(), 100.0, 100.0, 160.0, 120.0);
+
+        // 1) 8 个命中面（4 角 + 4 边中点），坐标与区域矩形一致
+        let handles = area_resize_handles(&area);
+        assert_eq!(handles.len(), 8, "UT-AREA-02: 应为 8 个命中面");
+        assert!(handles.contains(&(AreaResizeDir::NW, 100.0, 100.0)));
+        assert!(handles.contains(&(AreaResizeDir::NE, 260.0, 100.0)));
+        assert!(handles.contains(&(AreaResizeDir::SE, 260.0, 220.0)));
+        assert!(handles.contains(&(AreaResizeDir::SW, 100.0, 220.0)));
+        assert!(handles.contains(&(AreaResizeDir::N, 180.0, 100.0)));
+        assert!(handles.contains(&(AreaResizeDir::E, 260.0, 160.0)));
+        assert!(handles.contains(&(AreaResizeDir::S, 180.0, 220.0)));
+        assert!(handles.contains(&(AreaResizeDir::W, 100.0, 160.0)));
+
+        // 2) 方位命中：手柄热区 → 对应方位；区域内部（非手柄）与区域外不命中
+        assert_eq!(
+            hit_test_area_resize(&area, 260.0, 160.0, false),
+            Some(AreaResizeDir::E),
+            "UT-AREA-02: E 边中点热区应命中 E"
+        );
+        assert_eq!(
+            hit_test_area_resize(&area, 101.0, 101.0, false),
+            Some(AreaResizeDir::NW),
+            "UT-AREA-02: 角热区应命中 NW"
+        );
+        assert_eq!(
+            hit_test_area_resize(&area, 180.0, 160.0, false),
+            None,
+            "UT-AREA-02: 区域内部（非手柄）不命中 resize（回退整框拖动）"
+        );
+        assert_eq!(
+            hit_test_area_resize(&area, 50.0, 50.0, false),
+            None,
+            "UT-AREA-02: 区域外不命中"
+        );
+
+        // 3) 锚定：拖 E 边 → 仅 width 变化、x 锚定；拖 NW 角 → x/y/w/h 联动、SE 角锚定
+        assert_eq!(
+            area_rect_from_resize(AreaResizeDir::E, 100.0, 100.0, 160.0, 120.0, 320.0, 175.0),
+            (100.0, 100.0, 220.0, 120.0),
+            "UT-AREA-02: E 边仅改宽、x/y/h 锚定"
+        );
+        let (nx, ny, nw, nh) =
+            area_rect_from_resize(AreaResizeDir::NW, 100.0, 100.0, 160.0, 120.0, 60.0, 70.0);
+        assert_eq!((nx, ny, nw, nh), (60.0, 70.0, 200.0, 150.0));
+        assert_eq!(
+            (nx + nw, ny + nh),
+            (260.0, 220.0),
+            "UT-AREA-02: NW 角拖拽 SE 角锚定"
+        );
+
+        // 4) 夹紧：拖至小于下限 → 夹到 AREA_MIN_WIDTH/HEIGHT，无负尺寸/翻转
+        assert_eq!(
+            area_rect_from_resize(AreaResizeDir::E, 100.0, 100.0, 160.0, 120.0, 90.0, 160.0),
+            (100.0, 100.0, AREA_MIN_WIDTH, 120.0),
+            "UT-AREA-02: E 边向左拖过原点夹紧到下限不翻转"
+        );
+        assert_eq!(
+            area_rect_from_resize(AreaResizeDir::W, 100.0, 100.0, 160.0, 120.0, 300.0, 160.0),
+            (260.0 - AREA_MIN_WIDTH, 100.0, AREA_MIN_WIDTH, 120.0),
+            "UT-AREA-02: W 边向右拖过对侧夹紧且不翻转"
+        );
+        assert_eq!(
+            area_rect_from_resize(AreaResizeDir::N, 100.0, 100.0, 160.0, 120.0, 180.0, 300.0),
+            (100.0, 220.0 - AREA_MIN_HEIGHT, 160.0, AREA_MIN_HEIGHT),
+            "UT-AREA-02: N 边向下拖过对侧夹紧且不翻转"
+        );
+
+        // 5) 只读模式命中判定 → 不命中（R-ARESZ-05）
+        assert_eq!(
+            hit_test_area_resize(&area, 260.0, 160.0, true),
+            None,
+            "UT-AREA-02: 只读模式不命中 resize"
+        );
+
+        // 方位 → 光标（R-ARESZ-01）
+        assert_eq!(AreaResizeDir::NW.cursor(), "nwse-resize");
+        assert_eq!(AreaResizeDir::NE.cursor(), "nesw-resize");
+        assert_eq!(AreaResizeDir::E.cursor(), "ew-resize");
+        assert_eq!(AreaResizeDir::N.cursor(), "ns-resize");
+    }
+
+    /// UT-AREA-03: 区域 resize 落账与撤销（fix-open-issues-26-33 / #27，R-ARESZ-02/04）
+    /// SetAreaRect 单条命令 → store 置 after；一次 Undo 恢复 before
+    #[test]
+    fn test_area_resize_commit_undo_ut_area_03() {
+        use crate::editor_core::{Command, CommandStack, EditorStore};
+        let store = EditorStore::new();
+        store
+            .areas
+            .set(vec![build_area("a1".into(), 100.0, 100.0, 160.0, 120.0)]);
+        let mut stack = CommandStack::new();
+
+        // pointerup 一次写回（含 NW 角的 x/y 联动）→ 单条命令
+        let cmd = Command::SetAreaRect {
+            area_id: "a1".to_string(),
+            before: (100.0, 100.0, 160.0, 120.0),
+            after: (60.0, 70.0, 200.0, 150.0),
+        };
+        CommandStack::apply(&store, &mut stack, cmd).expect("UT-AREA-03: apply 应成功");
+        let areas = store.areas.get();
+        assert_eq!(
+            (areas[0].x, areas[0].y, areas[0].width, areas[0].height),
+            (60.0, 70.0, 200.0, 150.0),
+            "UT-AREA-03: apply 后矩形 = after"
+        );
+        assert_eq!(stack.undo_len(), 1, "UT-AREA-03: 整次 resize 恰为单条命令");
+
+        // 一次 Undo 恢复 resize 前矩形
+        let popped = stack.undo().expect("UT-AREA-03: undo 栈非空");
+        CommandStack::revert(&store, &popped).expect("UT-AREA-03: revert 应成功");
+        let areas = store.areas.get();
+        assert_eq!(
+            (areas[0].x, areas[0].y, areas[0].width, areas[0].height),
+            (100.0, 100.0, 160.0, 120.0),
+            "UT-AREA-03: 一次 Undo 恢复 before"
+        );
+
+        // 不存在区域 → apply 报错且不污染栈（Inspector/画布写回通道的容错口径）
+        let mut stack2 = CommandStack::new();
+        let bad = Command::SetAreaRect {
+            area_id: "ghost".to_string(),
+            before: (0.0, 0.0, 1.0, 1.0),
+            after: (0.0, 0.0, 2.0, 2.0),
+        };
+        assert!(CommandStack::apply(&store, &mut stack2, bad).is_err());
+        assert_eq!(stack2.undo_len(), 0);
     }
 
     /// UT-NOTE-01: build_note 默认值 + hit_test_note 固定 180×100 命中

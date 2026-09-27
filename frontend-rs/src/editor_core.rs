@@ -543,6 +543,14 @@ pub enum Command {
         before: String,
         after: String,
     },
+    /// fix-open-issues-26-33（issue #27，core-01 §5.11 R-ARESZ-02）：区域矩形前后快照
+    /// (x, y, width, height)。单次 resize（画布手柄拖拽 / Inspector 宽高 blur）= 单条命令
+    /// → 一次 Undo 还原整次 resize。execute/apply 置 after，revert 回 before。
+    SetAreaRect {
+        area_id: String,
+        before: (f64, f64, f64, f64),
+        after: (f64, f64, f64, f64),
+    },
 }
 
 /// S07：把字典集合 + 字段绑定快照写回 store（DictSnapshot apply/revert/execute 共用）。
@@ -846,6 +854,18 @@ impl CommandStack {
                 table.color = after.clone();
                 store.tables.set(tables);
             }
+            Command::SetAreaRect { area_id, after, .. } => {
+                let mut areas = store.areas.get();
+                let area = areas
+                    .iter_mut()
+                    .find(|a| a.id == *area_id)
+                    .ok_or_else(|| CoreError::new(format!("area '{}' not found", area_id)))?;
+                area.x = after.0;
+                area.y = after.1;
+                area.width = after.2;
+                area.height = after.3;
+                store.areas.set(areas);
+            }
         }
         store.dirty.set(true);
         stack.undo.push(cmd);
@@ -919,6 +939,18 @@ impl CommandStack {
                 table.color = before.clone();
                 store.tables.set(tables);
             }
+            Command::SetAreaRect { area_id, before, .. } => {
+                let mut areas = store.areas.get();
+                let area = areas
+                    .iter_mut()
+                    .find(|a| a.id == *area_id)
+                    .ok_or_else(|| CoreError::new(format!("area '{}' not found", area_id)))?;
+                area.x = before.0;
+                area.y = before.1;
+                area.width = before.2;
+                area.height = before.3;
+                store.areas.set(areas);
+            }
         }
         store.dirty.set(true);
         Ok(())
@@ -979,6 +1011,18 @@ impl CommandStack {
                     .ok_or_else(|| CoreError::new(format!("table '{}' not found", table_id)))?;
                 table.color = after.clone();
                 store.tables.set(tables);
+            }
+            Command::SetAreaRect { area_id, after, .. } => {
+                let mut areas = store.areas.get();
+                let area = areas
+                    .iter_mut()
+                    .find(|a| a.id == *area_id)
+                    .ok_or_else(|| CoreError::new(format!("area '{}' not found", area_id)))?;
+                area.x = after.0;
+                area.y = after.1;
+                area.width = after.2;
+                area.height = after.3;
+                store.areas.set(areas);
             }
         }
         store.dirty.set(true);
