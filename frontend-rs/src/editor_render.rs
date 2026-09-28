@@ -4288,6 +4288,15 @@ pub fn comment_contrast_ratio(fg: &str, header_tint: &str, table_bg: &str) -> Op
     Some(contrast_ratio_luminance(fg_l, bg_l))
 }
 
+/// #34 UT-PE-CMT-01（R-CMT-CONTRAST-01 双端点判据）：fg 相对「满强度 tint 合成端」与
+/// 「渐变衰减端（tint 全透明 = 纯表体底色）」两端对比度的**较小值**。任一解析失败 → None。
+pub fn comment_contrast_ratio_min(fg: &str, header_tint: &str, table_bg: &str) -> Option<f64> {
+    let fg_l = color_relative_luminance(fg)?;
+    let full_l = composited_relative_luminance(header_tint, table_bg)?;
+    let faded_l = composited_relative_luminance("rgba(0,0,0,0)", table_bg)?;
+    Some(contrast_ratio_luminance(fg_l, full_l).min(contrast_ratio_luminance(fg_l, faded_l)))
+}
+
 /// #32 UT-PE-CMT-01：对比度 < 4.5:1 → 需要 chip 衬底兜底（R-CMT-CONTRAST-02）。
 pub fn needs_comment_chip(contrast: f64) -> bool {
     contrast < COMMENT_CONTRAST_MIN
@@ -4299,6 +4308,11 @@ pub fn needs_comment_chip(contrast: f64) -> bool {
 /// 2. 该方向 strong 达标 → strong 无衬底；
 /// 3. 反方向 strong 达标（中间亮度表头，如实色琥珀）→ 反方向 strong 无衬底；
 /// 4. 否则 chip 兜底：浅 strong + 深纱罩 或 深 strong + 浅纱罩，取兜底后对比更高者。
+///
+/// #34（R-CMT-CONTRAST-01 双端点判据）：表头为 tint → 透明渐变，注释实际渲染在渐变
+/// 中右段；所有「达标」判定均为**双端点 worst-case**——满强度 tint 合成端与渐变衰减端
+/// （纯表体底色）两端对比度同时 ≥ 4.5:1 才免 chip；chip 方案同样双端合成取最小值评分。
+/// 字段行注释 tint 入参全透明，两端点退化为同一样本，行为与单端点一致。
 pub fn comment_foreground(
     header_tint: &str,
     table_bg: &str,
@@ -4317,7 +4331,8 @@ pub fn comment_foreground(
         light_muted,
         fallback_dark_fg,
     );
-    if let Some(c) = comment_contrast_ratio(pair.muted, header_tint, table_bg) {
+    // #34：候选判定全部走双端点 worst-case（满 tint 合成端 + 渐变衰减端同时 ≥4.5:1）
+    if let Some(c) = comment_contrast_ratio_min(pair.muted, header_tint, table_bg) {
         if !needs_comment_chip(c) {
             return CommentStyle {
                 fg: pair.muted.to_string(),
@@ -4325,7 +4340,7 @@ pub fn comment_foreground(
             };
         }
     }
-    if let Some(c) = comment_contrast_ratio(pair.strong, header_tint, table_bg) {
+    if let Some(c) = comment_contrast_ratio_min(pair.strong, header_tint, table_bg) {
         if !needs_comment_chip(c) {
             return CommentStyle {
                 fg: pair.strong.to_string(),
@@ -4339,7 +4354,7 @@ pub fn comment_foreground(
     } else {
         dark_strong
     };
-    if let Some(c) = comment_contrast_ratio(alt_strong, header_tint, table_bg) {
+    if let Some(c) = comment_contrast_ratio_min(alt_strong, header_tint, table_bg) {
         if !needs_comment_chip(c) {
             return CommentStyle {
                 fg: alt_strong.to_string(),
@@ -4347,15 +4362,16 @@ pub fn comment_foreground(
             };
         }
     }
-    // chip 兜底：浅字 + 深纱罩 vs 深字 + 浅纱罩，合成 chip 背景后取对比更高者
-    let light_chip_l = chip_composited_luminance(COMMENT_CHIP_DARK, header_tint, table_bg);
-    let dark_chip_l = chip_composited_luminance(COMMENT_CHIP_LIGHT, header_tint, table_bg);
-    let light_fg_score = light_chip_l.map(|bg| {
-        contrast_ratio_luminance(color_relative_luminance(light_strong).unwrap_or(1.0), bg)
-    });
-    let dark_fg_score = dark_chip_l.map(|bg| {
-        contrast_ratio_luminance(color_relative_luminance(dark_strong).unwrap_or(0.0), bg)
-    });
+    // chip 兜底：浅字 + 深纱罩 vs 深字 + 浅纱罩；#34 双端点——chip 分别合成到满强度
+    // tint 端与渐变衰减端，取两端对比度的较小值作为方案得分，得分高者胜出
+    let chip_score = |fg: &str, chip: &str| -> Option<f64> {
+        let fg_l = color_relative_luminance(fg)?;
+        let full = chip_composited_luminance(chip, header_tint, table_bg)?;
+        let faded = chip_composited_luminance(chip, "rgba(0,0,0,0)", table_bg)?;
+        Some(contrast_ratio_luminance(fg_l, full).min(contrast_ratio_luminance(fg_l, faded)))
+    };
+    let light_fg_score = chip_score(light_strong, COMMENT_CHIP_DARK);
+    let dark_fg_score = chip_score(dark_strong, COMMENT_CHIP_LIGHT);
     match (light_fg_score, dark_fg_score) {
         (Some(l), Some(d)) if l >= d => CommentStyle {
             fg: light_strong.to_string(),
@@ -7073,7 +7089,8 @@ mod tests {
         assert!(!needs_comment_chip(4.6));
         assert!(needs_comment_chip(3.0));
 
-        // 断言 3：蓝/绿/紫实色表头 × 亮/暗主题 6 组，决策输出前景对有效背景（含 chip 合成）≥4.5:1
+        // 断言 3（#34 双端点判据）：橙/粉/紫/棕（#34 截图问题色）+ 蓝/绿表头 × 亮/暗主题 12 组，
+        // 决策输出前景对**渐变两端**（满强度 tint 合成端 + 纯表体衰减端，含 chip 合成）均 ≥ 4.5:1
         let eff_bg_lum = |tint: &str, bg: &str, chip: &Option<String>| -> f64 {
             let base = parse_css_color_rgba(bg).unwrap();
             let tint_rgba = parse_css_color_rgba(tint).unwrap();
@@ -7087,18 +7104,45 @@ mod tests {
                 None => relative_luminance_rgb(under.0, under.1, under.2),
             }
         };
-        for tint in ["#3788e5", "#19a974", "#aa8cff"] {
+        for tint in ["#3788e5", "#19a974", "#aa8cff", "#e8833a", "#e85d9e", "#8a5a3b"] {
             for (bg, fallback_dark) in [(light_bg, true), (dark_bg, false)] {
                 let style = comment_foreground(tint, bg, ls, lm, ds, dm, fallback_dark);
                 let fg_l = color_relative_luminance(&style.fg).unwrap();
-                let bg_l = eff_bg_lum(tint, bg, &style.chip);
-                let ratio = contrast_ratio_luminance(fg_l, bg_l);
+                let ratio_full = contrast_ratio_luminance(fg_l, eff_bg_lum(tint, bg, &style.chip));
+                let ratio_faded =
+                    contrast_ratio_luminance(fg_l, eff_bg_lum("rgba(0,0,0,0)", bg, &style.chip));
                 assert!(
-                    ratio >= COMMENT_CONTRAST_MIN,
-                    "UT-PE-CMT-01: tint={tint} bg={bg} 输出对比度 {ratio:.2} 必须 ≥ 4.5（style={style:?}）"
+                    ratio_full >= COMMENT_CONTRAST_MIN && ratio_faded >= COMMENT_CONTRAST_MIN,
+                    "UT-PE-CMT-01: tint={tint} bg={bg} 双端对比度（满强度 {ratio_full:.2} / 衰减端 {ratio_faded:.2}）必须均 ≥ 4.5（style={style:?}）"
                 );
             }
         }
+
+        // 断言 3b（#34 回归锚点）：深棕实色表头 + 亮主题——渐变衰减端 ≈ 白底，
+        // 不得输出「浅色系前景 + 无 chip」（此前单端点判据的漏判形态）
+        let brown = comment_foreground("#8a5a3b", light_bg, ls, lm, ds, dm, true);
+        let faded_l = composited_relative_luminance("rgba(0,0,0,0)", light_bg).unwrap();
+        let fg_l = color_relative_luminance(&brown.fg).unwrap();
+        assert!(
+            brown.chip.is_some()
+                || contrast_ratio_luminance(fg_l, faded_l) >= COMMENT_CONTRAST_MIN,
+            "UT-PE-CMT-01: 深棕表头亮主题下衰减端不得浅字裸绘（style={brown:?}）"
+        );
+        // 双端点纯函数锚点：min 语义 = 两端取小
+        let full_only = comment_contrast_ratio(ds, "#8a5a3b", light_bg).unwrap();
+        let dual = comment_contrast_ratio_min(ds, "#8a5a3b", light_bg).unwrap();
+        assert!(
+            dual <= full_only + 1e-9,
+            "UT-PE-CMT-01: 双端点对比度必须 ≤ 单端点（满 tint）值"
+        );
+
+        // 断言 3c（字段行无回归）：tint 全透明 → 双端点退化同一样本，输出与单端点一致
+        let field_style = comment_foreground("rgba(0,0,0,0)", light_bg, ls, lm, ds, dm, true);
+        assert_eq!(field_style.fg, ls, "UT-PE-CMT-01: 字段行亮主题仍深 strong 直绘");
+        assert_eq!(field_style.chip, None, "UT-PE-CMT-01: 字段行不得误加 chip");
+        let field_style_d = comment_foreground("rgba(0,0,0,0)", dark_bg, ls, lm, ds, dm, false);
+        assert_eq!(field_style_d.fg, dm, "UT-PE-CMT-01: 字段行暗主题仍浅 muted 直绘");
+        assert_eq!(field_style_d.chip, None);
 
         // 断言 4：空注释不产生任何注释渲染参数（R-CMT-03 不占位）
         assert_eq!(

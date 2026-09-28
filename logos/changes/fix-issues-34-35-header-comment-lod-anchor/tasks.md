@@ -17,8 +17,8 @@
 
 ## [code] C1 #34 表头注释双端点对比度
 
-- [ ] C1.1 列出本批覆盖 UT/ST ID（UT-PE-CMT-01）并实现：`comment_foreground` 双端点 worst-case（满 tint 合成端 + 纯表体端同时 ≥4.5:1；chip 兜底双端合成取最优）
-- [ ] C1.2 更新 UT-PE-CMT-01（橙/粉/紫/棕表头 × 亮/暗主题双端断言）；同批 OpenLogos reporter
+- [x] C1.1 列出本批覆盖 UT/ST ID（UT-PE-CMT-01）并实现：`comment_foreground` 双端点 worst-case（满 tint 合成端 + 纯表体端同时 ≥4.5:1；chip 兜底双端合成取最优）
+- [x] C1.2 更新 UT-PE-CMT-01（橙/粉/紫/棕表头 × 亮/暗主题双端断言）；同批 OpenLogos reporter
 
 ## [code] C2 #35 拓扑档注释 + 表级锚定
 
