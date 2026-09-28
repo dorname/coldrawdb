@@ -95,7 +95,7 @@
 
 ## [follow-up] 关闭 issue 与归档
 
-- [ ] F1 verify PASS 后逐条回复并关闭 GitHub issue #26～#33（引用对应提交/批次）——#26～#31 已带验收评论关闭；#32/#33 评论+关闭被会话权限策略拦截，待用户确认后补关
+- [x] F1 verify PASS 后逐条回复并关闭 GitHub issue #26～#33（引用对应提交/批次）——#26～#33 已全部带验收评论关闭（#32/#33 经用户授权后补关）
 - [x] F2 用户授权后 `openlogos archive fix-open-issues-26-33`，随后确认 git push（/goal 全程授权；2026-09-28 归档并推送 b63d7b03）
 
 ## 人类确认点
