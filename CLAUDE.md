@@ -132,12 +132,12 @@ cd <项目根目录> && openlogos <command>
 
 ## 项目当前状态
 
-- 当前无活跃变更（无 guard 锁）；最近归档：`diagram-api-auth`（verify PASS 506/506）。
-- 场景范围 S01～S06；`align-unified-prototype-and-add-mcp` 已完成归档，S06 MCP stdio 服务已交付。
+- 当前无活跃变更（无 guard 锁）；最近归档：`mcp-dictionary-tools`（verify PASS 496/530）。
+- 场景范围 S01～S07；`align-unified-prototype-and-add-mcp` 已完成归档，S06 MCP stdio 服务已交付；S07 数据字典前后端已实现（含 UT-S07-01～11 入账）。
 - 唯一现行 HTML 主原型：`core-01-editor-prototype.html`；S03/S04/S05 独立原型仅作历史参考。
 - S01/S02 前后端已实现；S03～S05 后端 auth/rooms/collab REST、DB、WS 与测试已实现，生产前端尚未接入（独立后续项 F1）。
 - 生产后端路由：diagram v1 5 + bridge 5 + auth 5 + rooms 11 + collab REST 2 + WS 1；遗留 `/diagrams/*` 单列；diagram 已启用鉴权与 share_token 豁免。
-- S06 MCP：stdio 服务已实现，7 个 tools（list/get/create/update/delete/import/export），支持 Claude、Codex、Cursor、OpenCode 四客户端；Streamable HTTP / OAuth 为独立后续项（F2）。
+- S06 MCP：stdio 服务已实现，12 个 tools（list/get/create/update/delete/import/export + update_table/update_field/update_reference/layout_diagram/update_dictionary），支持 Claude、Codex、Cursor、OpenCode 四客户端；`mcp-dictionary-tools` 起正式支持数据字典管理（update_dictionary + update_field.dict_code）；Streamable HTTP / OAuth 为独立后续项（F2）。
 
 ## Conventions
 - 遵循 OpenLogos 三层推进模型（Why → What → How）
