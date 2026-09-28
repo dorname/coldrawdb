@@ -11,10 +11,10 @@
 
 ## [code] 代码实现
 
-- [ ] C1 #44：`hit_test_reference_tier` 线型同源 + 最近距离优先（bezier/orthogonal 双几何，阈值内取 min 距离）；UT + ST + reporter
-- [ ] C2 #43：hover 检测（pointermove 未拖拽）+ tooltip 渲染（复用 C1 命中函数）；UT + ST + reporter
-- [ ] C3 #42：mcp-server `request()` 错误 details 携带 status/content_type/body_excerpt；409 非 JSON 含 USE_OP_CHANNEL 字样走 op 通道；import_schema tool 描述「仅新建」；UT + reporter
-- [ ] C4 e2e 全量回归（spec-parity-d）+ 前端 lib 全量 + mcp-server 测试全绿
+- [x] C1 #44：`hit_test_reference_tier` 线型同源 + 最近距离优先（bezier/orthogonal 双几何，阈值内取 min 距离）；UT + ST + reporter
+- [x] C2 #43：hover 检测（pointermove 未拖拽）+ tooltip 渲染（复用 C1 命中函数）；UT + ST + reporter
+- [x] C3 #42：mcp-server `request()` 错误 details 携带 status/content_type/body_excerpt；409 非 JSON 含 USE_OP_CHANNEL 字样走 op 通道；import_schema tool 描述「仅新建」；UT + reporter
+- [x] C4 e2e 全量回归（spec-parity-d）+ 前端 lib 全量 + mcp-server 测试全绿
 
 ## [deploy] 部署任务
 

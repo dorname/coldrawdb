@@ -13253,7 +13253,6 @@ pub fn AppRoot(
                     data-testid="editor-canvas-container"
                     // fix-issues-36-37（issue #36，R-VIEW-DIM-02）：画布右键菜单入口
                     on:contextmenu=move |ev| {
-                        use wasm_bindgen::JsCast;
                         ev.prevent_default();
                         // fix-issues-38-41-canvas-interaction（#41，R-AREALOCK-02a）：
                         // 右键命中区域检测——坐标换算与画布 pointer 事件同口径

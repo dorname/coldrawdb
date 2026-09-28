@@ -1,0 +1,15 @@
+
+/* fix-issues-42-44（#43 R-HOV-03）：关系线悬浮摘要 tooltip——光标右下 12px DOM 浮层 */
+.cdb-rel-hover-tooltip {
+  position: fixed;
+  z-index: 60;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(24, 27, 34, 0.92);
+  color: #e5e9f0;
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none; /* 不拦截指针，避免抖动 */
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}

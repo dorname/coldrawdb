@@ -271,6 +271,10 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-CR-FONT-01",
     // fix-issues-38-41 / #41：Area.locked 缺省兼容 + 拖拽门控（ST-AN-03 由 parity-d 上报）
     "UT-AN-LOCK-01",
+    // fix-issues-42-44：#44 关系线命中合同 + #43 悬浮 tooltip
+    "UT-PB-18",
+    "UT-PB-19",
+    "UT-PB-20",
     "UT-CR-WIDTH-01",
     "UT-CR-WIDTH-02",
     "UT-CR-WIDTH-03",

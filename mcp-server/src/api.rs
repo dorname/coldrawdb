@@ -48,12 +48,42 @@ impl ApiClient {
             .await
             .map_err(|error| ToolError::transport(&error))?;
         let status = response.status();
-        let value = response
-            .json::<Value>()
-            .await
-            .unwrap_or_else(|_| json!({"message":"上游返回非 JSON 响应"}));
+        // fix-issues-42-44（#42 R-MCPERR-01）：先取原文再解析——非 JSON 响应（网关
+        // 502/504 HTML 页、代理拦截页等）必须保留 status/Content-Type/body 摘要供诊断，
+        // 不再吞成一句「非 JSON」
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        let text = response.text().await.unwrap_or_default();
+        let value = serde_json::from_str::<Value>(&text).unwrap_or_else(|_| {
+            json!({"message":format!("上游返回非 JSON 响应（HTTP {}，Content-Type: {}）", status.as_u16(), content_type)})
+        });
         if !status.is_success() {
-            return Err(ToolError::upstream(status, &value));
+            let mut error = ToolError::upstream(status, &value);
+            // R-MCPERR-01：错误 details 携带可诊断三要素（body 摘要截断 200 字符）
+            let mut details = error
+                .details
+                .take()
+                .and_then(|v| v.as_object().cloned())
+                .unwrap_or_default();
+            details.insert("http_status".into(), json!(status.as_u16()));
+            details.insert("content_type".into(), json!(content_type));
+            let excerpt: String = text.chars().take(200).collect();
+            details.insert("body_excerpt".into(), json!(excerpt));
+            error.details = Some(Value::Object(details));
+            // R-MCPERR-02：409 且 body 非 JSON 但文本含 USE_OP_CHANNEL 字样时，
+            // 仍识别为房间图收编 → 走 WS op 通道回退（不落入笼统 VALIDATION_ERROR）
+            if status.as_u16() == 409
+                && error.code != "USE_OP_CHANNEL"
+                && text.contains("USE_OP_CHANNEL")
+            {
+                error.code = "USE_OP_CHANNEL".into();
+                error.message = "房间图表请通过协作 op 通道写入".into();
+            }
+            return Err(error);
         }
         Ok(value)
     }

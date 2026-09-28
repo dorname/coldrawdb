@@ -16,6 +16,9 @@ protocol:
 # mcp-dictionary-tools（2026-09-28）：新增 update_dictionary 工具（create/update/delete），
 # update_field 新增 dict_code 参数（数据字典绑定，S07 软引用按编码）。
 # 现有 tools 总数：12 个（11 个既有 + 1 个新增）。
+# fix-issues-42-44-mcp-and-relation-hit（2026-09-28，#42）：import_schema 描述明确「仅新建不覆盖」；
+# update_diagram 错误可诊断（details 含 http_status/content_type/body_excerpt）+
+# 409 非 JSON 含 USE_OP_CHANNEL 字样鲁棒识别（core-S06 §4.5）。
   name: Model Context Protocol
   transport: stdio
   version_strategy: negotiate
@@ -214,7 +217,7 @@ tools:
 
   - name: import_schema
     title: 导入 Schema
-    description: 将 drawdb JSON object 导入为新 diagram。
+    description: 将 drawdb JSON object 导入为新 diagram。仅新建，不覆盖已有 id；更新已有图表请用 update_diagram / update_table 等增量工具（#42 R-MCPERR-04）。
     upstream:
       method: POST
       path: /api/v1/diagrams/import

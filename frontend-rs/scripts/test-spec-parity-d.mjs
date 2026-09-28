@@ -2813,6 +2813,90 @@ try {
       `解锁后拖动必须落账新坐标（期望 ≈${baseX + 100}，实际 ${newX}；同时证明锁定态拖动确实未位移）`,
     );
   });
+  // ─── ST-PB-11：密集关系线点击目的一致 + 空白不误选（fix-issues-42-44 / #44，§4.7 R-HIT-02/03）───
+  await run(["ST-PB-11"], "密集近平行关系线点击选中与点击目标一致", async page => {
+    const mkT = (id, x, y, fid) => ({
+      id, name: id, x, y, color: "", comment: "",
+      fields: [{ id: fid, name: fid, type_: "INT", default: "", check: "", primary: true, unique: false, not_null: true, increment: false, comment: "", tag: "", dict_code: "" }],
+      indices: [],
+    });
+    const mkR = (id, st, sf, et, ef) => ({
+      id, name: "", start_table_id: st, end_table_id: et, start_field_id: sf, end_field_id: ef,
+      type_: "one_to_many", on_delete: "RESTRICT", on_update: "RESTRICT", color: "", line_type: "", stroke_style: "",
+    });
+    // 两条近平行水平线：r1（t1→t2，线 y=190.5）与 r2（t3→t4，线 y=200.5），间距 10px
+    const presetDiagram = {
+      tables: [mkT("t1", 100, 130, "f1"), mkT("t2", 600, 130, "f2"),
+               mkT("t3", 100, 140, "f3"), mkT("t4", 600, 140, "f4")],
+      references: [mkR("r1", "t1", "f1", "t2", "f2"), mkR("r2", "t3", "f3", "t4", "f4")],
+      areas: [], notes: [],
+    };
+    await installApi(page, { presetDiagram });
+    await login(page);
+    await createRoomAndEnter(page);
+    await page.waitForFunction(() => !!window.__cdb_hl_probe, null, { timeout: 8_000 });
+    const selRefId = () => page.evaluate(() => JSON.parse(window.__cdb_hl_probe)?.sel_ref_id);
+
+    const midX = (100 + 230 + 600) / 2; // 465（两表之间的线中段）
+    const y1 = 130 + 43 + 35 / 2;       // 190.5（r1 线）
+    // 距 r1 线 6px、距 r2 线 4px——两线同在 8px 带宽内，必须选中距离最小的 r2（R-HIT-02）
+    let pt = await canvasPoint(page, { x: midX, y: y1 + 6 });
+    await page.mouse.click(pt.x, pt.y);
+    await page.waitForFunction(
+      () => JSON.parse(window.__cdb_hl_probe)?.sel_ref_id === "r2", null, { timeout: 4_000, polling: 100 },
+    );
+    // 紧贴 r1（1px；r2 相距 9px 超阈值）→ r1
+    pt = await canvasPoint(page, { x: midX, y: y1 + 1 });
+    await page.mouse.click(pt.x, pt.y);
+    await page.waitForFunction(
+      () => JSON.parse(window.__cdb_hl_probe)?.sel_ref_id === "r1", null, { timeout: 4_000, polling: 100 },
+    );
+    // 全部超阈值空白 → 不误选（R-HIT-03；#39 口径：空白单击清选）
+    pt = await canvasPoint(page, { x: midX, y: y1 - 30 });
+    await page.mouse.click(pt.x, pt.y);
+    await page.waitForFunction(
+      () => {
+        const p = JSON.parse(window.__cdb_hl_probe);
+        return p && p.sel_ref === false && p.sel_ref_id === null;
+      }, null, { timeout: 4_000, polling: 100 },
+    );
+  });
+
+  // ─── ST-PB-12：悬浮关系线 tooltip（fix-issues-42-44 / #43，§4.8 R-HOV-01~05）───
+  await run(["ST-PB-12"], "悬浮关系线展示表名字段名 tooltip 且不改选中态", async page => {
+    const mkT = (id, x, y, fid) => ({
+      id, name: id, x, y, color: "", comment: "",
+      fields: [{ id: fid, name: fid, type_: "INT", default: "", check: "", primary: true, unique: false, not_null: true, increment: false, comment: "", tag: "", dict_code: "" }],
+      indices: [],
+    });
+    const presetDiagram = {
+      tables: [mkT("t1", 100, 130, "f1"), mkT("t2", 600, 130, "f2")],
+      references: [{ id: "r1", name: "", start_table_id: "t1", end_table_id: "t2", start_field_id: "f1", end_field_id: "f2",
+        type_: "one_to_many", on_delete: "RESTRICT", on_update: "RESTRICT", color: "", line_type: "", stroke_style: "" }],
+      areas: [], notes: [],
+    };
+    await installApi(page, { presetDiagram });
+    await login(page);
+    await createRoomAndEnter(page);
+    await page.waitForFunction(() => !!window.__cdb_hl_probe, null, { timeout: 8_000 });
+
+    // WHEN：悬浮线中段（R-HOV-01）
+    const mid = await canvasPoint(page, { x: 465, y: 190.5 });
+    await page.mouse.move(mid.x, mid.y);
+    // THEN：tooltip 出现且文案为 源表.源字段 → 目标表.目标字段（R-HOV-02）
+    const tip = page.locator('[data-testid="rel-hover-tooltip"]');
+    await tip.waitFor({ timeout: 4_000 });
+    assert.equal(await tip.textContent(), "t1.f1 → t2.f2", "tooltip 必须为 源表.源字段 → 目标表.目标字段");
+    // AND：选中态不变（R-HOV-04）
+    const probe = await page.evaluate(() => JSON.parse(window.__cdb_hl_probe));
+    assert.equal(probe.sel_ref, false, "悬停不得改变关系选中态（R-HOV-04）");
+    // WHEN：移出命中带宽 → tooltip 消失（R-HOV-05）
+    const away = await canvasPoint(page, { x: 465, y: 400 });
+    await page.mouse.move(away.x, away.y);
+    await page.waitForFunction(
+      () => !document.querySelector('[data-testid="rel-hover-tooltip"]'), null, { timeout: 4_000, polling: 100 },
+    );
+  });
 } finally {
   await browser?.close();
   frontend?.kill("SIGTERM");

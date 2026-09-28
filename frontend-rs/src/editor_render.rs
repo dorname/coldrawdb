@@ -891,6 +891,8 @@ mod leptos_canvas {
         let selected_area_id = create_rw_signal(None::<String>);
         let selected_note_id = create_rw_signal(None::<String>);
         let drag_state = create_rw_signal(None::<DragState>);
+        // fix-issues-42-44（#43 R-HOV-01）：关系线悬浮态——(ref_id, client_x, client_y)
+        let hover_ref = create_rw_signal(None::<(String, i32, i32)>);
         let rubber_d = create_rw_signal(None::<String>);
         let follow_path = create_rw_signal(String::new());
         let frame_tick = create_rw_signal(0u32);
@@ -2043,7 +2045,37 @@ mod leptos_canvas {
                         crate::collab_client::report_cursor(px, py);
                     }
                 }
-                let Some(drag) = drag_state.get_untracked() else {
+                let drag_opt = drag_state.get_untracked();
+                if drag_opt.is_none() {
+                    // fix-issues-42-44（#43 R-HOV-01/04/05）：无拖拽态时对指针位置做关系线
+                    // 悬浮检测——与点击共用同一命中函数（R-HIT-04 悬停/点击同口径）；
+                    // 仅写 hover_ref 信号，不触碰选中态/保存/撤销栈（R-HOV-04）
+                    if let Some(canvas) = canvas_ref.get() {
+                        let t_now = current_transform();
+                        let (dx, dy) = screen_to_diagram(
+                            ev.client_x() as f64,
+                            ev.client_y() as f64,
+                            &canvas,
+                            &t_now,
+                        );
+                        let tier =
+                            super::tier_for_dimension(store.view_dimension.get_untracked());
+                        let hit = super::hit_test_reference_tier(
+                            &store.tables.get_untracked(),
+                            &store.references.get_untracked(),
+                            dx,
+                            dy,
+                            tier,
+                        );
+                        hover_ref.set(hit.map(|id| (id, ev.client_x(), ev.client_y())));
+                    }
+                    return;
+                }
+                // R-HOV-05：进入拖拽态时 tooltip 消失
+                if hover_ref.get_untracked().is_some() {
+                    hover_ref.set(None);
+                }
+                let Some(drag) = drag_opt else {
                     return;
                 };
                 let canvas = match canvas_ref.get() {
@@ -2984,6 +3016,7 @@ mod leptos_canvas {
                     on:pointercancel=on_pointercancel
                     on:wheel=on_wheel
                     on:dblclick=on_dblclick
+                    on:pointerleave=move |_| hover_ref.set(None)
                 ></canvas>
                 <svg class="cdb-rel-overlay" aria-hidden="true">
                     <g transform=move || {
@@ -3007,6 +3040,28 @@ mod leptos_canvas {
                         ></path>
                     </g>
                 </svg>
+                {move || {
+                    // fix-issues-42-44（#43 R-HOV-02/03）：光标右下偏移 12px 的 DOM 浮层
+                    hover_ref.get().and_then(|(ref_id, cx, cy)| {
+                        let tier =
+                            super::tier_for_dimension(store.view_dimension.get_untracked());
+                        let text = super::relation_tooltip_text(
+                            &store.tables.get(),
+                            &store.references.get(),
+                            &ref_id,
+                            tier,
+                        )?;
+                        Some(view! {
+                            <div
+                                class="cdb-rel-hover-tooltip"
+                                data-testid="rel-hover-tooltip"
+                                style=format!("left:{}px;top:{}px;", cx + 12, cy + 12)
+                            >
+                                {text}
+                            </div>
+                        })
+                    })
+                }}
             </div>
         }
     }
@@ -3886,6 +3941,7 @@ pub fn draw_canvas(
         table_alpha_min,
         rel_width_scale_max,
         related_emphasis_seen,
+        selected_ref_id,
     );
     // ST-CR-LOD-01 探针：暴露本帧 LOD 档位参数（#35：锚定模式 + 拓扑档注释渲染计数）
     let topo_comments = if frame_tier == LodTier::Topology {
@@ -3942,26 +3998,31 @@ fn update_hl_probe(
     table_alpha_min: f64,
     rel_width_scale_max: f64,
     related_emphasis: bool,
+    // fix-issues-42-44（#44 ST-PB-11）：选中关系 id 供 e2e 断言「选中与点击目标一致」
+    sel_ref_id: Option<&str>,
 ) {
     if let Some(win) = web_sys::window() {
         let target: &js_sys::Object = win.unchecked_ref();
         let key = wasm_bindgen::JsValue::from_str("__cdb_hl_probe");
         let json = format!(
-            "{{\"any_sel\":{},\"sel_table\":{},\"sel_ref\":{},\"multi_n\":{},\"table_alpha_min\":{},\"rel_width_scale_max\":{},\"related_emphasis\":{}}}",
+            "{{\"any_sel\":{},\"sel_table\":{},\"sel_ref\":{},\"multi_n\":{},\"table_alpha_min\":{},\"rel_width_scale_max\":{},\"related_emphasis\":{},\"sel_ref_id\":{}}}",
             sel_table || sel_ref || multi_n > 0,
             sel_table,
             sel_ref,
             multi_n,
             table_alpha_min,
             rel_width_scale_max,
-            related_emphasis
+            related_emphasis,
+            sel_ref_id
+                .map(|id| format!("\"{}\"", id))
+                .unwrap_or_else(|| "null".to_string())
         );
         let _ = js_sys::Reflect::set(target, &key, &wasm_bindgen::JsValue::from_str(&json));
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn update_hl_probe(_: bool, _: bool, _: usize, _: f64, _: f64, _: bool) {}
+fn update_hl_probe(_: bool, _: bool, _: usize, _: f64, _: f64, _: bool, _: Option<&str>) {}
 
 /// ST-CR-LOD-01 探针（#30）：每帧把 LOD 档位参数写入 `window.__cdb_lod_probe`
 /// （JSON 字符串：zoom / tier / font_world / lod_scale），供 e2e 断言拓扑档
@@ -6069,21 +6130,54 @@ pub fn dist_point_segment(px: f64, py: f64, x1: f64, y1: f64, x2: f64, y2: f64) 
     ((px - cx).powi(2) + (py - cy).powi(2)).sqrt()
 }
 
-/// p0-fix 定点 3：纯函数 — 点是否在贝塞尔关系线附近（UT-MM-33）
-/// 24 段折线近似；阈值 8px（覆盖 7px 光晕 + 2px 主线的可点击区域）
-pub fn point_near_bezier(path: &RelationPath, x: f64, y: f64, tol: f64) -> bool {
+/// fix-issues-42-44（#44 R-HIT-02）：纯函数 — 点到贝塞尔关系线的最小距离
+/// 24 段折线近似（与 point_near_bezier 同一离散口径）
+pub fn dist_point_bezier(path: &RelationPath, x: f64, y: f64) -> f64 {
     const SEGMENTS: usize = 24;
     let (mut px, mut py) = (path.x1, path.y1);
+    let mut best = f64::MAX;
     for i in 1..=SEGMENTS {
         let t = i as f64 / SEGMENTS as f64;
         let (qx, qy) = bezier_point(path, t);
-        if dist_point_segment(x, y, px, py, qx, qy) <= tol {
-            return true;
-        }
+        best = best.min(dist_point_segment(x, y, px, py, qx, qy));
         px = qx;
         py = qy;
     }
-    false
+    best
+}
+
+/// p0-fix 定点 3：纯函数 — 点是否在贝塞尔关系线附近（UT-MM-33）
+/// 24 段折线近似；阈值 8px（覆盖 7px 光晕 + 2px 主线的可点击区域）
+pub fn point_near_bezier(path: &RelationPath, x: f64, y: f64, tol: f64) -> bool {
+    dist_point_bezier(path, x, y) <= tol
+}
+
+/// fix-issues-42-44（#44 R-HIT-02/03，R-HIT-04）：纯函数 — 点到关系线的最小距离
+/// （线型同源：bezier 走 calc_path_tier 贝塞尔近似；orthogonal 走 calc_orthogonal_path_tier
+/// 折线顶点——与 draw 的几何严格同口径）。端点表缺失返回 None。
+pub fn dist_to_reference(
+    tables: &[Table],
+    r: &Reference,
+    x: f64,
+    y: f64,
+    tier: LodTier,
+) -> Option<f64> {
+    let from = tables.iter().find(|t| t.id == r.start_table_id)?;
+    let to = tables.iter().find(|t| t.id == r.end_table_id)?;
+    match effective_line_type(&r.line_type) {
+        "orthogonal" => {
+            let pts = calc_orthogonal_path_tier(from, &r.start_field_id, to, &r.end_field_id, tier);
+            let mut best = f64::MAX;
+            for w in pts.windows(2) {
+                best = best.min(dist_point_segment(x, y, w[0].0, w[0].1, w[1].0, w[1].1));
+            }
+            Some(best)
+        }
+        _ => {
+            let path = calc_path_tier(from, &r.start_field_id, to, &r.end_field_id, tier);
+            Some(dist_point_bezier(&path, x, y))
+        }
+    }
 }
 
 /// p0-fix 定点 3：纯函数 — (x, y) 命中哪条 reference 连线（UT-MM-33）
@@ -6094,6 +6188,40 @@ pub fn hit_test_reference(tables: &[Table], refs: &[Reference], x: f64, y: f64) 
 
 /// #35 R-LOD-08：tier 感知命中检测——拓扑档线几何为表级锚定，命中必须与绘制同口径
 /// （否则拓扑档点击可见连线不命中）。
+/// fix-issues-42-44（#43 R-HOV-02）：悬浮摘要文案纯函数——
+/// 详情档 `源表.源字段 → 目标表.目标字段`；拓扑档 `源表 → 目标表`。
+/// ref/端点表缺失返回 None（tooltip 不渲染）。
+pub fn relation_tooltip_text(
+    tables: &[Table],
+    refs: &[Reference],
+    ref_id: &str,
+    tier: LodTier,
+) -> Option<String> {
+    let r = refs.iter().find(|r| r.id == ref_id)?;
+    let from = tables.iter().find(|t| t.id == r.start_table_id)?;
+    let to = tables.iter().find(|t| t.id == r.end_table_id)?;
+    match tier {
+        LodTier::Topology => Some(format!("{} → {}", from.name, to.name)),
+        LodTier::Detail => {
+            let sf = from
+                .fields
+                .iter()
+                .find(|f| f.id == r.start_field_id)
+                .map(|f| f.name.as_str())
+                .unwrap_or("");
+            let tf = to
+                .fields
+                .iter()
+                .find(|f| f.id == r.end_field_id)
+                .map(|f| f.name.as_str())
+                .unwrap_or("");
+            Some(format!("{}.{} → {}.{}", from.name, sf, to.name, tf))
+        }
+    }
+}
+
+/// fix-issues-42-44（#44 R-HIT-01/02/03）：线型同源 + 最近距离优先——
+/// 8px 带宽内取点到线距离最小者；全超阈值返回 None（空白不误选远处关系）。
 pub fn hit_test_reference_tier(
     tables: &[Table],
     refs: &[Reference],
@@ -6101,17 +6229,15 @@ pub fn hit_test_reference_tier(
     y: f64,
     tier: LodTier,
 ) -> Option<String> {
+    let mut best: Option<(f64, &str)> = None;
     for r in refs {
-        let from = tables.iter().find(|t| t.id == r.start_table_id);
-        let to = tables.iter().find(|t| t.id == r.end_table_id);
-        if let (Some(f), Some(t)) = (from, to) {
-            let path = calc_path_tier(f, &r.start_field_id, t, &r.end_field_id, tier);
-            if point_near_bezier(&path, x, y, 8.0) {
-                return Some(r.id.clone());
+        if let Some(d) = dist_to_reference(tables, r, x, y, tier) {
+            if d <= 8.0 && best.map_or(true, |(bd, _)| d < bd) {
+                best = Some((d, r.id.as_str()));
             }
         }
     }
-    None
+    best.map(|(_, id)| id.to_string())
 }
 
 // ─── Pure function: update reference endpoint (B3) ──────────────────────────
@@ -6352,6 +6478,166 @@ mod tests {
         assert!((dist_point_segment(-3.0, 0.0, 0.0, 0.0, 10.0, 0.0) - 3.0).abs() < 1e-9);
         assert!(point_near_bezier(&path, 50.0, 50.0, 8.0), "UT-MM-33: 曲线中点应命中");
         assert!(!point_near_bezier(&path, 50.0, 80.0, 4.0), "UT-MM-33: 远离曲线不应命中");
+    }
+
+    /// UT-PB-18（fix-issues-42-44 / #44 R-HIT-02/03）：阈值内最近距离优先；全超阈值返回 None
+    #[test]
+    fn test_hit_test_reference_nearest_ut_pb_18() {
+        use crate::editor_core::types::Field;
+        let mk = |id: &str, x: f64, y: f64, fid: &str| Table {
+            id: id.into(),
+            name: id.into(),
+            x,
+            y,
+            color: "#000".into(),
+            comment: String::new(),
+            fields: vec![Field {
+                id: fid.into(),
+                name: fid.into(),
+                type_: "INT".into(),
+                default: String::new(),
+                check: String::new(),
+                primary: true,
+                unique: false,
+                not_null: false,
+                increment: false,
+                comment: String::new(),
+                tag: String::new(),
+                dict_code: String::new(),
+            }],
+            indices: Vec::new(),
+            width: None,
+            min_height: None,
+        };
+        let mkref = |id: &str, st: &str, sf: &str, et: &str, ef: &str| Reference {
+            id: id.into(),
+            name: String::new(),
+            start_table_id: st.into(),
+            end_table_id: et.into(),
+            start_field_id: sf.into(),
+            end_field_id: ef.into(),
+            type_: "one_to_many".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+            color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
+        };
+        // 两条近平行水平关系线：r1（y=130 两表）与 r2（y=140 两表），线间距 10px
+        let tables = vec![
+            mk("t1", 100.0, 130.0, "f1"),
+            mk("t2", 600.0, 130.0, "f2"),
+            mk("t3", 100.0, 140.0, "f3"),
+            mk("t4", 600.0, 140.0, "f4"),
+        ];
+        // r1 数组序靠前——旧实现「先命中即返回」恒给 r1；R-HIT-02 要求按最近距离
+        let refs = vec![
+            mkref("r1", "t1", "f1", "t2", "f2"),
+            mkref("r2", "t3", "f3", "t4", "f4"),
+        ];
+        let y1 = 130.0 + TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT / 2.0;
+        let mid_x = (100.0 + TABLE_WIDTH + 600.0) / 2.0;
+        // 距 r1 线 6px、距 r2 线 4px——两条都在 8px 带宽内，必须选距离最小的 r2
+        assert_eq!(
+            hit_test_reference(&tables, &refs, mid_x, y1 + 6.0),
+            Some("r2".to_string()),
+            "UT-PB-18: 多线同带宽内必须返回距离最小者（R-HIT-02）"
+        );
+        // 紧贴 r1 线（1px），r2 相距 9px 超阈值 → r1
+        assert_eq!(
+            hit_test_reference(&tables, &refs, mid_x, y1 + 1.0),
+            Some("r1".to_string())
+        );
+        // 全部超阈值 → None（空白不误选远处关系，R-HIT-03）
+        assert_eq!(
+            hit_test_reference(&tables, &refs, mid_x, y1 - 20.0),
+            None,
+            "UT-PB-18: 阈值外不得命中任何关系（R-HIT-03）"
+        );
+    }
+
+    /// UT-PB-19（fix-issues-42-44 / #44 R-HIT-01）：线型同源——orthogonal 关系按折线几何命中
+    #[test]
+    fn test_hit_test_reference_line_type_ut_pb_19() {
+        use crate::editor_core::types::Field;
+        let mk = |id: &str, x: f64, y: f64, fid: &str| Table {
+            id: id.into(),
+            name: id.into(),
+            x,
+            y,
+            color: "#000".into(),
+            comment: String::new(),
+            fields: vec![Field {
+                id: fid.into(),
+                name: fid.into(),
+                type_: "INT".into(),
+                default: String::new(),
+                check: String::new(),
+                primary: true,
+                unique: false,
+                not_null: false,
+                increment: false,
+                comment: String::new(),
+                tag: String::new(),
+                dict_code: String::new(),
+            }],
+            indices: Vec::new(),
+            width: None,
+            min_height: None,
+        };
+        let mkref = |lt: &str| Reference {
+            id: "r1".into(),
+            name: String::new(),
+            start_table_id: "t1".into(),
+            end_table_id: "t2".into(),
+            start_field_id: "f1".into(),
+            end_field_id: "f2".into(),
+            type_: "one_to_many".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+            color: String::new(),
+            line_type: lt.into(),
+            stroke_style: "solid".into(),
+        };
+        // t1(100,130) → t2(600,400)：orthogonal 折线在 x_mid 有垂直段（起点→水平中点→垂直→终点）
+        let tables = vec![mk("t1", 100.0, 130.0, "f1"), mk("t2", 600.0, 400.0, "f2")];
+        let x1 = 100.0 + TABLE_WIDTH;
+        let y1 = 130.0 + TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT / 2.0;
+        let x_mid = (x1 + 600.0) / 2.0;
+        // 探针：折线垂直段上、拐角下方 5px——贝塞尔几何（水平控制点）在该点距离远超 8px
+        let (px, py) = (x_mid, y1 + 5.0);
+        let refs_ortho = vec![mkref("orthogonal")];
+        assert_eq!(
+            hit_test_reference(&tables, &refs_ortho, px, py),
+            Some("r1".to_string()),
+            "UT-PB-19: orthogonal 折线垂直段必须命中（线型同源）"
+        );
+        let refs_bezier = vec![mkref("bezier")];
+        assert_eq!(
+            hit_test_reference(&tables, &refs_bezier, px, py),
+            None,
+            "UT-PB-19: 同端点贝塞尔在该点不得命中（几何不同源反例）"
+        );
+    }
+
+    /// UT-PB-20（fix-issues-42-44 / #43 R-HOV-02）：tooltip 文案纯函数
+    #[test]
+    fn test_relation_tooltip_text_ut_pb_20() {
+        let (tables, refs) = ut_mm_33_fixture();
+        // 详情档：源表.源字段 → 目标表.目标字段
+        assert_eq!(
+            relation_tooltip_text(&tables, &refs, "r1", LodTier::Detail),
+            Some("t1.f1 → t2.f2".to_string()),
+            "UT-PB-20: 详情档文案必须为 源表.源字段 → 目标表.目标字段"
+        );
+        // 拓扑档：至少 源表 → 目标表
+        assert_eq!(
+            relation_tooltip_text(&tables, &refs, "r1", LodTier::Topology),
+            Some("t1 → t2".to_string()),
+            "UT-PB-20: 拓扑档文案必须为 源表 → 目标表"
+        );
+        // 未知 ref → None（不渲染）
+        assert_eq!(relation_tooltip_text(&tables, &refs, "nope", LodTier::Detail), None);
     }
 
     // ─── UT-AREA-01 / UT-NOTE-01 — p0-fix 定点 2 区域/便签创建 ─────────────
