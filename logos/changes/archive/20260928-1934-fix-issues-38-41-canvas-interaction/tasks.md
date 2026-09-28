@@ -25,8 +25,8 @@
 
 ## [follow-up] 收尾
 
-- [ ] F1 verify PASS 后带验收评论关闭 GitHub issue #38 / #39 / #40 / #41
-- [ ] F2 smoke PASS 后 `openlogos archive fix-issues-38-41-canvas-interaction`，随后 git push
+- [x] F1 verify PASS 后带验收评论关闭 GitHub issue #38 / #39 / #40 / #41
+- [x] F2 smoke PASS 后 `openlogos archive fix-issues-38-41-canvas-interaction`，随后 git push
 
 ## 人类确认点
 
