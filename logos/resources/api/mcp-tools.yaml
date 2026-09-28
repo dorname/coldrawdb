@@ -3,16 +3,19 @@ proposal: align-unified-prototype-and-add-mcp
 scenario: S06
 protocol:
 # mcp-canvas-tools（2026-09-18）：新增 update_table / update_field / update_reference / layout_diagram 共 4 个画布编辑 tool。
-# 现有 tools 总数：11 个（7 个原始 + 4 个新增）。
 # fix-remote-github-issues-7-18（2026-09-18）：update_reference 新增 color 参数（#12）；
-# 写工具（update_diagram/update_table/update_field/update_reference/layout_diagram）成功响应约定：
-# 必须 normalize 为与各自 outputSchema 完全一致的瘦响应（update_* 恰好 { id, revision }；
+# 写工具（update_diagram/update_table/update_field/update_reference/layout_diagram/update_dictionary）成功响应约定：
+# 必须 normalize 为与各自 outputSchema 完全一致的瘦响应（update_* 恰好 { id, revision }，
+# update_dictionary 另含 { dict_id, fields_cleared }；
 # layout_diagram 恰好 { id, revision, tables_repositioned }），不透传上游 envelope 或整图字段（#18）。
 # fix-open-issues-26-33（2026-09-27，#26）：update_diagram 新增载荷软上限
 # （COLDRAWDB_MCP_PAYLOAD_SOFT_LIMIT_BYTES，默认 256 KiB）：超限本地拦截返回
 # PAYLOAD_TOO_LARGE（details 含 payload_bytes / soft_limit_bytes / suggestion / batch_hint），
 # 不发送上游请求；大图官方分批路径 = update_table / update_field / update_reference / layout_diagram
 # 串行 expected_revision（见 core-S06-mcp-service-design.md §4.4）。
+# mcp-dictionary-tools（2026-09-28）：新增 update_dictionary 工具（create/update/delete），
+# update_field 新增 dict_code 参数（数据字典绑定，S07 软引用按编码）。
+# 现有 tools 总数：12 个（11 个既有 + 1 个新增）。
   name: Model Context Protocol
   transport: stdio
   version_strategy: negotiate
@@ -22,7 +25,7 @@ server:
   instructions: >-
     仅操作 COLDRAWDB_BASE_URL 指向的 coldrawdb。修改前先读取最新 revision；
     delete_diagram 具有破坏性并需用户批准；禁止把本服务用于任意 SQL、文件或 HTTP 访问。
-    diagram-api-auth：当后端开启 COLDRAWDB_DIAGRAMS_AUTH=on 时，全部 11 个工具
+    diagram-api-auth：当后端开启 COLDRAWDB_DIAGRAMS_AUTH=on 时，全部 12 个工具
     均要求 COLDRAWDB_ACCESS_TOKEN（auth_v1 /auth/login 签发的 access_token，Bearer 注入）；
     token 缺失或过期时所有工具调用将收到上游 401（映射为 UNAUTHENTICATED）。
     flag=off（默认过渡态）时 token 仅 rooms/collab 写工具需要。
@@ -340,7 +343,7 @@ tools:
 
   - name: update_field
     title: 更新字段属性
-    description: 修改指定表中指定字段的名称、注释、类型或约束。通过 GET 全量读取 + PUT 全量写回实现。本工具是大图分批写入的官方分片手段之一（按字段），详见 update_diagram 的分批指引。
+    description: 修改指定表中指定字段的名称、注释、类型、约束或数据字典绑定。通过 GET 全量读取 + PUT 全量写回实现。本工具是大图分批写入的官方分片手段之一（按字段），详见 update_diagram 的分批指引。dict_code 为 S07 数据字典软引用（按编码）：传空串解除绑定；传非空编码时本地校验目标字典存在，不存在返回 VALIDATION_ERROR 且不发 HTTP。
     upstream:
       method: GET + PUT
       path: /api/v1/diagrams/{id}
@@ -381,6 +384,10 @@ tools:
         default:
           type: string
           maxLength: 256
+        dict_code:
+          type: string
+          maxLength: 64
+          description: "数据字典编码（S07 软引用）；空串 = 解除绑定；非空时字典必须已存在"
     outputSchema:
       type: object
       required: [id, revision]
@@ -495,6 +502,96 @@ tools:
         tables_repositioned:
           type: integer
           minimum: 0
+  - name: update_dictionary
+    title: 管理数据字典
+    description: >-
+      创建、更新或删除 S07 数据字典（dictionaries 快照数组）。
+      通过 GET 全量读取 + PUT 全量写回实现（携带最新 revision 乐观锁）。
+      create：追加字典（id 由调用方给定，code 本地校验唯一，冲突返回
+      VALIDATION_ERROR 且不发 HTTP，对齐 S07 EX-7.1）。
+      update：按 dict_id 就地改写 name/code/comment/items（items 整体替换）；
+      改 code 时校验唯一性，并同步改写所有引用字段的 dict_code，避免悬空绑定。
+      delete：按 dict_id 删除字典，级联将 dict_code 指向该字典编码的全部字段
+      置空（对齐 S07 §5 级联置空语义），返回 fields_cleared 受影响字段数。
+    upstream:
+      method: GET + PUT
+      path: /api/v1/diagrams/{id}
+      post_process: partial_update
+    annotations:
+      readOnlyHint: false
+      destructiveHint: true
+      idempotentHint: false
+      openWorldHint: false
+    inputSchema:
+      type: object
+      additionalProperties: false
+      required: [id, action]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          description: "diagram ID"
+        action:
+          type: string
+          enum: [create, update, delete]
+        dict_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: "create：新字典 id（缺省由服务生成 dict- 前缀）；update/delete：目标字典 id（必填）"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: "字典名称（create 必填；update 可选）"
+        code:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: "字典编码（create 必填；update 可选，图内唯一）"
+        comment:
+          type: string
+          maxLength: 256
+        items:
+          type: array
+          maxItems: 500
+          description: "字典项整体替换（create/update）；每项 {id?, value, label, sort?}，id 缺省自动生成"
+          items:
+            type: object
+            additionalProperties: false
+            required: [value, label]
+            properties:
+              id:
+                type: string
+                maxLength: 64
+              value:
+                type: string
+                minLength: 1
+                maxLength: 64
+              label:
+                type: string
+                minLength: 1
+                maxLength: 128
+              sort:
+                type: integer
+                minimum: 0
+    outputSchema:
+      type: object
+      required: [id, revision]
+      properties:
+        id:
+          type: string
+        revision:
+          type: integer
+          minimum: 1
+        dict_id:
+          type: string
+          description: "本次操作的字典 id"
+        fields_cleared:
+          type: integer
+          minimum: 0
+          description: "delete 时被级联置空的字段数（其他 action 恒为 0）"
+
 
 schemas:
   DiagramIdInput:
@@ -697,6 +794,8 @@ schemas:
         type: object
         additionalProperties: true
 
+# mcp-dictionary-tools（2026-09-28）：update_dictionary / update_field(dict_code) 复用既有错误码——
+# 参数与编码唯一性/存在性校验失败走 local_validation（VALIDATION_ERROR，retryable=false，本地拒绝不发 HTTP）；无新增错误码。
 error_mapping:
   local_validation: VALIDATION_ERROR
   local_payload_oversize: PAYLOAD_TOO_LARGE
