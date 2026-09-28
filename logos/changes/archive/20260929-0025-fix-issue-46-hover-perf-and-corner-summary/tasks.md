@@ -15,19 +15,19 @@
 
 ## [deploy] 部署任务
 
-- [ ] E1 verify PASS 且用户授权后：重建 compose 前端镜像，确认 :9080 health/SPA 200
+- [x] E1 verify PASS 且用户授权后：重建 compose 前端镜像，确认 :9080 health/SPA 200 —— 已完成：health 200 / SPA 200 / 容器 healthy
 
 ## [follow-up] 收尾
 
-- [ ] F1 verify PASS 后带验收评论关闭 GitHub issue #46
-- [ ] F2 smoke PASS 后 `openlogos archive fix-issue-46-hover-perf-and-corner-summary`，随后 git push
+- [x] F1 verify PASS 后带验收评论关闭 GitHub issue #46 —— 已评论+关闭
+- [x] F2 smoke PASS 后 `openlogos archive fix-issue-46-hover-perf-and-corner-summary`，随后 git push
 
 ## 人类确认点
 
 - [x] H1 用户确认本提案后再产出 delta（/goal「继续拉取issue,并分析解决issue,直到关闭」全程授权）
 - [x] H2 delta 完成后 `openlogos merge fix-issue-46-hover-perf-and-corner-summary`（/goal 授权）
 - [x] H3 merge 后自动提交规格文档并按合并规格分批实现（C1～C3 每批闭环），完成后自动提交代码
-- [ ] H4 实现完成后 `openlogos verify`（/goal 授权；nice -n 10 + --test-threads=2）
-- [ ] H5 verify PASS 后按部署方案执行部署（/goal 授权）
-- [ ] H6 部署完成后 `openlogos smoke`（/goal 授权）
-- [ ] H7 smoke PASS 后 `openlogos archive` + `git push`（/goal 授权）
+- [x] H4 实现完成后 `openlogos verify`（Gate 3.6 PASS：516 通过/0 失败/34 跳过，覆盖 550/550）（/goal 授权；nice -n 10 + --test-threads=2）
+- [x] H5 verify PASS 后按部署方案执行部署（/goal 授权）
+- [x] H6 部署完成后 `openlogos smoke`（/goal 授权）—— Gate 3.8 PASS 10/10
+- [x] H7 smoke PASS 后 `openlogos archive` + `git push`（/goal 授权）

@@ -1,5 +1,21 @@
 # 部署报告
 
+## 2026-09-29 — fix-issue-46-hover-perf-and-corner-summary（本地/测试）
+
+| 项 | 值 |
+|---|---|
+| 变更 | `fix-issue-46-hover-perf-and-corner-summary` |
+| 部署时间 | 2026-09-29 |
+| 目标环境 | 本地 docker compose（coldrawdb + nginx + backup） |
+| 内容 | #46 关系线悬浮 tooltip 抖动消除 + 展示策略改为 B1 固定角落摘要区；无 migration、无 API 变更 |
+| 状态 | ✅ 部署完成；smoke Gate 3.8 PASS（10/10，Coverage 100%） |
+
+### 执行摘要
+
+1. `docker compose up -d --build coldrawdb` 重建镜像（前端产物随镜像），容器 recreate 后 healthy；`:9080` health 200 / SPA 200
+2. 无 DB migration、无 API 变更；nginx/backup 服务未动
+
+
 ## 2026-09-28 — fix-issue-45-room-rename（本地/测试）
 
 | 项 | 值 |
