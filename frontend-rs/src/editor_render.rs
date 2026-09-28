@@ -1834,7 +1834,14 @@ mod leptos_canvas {
                         start_table_x: table_x,
                         start_table_y: table_y,
                     }));
-                } else if let Some(ref_id) = super::hit_test_reference(&tables, &refs, dx, dy) {
+                } else if let Some(ref_id) = super::hit_test_reference_tier(
+                    &tables,
+                    &refs,
+                    dx,
+                    dy,
+                    // #35 R-LOD-08：与 draw_canvas 同一判档口径（prev=Detail 防滞回抖动分歧）
+                    super::lod_tier(t_now.zoom, super::LodTier::Detail),
+                ) {
                     // relation-inspector-and-ddl-io：点击连线（表未命中时）→ 选中高亮 + Inspector 展示（不再弹详情模态）
                     // 命中顺序在表之后：连线被表遮住时点击应选中表而非不可见的线
                     selected_id.set(None);
@@ -3177,6 +3184,22 @@ pub fn field_anchor_for_side(table: &Table, field_id: &str, side: FieldPortSide)
     }
 }
 
+/// #35 R-LOD-08（UT-CR-LOD-01）：tier 感知锚点——拓扑档字段行隐藏，关系线收敛表级端口
+/// （纵 = 表头中线，横 = 卡体左/右缘，选侧沿用 pick_port_sides）；详情档保持字段锚点。
+pub fn anchor_for_tier(table: &Table, field_id: &str, side: FieldPortSide, tier: LodTier) -> (f64, f64) {
+    match tier {
+        LodTier::Detail => field_anchor_for_side(table, field_id, side),
+        LodTier::Topology => {
+            let width = resolve_table_width(table, CommentDisplay::NameComment);
+            let y = table.y + TABLE_HEADER_HEIGHT / 2.0;
+            match side {
+                FieldPortSide::Start => (table.x, y),
+                FieldPortSide::End => (table.x + width, y),
+            }
+        }
+    }
+}
+
 /// 拖动中写入临时视觉坐标，不量化网格。
 ///
 /// fix-canvas-zoom-perf / R-PERF-04：pointermove 不再调用本函数（整 Vec 深克隆）——
@@ -3270,9 +3293,21 @@ fn bezier_controls_sided(
 /// 自动选侧（`field_anchor_for_side` 口径），贝塞尔控制点方向随侧（`bezier_controls_sided`）。
 /// 表拖动后重算（调用方每帧传入最新几何），无需用户重建关系。
 pub fn calc_path(from: &Table, from_field_id: &str, to: &Table, to_field_id: &str) -> RelationPath {
+    calc_path_tier(from, from_field_id, to, to_field_id, LodTier::Detail)
+}
+
+/// #35 R-LOD-08（UT-CR-LOD-01）：tier 感知贝塞尔路径——拓扑档锚点走 `anchor_for_tier`
+/// 表级端口（表头中线 × 左右缘），详情档与 `calc_path` 同口径。
+pub fn calc_path_tier(
+    from: &Table,
+    from_field_id: &str,
+    to: &Table,
+    to_field_id: &str,
+    tier: LodTier,
+) -> RelationPath {
     let (out_side, in_side) = pick_port_sides(from, to);
-    let (x1, y1) = field_anchor_for_side(from, from_field_id, out_side);
-    let (x2, y2) = field_anchor_for_side(to, to_field_id, in_side);
+    let (x1, y1) = anchor_for_tier(from, from_field_id, out_side, tier);
+    let (x2, y2) = anchor_for_tier(to, to_field_id, in_side, tier);
     let (cx1, cy1, cx2, cy2) = bezier_controls_sided(x1, y1, x2, y2, out_side, in_side);
     RelationPath {
         x1,
@@ -3294,9 +3329,20 @@ pub fn calc_orthogonal_path(
     to: &Table,
     to_field_id: &str,
 ) -> Vec<(f64, f64)> {
+    calc_orthogonal_path_tier(from, from_field_id, to, to_field_id, LodTier::Detail)
+}
+
+/// #35 R-LOD-08：tier 感知正交折线（拓扑档表级端口，与 calc_path_tier 同口径）。
+pub fn calc_orthogonal_path_tier(
+    from: &Table,
+    from_field_id: &str,
+    to: &Table,
+    to_field_id: &str,
+    tier: LodTier,
+) -> Vec<(f64, f64)> {
     let (out_side, in_side) = pick_port_sides(from, to);
-    let (x1, y1) = field_anchor_for_side(from, from_field_id, out_side);
-    let (x2, y2) = field_anchor_for_side(to, to_field_id, in_side);
+    let (x1, y1) = anchor_for_tier(from, from_field_id, out_side, tier);
+    let (x2, y2) = anchor_for_tier(to, to_field_id, in_side, tier);
     let mid_x = (x1 + x2) / 2.0;
     vec![(x1, y1), (mid_x, y1), (mid_x, y2), (x2, y2)]
 }
@@ -3308,9 +3354,20 @@ pub fn calc_straight_path(
     to: &Table,
     to_field_id: &str,
 ) -> (f64, f64, f64, f64) {
+    calc_straight_path_tier(from, from_field_id, to, to_field_id, LodTier::Detail)
+}
+
+/// #35 R-LOD-08：tier 感知直线（拓扑档表级端口，与 calc_path_tier 同口径）。
+pub fn calc_straight_path_tier(
+    from: &Table,
+    from_field_id: &str,
+    to: &Table,
+    to_field_id: &str,
+    tier: LodTier,
+) -> (f64, f64, f64, f64) {
     let (out_side, in_side) = pick_port_sides(from, to);
-    let (x1, y1) = field_anchor_for_side(from, from_field_id, out_side);
-    let (x2, y2) = field_anchor_for_side(to, to_field_id, in_side);
+    let (x1, y1) = anchor_for_tier(from, from_field_id, out_side, tier);
+    let (x2, y2) = anchor_for_tier(to, to_field_id, in_side, tier);
     (x1, y1, x2, y2)
 }
 
@@ -3675,6 +3732,7 @@ pub fn draw_canvas(
                 hl_scale,
                 lod_scale,
                 &r.type_,
+                frame_tier,
             );
         }
     }
@@ -3744,8 +3802,16 @@ pub fn draw_canvas(
         rel_width_scale_max,
         related_emphasis_seen,
     );
-    // ST-CR-LOD-01 探针：暴露本帧 LOD 档位参数
-    update_lod_probe(t.zoom, frame_tier, lod_scale);
+    // ST-CR-LOD-01 探针：暴露本帧 LOD 档位参数（#35：锚定模式 + 拓扑档注释渲染计数）
+    let topo_comments = if frame_tier == LodTier::Topology {
+        collect_visible_tables(tables, vp)
+            .iter()
+            .filter(|tbl| comment_mode.secondary(&tbl.comment).is_some())
+            .count()
+    } else {
+        0
+    };
+    update_lod_probe(t.zoom, frame_tier, lod_scale, topo_comments);
     // #33 ST-PE-09：视觉体系探针（本帧徽章绘制计数在表循环累计）
     update_vis_probe(badges_drawn);
 
@@ -3806,27 +3872,29 @@ fn update_hl_probe(_: bool, _: bool, _: usize, _: f64, _: f64, _: bool) {}
 /// （JSON 字符串：zoom / tier / font_world / lod_scale），供 e2e 断言拓扑档
 /// 「字段行隐藏、表名屏幕字号 ≥11px、关系线宽补偿」在真实渲染路径生效。
 #[cfg(target_arch = "wasm32")]
-fn update_lod_probe(zoom: f64, tier: LodTier, lod_scale: f64) {
+fn update_lod_probe(zoom: f64, tier: LodTier, lod_scale: f64, topo_comments: usize) {
     if let Some(win) = web_sys::window() {
         let target: &js_sys::Object = win.unchecked_ref();
         let key = wasm_bindgen::JsValue::from_str("__cdb_lod_probe");
-        let tier_str = match tier {
-            LodTier::Detail => "detail",
-            LodTier::Topology => "topology",
+        let (tier_str, anchor_mode) = match tier {
+            LodTier::Detail => ("detail", "field"),
+            LodTier::Topology => ("topology", "table"),
         };
         let json = format!(
-            "{{\"zoom\":{},\"tier\":\"{}\",\"font_world\":{},\"lod_scale\":{}}}",
+            "{{\"zoom\":{},\"tier\":\"{}\",\"font_world\":{},\"lod_scale\":{},\"anchor_mode\":\"{}\",\"topo_comments\":{}}}",
             zoom,
             tier_str,
             lod_table_font_size(zoom, tier),
-            lod_scale
+            lod_scale,
+            anchor_mode,
+            topo_comments
         );
         let _ = js_sys::Reflect::set(target, &key, &wasm_bindgen::JsValue::from_str(&json));
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn update_lod_probe(_: f64, _: LodTier, _: f64) {}
+fn update_lod_probe(_: f64, _: LodTier, _: f64, _: usize) {}
 
 /// #33 ST-PE-09：视觉体系统一探针——e2e 经 window.__cdb_vis_probe 读取徽章/端点/圆角
 /// 常量与绘制口径（字块角标已移除，端点为 crow's foot 族）。
@@ -5104,7 +5172,37 @@ fn draw_table_topology_body(
     let _ = ctx.set_font(&dpr_font(750, font_world, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
     let _ = ctx.set_text_baseline("middle");
     let _ = ctx.set_text_align("left");
-    let _ = ctx.fill_text(&truncate_to_width(ctx, label, width - 22.0), x + 11.0, y + height / 2.0);
+    let name_shown = truncate_to_width(ctx, label, width - 22.0);
+    let _ = ctx.fill_text(&name_shown, x + 11.0, y + height / 2.0);
+
+    // #35 R-LOD-02 补齐（UT-CR-LOD-01）：NameComment 模式且注释非空 → 表名右侧渲染注释
+    // 副文本；字号 = 拓扑表名字号 × 0.8（R-CMT-CONTRAST-03 同比率）、字重 600 ≥ 500，
+    // 前景按 R-CMT-CONTRAST-01 双端点判据（#34 同决策），空注释不渲染不留占位（R-CMT-03）。
+    if let Some(cmt) = comment_mode.secondary(&table.comment) {
+        let name_w = ctx.measure_text(&name_shown).map(|m| m.width()).unwrap_or(0.0);
+        let cmt_style = comment_foreground(
+            header_tint,
+            palette.table_bg,
+            PALETTE_LIGHT.text_strong,
+            PALETTE_LIGHT.text_muted,
+            PALETTE_DARK.text_strong,
+            PALETTE_DARK.text_muted,
+            !current_theme_dark(),
+        );
+        let cmt_font = font_world * 0.8;
+        let _ = ctx.set_font(&dpr_font(600, cmt_font, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
+        let cmt_x = x + 11.0 + name_w + 6.0 * (font_world / TABLE_NAME_FONT_PX).max(1.0);
+        let max_w = (x + width - 11.0) - cmt_x;
+        if max_w > 12.0 {
+            let shown = truncate_to_width(ctx, cmt, max_w);
+            let cmt_w = ctx.measure_text(&shown).map(|m| m.width()).unwrap_or(0.0);
+            if let Some(chip) = &cmt_style.chip {
+                draw_comment_chip(ctx, chip, cmt_x, y + height / 2.0 + 0.5, cmt_w);
+            }
+            let _ = ctx.set_fill_style_str(&cmt_style.fg);
+            let _ = ctx.fill_text(&shown, cmt_x, y + height / 2.0 + 0.5);
+        }
+    }
 }
 
 /// 选中态：主原型 .is-selected —— brand 描边 + 3px brand-soft 外环。
@@ -5187,6 +5285,7 @@ fn draw_relation(
     hl_scale: f64,
     lod_scale: f64,
     cardinality: &str,
+    tier: LodTier,
 ) {
     let stroke = relation_stroke_color(ref_color, source_table_color, palette.relation);
     // #33 UT-PE-VIS-01：端点统一 crow's foot 几何族（替代旧箭头+圆点）
@@ -5203,7 +5302,7 @@ fn draw_relation(
 
     match line_type {
         "orthogonal" => {
-            let pts = calc_orthogonal_path(from, from_field_id, to, to_field_id);
+            let pts = calc_orthogonal_path_tier(from, from_field_id, to, to_field_id, tier);
             // 光晕
             let _ = ctx.set_stroke_style_str(halo);
             ctx.set_line_width(halo_w);
@@ -5225,7 +5324,7 @@ fn draw_relation(
             }
         }
         "straight" => {
-            let (x1, y1, x2, y2) = calc_straight_path(from, from_field_id, to, to_field_id);
+            let (x1, y1, x2, y2) = calc_straight_path_tier(from, from_field_id, to, to_field_id, tier);
             let _ = ctx.set_stroke_style_str(halo);
             ctx.set_line_width(halo_w);
             clear_stroke_dash(ctx);
@@ -5246,7 +5345,7 @@ fn draw_relation(
         }
         _ => {
             // bezier 默认
-            let path = calc_path(from, from_field_id, to, to_field_id);
+            let path = calc_path_tier(from, from_field_id, to, to_field_id, tier);
             let _ = ctx.set_stroke_style_str(halo);
             ctx.set_line_width(halo_w);
             clear_stroke_dash(ctx);
@@ -5793,11 +5892,23 @@ pub fn point_near_bezier(path: &RelationPath, x: f64, y: f64, tol: f64) -> bool 
 /// p0-fix 定点 3：纯函数 — (x, y) 命中哪条 reference 连线（UT-MM-33）
 /// 几何与 `draw_bezier_fields` 一致（calc_path 贝塞尔）；返回 reference id
 pub fn hit_test_reference(tables: &[Table], refs: &[Reference], x: f64, y: f64) -> Option<String> {
+    hit_test_reference_tier(tables, refs, x, y, LodTier::Detail)
+}
+
+/// #35 R-LOD-08：tier 感知命中检测——拓扑档线几何为表级锚定，命中必须与绘制同口径
+/// （否则拓扑档点击可见连线不命中）。
+pub fn hit_test_reference_tier(
+    tables: &[Table],
+    refs: &[Reference],
+    x: f64,
+    y: f64,
+    tier: LodTier,
+) -> Option<String> {
     for r in refs {
         let from = tables.iter().find(|t| t.id == r.start_table_id);
         let to = tables.iter().find(|t| t.id == r.end_table_id);
         if let (Some(f), Some(t)) = (from, to) {
-            let path = calc_path(f, &r.start_field_id, t, &r.end_field_id);
+            let path = calc_path_tier(f, &r.start_field_id, t, &r.end_field_id, tier);
             if point_near_bezier(&path, x, y, 8.0) {
                 return Some(r.id.clone());
             }
@@ -7211,6 +7322,119 @@ mod tests {
             fp_topo,
             "UT-CR-LOD-01: 同档内拖动指纹必须相同"
         );
+
+        // 断言 5（#35 R-LOD-08）：表级锚点纯函数——拓扑档锚点纵坐标 = 表头中线、
+        // 横坐标 = 卡体左/右缘；详情档保持字段锚点；三路径函数同口径
+        let fld = |id: &str, name: &str| Field {
+            id: id.into(),
+            name: name.into(),
+            type_: "INT".into(),
+            default: String::new(),
+            check: String::new(),
+            primary: false,
+            unique: false,
+            not_null: false,
+            increment: false,
+            comment: String::new(),
+            tag: String::new(),
+            dict_code: String::new(),
+        };
+        let ta = Table {
+            id: "ta".into(),
+            name: "orders".into(),
+            x: 100.0,
+            y: 200.0,
+            color: String::new(),
+            comment: String::new(),
+            fields: vec![fld("fa1", "id"), fld("fa2", "user_id")],
+            indices: vec![],
+            width: None,
+            min_height: None,
+        };
+        let tb = Table {
+            id: "tb".into(),
+            name: "users".into(),
+            x: 500.0,
+            y: 260.0,
+            color: String::new(),
+            comment: String::new(),
+            fields: vec![fld("fb1", "id")],
+            indices: vec![],
+            width: None,
+            min_height: None,
+        };
+        // 拓扑档：锚点 y = 表头中线（与字段无关——字段行已隐藏）
+        let (_, ay_topo) = anchor_for_tier(&ta, "fa2", FieldPortSide::End, LodTier::Topology);
+        assert_eq!(
+            ay_topo,
+            ta.y + TABLE_HEADER_HEIGHT / 2.0,
+            "UT-CR-LOD-01: 拓扑档锚点纵坐标必须收敛表头中线（R-LOD-08）"
+        );
+        let (_, ay_topo_f1) = anchor_for_tier(&ta, "fa1", FieldPortSide::End, LodTier::Topology);
+        assert_eq!(ay_topo, ay_topo_f1, "UT-CR-LOD-01: 同表多字段在拓扑档必须汇聚同一表级端口");
+        // 详情档：字段锚点不变（fa2 第二行 ≠ 表头中线）
+        let (_, ay_detail) = anchor_for_tier(&ta, "fa2", FieldPortSide::End, LodTier::Detail);
+        assert_ne!(ay_detail, ay_topo, "UT-CR-LOD-01: 详情档必须保持字段维度锚点");
+        assert_eq!(
+            anchor_for_tier(&ta, "fa2", FieldPortSide::End, LodTier::Detail),
+            field_anchor_for_side(&ta, "fa2", FieldPortSide::End),
+            "UT-CR-LOD-01: 详情档与 field_anchor_for_side 同口径"
+        );
+        // 三路径函数 tier 变体：拓扑档两端 y 均为各自表头中线；默认（详情）保持字段锚定
+        let p_topo = calc_path_tier(&ta, "fa2", &tb, "fb1", LodTier::Topology);
+        assert_eq!(p_topo.y1, ta.y + TABLE_HEADER_HEIGHT / 2.0);
+        assert_eq!(p_topo.y2, tb.y + TABLE_HEADER_HEIGHT / 2.0);
+        let p_detail = calc_path(&ta, "fa2", &tb, "fb1");
+        assert_eq!(p_detail, calc_path_tier(&ta, "fa2", &tb, "fb1", LodTier::Detail));
+        let o_topo = calc_orthogonal_path_tier(&ta, "fa2", &tb, "fb1", LodTier::Topology);
+        assert_eq!(o_topo[0].1, ta.y + TABLE_HEADER_HEIGHT / 2.0);
+        let s_topo = calc_straight_path_tier(&ta, "fa2", &tb, "fb1", LodTier::Topology);
+        assert_eq!(s_topo.1, ta.y + TABLE_HEADER_HEIGHT / 2.0);
+        assert_eq!(s_topo.3, tb.y + TABLE_HEADER_HEIGHT / 2.0);
+        // 命中检测同口径（R-LOD-06 交互不变）：拓扑档命中表级锚定线、不命中字段锚定线
+        let mid_x = (p_topo.x1 + p_topo.x2) / 2.0;
+        let mid_y = (p_topo.y1 + p_topo.y2) / 2.0;
+        let refs = vec![Reference {
+            id: "r1".into(),
+            name: String::new(),
+            start_table_id: "ta".into(),
+            end_table_id: "tb".into(),
+            start_field_id: "fa2".into(),
+            end_field_id: "fb1".into(),
+            type_: String::new(),
+            on_delete: String::new(),
+            on_update: String::new(),
+            color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
+        }];
+        let tables = vec![ta.clone(), tb.clone()];
+        assert_eq!(
+            hit_test_reference_tier(&tables, &refs, mid_x, mid_y, LodTier::Topology),
+            Some("r1".to_string()),
+            "UT-CR-LOD-01: 拓扑档命中必须与表级锚定绘制同口径"
+        );
+
+        // 断言 6（#35 R-LOD-02 补齐）：拓扑档注释宽度口径——NameComment 且注释非空时
+        // 卡宽估算覆盖「表名 + 注释」（注释在拓扑档可见，必须有空间）；空注释不增宽
+        let mut tc = ta.clone();
+        // 长注释（12 CJK ≈ 168px）使表头行估算超过 TABLE_WIDTH 下限 230，增宽才可观测
+        tc.comment = "订单主表注释信息补充说明".into();
+        let w_with = resolve_table_width(&tc, crate::editor_core::CommentDisplay::NameComment);
+        let w_without = resolve_table_width(&ta, crate::editor_core::CommentDisplay::NameComment);
+        assert!(
+            w_with > w_without,
+            "UT-CR-LOD-01: NameComment 非空注释必须增宽估算（{w_with} > {w_without}）"
+        );
+        let w_name_only = resolve_table_width(&tc, crate::editor_core::CommentDisplay::Name);
+        assert_eq!(
+            w_name_only, w_without,
+            "UT-CR-LOD-01: Name 模式注释不参与宽度估算"
+        );
+        // 拓扑档卡宽 = resolve_table_width（注释感知），高度恒为表头高
+        let (tw, th) = lod_table_size(&tc, crate::editor_core::CommentDisplay::NameComment, LodTier::Topology);
+        assert_eq!(tw, w_with, "UT-CR-LOD-01: 拓扑档卡宽必须注释感知");
+        assert_eq!(th, TABLE_HEADER_HEIGHT, "UT-CR-LOD-01: 拓扑档卡高恒为表头高");
     }
 
     /// #33 UT-PE-VIS-01 — 语义图标统一族锚点（core-08 §11 / core-07 §15.5）

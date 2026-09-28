@@ -1974,7 +1974,9 @@ try {
       const col = i % 5;
       const row = Math.floor(i / 5);
       tables.push({
-        id: `t${i}`, name: `table_${i}`, x: 80 + col * 340, y: 80 + row * 240, color: "", comment: "",
+        id: `t${i}`, name: `table_${i}`, x: 80 + col * 340, y: 80 + row * 240, color: "",
+        // #35：t5/t7 带中文注释（拓扑档注释可见性断言）
+        comment: i === 5 ? "订单主表注释" : i === 7 ? "用户信息表注释" : "",
         fields: [field(`f${i}_id`, "id", { primary: true }), field(`f${i}_fk`, "ref_id")],
         indices: [],
       });
@@ -2009,6 +2011,7 @@ try {
     assert.equal(p.tier, "detail", "100% 必须为详情档");
     assert.equal(p.lod_scale, 1, "详情档线宽补偿必须为 1");
     assert.equal(p.font_world, 13, "详情档表名必须为默认 13px");
+    assert.equal(p.anchor_mode, "field", "详情档关系线必须字段维度锚定（#35 R-LOD-08）");
 
     // 先在 100% 点击选中 t5（i=5 → col0/row1 → 世界 (80,320)，表头中心）——
     // 选中态跨 zoom 保持；palette 选表只开 Inspector 不驱动 canvas 高亮信号（既有行为）
@@ -2029,6 +2032,10 @@ try {
       `拓扑档表名屏幕字号必须 ≥11px（${p.font_world}×${p.zoom}=${(p.font_world * p.zoom).toFixed(2)}）`);
     // THEN 2：关系线宽补偿 ≥ 1.5px 屏幕下限（lod_scale ≈ 1.46）
     assert.ok(p.lod_scale >= 1.4, `拓扑档线宽补偿必须 ≥1.4（实际 ${p.lod_scale}）`);
+    // THEN 2b（#35）：拓扑档关系线表级锚定 + 中文注释可见
+    assert.equal(p.anchor_mode, "table", "拓扑档关系线必须表级锚定（R-LOD-08）");
+    assert.ok(p.topo_comments > 0,
+      `拓扑档 NameComment 模式中文注释必须渲染（R-LOD-02 补齐，实际计数 ${p.topo_comments}）`);
 
     // THEN 3：选中 t5（r4/r5 两端相连）保持 → 相关连线 §4.4 × R-LOD-04 叠乘加粗
     const hl = await hlProbe();
@@ -2053,6 +2060,8 @@ try {
     p = await lodProbe();
     assert.equal(p.tier, "detail", "回 100% 必须恢复详情档（字段行恢复）");
     assert.equal(p.lod_scale, 1, "回 100% 线宽必须回默认");
+    assert.equal(p.anchor_mode, "field", "回 100% 关系线必须恢复字段维度锚定（#35）");
+    assert.equal(p.topo_comments, 0, "回 100% 拓扑注释计数必须复位");
     assert.equal(p.font_world, 13, "回 100% 字号必须回默认 13px");
   });
 

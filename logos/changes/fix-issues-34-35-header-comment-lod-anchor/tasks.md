@@ -22,8 +22,8 @@
 
 ## [code] C2 #35 拓扑档注释 + 表级锚定
 
-- [ ] C2.1 列出本批覆盖 UT/ST ID（UT-CR-LOD-01 / ST-CR-LOD-01）并实现：`draw_table_topology_body` 渲染注释副文本（0.8× 拓扑字号、C1 同决策前景、截断）；`calc_path`/`calc_orthogonal_path`/`calc_straight_path` 增 `tier` 入参，拓扑档锚点 = 表头中线 × 左右缘；`draw_relation`/`draw_canvas` 透传；lod 探针暴露锚定模式与注释计数
-- [ ] C2.2 对齐 `fix_issues_19_22_ut.rs` / `canvas_path_resize_ghost_ut.rs` 的 calc_* 签名；更新 UT-CR-LOD-01 / ST-CR-LOD-01 断言；同批 OpenLogos reporter
+- [x] C2.1 列出本批覆盖 UT/ST ID（UT-CR-LOD-01 / ST-CR-LOD-01）并实现：`draw_table_topology_body` 渲染注释副文本（0.8× 拓扑字号、C1 同决策前景、截断）；`calc_path`/`calc_orthogonal_path`/`calc_straight_path` 增 `tier` 入参，拓扑档锚点 = 表头中线 × 左右缘；`draw_relation`/`draw_canvas` 透传；lod 探针暴露锚定模式与注释计数
+- [x] C2.2 对齐 `fix_issues_19_22_ut.rs` / `canvas_path_resize_ghost_ut.rs` 的 calc_* 签名；更新 UT-CR-LOD-01 / ST-CR-LOD-01 断言；同批 OpenLogos reporter
 
 ## [follow-up] 关闭 issue 与归档
 
