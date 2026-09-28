@@ -277,6 +277,8 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-PB-18",
     "UT-PB-19",
     "UT-PB-20",
+    // fix-issue-46（issue #46 R-PERF-HOV）：hover 守卫/信号瘦身/角落定位/rAF 节流
+    "UT-PB-21",
     "UT-CR-WIDTH-01",
     "UT-CR-WIDTH-02",
     "UT-CR-WIDTH-03",

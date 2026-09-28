@@ -891,8 +891,9 @@ mod leptos_canvas {
         let selected_area_id = create_rw_signal(None::<String>);
         let selected_note_id = create_rw_signal(None::<String>);
         let drag_state = create_rw_signal(None::<DragState>);
-        // fix-issues-42-44（#43 R-HOV-01）：关系线悬浮态——(ref_id, client_x, client_y)
-        let hover_ref = create_rw_signal(None::<(String, i32, i32)>);
+        // fix-issues-42-44（#43 R-HOV-01）+ fix-issue-46（#46 R-PERF-HOV-01 信号瘦身）：
+        // 关系线悬浮态只存 ref_id——坐标每事件变化是抖动主因，移出信号（B1 角落摘要区不需要坐标）
+        let hover_ref = create_rw_signal(None::<String>);
         let rubber_d = create_rw_signal(None::<String>);
         let follow_path = create_rw_signal(String::new());
         let frame_tick = create_rw_signal(0u32);
@@ -905,6 +906,12 @@ mod leptos_canvas {
         let raf_pending = Rc::new(Cell::new(false));
         let raf_closure: Rc<RefCell<Option<Closure<dyn FnMut(JsValue)>>>> =
             Rc::new(RefCell::new(None));
+        // fix-issue-46（#46 R-PERF-HOV-03 命中节流）：hover 命中 rAF 合并——
+        // 每帧至多一次 hit_test_reference_tier；pending 守卫 + 最新指针坐标通道
+        let hover_raf_pending = Rc::new(Cell::new(false));
+        let hover_raf_closure: Rc<RefCell<Option<Closure<dyn FnMut(JsValue)>>>> =
+            Rc::new(RefCell::new(None));
+        let hover_pending_pos: Rc<Cell<Option<(i32, i32)>>> = Rc::new(Cell::new(None));
 
         let on_select = Rc::new(on_select);
         let on_deselect = Rc::new(on_deselect);
@@ -997,6 +1004,44 @@ mod leptos_canvas {
             let diagram_y = (canvas_y - t.pan_y) / t.zoom;
             (diagram_x, diagram_y)
         };
+
+        // fix-issue-46（#46 R-PERF-HOV-02/03）：hover 命中的 rAF 帧体——
+        // 每帧至多一次 hit_test；守卫：仅命中迁移（变/无）时写 hover_ref，同 ref 不 set
+        {
+            let hover_raf_pending = hover_raf_pending.clone();
+            let hover_pending_pos = hover_pending_pos.clone();
+            let hover_raf_closure = hover_raf_closure.clone();
+            let current_transform = current_transform.clone();
+            let c = Closure::wrap(Box::new(move |_: JsValue| {
+                hover_raf_pending.set(false);
+                let Some((cx, cy)) = hover_pending_pos.get() else {
+                    return;
+                };
+                hover_pending_pos.set(None);
+                // 帧回调时可能已进入拖拽态（R-HOV-05 语义：拖拽中不命中）
+                if drag_state.get_untracked().is_some() {
+                    return;
+                }
+                let Some(canvas) = canvas_ref.get() else {
+                    return;
+                };
+                let t_now = current_transform();
+                let (dx, dy) = screen_to_diagram(cx as f64, cy as f64, &canvas, &t_now);
+                let tier = super::tier_for_dimension(store.view_dimension.get_untracked());
+                let hit = super::hit_test_reference_tier(
+                    &store.tables.get_untracked(),
+                    &store.references.get_untracked(),
+                    dx,
+                    dy,
+                    tier,
+                );
+                // R-PERF-HOV-02 写守卫：同 ref 命中不反复 set（文案不变 → DOM 不重建）
+                if hover_ref.get_untracked().as_deref() != hit.as_deref() {
+                    hover_ref.set(hit);
+                }
+            }) as Box<dyn FnMut(JsValue)>);
+            *hover_raf_closure.borrow_mut() = Some(c);
+        }
 
         {
             let live = live.clone();
@@ -2047,27 +2092,25 @@ mod leptos_canvas {
                 }
                 let drag_opt = drag_state.get_untracked();
                 if drag_opt.is_none() {
-                    // fix-issues-42-44（#43 R-HOV-01/04/05）：无拖拽态时对指针位置做关系线
-                    // 悬浮检测——与点击共用同一命中函数（R-HIT-04 悬停/点击同口径）；
-                    // 仅写 hover_ref 信号，不触碰选中态/保存/撤销栈（R-HOV-04）
-                    if let Some(canvas) = canvas_ref.get() {
-                        let t_now = current_transform();
-                        let (dx, dy) = screen_to_diagram(
-                            ev.client_x() as f64,
-                            ev.client_y() as f64,
-                            &canvas,
-                            &t_now,
-                        );
-                        let tier =
-                            super::tier_for_dimension(store.view_dimension.get_untracked());
-                        let hit = super::hit_test_reference_tier(
-                            &store.tables.get_untracked(),
-                            &store.references.get_untracked(),
-                            dx,
-                            dy,
-                            tier,
-                        );
-                        hover_ref.set(hit.map(|id| (id, ev.client_x(), ev.client_y())));
+                    // fix-issues-42-44（#43 R-HOV-01/04/05）+ fix-issue-46（#46 R-PERF-HOV-03）：
+                    // 无拖拽态时记录指针位置并按 rAF 合并调度悬浮命中（每帧至多一次），
+                    // 命中函数与点击共用（R-HIT-04 悬停/点击同口径）；
+                    // 仅写 hover_ref 信号，不触碰选中态/保存/撤销栈（R-HOV-04）；
+                    // 同 ref 不重复 set 的守卫在帧体内（R-PERF-HOV-02）
+                    hover_pending_pos.set(Some((ev.client_x(), ev.client_y())));
+                    if !hover_raf_pending.get() {
+                        hover_raf_pending.set(true);
+                        match (web_sys::window(), hover_raf_closure.borrow().as_ref()) {
+                            (Some(window), Some(cb)) => {
+                                if window
+                                    .request_animation_frame(cb.as_ref().unchecked_ref())
+                                    .is_err()
+                                {
+                                    hover_raf_pending.set(false);
+                                }
+                            }
+                            _ => hover_raf_pending.set(false),
+                        }
                     }
                     return;
                 }
@@ -3041,8 +3084,9 @@ mod leptos_canvas {
                     </g>
                 </svg>
                 {move || {
-                    // fix-issues-42-44（#43 R-HOV-02/03）：光标右下偏移 12px 的 DOM 浮层
-                    hover_ref.get().and_then(|(ref_id, cx, cy)| {
+                    // fix-issues-42-44（#43 R-HOV-02）+ fix-issue-46（#46 R-HOV-03 B1）：
+                    // 画布容器左下角固定摘要区——不跟随光标、不绑定指针坐标（R-PERF-HOV-01）
+                    hover_ref.get().and_then(|ref_id| {
                         let tier =
                             super::tier_for_dimension(store.view_dimension.get_untracked());
                         let text = super::relation_tooltip_text(
@@ -3055,7 +3099,6 @@ mod leptos_canvas {
                             <div
                                 class="cdb-rel-hover-tooltip"
                                 data-testid="rel-hover-tooltip"
-                                style=format!("left:{}px;top:{}px;", cx + 12, cy + 12)
                             >
                                 {text}
                             </div>
@@ -6638,6 +6681,52 @@ mod tests {
         );
         // 未知 ref → None（不渲染）
         assert_eq!(relation_tooltip_text(&tables, &refs, "nope", LodTier::Detail), None);
+    }
+
+    /// UT-PB-21（fix-issue-46 / #46 R-PERF-HOV）：hover 守卫/信号瘦身/角落定位/rAF 节流锚点
+    #[test]
+    fn test_hover_guard_corner_anchor_ut_pb_21() {
+        let src = include_str!("editor_render.rs");
+        let css = include_str!("styles.css");
+        // R-PERF-HOV-01 信号瘦身：hover_ref 只存 ref_id（不含坐标）
+        assert!(
+            src.contains("create_rw_signal(None::<String>);") && src.contains("let hover_ref = create_rw_signal(None::<String>);"),
+            "UT-PB-21: hover_ref 必须为 Option<String>（仅 ref_id）"
+        );
+        // 拼接规避自匹配（include_str! 含本测试源码）
+        let old_type = concat!("None::<(String,", " i32, i32)>");
+        assert!(
+            !src.contains(old_type),
+            "UT-PB-21: hover_ref 不得再携带 client 坐标"
+        );
+        // R-PERF-HOV-02 写守卫：同 ref 命中不反复 set
+        assert!(
+            src.contains("hover_ref.get_untracked().as_deref() != hit.as_deref()"),
+            "UT-PB-21: hover 帧体必须含同 ref 写守卫"
+        );
+        // R-HOV-03 B1：tooltip 节点不含 client 坐标 style 绑定
+        assert!(
+            !src.contains("style=format!(\"left:{}px;top:{}px;\""),
+            "UT-PB-21: tooltip 不得绑定指针坐标 style"
+        );
+        // CSS：角落固定定位（absolute + left/bottom，非 fixed 跟随）
+        let idx = css.find(".cdb-rel-hover-tooltip {").expect("UT-PB-21: tooltip CSS 存在");
+        let block = &css[idx..(idx + 260).min(css.len())];
+        assert!(block.contains("position: absolute"), "UT-PB-21: tooltip 应为 absolute（容器内角落）");
+        assert!(block.contains("left:") && block.contains("bottom:"), "UT-PB-21: tooltip 应 left/bottom 角落锚定");
+        // R-PERF-HOV-03 rAF 节流：pending 守卫 + 帧回调调度
+        assert!(
+            src.contains("hover_raf_pending") && src.contains("request_animation_frame"),
+            "UT-PB-21: hover 命中必须经 rAF 帧合并"
+        );
+        // R-PERF-HOV-04 绘制解耦：hover 帧体内不得调 schedule_paint
+        let frame_idx = src.find("hover_raf_pending.set(false);").expect("UT-PB-21: hover 帧体存在");
+        let frame_end = src[frame_idx..].find("hover_raf_closure.borrow_mut()").map(|i| frame_idx + i).expect("UT-PB-21: hover 帧体有界");
+        let frame_body = &src[frame_idx..frame_end];
+        assert!(
+            !frame_body.contains("schedule_paint"),
+            "UT-PB-21: hover 帧体不得触发 schedule_paint"
+        );
     }
 
     // ─── UT-AREA-01 / UT-NOTE-01 — p0-fix 定点 2 区域/便签创建 ─────────────

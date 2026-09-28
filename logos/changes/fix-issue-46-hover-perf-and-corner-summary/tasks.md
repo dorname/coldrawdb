@@ -9,9 +9,9 @@
 
 ## [code] 代码实现
 
-- [ ] C1 hover 信号瘦身+守卫：hover_ref 只存 ref_id，同 ref 命中不反复 set；tooltip 改角落固定定位（CSS absolute 锚定 canvas-stack，去掉 client 坐标绑定）；UT + reporter
-- [ ] C2 pointermove hover 命中 rAF 节流（每帧至多一次 hit_test）；UT + reporter
-- [ ] C3 e2e 修订 ST-PB-12（角落摘要口径）+ 全量回归（前端 lib + spec-parity-d）
+- [x] C1 hover 信号瘦身+守卫：hover_ref 只存 ref_id，同 ref 命中不反复 set；tooltip 改角落固定定位（CSS absolute 锚定 canvas-stack，去掉 client 坐标绑定）；UT + reporter
+- [x] C2 pointermove hover 命中 rAF 节流（每帧至多一次 hit_test）；UT + reporter
+- [x] C3 e2e 修订 ST-PB-12（角落摘要口径）+ 全量回归（前端 lib + spec-parity-d）
 
 ## [deploy] 部署任务
 
@@ -26,7 +26,7 @@
 
 - [x] H1 用户确认本提案后再产出 delta（/goal「继续拉取issue,并分析解决issue,直到关闭」全程授权）
 - [x] H2 delta 完成后 `openlogos merge fix-issue-46-hover-perf-and-corner-summary`（/goal 授权）
-- [ ] H3 merge 后自动提交规格文档并按合并规格分批实现（C1～C3 每批闭环），完成后自动提交代码
+- [x] H3 merge 后自动提交规格文档并按合并规格分批实现（C1～C3 每批闭环），完成后自动提交代码
 - [ ] H4 实现完成后 `openlogos verify`（/goal 授权；nice -n 10 + --test-threads=2）
 - [ ] H5 verify PASS 后按部署方案执行部署（/goal 授权）
 - [ ] H6 部署完成后 `openlogos smoke`（/goal 授权）

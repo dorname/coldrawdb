@@ -2879,7 +2879,7 @@ try {
   });
 
   // ─── ST-PB-12：悬浮关系线 tooltip（fix-issues-42-44 / #43，§4.8 R-HOV-01~05）───
-  await run(["ST-PB-12"], "悬浮关系线展示表名字段名 tooltip 且不改选中态", async page => {
+  await run(["ST-PB-12"], "悬浮关系线角落摘要 tooltip（B1）+ 同命中零位移 + 不改选中态", async page => {
     const mkT = (id, x, y, fid) => ({
       id, name: id, x, y, color: "", comment: "",
       fields: [{ id: fid, name: fid, type_: "INT", default: "", check: "", primary: true, unique: false, not_null: true, increment: false, comment: "", tag: "", dict_code: "" }],
@@ -2903,6 +2903,17 @@ try {
     const tip = page.locator('[data-testid="rel-hover-tooltip"]');
     await tip.waitFor({ timeout: 4_000 });
     assert.equal(await tip.textContent(), "t1.f1 → t2.f2", "tooltip 必须为 源表.源字段 → 目标表.目标字段");
+    // fix-issue-46（#46 R-HOV-03 B1）：tooltip 为画布容器左下角固定摘要区——
+    // 同一命中下指针微动，tooltip 位置不变（R-PERF-HOV-01/02 抖动回归锚点）
+    const box1 = await tip.boundingBox();
+    const stack = await page.locator(".cdb-canvas-stack").boundingBox();
+    assert.ok(box1 && stack, "tooltip 与 canvas-stack 均可测量");
+    assert.ok(Math.abs(box1.x - stack.x - 12) < 4, "tooltip 应锚定容器左边缘 12px");
+    assert.ok(Math.abs(stack.y + stack.height - (box1.y + box1.height) - 12) < 4, "tooltip 应锚定容器底边 12px");
+    await page.mouse.move(mid.x + 30, mid.y + 3); // 沿线微动，仍命中同一关系
+    await page.waitForTimeout(150); // 等待 rAF 帧
+    const box2 = await tip.boundingBox();
+    assert.deepEqual(box2, box1, "同一命中下 tooltip 不得随指针微动而位移（R-PERF-HOV-01/02）");
     // AND：选中态不变（R-HOV-04）
     const probe = await page.evaluate(() => JSON.parse(window.__cdb_hl_probe));
     assert.equal(probe.sel_ref, false, "悬停不得改变关系选中态（R-HOV-04）");
