@@ -2,9 +2,9 @@
   "scenario_id": "core-S04",
   "scenario_name": "协作房间生命周期",
   "module": "core",
-  "description": "E2E API 编排：Owner 注册登录 → 创建 diagram → 创建 room → 邀请 → Guest 注册登录 → preview → accept → 成员列表 → 409 重复绑定 → 清理",
+  "description": "E2E API 编排：Owner 注册登录 → 创建 diagram → 创建 room → 邀请 → Guest 注册登录 → preview → accept → 成员列表 → 409 重复绑定 → 清理；含房间重命名（owner 200 / editor 403 / 非法名 422 / 回读一致，fix-issue-45-room-rename）",
   "alignment": "core-S04-room-lifecycle.md",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "base_url": "http://localhost:3000",
   "preconditions": [
     "V2 auth + rooms API 已实现并运行",
@@ -24,7 +24,9 @@
       "method": "POST",
       "path": "/api/v1/auth/register",
       "request": {
-        "headers": { "Content-Type": "application/json" },
+        "headers": {
+          "Content-Type": "application/json"
+        },
         "body": {
           "email": "${owner_email}",
           "password": "${password}",
@@ -34,8 +36,12 @@
       "expect": {
         "status": 201,
         "json": {
-          "email": { "equals": "${owner_email}" },
-          "userId": { "type": "uuid" }
+          "email": {
+            "equals": "${owner_email}"
+          },
+          "userId": {
+            "type": "uuid"
+          }
         }
       },
       "extract": {
@@ -49,7 +55,9 @@
       "method": "POST",
       "path": "/api/v1/auth/login",
       "request": {
-        "headers": { "Content-Type": "application/json" },
+        "headers": {
+          "Content-Type": "application/json"
+        },
         "body": {
           "email": "${owner_email}",
           "password": "${password}"
@@ -58,9 +66,15 @@
       "expect": {
         "status": 200,
         "json": {
-          "accessToken": { "type": "string" },
-          "tokenType": { "equals": "Bearer" },
-          "expiresIn": { "type": "integer" }
+          "accessToken": {
+            "type": "string"
+          },
+          "tokenType": {
+            "equals": "Bearer"
+          },
+          "expiresIn": {
+            "type": "integer"
+          }
         }
       },
       "extract": {
@@ -74,7 +88,9 @@
       "method": "POST",
       "path": "/api/v1/diagrams",
       "request": {
-        "headers": { "Content-Type": "application/json" },
+        "headers": {
+          "Content-Type": "application/json"
+        },
         "body": {
           "title": "S04 Room Test Diagram",
           "tables": [
@@ -85,7 +101,15 @@
               "y": 100,
               "comment": "",
               "fields": [
-                { "id": "s04-f1", "name": "id", "type": "INT", "primary": true, "increment": true, "notNull": true, "unique": false }
+                {
+                  "id": "s04-f1",
+                  "name": "id",
+                  "type": "INT",
+                  "primary": true,
+                  "increment": true,
+                  "notNull": true,
+                  "unique": false
+                }
               ]
             }
           ],
@@ -97,9 +121,15 @@
       "expect": {
         "status": 201,
         "json": {
-          "id": { "type": "uuid" },
-          "title": { "equals": "S04 Room Test Diagram" },
-          "revision": { "equals": 0 }
+          "id": {
+            "type": "uuid"
+          },
+          "title": {
+            "equals": "S04 Room Test Diagram"
+          },
+          "revision": {
+            "equals": 0
+          }
         }
       },
       "extract": {
@@ -125,10 +155,18 @@
       "expect": {
         "status": 201,
         "json": {
-          "id": { "type": "uuid" },
-          "name": { "equals": "评审周会" },
-          "diagramId": { "equals": "${diagram_id}" },
-          "ownerId": { "equals": "${owner_user_id}" }
+          "id": {
+            "type": "uuid"
+          },
+          "name": {
+            "equals": "评审周会"
+          },
+          "diagramId": {
+            "equals": "${diagram_id}"
+          },
+          "ownerId": {
+            "equals": "${owner_user_id}"
+          }
         }
       },
       "extract": {
@@ -149,9 +187,15 @@
       "expect": {
         "status": 200,
         "json": {
-          "id": { "equals": "${room_id}" },
-          "myRole": { "equals": "owner" },
-          "memberCount": { "equals": 1 }
+          "id": {
+            "equals": "${room_id}"
+          },
+          "myRole": {
+            "equals": "owner"
+          },
+          "memberCount": {
+            "equals": 1
+          }
         }
       }
     },
@@ -173,14 +217,23 @@
       "expect": {
         "status": 201,
         "json": {
-          "token": { "type": "string" },
-          "role": { "equals": "editor" },
+          "token": {
+            "type": "string"
+          },
+          "role": {
+            "equals": "editor"
+          },
           "inviteUrl": {
             "type": "string",
             "matches": "^[a-z][a-z0-9+.-]*://[^/]+(:[0-9]+)?/invite/[A-Za-z0-9_-]+$",
-            "not_contains": ["localhost", "127.0.0.1"]
+            "not_contains": [
+              "localhost",
+              "127.0.0.1"
+            ]
           },
-          "expiresAt": { "type": "string" }
+          "expiresAt": {
+            "type": "string"
+          }
         }
       },
       "extract": {
@@ -198,9 +251,15 @@
       "expect": {
         "status": 200,
         "json": {
-          "roomName": { "equals": "评审周会" },
-          "diagramId": { "equals": "${diagram_id}" },
-          "role": { "equals": "editor" }
+          "roomName": {
+            "equals": "评审周会"
+          },
+          "diagramId": {
+            "equals": "${diagram_id}"
+          },
+          "role": {
+            "equals": "editor"
+          }
         }
       }
     },
@@ -211,7 +270,9 @@
       "method": "POST",
       "path": "/api/v1/auth/register",
       "request": {
-        "headers": { "Content-Type": "application/json" },
+        "headers": {
+          "Content-Type": "application/json"
+        },
         "body": {
           "email": "${guest_email}",
           "password": "${password}",
@@ -221,7 +282,9 @@
       "expect": {
         "status": 201,
         "json": {
-          "userId": { "type": "uuid" }
+          "userId": {
+            "type": "uuid"
+          }
         }
       },
       "extract": {
@@ -235,7 +298,9 @@
       "method": "POST",
       "path": "/api/v1/auth/login",
       "request": {
-        "headers": { "Content-Type": "application/json" },
+        "headers": {
+          "Content-Type": "application/json"
+        },
         "body": {
           "email": "${guest_email}",
           "password": "${password}"
@@ -244,7 +309,9 @@
       "expect": {
         "status": 200,
         "json": {
-          "accessToken": { "type": "string" }
+          "accessToken": {
+            "type": "string"
+          }
         }
       },
       "extract": {
@@ -265,9 +332,15 @@
       "expect": {
         "status": 200,
         "json": {
-          "roomId": { "equals": "${room_id}" },
-          "diagramId": { "equals": "${diagram_id}" },
-          "role": { "equals": "editor" }
+          "roomId": {
+            "equals": "${room_id}"
+          },
+          "diagramId": {
+            "equals": "${diagram_id}"
+          },
+          "role": {
+            "equals": "editor"
+          }
         }
       }
     },
@@ -285,7 +358,9 @@
       "expect": {
         "status": 200,
         "json": {
-          "items": { "length": 2 }
+          "items": {
+            "length": 2
+          }
         }
       }
     },
@@ -303,13 +378,109 @@
       "expect": {
         "status": 200,
         "json": {
-          "myRole": { "equals": "editor" },
-          "memberCount": { "equals": 2 }
+          "myRole": {
+            "equals": "editor"
+          },
+          "memberCount": {
+            "equals": 2
+          }
         }
       }
     },
     {
       "step_id": 13,
+      "name": "Owner 重命名 room",
+      "alignment_step": "S04 §2.4 房间重命名（fix-issue-45-room-rename）",
+      "method": "PATCH",
+      "path": "/api/v1/rooms/${room_id}",
+      "request": {
+        "headers": {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer ${owner_token}"
+        },
+        "body": {
+          "name": "S04 renamed room"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "json": {
+          "name": {
+            "equals": "S04 renamed room"
+          }
+        }
+      }
+    },
+    {
+      "step_id": 14,
+      "name": "Guest(editor) 重命名 room → 403",
+      "alignment_step": "S04 §2.4 owner only",
+      "method": "PATCH",
+      "path": "/api/v1/rooms/${room_id}",
+      "request": {
+        "headers": {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer ${guest_token}"
+        },
+        "body": {
+          "name": "guest rename"
+        }
+      },
+      "expect": {
+        "status": 403,
+        "json": {
+          "code": {
+            "equals": "FORBIDDEN"
+          }
+        }
+      }
+    },
+    {
+      "step_id": 15,
+      "name": "Owner 非法名重命名 → 422",
+      "alignment_step": "S04 §2.4 name 1–64",
+      "method": "PATCH",
+      "path": "/api/v1/rooms/${room_id}",
+      "request": {
+        "headers": {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer ${owner_token}"
+        },
+        "body": {
+          "name": "   "
+        }
+      },
+      "expect": {
+        "status": 422,
+        "json": {
+          "code": {
+            "equals": "VALIDATION_ERROR"
+          }
+        }
+      }
+    },
+    {
+      "step_id": 16,
+      "name": "Owner 回读 room 详情确认新名",
+      "alignment_step": "S04 §2.4 即时一致",
+      "method": "GET",
+      "path": "/api/v1/rooms/${room_id}",
+      "request": {
+        "headers": {
+          "Authorization": "Bearer ${owner_token}"
+        }
+      },
+      "expect": {
+        "status": 200,
+        "json": {
+          "name": {
+            "equals": "S04 renamed room"
+          }
+        }
+      }
+    },
+    {
+      "step_id": 17,
       "name": "同一 diagram 重复创建 room → 409",
       "alignment_step": "EX-11.1",
       "method": "POST",
@@ -327,13 +498,17 @@
       "expect": {
         "status": 409,
         "json": {
-          "code": { "equals": "ROOM_DIAGRAM_TAKEN" },
-          "existingRoomId": { "equals": "${room_id}" }
+          "code": {
+            "equals": "ROOM_DIAGRAM_TAKEN"
+          },
+          "existingRoomId": {
+            "equals": "${room_id}"
+          }
         }
       }
     },
     {
-      "step_id": 14,
+      "step_id": 18,
       "name": "Owner 移除 Guest",
       "alignment_step": "S04.4 §6 Step 3–9",
       "method": "DELETE",
@@ -348,7 +523,7 @@
       }
     },
     {
-      "step_id": 15,
+      "step_id": 19,
       "name": "Guest 再次访问 room → 403 NOT_A_MEMBER",
       "alignment_step": "EX-13.1",
       "method": "GET",
@@ -361,12 +536,14 @@
       "expect": {
         "status": 403,
         "json": {
-          "code": { "equals": "NOT_A_MEMBER" }
+          "code": {
+            "equals": "NOT_A_MEMBER"
+          }
         }
       }
     },
     {
-      "step_id": 16,
+      "step_id": 20,
       "name": "Owner 归档 room",
       "alignment_step": "S04 cleanup",
       "method": "DELETE",
@@ -381,7 +558,7 @@
       }
     },
     {
-      "step_id": 17,
+      "step_id": 21,
       "name": "清理 diagram",
       "alignment_step": "V1 cleanup",
       "method": "DELETE",

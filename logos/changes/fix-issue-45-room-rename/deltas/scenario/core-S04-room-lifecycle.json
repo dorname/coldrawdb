@@ -1,0 +1,60 @@
+# Delta — core-S04-room-lifecycle.json（fix-issue-45-room-rename / #45）
+
+## ADDED — rename 编排步骤（插入到 step 12 之后、step 13 之前，step_id 顺延）
+
+在现有 step 12（Guest 获取 room 详情 role=editor）之后插入以下 4 步，原 step 13–17 顺延为 17–21：
+
+```json
+{
+  "step_id": 13,
+  "name": "Owner 重命名 room",
+  "alignment_step": "S04 §2.4 房间重命名",
+  "method": "PATCH",
+  "path": "/api/v1/rooms/${room_id}",
+  "request": {
+    "headers": {"Content-Type": "application/json", "Authorization": "Bearer ${owner_token}"},
+    "body": {"name": "S04  renamed room"}
+  },
+  "expect": {"status": 200, "json": {"name": {"equals": "S04  renamed room"}}}
+},
+{
+  "step_id": 14,
+  "name": "Guest(editor) 重命名 room → 403",
+  "alignment_step": "S04 §2.4 owner only",
+  "method": "PATCH",
+  "path": "/api/v1/rooms/${room_id}",
+  "request": {
+    "headers": {"Content-Type": "application/json", "Authorization": "Bearer ${guest_token}"},
+    "body": {"name": "guest rename"}
+  },
+  "expect": {"status": 403, "json": {"code": {"equals": "FORBIDDEN"}}}
+},
+{
+  "step_id": 15,
+  "name": "Owner 非法名重命名 → 422",
+  "alignment_step": "S04 §2.4 name 1–64",
+  "method": "PATCH",
+  "path": "/api/v1/rooms/${room_id}",
+  "request": {
+    "headers": {"Content-Type": "application/json", "Authorization": "Bearer ${owner_token}"},
+    "body": {"name": "   "}
+  },
+  "expect": {"status": 422, "json": {"code": {"equals": "VALIDATION_ERROR"}}}
+},
+{
+  "step_id": 16,
+  "name": "Owner 回读 room 详情确认新名",
+  "alignment_step": "S04 §2.4 即时一致",
+  "method": "GET",
+  "path": "/api/v1/rooms/${room_id}",
+  "request": {"headers": {"Authorization": "Bearer ${owner_token}"}},
+  "expect": {"status": 200, "json": {"name": {"equals": "S04  renamed room"}}}
+}
+```
+
+> 实际 token 变量名以主文档既有 `variables` 为准（owner/guest 登录步骤的 extract 名）；`expect.json` 匹配语法沿用既有步骤口径。
+
+## MODIFIED — description / version
+
+- `version` 升小版本并注释：`fix-issue-45-room-rename 补 rename 步骤`
+- `description` 末尾追加「含房间重命名（owner 200 / editor 403 / 非法名 422 / 回读一致）」

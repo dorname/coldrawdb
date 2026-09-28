@@ -1,0 +1,81 @@
+# Delta — rooms.yaml（fix-issue-45-room-rename / #45）
+
+## ADDED — `/api/v1/rooms/{roomId}` 新增 patch 操作
+
+在 `/api/v1/rooms/{roomId}` 的 `get:` 与 `delete:` 之间插入：
+
+```yaml
+    patch:
+      summary: Rename a room
+      description: |
+        Owner only。更新 `room.name`（fix-issue-45-room-rename，issue #45）。
+        name trim 后须为 1–64 字符（与 CreateRoomRequest.name 同一口径）。
+        diagram 标题与 room.name 为独立字段，本端点不影响 diagram 文档。
+      operationId: renameRoom
+      tags: [rooms]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenameRoomRequest'
+      responses:
+        '200':
+          description: Room renamed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Only owner may rename / not a member
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                forbidden:
+                  value:
+                    code: FORBIDDEN
+                    message: 仅房间 owner 可重命名
+                notMember:
+                  value:
+                    code: NOT_A_MEMBER
+                    message: 你不是该房间成员
+        '404':
+          description: Room not found or archived
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: ROOM_NOT_FOUND
+                message: 房间不存在
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+```
+
+## ADDED — components.schemas 新增 RenameRoomRequest
+
+在 `CreateRoomRequest` 之后插入：
+
+```yaml
+    RenameRoomRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: New room display name（trim 后 1–64 字符）
+```
+
+## MODIFIED — 头部注释（追加变更行）
+
+追加：`# fix-issue-45-room-rename（2026-09-28，#45）：/rooms/{roomId} 新增 patch（renameRoom，owner only，name 1–64）；新增 RenameRoomRequest schema。`
