@@ -1,5 +1,21 @@
 # 部署报告
 
+## 2026-09-28 — fix-issue-45-room-rename（本地/测试）
+
+| 项 | 值 |
+|---|---|
+| 变更 | `fix-issue-45-room-rename` |
+| 部署时间 | 2026-09-28 |
+| 目标环境 | 本地 docker compose（coldrawdb + nginx + backup） |
+| 内容 | #45 协作空间重命名：`PATCH /api/v1/rooms/{roomId}`（renameRoom，owner only）+ 房间列表卡片重命名入口；无 migration |
+| 状态 | ✅ 部署完成；smoke Gate 3.8 PASS（10/10，Coverage 100%） |
+
+### 执行摘要
+
+1. `docker compose up -d --build coldrawdb` 重建镜像（前后端产物随镜像），容器 recreate 后 healthy；`:9080` health 200 / SPA 200；`PATCH /rooms/{id}` 匿名 401（路由已注册、鉴权前置）
+2. 无 DB migration、无破坏性 API 变更；nginx/backup 服务未动
+
+
 ## 2026-09-28 — fix-issues-42-44-mcp-and-relation-hit（本地/测试）
 
 | 项 | 值 |
