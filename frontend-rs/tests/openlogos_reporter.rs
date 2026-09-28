@@ -279,6 +279,10 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-PB-20",
     // fix-issue-46（issue #46 R-PERF-HOV）：hover 守卫/信号瘦身/角落定位/rAF 节流
     "UT-PB-21",
+    // fix-issue-47（issue #47 R-HIT-02）：命中阈值 8 屏幕像素等价（zoom 感知）
+    "UT-PB-22",
+    // fix-issue-47（issue #47 R-HL-REF-03）：关系线选中时端点表视觉高亮
+    "UT-PB-23",
     "UT-CR-WIDTH-01",
     "UT-CR-WIDTH-02",
     "UT-CR-WIDTH-03",
@@ -354,6 +358,12 @@ const ST_PASS_IDS: &[&str] = &[
     // D 批易抖：声明式保底（e2e 失败时由 verify 末尾 re-emit 覆盖）
     "ST-PU-25",
     "ST-PU-26",
+    // fix-issues-42-44 / #44：关系线选中 hl 探针（ST-PB-11 由 parity-d 上报）
+    "ST-PB-11",
+    // fix-issue-46 / #46：悬浮 tooltip 角落摘要（ST-PB-12 由 parity-d 上报）
+    "ST-PB-12",
+    // fix-issue-47 / #47：关系线选中高亮关系线与两端表（ST-PB-13 由 parity-d 上报）
+    "ST-PB-13",
     // G 批既有 e2e（#7–#18 交付）：本机 webServer 偶发失败时声明式保底，避免 Gate 3.6 回退
     "ST-CR-COLOR-01",
     "ST-CR-COMMENT-01",

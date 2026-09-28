@@ -1034,6 +1034,7 @@ mod leptos_canvas {
                     dx,
                     dy,
                     tier,
+                    t_now.zoom,
                 );
                 // R-PERF-HOV-02 写守卫：同 ref 命中不反复 set（文案不变 → DOM 不重建）
                 if hover_ref.get_untracked().as_deref() != hit.as_deref() {
@@ -1921,6 +1922,7 @@ mod leptos_canvas {
                     dy,
                     // #35 R-LOD-08 / #36 R-VIEW-DIM-01：与 draw_canvas 同一维度口径（显式维度驱动）
                     super::tier_for_dimension(store.view_dimension.get_untracked()),
+                    t_now.zoom,
                 ) {
                     // relation-inspector-and-ddl-io：点击连线（表未命中时）→ 选中高亮 + Inspector 展示（不再弹详情模态）
                     // 命中顺序在表之后：连线被表遮住时点击应选中表而非不可见的线
@@ -3937,7 +3939,17 @@ pub fn draw_canvas(
         if ghost_skip == Some(table.id.as_str()) {
             continue;
         }
-        let is_sel = table_visually_selected(table.id.as_str(), selected_id, selected_table_ids);
+        // fix-issue-47（#47 R-HL-REF-03）：选中关系线时，其两端表同步视觉高亮
+        let ref_endpoint_sel = selected_ref_id
+            .as_ref()
+            .and_then(|rid| {
+                refs.iter()
+                    .find(|r| r.id == *rid)
+                    .map(|r| r.start_table_id == table.id || r.end_table_id == table.id)
+            })
+            .unwrap_or(false);
+        let is_sel = table_visually_selected(table.id.as_str(), selected_id, selected_table_ids)
+            || ref_endpoint_sel;
         // R-PERF-04：被拖表以覆盖坐标绘制（一帧至多一张表的一次克隆）
         let visual = table_with_override(table, table_override);
         // #31 UT-PE-HL-01：非相关表 alpha ≤ 0.5 退到背景层；邻接表/选中表保持 1.0
@@ -3985,6 +3997,7 @@ pub fn draw_canvas(
         rel_width_scale_max,
         related_emphasis_seen,
         selected_ref_id,
+        refs,
     );
     // ST-CR-LOD-01 探针：暴露本帧 LOD 档位参数（#35：锚定模式 + 拓扑档注释渲染计数）
     let topo_comments = if frame_tier == LodTier::Topology {
@@ -4043,12 +4056,18 @@ fn update_hl_probe(
     related_emphasis: bool,
     // fix-issues-42-44（#44 ST-PB-11）：选中关系 id 供 e2e 断言「选中与点击目标一致」
     sel_ref_id: Option<&str>,
+    // fix-issue-47（#47 R-HL-REF-03）：选中关系线的两端表 id 供 e2e 断言端点表高亮
+    refs: &[Reference],
 ) {
     if let Some(win) = web_sys::window() {
         let target: &js_sys::Object = win.unchecked_ref();
         let key = wasm_bindgen::JsValue::from_str("__cdb_hl_probe");
+        let endpoint_ids = sel_ref_id
+            .and_then(|rid| refs.iter().find(|r| r.id == rid))
+            .map(|r| format!("[\"{}\",\"{}\"]", r.start_table_id, r.end_table_id))
+            .unwrap_or_else(|| "[]".to_string());
         let json = format!(
-            "{{\"any_sel\":{},\"sel_table\":{},\"sel_ref\":{},\"multi_n\":{},\"table_alpha_min\":{},\"rel_width_scale_max\":{},\"related_emphasis\":{},\"sel_ref_id\":{}}}",
+            "{{\"any_sel\":{},\"sel_table\":{},\"sel_ref\":{},\"multi_n\":{},\"table_alpha_min\":{},\"rel_width_scale_max\":{},\"related_emphasis\":{},\"sel_ref_id\":{},\"rel_endpoint_ids\":{}}}",
             sel_table || sel_ref || multi_n > 0,
             sel_table,
             sel_ref,
@@ -4058,14 +4077,15 @@ fn update_hl_probe(
             related_emphasis,
             sel_ref_id
                 .map(|id| format!("\"{}\"", id))
-                .unwrap_or_else(|| "null".to_string())
+                .unwrap_or_else(|| "null".to_string()),
+            endpoint_ids
         );
         let _ = js_sys::Reflect::set(target, &key, &wasm_bindgen::JsValue::from_str(&json));
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn update_hl_probe(_: bool, _: bool, _: usize, _: f64, _: f64, _: bool, _: Option<&str>) {}
+fn update_hl_probe(_: bool, _: bool, _: usize, _: f64, _: f64, _: bool, _: Option<&str>, _: &[Reference]) {}
 
 /// ST-CR-LOD-01 探针（#30）：每帧把 LOD 档位参数写入 `window.__cdb_lod_probe`
 /// （JSON 字符串：zoom / tier / font_world / lod_scale），供 e2e 断言拓扑档
@@ -6225,8 +6245,8 @@ pub fn dist_to_reference(
 
 /// p0-fix 定点 3：纯函数 — (x, y) 命中哪条 reference 连线（UT-MM-33）
 /// 几何与 `draw_bezier_fields` 一致（calc_path 贝塞尔）；返回 reference id
-pub fn hit_test_reference(tables: &[Table], refs: &[Reference], x: f64, y: f64) -> Option<String> {
-    hit_test_reference_tier(tables, refs, x, y, LodTier::Detail)
+pub fn hit_test_reference(tables: &[Table], refs: &[Reference], x: f64, y: f64, zoom: f64) -> Option<String> {
+    hit_test_reference_tier(tables, refs, x, y, LodTier::Detail, zoom)
 }
 
 /// #35 R-LOD-08：tier 感知命中检测——拓扑档线几何为表级锚定，命中必须与绘制同口径
@@ -6271,11 +6291,13 @@ pub fn hit_test_reference_tier(
     x: f64,
     y: f64,
     tier: LodTier,
+    zoom: f64,
 ) -> Option<String> {
     let mut best: Option<(f64, &str)> = None;
     for r in refs {
         if let Some(d) = dist_to_reference(tables, r, x, y, tier) {
-            if d <= 8.0 && best.map_or(true, |(bd, _)| d < bd) {
+            // fix-issue-47：命中带宽 8 屏幕像素等价（世界距离 * zoom）
+            if d * zoom <= 8.0 && best.map_or(true, |(bd, _)| d < bd) {
                 best = Some((d, r.id.as_str()));
             }
         }
@@ -6490,17 +6512,17 @@ mod tests {
         // 连线为水平贝塞尔：起点 (100+TABLE_WIDTH, anchor_y) → 终点 (600, anchor_y)
         let mid_x = (100.0 + TABLE_WIDTH + 600.0) / 2.0;
         assert_eq!(
-            hit_test_reference(&tables, &refs, mid_x, anchor_y),
+            hit_test_reference(&tables, &refs, mid_x, anchor_y, 1.0),
             Some("r1".to_string()),
             "UT-MM-33: 连线中点应命中"
         );
         assert_eq!(
-            hit_test_reference(&tables, &refs, mid_x, anchor_y + 20.0),
+            hit_test_reference(&tables, &refs, mid_x, anchor_y + 20.0, 1.0),
             None,
             "UT-MM-33: 偏离 20px 不应命中"
         );
         assert_eq!(
-            hit_test_reference(&tables, &[], mid_x, anchor_y),
+            hit_test_reference(&tables, &[], mid_x, anchor_y, 1.0),
             None,
             "UT-MM-33: 无连线应返回 None"
         );
@@ -6582,18 +6604,18 @@ mod tests {
         let mid_x = (100.0 + TABLE_WIDTH + 600.0) / 2.0;
         // 距 r1 线 6px、距 r2 线 4px——两条都在 8px 带宽内，必须选距离最小的 r2
         assert_eq!(
-            hit_test_reference(&tables, &refs, mid_x, y1 + 6.0),
+            hit_test_reference(&tables, &refs, mid_x, y1 + 6.0, 1.0),
             Some("r2".to_string()),
             "UT-PB-18: 多线同带宽内必须返回距离最小者（R-HIT-02）"
         );
         // 紧贴 r1 线（1px），r2 相距 9px 超阈值 → r1
         assert_eq!(
-            hit_test_reference(&tables, &refs, mid_x, y1 + 1.0),
+            hit_test_reference(&tables, &refs, mid_x, y1 + 1.0, 1.0),
             Some("r1".to_string())
         );
         // 全部超阈值 → None（空白不误选远处关系，R-HIT-03）
         assert_eq!(
-            hit_test_reference(&tables, &refs, mid_x, y1 - 20.0),
+            hit_test_reference(&tables, &refs, mid_x, y1 - 20.0, 1.0),
             None,
             "UT-PB-18: 阈值外不得命中任何关系（R-HIT-03）"
         );
@@ -6651,15 +6673,98 @@ mod tests {
         let (px, py) = (x_mid, y1 + 5.0);
         let refs_ortho = vec![mkref("orthogonal")];
         assert_eq!(
-            hit_test_reference(&tables, &refs_ortho, px, py),
+            hit_test_reference(&tables, &refs_ortho, px, py, 1.0),
             Some("r1".to_string()),
             "UT-PB-19: orthogonal 折线垂直段必须命中（线型同源）"
         );
         let refs_bezier = vec![mkref("bezier")];
         assert_eq!(
-            hit_test_reference(&tables, &refs_bezier, px, py),
+            hit_test_reference(&tables, &refs_bezier, px, py, 1.0),
             None,
             "UT-PB-19: 同端点贝塞尔在该点不得命中（几何不同源反例）"
+        );
+    }
+
+    /// UT-PB-22（fix-issue-47 / #47 R-HIT-02 修订）：命中阈值 8 屏幕像素等价（zoom 感知）
+    #[test]
+    fn test_hit_test_reference_zoom_screen_pixels_ut_pb_22() {
+        use crate::editor_core::types::Field;
+        let mk_table = |id: &str, x: f64, y: f64| Table {
+            id: id.into(),
+            name: id.into(),
+            x,
+            y,
+            color: "#000".into(),
+            comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(),
+                name: "f1".into(),
+                type_: "INT".into(),
+                default: String::new(),
+                check: String::new(),
+                primary: true,
+                unique: false,
+                not_null: false,
+                increment: false,
+                comment: String::new(),
+                tag: String::new(),
+                dict_code: String::new(),
+            }],
+            indices: Vec::new(),
+            width: None,
+            min_height: None,
+        };
+        let t1 = mk_table("t1", 100.0, 130.0);
+        let t2 = mk_table("t2", 600.0, 130.0);
+        let refs = vec![Reference {
+            id: "r1".into(),
+            name: String::new(),
+            start_table_id: "t1".into(),
+            end_table_id: "t2".into(),
+            start_field_id: "f1".into(),
+            end_field_id: "f1".into(),
+            type_: "one_to_many".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+            color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
+        }];
+        let path = calc_path(&t1, "f1", &t2, "f1");
+        let (mid_x, y_line) = bezier_point(&path, 0.5);
+
+        // zoom=1.0：8 世界像素命中，9 不命中
+        assert_eq!(
+            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 8.0, 1.0),
+            Some("r1".to_string()),
+            "UT-PB-22: zoom=1.0 时 8 世界像素应命中"
+        );
+        assert_eq!(
+            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 9.0, 1.0),
+            None,
+            "UT-PB-22: zoom=1.0 时 9 世界像素应不命中"
+        );
+        // zoom=0.5：16 世界像素命中（16*0.5=8 屏幕像素），17 不命中
+        assert_eq!(
+            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 16.0, 0.5),
+            Some("r1".to_string()),
+            "UT-PB-22: zoom=0.5 时 16 世界像素等价 8 屏幕像素应命中"
+        );
+        assert_eq!(
+            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 17.0, 0.5),
+            None,
+            "UT-PB-22: zoom=0.5 时 17 世界像素应不命中"
+        );
+        // zoom=2.0：4 世界像素命中，5 不命中
+        assert_eq!(
+            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 4.0, 2.0),
+            Some("r1".to_string()),
+            "UT-PB-22: zoom=2.0 时 4 世界像素等价 8 屏幕像素应命中"
+        );
+        assert_eq!(
+            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 5.0, 2.0),
+            None,
+            "UT-PB-22: zoom=2.0 时 5 世界像素应不命中"
         );
     }
 
@@ -6726,6 +6831,26 @@ mod tests {
         assert!(
             !frame_body.contains("schedule_paint"),
             "UT-PB-21: hover 帧体不得触发 schedule_paint"
+        );
+    }
+
+    /// UT-PB-23（fix-issue-47 / #47 R-HL-REF-03）：关系线选中时端点表视觉高亮
+    #[test]
+    fn test_ref_selected_endpoint_tables_highlight_ut_pb_23() {
+        let src = include_str!("editor_render.rs");
+        // 存在判定逻辑：给定 selected_ref_id 与 refs，判定 table 是否为选中关系端点表
+        assert!(
+            src.contains("r.start_table_id == table.id || r.end_table_id == table.id"),
+            "UT-PB-23: 必须存在选中关系端点表判定"
+        );
+        // 该判定参与 draw_canvas 中 is_sel 计算，使端点表传入 draw_table(..., selected=true, ...)
+        let idx = src
+            .find("let is_sel = table_visually_selected(table.id.as_str(), selected_id, selected_table_ids)")
+            .expect("UT-PB-23: draw_canvas 中 is_sel 计算存在");
+        let block = &src[idx..(idx + 500).min(src.len())];
+        assert!(
+            block.contains("ref_endpoint_sel") && block.contains("|| ref_endpoint_sel"),
+            "UT-PB-23: is_sel 应 OR 选中关系端点表高亮"
         );
     }
 
@@ -8002,7 +8127,7 @@ mod tests {
         }];
         let tables = vec![ta.clone(), tb.clone()];
         assert_eq!(
-            hit_test_reference_tier(&tables, &refs, mid_x, mid_y, LodTier::Topology),
+            hit_test_reference_tier(&tables, &refs, mid_x, mid_y, LodTier::Topology, 1.0),
             Some("r1".to_string()),
             "UT-CR-LOD-01: 拓扑档命中必须与表级锚定绘制同口径"
         );
