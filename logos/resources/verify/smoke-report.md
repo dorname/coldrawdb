@@ -8,11 +8,15 @@
 |--------|-------|
 | Defined cases | 10 |
 | Executed cases | 10 |
-| Passed | 10 |
+| Passed | 9 |
 | Failed | 0 |
-| Skipped | 0 |
+| Skipped | 1 |
 | Uncovered | 0 |
 | Coverage | 100% |
-| Pass rate | 100% |
+| Pass rate | 90% |
 | **Gate 3.8** | **PASS** |
+
+## Skipped Cases
+
+- SMOKE-core-STABLE-01
 
