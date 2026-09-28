@@ -188,6 +188,9 @@ CREATE TABLE IF NOT EXISTS area (
     width           REAL    NOT NULL DEFAULT 200,
     height          REAL    NOT NULL DEFAULT 200,
     color           TEXT    NOT NULL DEFAULT '#e0f2fe',
+    -- fix-issues-38-41（#41）：区域锁定；0 = 未锁定（缺省，旧图兼容），1 = 锁定
+    -- 既有库迁移：backend/migrations/0012_area_lock.up.sql
+    locked          INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (diagram_id) REFERENCES diagram(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_area_diagram_id ON area(diagram_id);
