@@ -14,13 +14,13 @@
 
 ## [follow-up] 收尾
 
-- [ ] F1 verify PASS 后 `openlogos archive mcp-dictionary-tools`（/goal 授权），随后 git push
+- [x] F1 verify PASS 后 `openlogos archive mcp-dictionary-tools`（/goal 授权），随后 git push
 
 ## 人类确认点
 
 - [x] H1 用户确认本提案后再产出 delta（/goal「需要AI 通过 MCP 正式管理字典」全程授权）
 - [x] H2 delta 完成后 `openlogos merge mcp-dictionary-tools`（/goal 授权）
 - [x] H3 merge 后自动提交规格文档并按合并规格实现代码，完成后自动提交
-- [ ] H4 实现完成后 `openlogos verify`（/goal 授权；nice -n 10 + 测试线程限制）
-- [ ] H5 verify PASS 后 `openlogos archive`（/goal 授权）
-- [ ] H6 归档提交完成后 `git push`（/goal 授权）
+- [x] H4 实现完成后 `openlogos verify`（/goal 授权；nice -n 10 + 测试线程限制）
+- [x] H5 verify PASS 后 `openlogos archive`（/goal 授权）
+- [x] H6 归档提交完成后 `git push`（/goal 授权）
