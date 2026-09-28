@@ -18,19 +18,19 @@
 
 ## [deploy] 部署任务
 
-- [ ] E1 verify PASS 且用户授权后：按部署方案重建 compose 前端镜像（mcp-server 不经 compose），确认服务可用（:9080 health/SPA 200）
+- [x] E1 verify PASS 且用户授权后：按部署方案重建 compose 前端镜像（mcp-server 不经 compose），确认服务可用（:9080 health/SPA 200）—— 已完成：coldrawdb:v1 重建+容器 healthy，health 200 / SPA 200
 
 ## [follow-up] 收尾
 
-- [ ] F1 verify PASS 后带验收评论关闭 GitHub issue #42 / #43 / #44
-- [ ] F2 smoke PASS 后 `openlogos archive fix-issues-42-44-mcp-and-relation-hit`，随后 git push
+- [x] F1 verify PASS 后带验收评论关闭 GitHub issue #42 / #43 / #44 —— 已评论+关闭
+- [x] F2 smoke PASS 后 `openlogos archive fix-issues-42-44-mcp-and-relation-hit`，随后 git push
 
 ## 人类确认点
 
 - [x] H1 用户确认本提案后再产出 delta（/goal「继续拉取issue,并分析解决issue,直到关闭」全程授权 + 用户「授权给你」）
 - [x] H2 delta 完成后 `openlogos merge fix-issues-42-44-mcp-and-relation-hit`（/goal 授权）
-- [ ] H3 merge 后自动提交规格文档并按合并规格分批实现（C1～C4 每批闭环），完成后自动提交代码
-- [ ] H4 实现完成后 `openlogos verify`（/goal 授权；nice -n 10 + --test-threads=2）
-- [ ] H5 verify PASS 后按部署方案执行部署（/goal 授权）
-- [ ] H6 部署完成后 `openlogos smoke`（/goal 授权）
-- [ ] H7 smoke PASS 后 `openlogos archive` + `git push`（/goal 授权）
+- [x] H3 merge 后自动提交规格文档并按合并规格分批实现（C1～C4 每批闭环），完成后自动提交代码
+- [x] H4 实现完成后 `openlogos verify`（Gate 3.6 PASS：512 通过/0 失败/34 跳过，覆盖 546/546）（/goal 授权；nice -n 10 + --test-threads=2）
+- [x] H5 verify PASS 后按部署方案执行部署（/goal 授权）
+- [x] H6 部署完成后 `openlogos smoke`（/goal 授权）—— Gate 3.8 PASS 10/10（首轮 9 unknown 系残留 dev backend 占 3000，清理后重跑全绿）
+- [x] H7 smoke PASS 后 `openlogos archive` + `git push`（/goal 授权）

@@ -1,5 +1,22 @@
 # 部署报告
 
+## 2026-09-28 — fix-issues-42-44-mcp-and-relation-hit（本地/测试）
+
+| 项 | 值 |
+|---|---|
+| 变更 | `fix-issues-42-44-mcp-and-relation-hit` |
+| 部署时间 | 2026-09-28 |
+| 目标环境 | 本地 docker compose（coldrawdb + nginx + backup） |
+| 内容 | #44 关系线命中线型同源+最近距离优先 / #43 悬浮关系线 tooltip / #42 MCP update_diagram 错误可诊断+USE_OP_CHANNEL 鲁棒识别（前端镜像重建；mcp-server stdio 不经 compose；无 migration） |
+| 状态 | ✅ 部署完成；smoke Gate 3.8 PASS（10/10，Coverage 100%） |
+
+### 执行摘要
+
+1. `docker compose up -d --build coldrawdb` 重建镜像（前端产物随镜像），容器 recreate 后 healthy；`:9080` health 200 / SPA 200
+2. 无 DB migration、无新 API 端点；nginx/backup 服务未动
+3. smoke 首轮 9 unknown 系残留 dev backend 占用 :3000（start-local.sh 端口占用即 exit 1），清理后重跑 10/10 PASS
+
+
 ## 2026-09-28 — fix-issues-38-41-canvas-interaction（本地/测试）
 
 | 项 | 值 |
