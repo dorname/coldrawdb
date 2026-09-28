@@ -27,8 +27,8 @@
 
 ## [follow-up] 关闭 issue 与归档
 
-- [ ] F1 verify PASS 后带验收评论回复并关闭 GitHub issue #34、#35（引用提交/批次）
-- [ ] F2 用户授权后 `openlogos archive fix-issues-34-35-header-comment-lod-anchor`，随后确认 git push
+- [x] F1 verify PASS 后带验收评论回复并关闭 GitHub issue #34、#35（引用提交/批次）
+- [x] F2 用户授权后 `openlogos archive fix-issues-34-35-header-comment-lod-anchor`，随后确认 git push（/goal 全程授权；2026-09-28 归档并推送）
 
 ## 人类确认点
 
@@ -36,5 +36,5 @@
 - [ ] H2 delta 完成后，等待用户明确授权 `openlogos merge`（/goal 授权）
 - [ ] H3 merge 完成后自动提交规格文档，并按合并规格分批实现（C1～C2），每批完成后自动提交代码
 - [ ] H4 实现完成后，等待用户明确授权 `openlogos verify`（/goal 授权）
-- [ ] H5 verify PASS 后，等待用户明确授权 `openlogos archive`（/goal 授权）
-- [ ] H6 归档提交完成后，询问用户是否执行 `git push`（/goal 授权）
+- [x] H5 verify PASS 后，等待用户明确授权 `openlogos archive`（/goal 授权）
+- [x] H6 归档提交完成后，询问用户是否执行 `git push`（/goal 授权）
