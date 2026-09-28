@@ -27,7 +27,7 @@
 ## [follow-up] 关闭 issue 与归档
 
 - [x] F1 verify PASS 后带验收评论回复并关闭 GitHub issue #36 / #37（引用提交）
-- [ ] F2 用户授权后 `openlogos archive fix-issues-36-37-view-dimension-select-all`，随后确认 git push
+- [x] F2 用户授权后 `openlogos archive fix-issues-36-37-view-dimension-select-all`，随后确认 git push
 
 ## 人类确认点
 
@@ -35,5 +35,5 @@
 - [x] H2 delta 完成后，等待用户明确授权 `openlogos merge fix-issues-36-37-view-dimension-select-all`（/goal 授权）
 - [x] H3 merge 完成后自动提交规格文档，并按合并规格实现（C1、C2 分批闭环），完成后自动提交代码
 - [x] H4 实现完成后，等待用户明确授权 `openlogos verify`（/goal 授权）
-- [ ] H5 verify PASS 后，等待用户明确授权 `openlogos archive fix-issues-36-37-view-dimension-select-all`（/goal 授权）
-- [ ] H6 归档提交完成后，询问用户是否执行 `git push`（/goal 授权）
+- [x] H5 verify PASS 后，等待用户明确授权 `openlogos archive fix-issues-36-37-view-dimension-select-all`（/goal 授权）
+- [x] H6 归档提交完成后，询问用户是否执行 `git push`（/goal 授权）
