@@ -15,8 +15,8 @@
 
 ## [code] C1 相关连线提亮实现
 
-- [ ] C1.1 列出本批覆盖 UT/ST ID（UT-PE-HL-01 / ST-PE-10）并实现：`draw_relation` 相关态（非选中）分支——主色 `palette.selected`、halo `palette.selected_soft` 8px、线宽维持 1.5×；端点记号统一用主线色；`draw_canvas` 透传 related 标记；hl_probe 暴露 related 强调字段
-- [ ] C1.2 更新 UT-PE-HL-01 断言（选中色族 / 发光 halo / 端点同色锚点）与 ST-PE-10 e2e 断言；同批补齐 OpenLogos reporter 记录
+- [x] C1.1 列出本批覆盖 UT/ST ID（UT-PE-HL-01 / ST-PE-10）并实现：`draw_relation` 相关态（非选中）分支——主色 `palette.selected`、halo `palette.selected_soft` 8px、线宽维持 1.5×；端点记号统一用主线色；`draw_canvas` 透传 related 标记；hl_probe 暴露 related 强调字段
+- [x] C1.2 更新 UT-PE-HL-01 断言（选中色族 / 发光 halo / 端点同色锚点）与 ST-PE-10 e2e 断言；同批补齐 OpenLogos reporter 记录
 
 ## [follow-up] 关闭 issue 与归档
 

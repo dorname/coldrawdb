@@ -1825,6 +1825,7 @@ try {
     assert.equal(p.any_sel, false, "未选中时 any_sel 必须为 false");
     assert.equal(p.table_alpha_min, 1, "未选中时全表 alpha=1");
     assert.equal(p.rel_width_scale_max, 1, "未选中时全线默认线宽");
+    assert.equal(p.related_emphasis, false, "未选中时不得有相关强调线（fix-31）");
 
     // WHEN：点击选中中心表 ta（表头区域，避开字段连接点）
     const head = await canvasPoint(page, { x: 120 + 100, y: 140 + 16 });
@@ -1840,6 +1841,8 @@ try {
       `相关连线必须加粗 1.5×（实际 ${p.rel_width_scale_max}）`);
     assert.ok(Math.abs(p.table_alpha_min - 0.5) < 1e-9,
       `非相关表必须降透明度至 0.5（实际 ${p.table_alpha_min}）`);
+    assert.equal(p.related_emphasis, true,
+      "相关连线必须以选中色族强调渲染（fix-31：palette.selected 主色 + selected_soft 光晕）");
 
     // THEN 2：三种表头色 × 亮/暗主题注释可读性——截图锚点（UT-PE-CMT-01 保证对比度参数）
     const canvas = page.locator('[data-testid="editor-canvas-container"] canvas');
@@ -1854,6 +1857,7 @@ try {
     p = await probe();
     assert.ok(Math.abs(p.rel_width_scale_max - 1.5) < 1e-9, "亮主题下相关线仍必须 1.5×");
     assert.ok(Math.abs(p.table_alpha_min - 0.5) < 1e-9, "亮主题下非相关表仍必须 0.5");
+    assert.equal(p.related_emphasis, true, "亮主题下相关线仍必须选中色族强调（fix-31）");
 
     // THEN 3：取消选中（Escape 收拢可能开着的更多菜单 + 点击左下空旷区）→ 全图恢复默认
     await page.keyboard.press("Escape");
@@ -1865,6 +1869,7 @@ try {
     p = await probe();
     assert.equal(p.table_alpha_min, 1, "取消选中后全表必须恢复 alpha=1");
     assert.equal(p.rel_width_scale_max, 1, "取消选中后全线必须恢复默认线宽");
+    assert.equal(p.related_emphasis, false, "取消选中后相关强调必须复位（fix-31）");
   });
 
   // ─── ST-PE-09：视觉体系统一目视锚点（fix-open-issues-26-33 / #33，

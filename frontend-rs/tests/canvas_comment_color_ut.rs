@@ -285,7 +285,8 @@ fn ut_pb_11_relation_color_render_contract() {
     );
     assert!(
         RENDER.contains("if selected { palette.selected } else { stroke }")
-            || RENDER.contains("let stroke_main = if selected { palette.selected } else { stroke }"),
+            || RENDER.contains("let stroke_main = if selected { palette.selected } else { stroke }")
+            || RENDER.contains("let stroke_main = if selected || related { palette.selected } else { stroke }"),
         "R-COLOR-03：选中高亮优先级高于自定义色"
     );
 

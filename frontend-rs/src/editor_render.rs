@@ -3609,6 +3609,8 @@ pub fn draw_canvas(
     // ST-PE-10 / ST-CR-LOD-01 探针累计：相关线宽总倍率最大值 / 非相关表 alpha 最小值
     let mut rel_width_scale_max = 1.0f64;
     let mut table_alpha_min = 1.0f64;
+    // fix-31 ST-PE-10：本帧是否存在「相关但非选中」的强调线（探针字段 related_emphasis）
+    let mut related_emphasis_seen = false;
     for r in refs {
         let visible = match (
             table_map.get(r.start_table_id.as_str()),
@@ -3631,21 +3633,23 @@ pub fn draw_canvas(
                 selected_ref_id,
             );
             // #31 UT-PE-HL-01：选中表后相关连线加粗 1.5×；选中关系自身走 selected 3.5 不再叠加
+            // fix-31：related 提升为独立入参——相关线主色/光晕强制选中色族（提亮合同 §4.4）
+            let related = relation_is_related(
+                &r.id,
+                &r.start_table_id,
+                &r.end_table_id,
+                selected_table_ids,
+                selected_id,
+                selected_ref_id,
+            );
             let hl_scale = if selected_ref_id == Some(&r.id) {
                 1.0
             } else {
-                relation_render_width(
-                    1.0,
-                    relation_is_related(
-                        &r.id,
-                        &r.start_table_id,
-                        &r.end_table_id,
-                        selected_table_ids,
-                        selected_id,
-                        selected_ref_id,
-                    ),
-                )
+                relation_render_width(1.0, related)
             };
+            if related && selected_ref_id != Some(&r.id) {
+                related_emphasis_seen = true;
+            }
             // #30 R-LOD-04：拓扑档线宽补偿与 #31 高亮倍率叠乘（选中连线 3.5 也乘 lod）；
             // 探针累计相对默认 2.0 世界线宽的总倍率（选中线为 3.5×lod / 2.0）
             let frame_scale = if selected_ref_id == Some(&r.id) {
@@ -3662,6 +3666,7 @@ pub fn draw_canvas(
                 &r.end_field_id,
                 palette,
                 selected_ref_id == Some(&r.id),
+                related,
                 &r.color,
                 &from.color,
                 effective_line_type(&r.line_type),
@@ -3737,6 +3742,7 @@ pub fn draw_canvas(
         selected_table_ids.len(),
         table_alpha_min,
         rel_width_scale_max,
+        related_emphasis_seen,
     );
     // ST-CR-LOD-01 探针：暴露本帧 LOD 档位参数
     update_lod_probe(t.zoom, frame_tier, lod_scale);
@@ -3774,25 +3780,27 @@ fn update_hl_probe(
     multi_n: usize,
     table_alpha_min: f64,
     rel_width_scale_max: f64,
+    related_emphasis: bool,
 ) {
     if let Some(win) = web_sys::window() {
         let target: &js_sys::Object = win.unchecked_ref();
         let key = wasm_bindgen::JsValue::from_str("__cdb_hl_probe");
         let json = format!(
-            "{{\"any_sel\":{},\"sel_table\":{},\"sel_ref\":{},\"multi_n\":{},\"table_alpha_min\":{},\"rel_width_scale_max\":{}}}",
+            "{{\"any_sel\":{},\"sel_table\":{},\"sel_ref\":{},\"multi_n\":{},\"table_alpha_min\":{},\"rel_width_scale_max\":{},\"related_emphasis\":{}}}",
             sel_table || sel_ref || multi_n > 0,
             sel_table,
             sel_ref,
             multi_n,
             table_alpha_min,
-            rel_width_scale_max
+            rel_width_scale_max,
+            related_emphasis
         );
         let _ = js_sys::Reflect::set(target, &key, &wasm_bindgen::JsValue::from_str(&json));
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn update_hl_probe(_: bool, _: bool, _: usize, _: f64, _: f64) {}
+fn update_hl_probe(_: bool, _: bool, _: usize, _: f64, _: f64, _: bool) {}
 
 /// ST-CR-LOD-01 探针（#30）：每帧把 LOD 档位参数写入 `window.__cdb_lod_probe`
 /// （JSON 字符串：zoom / tier / font_world / lod_scale），供 e2e 断言拓扑档
@@ -5154,6 +5162,7 @@ fn draw_relation(
     to_field_id: &str,
     palette: &CanvasPalette,
     selected: bool,
+    related: bool,
     ref_color: &str,
     source_table_color: &str,
     line_type: &str,
@@ -5169,9 +5178,11 @@ fn draw_relation(
     ctx.save();
     ctx.set_global_alpha(opacity);
 
-    let stroke_main = if selected { palette.selected } else { stroke };
-    let halo = if selected { palette.selected_soft } else { palette.relation_halo };
-    let halo_w = if selected { 10.0 } else { 7.0 * hl_scale } * lod_scale;
+    // fix-31 UT-PE-HL-01（§4.4 提亮）：相关态（非选中）强制选中色族——主色 palette.selected、
+    // 光晕 palette.selected_soft 8px 发光；选中关系自身 3.5px 主线 + 10px 光晕保持层级区分
+    let stroke_main = if selected || related { palette.selected } else { stroke };
+    let halo = if selected || related { palette.selected_soft } else { palette.relation_halo };
+    let halo_w = if selected { 10.0 } else if related { 8.0 } else { 7.0 * hl_scale } * lod_scale;
     let main_w = if selected { 3.5 } else { 2.0 * hl_scale } * lod_scale;
 
     match line_type {
@@ -5193,8 +5204,8 @@ fn draw_relation(
                 let (sx, sy) = pts[1];
                 let (x2, y2) = pts[pts.len() - 1];
                 let (px, py) = pts[pts.len() - 2];
-                draw_endpoint_notation(ctx, px, py, x2, y2, end_many, stroke, main_w);
-                draw_endpoint_notation(ctx, sx, sy, x1, y1, start_many, stroke, main_w);
+                draw_endpoint_notation(ctx, px, py, x2, y2, end_many, stroke_main, main_w);
+                draw_endpoint_notation(ctx, sx, sy, x1, y1, start_many, stroke_main, main_w);
             }
         }
         "straight" => {
@@ -5214,8 +5225,8 @@ fn draw_relation(
             ctx.line_to(x2, y2);
             ctx.stroke();
             clear_stroke_dash(ctx);
-            draw_endpoint_notation(ctx, x1, y1, x2, y2, end_many, stroke, main_w);
-            draw_endpoint_notation(ctx, x2, y2, x1, y1, start_many, stroke, main_w);
+            draw_endpoint_notation(ctx, x1, y1, x2, y2, end_many, stroke_main, main_w);
+            draw_endpoint_notation(ctx, x2, y2, x1, y1, start_many, stroke_main, main_w);
         }
         _ => {
             // bezier 默认
@@ -5235,8 +5246,8 @@ fn draw_relation(
             ctx.bezier_curve_to(path.cx1, path.cy1, path.cx2, path.cy2, path.x2, path.y2);
             ctx.stroke();
             clear_stroke_dash(ctx);
-            draw_endpoint_notation(ctx, path.cx2, path.cy2, path.x2, path.y2, end_many, stroke, main_w);
-            draw_endpoint_notation(ctx, path.cx1, path.cy1, path.x1, path.y1, start_many, stroke, main_w);
+            draw_endpoint_notation(ctx, path.cx2, path.cy2, path.x2, path.y2, end_many, stroke_main, main_w);
+            draw_endpoint_notation(ctx, path.cx1, path.cy1, path.x1, path.y1, start_many, stroke_main, main_w);
         }
     }
     ctx.restore();
@@ -7006,6 +7017,36 @@ mod tests {
             table_render_alpha("d", &refs, &[], sel_a, None),
             table_render_alpha("d", &refs, &[], sel_a, None),
             "UT-PE-HL-01: 只读同参数（幂等）"
+        );
+
+        // 断言 5（fix-31 提亮，§4.4）：draw_relation 相关态强制选中色族 + 端点同色源码锚点
+        let src = include_str!("editor_render.rs");
+        let dr_idx = src.find("fn draw_relation(").expect("draw_relation 存在");
+        // 窗口覆盖 draw_relation 全函数体（至下一函数 draw_endpoint_notation 定义前）
+        let dr_end = src[dr_idx..]
+            .find("\nfn draw_endpoint_notation(")
+            .map(|i| dr_idx + i)
+            .expect("draw_endpoint_notation 存在");
+        let dr_block = &src[dr_idx..dr_end];
+        assert!(
+            dr_block.contains("if selected || related { palette.selected } else { stroke }"),
+            "UT-PE-HL-01: 相关线主色必须强制 palette.selected（fix-31 提亮，不再沿用关系解析色）"
+        );
+        assert!(
+            dr_block.contains("if selected || related { palette.selected_soft } else { palette.relation_halo }"),
+            "UT-PE-HL-01: 相关线光晕必须换用 palette.selected_soft 发光"
+        );
+        assert!(
+            dr_block.contains("} else if related { 8.0 } else { 7.0 * hl_scale }"),
+            "UT-PE-HL-01: 相关线光晕宽度必须固定 8px（选中关系 10px 保持层级）"
+        );
+        assert!(
+            dr_block.contains("related: bool"),
+            "UT-PE-HL-01: draw_relation 必须接收 related 独立入参"
+        );
+        assert!(
+            !dr_block.contains(concat!(", str", "oke, main_w);")),
+            "UT-PE-HL-01: crow's foot 端点记号必须与主线同色（不得回落基线色 stroke）"
         );
     }
 
