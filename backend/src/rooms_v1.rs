@@ -7,7 +7,8 @@ use crate::error::DrawDBError;
 use crate::rooms::{
     accept_invite, archive_room, create_invite, create_room, get_room_detail, leave_room,
     list_archived_rooms, list_members, list_rooms, permanent_delete_room, preview_invite,
-    public_base_url, remove_member, restore_room, update_member_role, RoomsServiceError,
+    public_base_url, remove_member, rename_room, restore_room, update_member_role,
+    RoomsServiceError,
 };
 use sea_orm::DatabaseConnection;
 
@@ -214,6 +215,7 @@ struct ListQuery {
 
 pub fn rooms_v1_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(list_rooms_handler);
+    cfg.service(rename_room_handler);
     cfg.service(create_room_handler);
     cfg.service(preview_invite_handler);
     cfg.service(accept_invite_handler);
@@ -336,6 +338,40 @@ async fn get_room_handler(
         Err(resp) => return resp,
     };
     match get_room_detail(&db, &room_id.into_inner(), &user_id).await {
+        Ok(detail) => HttpResponse::Ok().json(RoomDetailResponse {
+            id: detail.room.id,
+            name: detail.room.name,
+            diagram_id: detail.room.diagram_id,
+            owner_id: detail.room.owner_id,
+            created_at: detail.room.created_at,
+            updated_at: detail.room.updated_at,
+            diagram_title: detail.diagram_title,
+            my_role: detail.my_role,
+            member_count: detail.member_count,
+        }),
+        Err(e) => map_rooms_error(e),
+    }
+}
+
+// fix-issue-45-room-rename（issue #45）：owner 重命名 room.name
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RenameRoomBody {
+    name: String,
+}
+
+#[patch("/rooms/{room_id}")]
+async fn rename_room_handler(
+    db: web::Data<DatabaseConnection>,
+    req: HttpRequest,
+    room_id: web::Path<String>,
+    body: web::Json<RenameRoomBody>,
+) -> HttpResponse {
+    let user_id = match bearer_user_id(&req) {
+        Ok(id) => id,
+        Err(resp) => return resp,
+    };
+    match rename_room(&db, &room_id.into_inner(), &user_id, &body.name).await {
         Ok(detail) => HttpResponse::Ok().json(RoomDetailResponse {
             id: detail.room.id,
             name: detail.room.name,
@@ -725,6 +761,108 @@ mod tests {
         assert_eq!(preview["roomName"], "preview-room");
         assert_eq!(preview["diagramId"], diagram_id);
         assert_eq!(preview["role"], "viewer");
+    }
+
+    // fix-issue-45-room-rename（issue #45）：PATCH /rooms/{id} renameRoom
+    #[actix_web::test]
+    async fn ut_s04_19_rename_room() {
+        let db = build_db().await;
+        let app = init_app!(db.clone());
+        let (_, owner_token) = register_and_login!(&app, "s04-19-owner@coldrawdb.test");
+        let (_, editor_token) = register_and_login!(&app, "s04-19-editor@coldrawdb.test");
+        let (_, outsider_token) = register_and_login!(&app, "s04-19-outsider@coldrawdb.test");
+        let diagram_id = seed_diagram(&db, "s04-19-diagram").await;
+        let room = create_room_for!(&app, &owner_token, "旧名", &diagram_id);
+        let room_id = room["id"].as_str().unwrap();
+
+        // editor 成员（走邀请接受）
+        let req = test::TestRequest::post()
+            .uri(&format!("/api/v1/rooms/{room_id}/invites"))
+            .insert_header(bearer(&owner_token))
+            .set_json(json!({"role": "editor"}))
+            .to_request();
+        let invite: Value = test::call_and_read_body_json(&app, req).await;
+        let invite_token = invite["token"].as_str().unwrap();
+        let req = test::TestRequest::post()
+            .uri(&format!("/api/v1/rooms/invites/{invite_token}/accept"))
+            .insert_header(bearer(&editor_token))
+            .to_request();
+        test::call_service(&app, req).await;
+
+        // ① owner 改名 → 200 且返回新名；diagram 标题不变
+        let req = test::TestRequest::patch()
+            .uri(&format!("/api/v1/rooms/{room_id}"))
+            .insert_header(bearer(&owner_token))
+            .set_json(json!({"name": "评审空间-新"}))
+            .to_request();
+        let renamed: Value = test::call_and_read_body_json(&app, req).await;
+        assert_eq!(renamed["name"], "评审空间-新");
+        assert_eq!(renamed["diagramTitle"], "s04-19-diagram", "改名不得触碰 diagram 标题");
+
+        // GET 回读一致
+        let req = test::TestRequest::get()
+            .uri(&format!("/api/v1/rooms/{room_id}"))
+            .insert_header(bearer(&owner_token))
+            .to_request();
+        let detail: Value = test::call_and_read_body_json(&app, req).await;
+        assert_eq!(detail["name"], "评审空间-新");
+
+        // ② editor 改名 → 403 FORBIDDEN
+        let req = test::TestRequest::patch()
+            .uri(&format!("/api/v1/rooms/{room_id}"))
+            .insert_header(bearer(&editor_token))
+            .set_json(json!({"name": "x"}))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), 403);
+        let parsed: Value = serde_json::from_slice(&test::read_body(resp).await).unwrap();
+        assert_eq!(parsed["code"], "FORBIDDEN");
+
+        // ③ 非成员改名 → 403 NOT_A_MEMBER
+        let req = test::TestRequest::patch()
+            .uri(&format!("/api/v1/rooms/{room_id}"))
+            .insert_header(bearer(&outsider_token))
+            .set_json(json!({"name": "x"}))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), 403);
+        let parsed: Value = serde_json::from_slice(&test::read_body(resp).await).unwrap();
+        assert_eq!(parsed["code"], "NOT_A_MEMBER");
+
+        // ④ 非法名（trim 后空 / 超 64）→ 422
+        for bad in ["   ", &"a".repeat(65)] {
+            let req = test::TestRequest::patch()
+                .uri(&format!("/api/v1/rooms/{room_id}"))
+                .insert_header(bearer(&owner_token))
+                .set_json(json!({"name": bad}))
+                .to_request();
+            let resp = test::call_service(&app, req).await;
+            assert_eq!(resp.status(), 422, "非法名 {bad:?} 应为 422");
+        }
+
+        // ⑤ 不存在房间 → 404
+        let req = test::TestRequest::patch()
+            .uri(&format!("/api/v1/rooms/{}", uuid::Uuid::new_v4()))
+            .insert_header(bearer(&owner_token))
+            .set_json(json!({"name": "x"}))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), 404);
+
+        // ⑥ 已归档房间 → 404
+        let req = test::TestRequest::delete()
+            .uri(&format!("/api/v1/rooms/{room_id}"))
+            .insert_header(bearer(&owner_token))
+            .to_request();
+        test::call_service(&app, req).await;
+        let req = test::TestRequest::patch()
+            .uri(&format!("/api/v1/rooms/{room_id}"))
+            .insert_header(bearer(&owner_token))
+            .set_json(json!({"name": "x"}))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), 404);
+        mark_pass("UT-S04-19");
     }
 
     #[actix_web::test]

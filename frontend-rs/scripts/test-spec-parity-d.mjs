@@ -43,6 +43,7 @@
 //   ST-PC-04         数据库连接导入：数据库 Tab → 连接并解析 → 摘要 → 合并落账（PUT 2→3，走 bridge/import/connect）
 // feat-room-recycle-bin-dropdown-and-db-export 新增：
 //   ST-S04-UI-14     回收站恢复：btn-room-trash → 恢复 → POST /rooms/{id}/restore + Toast + 列表重现
+//   ST-S04-UI-17     房间卡片重命名（fix-issue-45-room-rename）：owner 入口 + 模态 + PATCH 落账 + 即时一致
 //   ST-S04-UI-15     回收站彻底删除：二次确认模态 → DELETE /rooms/{id}/permanent + Toast + 空态
 //   ST-PC-05         导出到数据库：SQL Tab 填连接信息 → 在数据库中执行（ddl 与预览一致）→ 结果反馈 + Toast
 // fix-dbimport-save-and-pg-schema 新增：
@@ -227,6 +228,21 @@ async function installApi(page, options = {}) {
       state.deletedDiagrams = state.deletedDiagrams ?? [];
       state.deletedDiagrams.push(url.pathname.split("/").pop());
       return response(route, 200, { code: 0, request_id: "delete-diagram", data: { id: url.pathname.split("/").pop() } });
+    }
+    // fix-issue-45-room-rename（issue #45，ST-S04-UI-17）：PATCH /rooms/{id} 重命名
+    if (url.pathname.startsWith("/api/v1/rooms/") && request.method() === "PATCH") {
+      const roomId = url.pathname.split("/")[4];
+      const body = request.postDataJSON();
+      state.renamedRooms = state.renamedRooms ?? [];
+      state.renamedRooms.push({ id: roomId, name: body.name });
+      const trimmed = (body.name ?? "").trim();
+      if (!trimmed || trimmed.length > 64) {
+        return response(route, 422, { code: "VALIDATION_ERROR", message: "房间名称长度 1-64" });
+      }
+      return response(route, 200, {
+        id: roomId, name: trimmed, diagramId: "diagram-own", ownerId: "owner-1",
+        diagramTitle: "我的评审室", myRole: "owner", memberCount: 1,
+      });
     }
     // fix-overflow-menu-room-delete-listview-io：DELETE /rooms/{id}（ST-S04-UI-13）
     if (url.pathname.startsWith("/api/v1/rooms/") && request.method() === "DELETE") {
@@ -2897,6 +2913,54 @@ try {
       () => !document.querySelector('[data-testid="rel-hover-tooltip"]'), null, { timeout: 4_000, polling: 100 },
     );
   });
+  // ─── ST-S04-UI-17：房间卡片重命名（fix-issue-45-room-rename，issue #45，core-S04 §2.4） ──
+  await run(["ST-S04-UI-17"], "owner 重命名入口 + 模态 + PATCH 落账 + 列表即时一致 + 字段解耦", async page => {
+    const state = await installApi(page, {
+      roomsList: [
+        { id: "room-own", name: "数据模型评审", diagramId: "diagram-own", diagramTitle: "数据模型评审",
+          myRole: "owner", memberCount: 1, updatedAt: "2026-09-07T00:00:00Z" },
+        { id: "room-edit", name: "协作评审室", diagramId: "diagram-edit", diagramTitle: "协作评审室",
+          myRole: "editor", memberCount: 3, updatedAt: "2026-09-06T00:00:00Z" },
+      ],
+    });
+    await login(page);
+
+    // 重命名入口仅 owner 可见
+    await page.locator('[data-testid="room-card-rename-room-own"]').waitFor();
+    assert.equal(
+      await page.locator('[data-testid="room-card-rename-room-edit"]').count(), 0,
+      "editor 角色不得渲染重命名按钮",
+    );
+
+    // 点击重命名：不进房间，弹模态且预填当前名
+    await page.locator('[data-testid="room-card-rename-room-own"]').click();
+    await page.locator('[data-testid="modal-rename-room"]:visible').waitFor();
+    assert.equal(await page.locator('[data-testid="room-editor-page"]:visible').count(), 0, "点击重命名不得进入房间");
+    assert.equal(await page.locator('[data-testid="input-rename-room"]').inputValue(), "数据模型评审", "输入框应预填当前名");
+
+    // 前端预校验：空名不放行（无 PATCH 请求）
+    await page.locator('[data-testid="input-rename-room"]').fill("   ");
+    await page.locator('[data-testid="btn-confirm-rename-room"]').click();
+    await page.locator('[data-testid="rename-room-error"]:not(:empty)').waitFor();
+    assert.equal((state.renamedRooms ?? []).length, 0, "空名不得发起 PATCH");
+
+    // 合法改名：PATCH 落账 + 卡片即时更新 + Toast
+    await page.locator('[data-testid="input-rename-room"]').fill("评审空间-新");
+    await page.locator('[data-testid="btn-confirm-rename-room"]').click();
+    await page.waitForFunction(
+      () => !document.querySelector('[data-testid="modal-rename-room"]'),
+      { timeout: 5_000 },
+    );
+    assert.deepEqual(state.renamedRooms, [{ id: "room-own", name: "评审空间-新" }], "必须发起 PATCH /rooms/room-own");
+    const card = page.locator('[data-testid="room-list-item-room-own"]');
+    await card.locator("h2", { hasText: "评审空间-新" }).waitFor({ timeout: 3_000 });
+    const toast = page.locator('[data-testid="notice-toast"]:visible');
+    await toast.waitFor({ timeout: 3_000 });
+    assert.match((await toast.textContent()) ?? "", /已重命名/);
+    // editor 卡片不受影响
+    await page.locator('[data-testid="room-list-item-room-edit"]:visible').waitFor();
+  });
+
 } finally {
   await browser?.close();
   frontend?.kill("SIGTERM");

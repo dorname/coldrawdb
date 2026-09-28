@@ -11,10 +11,10 @@
 
 ## [code] 代码实现
 
-- [ ] C1 后端 `rename_room` service + `PATCH /rooms/{room_id}` handler（owner 校验、name 1–64、404/403/422 语义）+ UT + reporter
-- [ ] C2 前端房间列表卡片「重命名」入口（owner 可见）+ PATCH 调用 + 列表即时刷新 + ST + reporter
-- [ ] C3 S04 编排脚本补 rename 步骤并跑通
-- [ ] C4 全量回归：backend 测试 + 前端 lib + e2e spec-parity-d 全绿
+- [x] C1 后端 `rename_room` service + `PATCH /rooms/{room_id}` handler（owner 校验、name 1–64、404/403/422 语义）+ UT + reporter
+- [x] C2 前端房间列表卡片「重命名」入口（owner 可见）+ PATCH 调用 + 列表即时刷新 + ST + reporter
+- [x] C3 S04 编排脚本补 rename 步骤并跑通
+- [x] C4 全量回归：backend 测试 + 前端 lib + e2e spec-parity-d 全绿
 
 ## [deploy] 部署任务
 
@@ -29,7 +29,7 @@
 
 - [x] H1 用户确认本提案后再产出 delta（/goal「继续拉取issue,并分析解决issue,直到关闭」全程授权）
 - [x] H2 delta 完成后 `openlogos merge fix-issue-45-room-rename`（/goal 授权）
-- [ ] H3 merge 后自动提交规格文档并按合并规格分批实现（C1～C4 每批闭环），完成后自动提交代码
+- [x] H3 merge 后自动提交规格文档并按合并规格分批实现（C1～C4 每批闭环），完成后自动提交代码
 - [ ] H4 实现完成后 `openlogos verify`（/goal 授权；nice -n 10 + --test-threads=2）
 - [ ] H5 verify PASS 后按部署方案执行部署（/goal 授权）
 - [ ] H6 部署完成后 `openlogos smoke`（/goal 授权）

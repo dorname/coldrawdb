@@ -799,6 +799,39 @@ impl RoomClient {
         let body = resp.text().await.unwrap_or_default();
         map_delete_room_status(status, body)
     }
+
+    /// fix-issue-45-room-rename（issue #45）：重命名房间 — PATCH /rooms/{room_id}
+    /// 后端 rooms_v1.rs rename_room 返回 200 RoomDetail。
+    /// - UT-S04-19（后端）：owner 200 / 403 / 404 / 422
+    pub async fn rename_room(
+        &self,
+        access_token: &str,
+        room_id: &str,
+        name: &str,
+    ) -> Result<(), ApiError> {
+        let url = delete_room_url(&self.base_url, room_id);
+        let resp = Request::patch(&url)
+            .header("Authorization", &Self::auth(access_token))
+            .header("Content-Type", "application/json")
+            .body(serde_json::json!({ "name": name }).to_string())
+            .map_err(|e| ApiError::Network(e.to_string()))?
+            .send()
+            .await
+            .map_err(|e| ApiError::Network(e.to_string()))?;
+        match resp.status() {
+            200 => Ok(()),
+            s => Err(ApiError::Server(s, resp.text().await.unwrap_or_default())),
+        }
+    }
+}
+
+/// fix-issue-45-room-rename（issue #45）：纯函数 — 房间名预校验（trim 后 1–64 字符）
+pub fn validate_room_name(name: &str) -> Result<String, &'static str> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() || trimmed.len() > 64 {
+        return Err("名称需为 1–64 字符");
+    }
+    Ok(trimmed.to_string())
 }
 
 /// p0-fix 定点 1：纯函数 — 删除房间 URL（UT-MM-31）

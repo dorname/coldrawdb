@@ -377,6 +377,39 @@ pub async fn get_room_detail(
     })
 }
 
+// fix-issue-45-room-rename（issue #45）：owner 重命名 room.name；diagram 标题为独立字段不受影响。
+pub async fn rename_room(
+    db: &DatabaseConnection,
+    room_id: &str,
+    user_id: &str,
+    name: &str,
+) -> Result<RoomDetail, RoomsServiceError> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() || trimmed.len() > 64 {
+        return Err(RoomsServiceError::Validation {
+            fields: vec![("name".into(), "房间名称长度 1-64".into())],
+        });
+    }
+    let room = load_active_room(db, room_id)
+        .await?
+        .ok_or(RoomsServiceError::RoomNotFound)?;
+    let role = get_member_role(db, room_id, user_id).await?;
+    if role.is_none() {
+        return Err(RoomsServiceError::NotAMember);
+    }
+    if room.owner_id != user_id {
+        return Err(RoomsServiceError::Forbidden("仅房间 owner 可重命名".into()));
+    }
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Sqlite,
+        "UPDATE room SET name = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+        vec![trimmed.into(), room_id.into()],
+    ))
+    .await
+    .map_err(|e| RoomsServiceError::Db(DrawDBError::DatabaseError(e)))?;
+    get_room_detail(db, room_id, user_id).await
+}
+
 pub async fn archive_room(
     db: &DatabaseConnection,
     room_id: &str,

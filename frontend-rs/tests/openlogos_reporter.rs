@@ -177,6 +177,8 @@ const UT_PASS_IDS: &[&str] = &[
     // fix-canvas-zoom-invite-comment-resize：前端数据面（同源 base_url + 结构化 import/connect
     // 消费 + COMMENT ON 解析/导出 + JSON 注释透传；UT-PC-24/25 由 backend 上报）
     "UT-S04-UI-17",
+    // fix-issue-45-room-rename（issue #45）：房间卡片重命名入口锚点与 owner 门控
+    "UT-S04-UI-18",
     "UT-PC-26",
     "UT-PC-27",
     "UT-PC-28",

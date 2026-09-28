@@ -31,7 +31,7 @@ use crate::editor_render::{zoom_in, zoom_out, zoom_reset, Transform};
 use crate::splitter::{Splitter, SplitterKind};
 use crate::icons::{
     IconAdd, IconAddArea, IconAddNote, IconAddTable, IconArrowLeft, IconBox, IconChevronLeft, IconChevronRight,
-    IconClose, IconDelete, IconEnum, IconExport, IconImport, IconKey, IconMinus, IconMoon, IconMore,
+    IconClose, IconDelete, IconEdit, IconEnum, IconExport, IconImport, IconKey, IconMinus, IconMoon, IconMore,
     IconActivity, IconEye, IconEyeOff, IconLogo, IconPan, IconRedo, IconRefresh, IconRelationship,
     IconSelect,
     IconSearch, IconSettings, IconShare, IconSun, IconType, IconUndo, IconUsers, IconWarning,
@@ -4294,6 +4294,11 @@ pub fn RoomsListPage(
     let delete_target = create_rw_signal(Option::<RoomSummary>::None);
     let delete_error = create_rw_signal(Option::<String>::None);
     let deleting = create_rw_signal(false);
+    // fix-issue-45-room-rename（issue #45）：房间卡片重命名（列表页入口，PATCH /rooms/{id}）
+    let rename_target = create_rw_signal(Option::<RoomSummary>::None);
+    let rename_error = create_rw_signal(Option::<String>::None);
+    let renaming = create_rw_signal(false);
+    let rename_name = create_rw_signal(String::new());
     let notice = create_rw_signal(Option::<String>::None);
     // feat-room-recycle-bin-dropdown-and-db-export：回收站视图状态
     let trash_open = create_rw_signal(false);
@@ -4618,6 +4623,56 @@ pub fn RoomsListPage(
         }) as Rc<dyn Fn()>
     };
 
+    // fix-issue-45-room-rename（issue #45）：确认重命名房间（卡片入口）
+    let confirm_rename_room = {
+        let room_client = room_client.clone();
+        Rc::new(move || {
+            if renaming.get_untracked() {
+                return;
+            }
+            let Some(session) = auth_session.get_untracked() else {
+                return;
+            };
+            let Some(target) = rename_target.get_untracked() else {
+                return;
+            };
+            // 前端预校验：trim 后 1–64（与后端同一口径）
+            let Ok(new_name) = crate::editor_data_access::validate_room_name(&rename_name.get_untracked()) else {
+                rename_error.set(Some("名称需为 1–64 字符".to_string()));
+                return;
+            };
+            renaming.set(true);
+            rename_error.set(None);
+            let room_client = room_client.clone();
+            spawn_local(async move {
+                match room_client.rename_room(&session.access_token, &target.id, &new_name).await {
+                    Ok(()) => {
+                        renaming.set(false);
+                        rooms.update(|list| {
+                            if let Some(r) = list.iter_mut().find(|r| r.id == target.id) {
+                                r.name = new_name.clone();
+                            }
+                        });
+                        rename_target.set(None);
+                        notice.set(Some("已重命名".to_string()));
+                    }
+                    Err(ApiError::Server(403, _)) => {
+                        renaming.set(false);
+                        rename_error.set(Some("仅房间 owner 可重命名".to_string()));
+                    }
+                    Err(ApiError::Server(422, _)) => {
+                        renaming.set(false);
+                        rename_error.set(Some("名称需为 1–64 字符".to_string()));
+                    }
+                    Err(_) => {
+                        renaming.set(false);
+                        rename_error.set(Some("重命名失败，请稍后重试".to_string()));
+                    }
+                }
+            });
+        }) as Rc<dyn Fn()>
+    };
+
     // fix-select-bg-diagram-delete-and-log-format：创建空间弹窗内删除游离图表
     // （core-S04 图表行：二次确认 → DELETE /api/v1/diagrams/{id} → 移出候选列表 → Toast「已删除图表」）
     let confirm_delete_diagram = {
@@ -4826,7 +4881,7 @@ pub fn RoomsListPage(
                             }}
                         </div>
                         <ul class="cdb-room-list" class=("cdb-room-list--empty", move || rooms.get().is_empty()) data-testid="room-list">
-                            <For each=move || rooms.get() key=|r| r.id.clone() children=move |room: RoomSummary| {
+                            <For each=move || rooms.get() key=|r| (r.id.clone(), r.name.clone()) children=move |room: RoomSummary| {
                                 let on_select = on_select.clone();
                                 let summary = room.clone();
                                 // fix-overflow-menu-room-delete-listview-io：owner 卡片删除入口
@@ -4834,6 +4889,10 @@ pub fn RoomsListPage(
                                 let del_id = room.id.clone();
                                 let del_name = room.name.clone();
                                 let del_summary = room.clone();
+                                // fix-issue-45-room-rename（issue #45）：owner 卡片重命名入口
+                                let ren_id = room.id.clone();
+                                let ren_name = room.name.clone();
+                                let ren_summary = room.clone();
                                 view! {
                                     <li
                                         class="cdb-room-list-item"
@@ -4860,6 +4919,27 @@ pub fn RoomsListPage(
                                                 <span>{format!("{}  ", room.updated_at)}<IconBox size="sm"><IconChevronRight /></IconBox></span>
                                             </div>
                                         </button>
+                                        {deletable.then(|| {
+                                            let target = ren_summary.clone();
+                                            let label = ren_name.clone();
+                                            view! {
+                                                <button
+                                                    class="cdb-btn cdb-btn--ghost cdb-btn--icon cdb-room-card-ren"
+                                                    type="button"
+                                                    data-testid=format!("room-card-rename-{}", ren_id)
+                                                    title="重命名协作空间"
+                                                    aria-label=format!("重命名{}", label)
+                                                    on:click=move |ev| {
+                                                        ev.stop_propagation();
+                                                        rename_error.set(None);
+                                                        rename_name.set(target.name.clone());
+                                                        rename_target.set(Some(target.clone()));
+                                                    }
+                                                >
+                                                    <IconBox size="sm"><IconEdit /></IconBox>
+                                                </button>
+                                            }
+                                        })}
                                         {deletable.then(|| {
                                             let target = del_summary.clone();
                                             view! {
@@ -5105,6 +5185,75 @@ pub fn RoomsListPage(
                                     on:click=move |_| confirm()
                                 >
                                     {move || if deleting.get() { "删除中..." } else { "确认删除" }}
+                                </button>
+                            </footer>
+                        </section>
+                    </div>
+                }
+            })}
+            // fix-issue-45-room-rename（issue #45）：重命名协作空间模态
+            {move || rename_target.get().map(|target| {
+                let confirm = confirm_rename_room.clone();
+                view! {
+                    <div
+                        class="cdb-rooms-modal-overlay"
+                        data-testid="rename-room-overlay"
+                        on:click=move |_| {
+                            if !renaming.get_untracked() {
+                                rename_target.set(None);
+                            }
+                        }
+                    >
+                        <section
+                            class="cdb-create-room-modal cdb-glass"
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="rename-room-title"
+                            data-testid="modal-rename-room"
+                            on:click=move |event| event.stop_propagation()
+                        >
+                            <header class="cdb-create-room-modal__header">
+                                <div>
+                                    <span class="cdb-eyebrow">"协作空间"</span>
+                                    <h2 id="rename-room-title">"重命名协作空间"</h2>
+                                </div>
+                                <button
+                                    class="cdb-btn cdb-btn--ghost cdb-btn--icon"
+                                    type="button"
+                                    aria-label="关闭"
+                                    disabled=move || renaming.get()
+                                    on:click=move |_| rename_target.set(None)
+                                >
+                                    <IconBox size="sm"><IconClose /></IconBox>
+                                </button>
+                            </header>
+                            <div class="cdb-create-room-modal__body">
+                                <label class="cdb-field">
+                                    <span>"空间名称"</span>
+                                    <input
+                                        type="text"
+                                        data-testid="input-rename-room"
+                                        prop:value=move || rename_name.get()
+                                        on:input=move |event| rename_name.set(event_target_value(&event))
+                                        maxlength=64
+                                    />
+                                </label>
+                                <p class="cdb-create-room-error" role="alert" data-testid="rename-room-error">
+                                    {move || rename_error.get().unwrap_or_default()}
+                                </p>
+                            </div>
+                            <footer class="cdb-create-room-modal__footer">
+                                <button class="cdb-btn" type="button" disabled=move || renaming.get() on:click=move |_| rename_target.set(None)>
+                                    "取消"
+                                </button>
+                                <button
+                                    class="cdb-btn cdb-btn--brand"
+                                    type="button"
+                                    data-testid="btn-confirm-rename-room"
+                                    disabled=move || renaming.get()
+                                    on:click=move |_| confirm()
+                                >
+                                    {move || if renaming.get() { "重命名中..." } else { "确认重命名" }}
                                 </button>
                             </footer>
                         </section>
@@ -18530,6 +18679,63 @@ CREATE TABLE posts (id UUID PRIMARY KEY, user_id UUID NOT NULL, FOREIGN KEY (use
         assert!(
             context.contains("deletable.then"),
             "UT-S04-UI-13: 删除按钮应由 deletable 信号门控渲染"
+        );
+    }
+
+    /// UT-S04-UI-18: 房间卡片重命名锚点（fix-issue-45-room-rename，issue #45）
+    #[test]
+    fn test_room_card_rename_anchor_ut_s04_ui_18() {
+        let src = include_str!("editor_panels.rs");
+        let data_access = include_str!("editor_data_access.rs");
+        assert!(
+            src.contains("room-card-rename-"),
+            "UT-S04-UI-18: 房间卡片应有重命名按钮 testid 前缀"
+        );
+        assert!(
+            src.contains("modal-rename-room"),
+            "UT-S04-UI-18: 应有重命名模态"
+        );
+        assert!(
+            src.contains("input-rename-room"),
+            "UT-S04-UI-18: 应有重命名输入框"
+        );
+        assert!(
+            src.contains("btn-confirm-rename-room"),
+            "UT-S04-UI-18: 应有确认重命名按钮"
+        );
+        // owner 门控：与删除按钮共用 deletable（my_role == "owner"）
+        let ren_idx = src
+            .find("room-card-rename-")
+            .expect("UT-S04-UI-18: 重命名按钮存在");
+        let before = &src[ren_idx.saturating_sub(800)..ren_idx];
+        assert!(
+            before.contains("deletable.then"),
+            "UT-S04-UI-18: 重命名按钮应由 deletable（owner）门控渲染"
+        );
+        // on:click 处理器在 data-testid 之后 → 向后取窗口
+        let after = &src[ren_idx..(ren_idx + 900).min(src.len())];
+        assert!(
+            after.contains("ev.stop_propagation()"),
+            "UT-S04-UI-18: 重命名按钮点击不得触发进入房间"
+        );
+        // 前端预校验与后端同口径（trim 后 1–64）
+        assert!(
+            data_access.contains("pub fn validate_room_name"),
+            "UT-S04-UI-18: 应有房间名预校验纯函数"
+        );
+        assert!(
+            src.contains("validate_room_name(&rename_name.get_untracked())"),
+            "UT-S04-UI-18: 确认重命名应先过前端预校验"
+        );
+        // 即时一致：成功后就地更新列表卡片名
+        assert!(
+            src.contains("r.name = new_name.clone();"),
+            "UT-S04-UI-18: 改名成功后应就地更新房间列表卡片名"
+        );
+        // 即时一致渲染前提：For key 含 name（Leptos 0.5 keyed For 同 key 不重渲染）
+        assert!(
+            src.contains("key=|r| (r.id.clone(), r.name.clone())"),
+            "UT-S04-UI-18: 房间列表 For key 必须含 name，否则改名不触发重渲染"
         );
     }
 
