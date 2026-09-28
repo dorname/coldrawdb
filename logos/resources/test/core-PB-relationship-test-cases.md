@@ -281,3 +281,31 @@
 | UT-PB-20 | UT | 悬浮 tooltip 文案纯函数（#43） |
 | ST-PB-11 | ST | e2e：密集线点击目的一致 + 空白不误选（#44） |
 | ST-PB-12 | ST | e2e：悬浮出 tooltip 且不改选中态（#43） |
+
+## 合并自 fix-issue-46-hover-perf-and-corner-summary（2026-09-28）
+
+### UT-PB-21 — hover 守卫与角落定位锚点（#46 R-PERF-HOV）
+
+- **类型**：前端锚点/纯函数测试（`frontend-rs` lib）
+- **断言**：
+  1. `hover_ref` 信号类型为 `Option<String>`（仅 ref_id，不含坐标）——锚点：`create_rw_signal(None::<String>)`（R-PERF-HOV-01）
+  2. pointermove hover 路径含同 ref 守卫：命中与当前值相同则不 set（R-PERF-HOV-02）
+  3. tooltip 节点**不含** client 坐标 style 绑定；CSS `.cdb-rel-hover-tooltip` 为 `position: absolute` 且含 `left`/`bottom` 角落锚定（R-HOV-03 B1）
+  4. hover 命中经 rAF 节流：存在帧合并守卫（pending 标记 + request_animation_frame）（R-PERF-HOV-03）
+  5. hover 路径无 `schedule_paint` 调用（R-PERF-HOV-04 绘制解耦锚点）
+- reporter 登记 `UT-PB-21`
+
+### ST-PB-12 —（口径修订）悬浮摘要 e2e：B1 角落摘要区
+
+原断言「tooltip 位于光标右下（client 坐标 +12）」废止。修订后断言：
+
+1. 悬停关系线 → `rel-hover-tooltip` 出现且文案 `t1.f1 → t2.f2`（不变）
+2. tooltip 位于画布容器**左下角摘要区**（left/bottom 锚定），同一命中下连续两次采样 boundingBox 相等——不随指针微动而位移（R-PERF-HOV-01/02 抖动回归）
+3. 悬停不改选中态（`sel_ref === false`，不变）；移开 tooltip 消失（不变）
+- reporter 登记 `ST-PB-12`
+
+### 用例 ID 清单（附录）追加
+
+| ID | 标题 |
+|---|---|
+| UT-PB-21 | hover 守卫/信号瘦身/角落定位/rAF 节流锚点（#46 R-PERF-HOV） |

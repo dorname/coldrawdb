@@ -633,3 +633,11 @@ PUBLIC_BASE_URL: "${PUBLIC_BASE_URL:-http://localhost:9080}"
 - 部署顺序无要求：旧前端不调新端点，新前端对旧后端仅「重命名」入口 404/405（入口为新增，无回归面）。
 - 回滚：回退上一镜像即可，无数据迁移。
 - 部署后 smoke：既有套件全量回归（不新增用例）；SMOKE-core-STABLE-01 沿用「部署先行」判定（栈已在运行时直接验证）。
+
+## 合并自 fix-issue-46-hover-perf-and-corner-summary（2026-09-28）
+
+- 本变更为纯前端画布代码（hover 信号瘦身 + 守卫 + rAF 节流 + tooltip 角落定位），**无 DB migration、无 API 变更**。
+- 部署形态：`docker compose up -d --build coldrawdb` 重建镜像（前端产物随镜像），nginx/backup 不变。
+- 部署顺序无要求：纯客户端展示/性能逻辑，对旧后端完全兼容。
+- 回滚：回退上一镜像即可，无数据迁移。
+- 部署后 smoke：既有套件全量回归（不新增用例）；SMOKE-core-STABLE-01 沿用「部署先行」判定。
