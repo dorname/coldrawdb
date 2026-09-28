@@ -213,13 +213,13 @@ fn ut_mcp19_force_layout_isolated_unchanged() {
     assert!((y - 500.0).abs() < 5.0);
 }
 
-// ── UT-MCP-20: tools/list 工具总数 = 11 ─────────────────────────────────
+// ── UT-MCP-20: tools/list 工具总数 = 12（mcp-dictionary-tools 2026-09-28 起）──────
 
 #[test]
 fn ut_mcp20_tools_list_has_eleven_tools() {
     record(&["UT-MCP-20"]);
     let tools = McpService::tools().expect("tools/list 应成功");
-    assert_eq!(tools.len(), 11, "应有 11 个工具，实际: {}", tools.len());
+    assert_eq!(tools.len(), 12, "应有 12 个工具，实际: {}", tools.len());
 
     let names: Vec<&str> = tools
         .iter()
@@ -237,6 +237,7 @@ fn ut_mcp20_tools_list_has_eleven_tools() {
         "update_field",
         "update_reference",
         "layout_diagram",
+        "update_dictionary",
     ];
     for name in &expected {
         assert!(names.contains(name), "缺少工具: {}", name);

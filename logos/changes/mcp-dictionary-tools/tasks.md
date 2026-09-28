@@ -9,8 +9,8 @@
 
 ## [code] 代码实现
 
-- [ ] C1 `mcp-server/src/service.rs` 实现 `update_dictionary`（create/update/delete + 编码唯一校验 + 改码同步引用 + 删除级联置空）与 `update_field` 的 `dict_code` 分支；列出本批覆盖 UT 用例 ID（UT-MCP-33/34/35）
-- [ ] C2 编写 UT-MCP-33/34/35 测试并同批写入 OpenLogos reporter（`mcp-server/tests/` 或既有测试通路）
+- [x] C1 `mcp-server/src/service.rs` 实现 `update_dictionary`（create/update/delete + 编码唯一校验 + 改码同步引用 + 删除级联置空）与 `update_field` 的 `dict_code` 分支；列出本批覆盖 UT 用例 ID（UT-MCP-33/34/35）
+- [x] C2 编写 UT-MCP-33/34/35 测试并同批写入 OpenLogos reporter（`mcp-server/tests/` 或既有测试通路）
 
 ## [follow-up] 收尾
 
@@ -19,8 +19,8 @@
 ## 人类确认点
 
 - [x] H1 用户确认本提案后再产出 delta（/goal「需要AI 通过 MCP 正式管理字典」全程授权）
-- [ ] H2 delta 完成后 `openlogos merge mcp-dictionary-tools`（/goal 授权）
-- [ ] H3 merge 后自动提交规格文档并按合并规格实现代码，完成后自动提交
+- [x] H2 delta 完成后 `openlogos merge mcp-dictionary-tools`（/goal 授权）
+- [x] H3 merge 后自动提交规格文档并按合并规格实现代码，完成后自动提交
 - [ ] H4 实现完成后 `openlogos verify`（/goal 授权；nice -n 10 + 测试线程限制）
 - [ ] H5 verify PASS 后 `openlogos archive`（/goal 授权）
 - [ ] H6 归档提交完成后 `git push`（/goal 授权）

@@ -129,6 +129,8 @@ impl McpService {
             "update_field" => self.update_field(arguments).await,
             "update_reference" => self.update_reference(arguments).await,
             "layout_diagram" => self.layout_diagram(arguments).await,
+            // mcp-dictionary-tools（2026-09-28）：数据字典管理工具（S07）
+            "update_dictionary" => self.update_dictionary(arguments).await,
             _ => Err(ToolError::validation("未知工具")),
         }
     }
@@ -209,6 +211,32 @@ impl McpService {
             .and_then(Value::as_i64)
             .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "响应缺少 revision", false))?;
 
+
+        // mcp-dictionary-tools（2026-09-28 / UT-MCP-35）：dict_code 绑定校验。
+        // 空串 = 解除绑定（直接放行）；非空编码必须命中 dictionaries 中的字典，
+        // 否则本地 VALIDATION_ERROR 拒绝（不写回，杜绝 S07 EX-7.4 悬空绑定）。
+        // 在取得 tables 可变借用之前完成校验，避免借用冲突。
+        let dict_code = arguments.get("dict_code").and_then(Value::as_str);
+        if let Some(code) = dict_code {
+            if code.chars().count() > 64 {
+                return Err(ToolError::validation("dict_code 最长 64 个字符"));
+            }
+            if !code.is_empty() {
+                let exists = diagram
+                    .get("dictionaries")
+                    .and_then(Value::as_array)
+                    .is_some_and(|dicts| {
+                        dicts
+                            .iter()
+                            .any(|d| d.get("code").and_then(Value::as_str) == Some(code))
+                    });
+                if !exists {
+                    return Err(ToolError::validation(format!(
+                        "字典编码 {code} 不存在（S07 软引用，拒绝悬空绑定）"
+                    )));
+                }
+            }
+        }
         let tables = diagram
             .get_mut("tables")
             .and_then(Value::as_array_mut)
@@ -243,6 +271,9 @@ impl McpService {
         }
         if let Some(default) = arguments.get("default").and_then(Value::as_str) {
             field["default"] = json!(default);
+        }
+        if let Some(code) = dict_code {
+            field["dict_code"] = json!(code);
         }
 
         // fix-remote-github-issues-7-18（#18）：统一 normalize 为瘦响应
@@ -404,6 +435,239 @@ impl McpService {
         resp["tables_repositioned"] = json!(count);
         Ok(resp)
     }
+
+    // ── mcp-dictionary-tools（2026-09-28）：数据字典管理工具（S07）──────────────
+    // 通路沿用 update_table/update_field：GET 全量 → 本地修改 → PUT 全量
+    // （expected_revision 乐观锁在 api.update 内处理）。无新增 HTTP 端点。
+
+    async fn update_dictionary(&self, arguments: Value) -> Result<Value, ToolError> {
+        let id = required_str(&arguments, "id")?;
+        let action = required_str(&arguments, "action")?;
+        if !matches!(action, "create" | "update" | "delete") {
+            return Err(ToolError::validation("action 必须是 create/update/delete"));
+        }
+
+        // 发 HTTP 前的参数校验（零请求拒绝）
+        if action == "create" {
+            required_str(&arguments, "name")?;
+            required_str(&arguments, "code")?;
+        } else {
+            required_str(&arguments, "dict_id")?;
+        }
+        if let Some(name) = arguments.get("name").and_then(Value::as_str) {
+            if name.is_empty() || name.chars().count() > 64 {
+                return Err(ToolError::validation("name 必须在 1～64 字符之间"));
+            }
+        }
+        if let Some(code) = arguments.get("code").and_then(Value::as_str) {
+            if code.is_empty() || code.chars().count() > 64 {
+                return Err(ToolError::validation("code 必须在 1～64 字符之间"));
+            }
+        }
+        if let Some(dict_id) = arguments.get("dict_id").and_then(Value::as_str) {
+            if dict_id.is_empty() || dict_id.chars().count() > 64 {
+                return Err(ToolError::validation("dict_id 必须在 1～64 字符之间"));
+            }
+        }
+        if let Some(comment) = arguments.get("comment").and_then(Value::as_str) {
+            if comment.chars().count() > 256 {
+                return Err(ToolError::validation("comment 最长 256 个字符"));
+            }
+        }
+        // items 整体替换语义：每项 {id?, value, label, sort?}，value/label 必填
+        if let Some(items) = arguments.get("items") {
+            let items = items
+                .as_array()
+                .ok_or_else(|| ToolError::validation("items 必须是数组"))?;
+            if items.len() > 500 {
+                return Err(ToolError::validation("items 最多 500 项"));
+            }
+            for item in items {
+                let value = item.get("value").and_then(Value::as_str).unwrap_or("");
+                let label = item.get("label").and_then(Value::as_str).unwrap_or("");
+                if value.is_empty() || value.chars().count() > 64 {
+                    return Err(ToolError::validation("items[].value 必须在 1～64 字符之间"));
+                }
+                if label.is_empty() || label.chars().count() > 128 {
+                    return Err(ToolError::validation("items[].label 必须在 1～128 字符之间"));
+                }
+            }
+        }
+
+        let result = self.api.get(id).await?;
+        let mut diagram = result
+            .get("diagram")
+            .cloned()
+            .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "响应缺少 diagram", false))?;
+        let revision = diagram
+            .get("revision")
+            .and_then(Value::as_i64)
+            .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "响应缺少 revision", false))?;
+
+        // S07 EX-7.3 兼容：旧图无 dictionaries 键时按空数组处理
+        if diagram.get("dictionaries").is_none() {
+            diagram["dictionaries"] = json!([]);
+        }
+        let dicts = diagram
+            .get_mut("dictionaries")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "dictionaries 必须是数组", false))?;
+
+        let (dict_id_out, fields_cleared) = match action {
+            "create" => {
+                let code = required_str(&arguments, "code")?;
+                // 编码唯一性校验（对齐 S07 EX-7.1：冲突拒绝）
+                if dicts
+                    .iter()
+                    .any(|d| d.get("code").and_then(Value::as_str) == Some(code))
+                {
+                    return Err(ToolError::validation(format!(
+                        "字典编码 {code} 已存在（S07 EX-7.1 唯一性约束）"
+                    )));
+                }
+                let dict_id = arguments
+                    .get("dict_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| format!("dict-{}", uuid_simple()));
+                let items = normalize_dict_items(arguments.get("items"));
+                dicts.push(json!({
+                    "id": dict_id,
+                    "name": required_str(&arguments, "name")?,
+                    "code": code,
+                    "comment": arguments.get("comment").and_then(Value::as_str).unwrap_or(""),
+                    "items": items,
+                }));
+                (dict_id, 0_i64)
+            }
+            "update" => {
+                let dict_id = required_str(&arguments, "dict_id")?;
+                let pos = dicts
+                    .iter()
+                    .position(|d| d.get("id").and_then(Value::as_str) == Some(dict_id))
+                    .ok_or_else(|| {
+                        ToolError::validation(format!("dict_id {dict_id} 不存在"))
+                    })?;
+                let old_code = dicts[pos]
+                    .get("code")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                // 改 code：先校验唯一性（排除自身），再同步引用字段（避免悬空）
+                let new_code = arguments.get("code").and_then(Value::as_str);
+                if let Some(code) = new_code {
+                    if code != old_code
+                        && dicts
+                            .iter()
+                            .enumerate()
+                            .any(|(i, d)| i != pos
+                                && d.get("code").and_then(Value::as_str) == Some(code))
+                    {
+                        return Err(ToolError::validation(format!(
+                            "字典编码 {code} 已存在（S07 EX-7.1 唯一性约束）"
+                        )));
+                    }
+                }
+                if let Some(name) = arguments.get("name").and_then(Value::as_str) {
+                    dicts[pos]["name"] = json!(name);
+                }
+                if let Some(code) = new_code {
+                    dicts[pos]["code"] = json!(code);
+                }
+                if let Some(comment) = arguments.get("comment").and_then(Value::as_str) {
+                    dicts[pos]["comment"] = json!(comment);
+                }
+                if arguments.get("items").is_some() {
+                    dicts[pos]["items"] = json!(normalize_dict_items(arguments.get("items")));
+                }
+                // 改码同步引用：所有 dict_code == old_code 的字段改写为新编码
+                if let Some(code) = new_code {
+                    if code != old_code && !old_code.is_empty() {
+                        rewrite_field_dict_code(&mut diagram, &old_code, code);
+                    }
+                }
+                (dict_id.to_string(), 0_i64)
+            }
+            _ => {
+                // delete：级联置空所有引用字段（对齐 S07 §5），返回受影响字段数
+                let dict_id = required_str(&arguments, "dict_id")?;
+                let pos = dicts
+                    .iter()
+                    .position(|d| d.get("id").and_then(Value::as_str) == Some(dict_id))
+                    .ok_or_else(|| {
+                        ToolError::validation(format!("dict_id {dict_id} 不存在"))
+                    })?;
+                let code = dicts[pos]
+                    .get("code")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                dicts.remove(pos);
+                let cleared = if code.is_empty() {
+                    0
+                } else {
+                    rewrite_field_dict_code(&mut diagram, &code, "")
+                };
+                (dict_id.to_string(), cleared)
+            }
+        };
+
+        let data = self.api.update(id, revision, diagram).await?;
+        // 瘦响应 = { id, revision } + 本工具扩展 { dict_id, fields_cleared }
+        // （与 mcp-tools.yaml outputSchema 完全一致，不透传上游 envelope）
+        let mut resp = slim_write_response(&data, id)?;
+        resp["dict_id"] = json!(dict_id_out);
+        resp["fields_cleared"] = json!(fields_cleared);
+        Ok(resp)
+    }
+}
+
+
+/// mcp-dictionary-tools（2026-09-28）：字典项规范化——缺 id 的项自动生成
+/// `di-` 前缀 id（与 import 通路 `auto-` 先例一致：只补全不丢弃）；
+/// sort 缺省按下标。已有值一律保留。
+fn normalize_dict_items(items: Option<&Value>) -> Vec<Value> {
+    let Some(items) = items.and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    items
+        .iter()
+        .enumerate()
+        .map(|(i, item)| {
+            let id = item
+                .get("id")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("di-{}", uuid_simple()));
+            json!({
+                "id": id,
+                "value": item.get("value").and_then(Value::as_str).unwrap_or(""),
+                "label": item.get("label").and_then(Value::as_str).unwrap_or(""),
+                "sort": item.get("sort").and_then(Value::as_i64).unwrap_or(i as i64),
+            })
+        })
+        .collect()
+}
+
+/// mcp-dictionary-tools（2026-09-28）：批量改写字段字典绑定——把所有
+/// `dict_code == from` 的字段改写为 `to`（to="" 即级联置空，对齐 S07 §5）。
+/// 返回实际改写的字段数。
+fn rewrite_field_dict_code(diagram: &mut Value, from: &str, to: &str) -> i64 {
+    let mut count = 0_i64;
+    if let Some(tables) = diagram.get_mut("tables").and_then(Value::as_array_mut) {
+        for table in tables {
+            if let Some(fields) = table.get_mut("fields").and_then(Value::as_array_mut) {
+                for field in fields {
+                    if field.get("dict_code").and_then(Value::as_str) == Some(from) {
+                        field["dict_code"] = json!(to);
+                        count += 1;
+                    }
+                }
+            }
+        }
+    }
+    count
 }
 
 /// fix-remote-github-issues-7-18（#18）：写工具瘦响应 normalize。
