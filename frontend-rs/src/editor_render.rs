@@ -1852,6 +1852,11 @@ mod leptos_canvas {
                     selected_ref_id.set(Some(ref_id.clone()));
                     selected_area_id.set(None);
                     selected_note_id.set(None);
+                    // fix-issues-36-37（#37 R-KBSEL-02）：清理多选集——否则框选/全选残留的
+                    // 表集合会在 Delete 时劫持单选连线的删除语义（ST-PB-04 回归根因）
+                    selected_table_ids.set(Vec::new());
+                    selected_note_ids.set(Vec::new());
+                    selected_area_ids.set(Vec::new());
                     if let Some(cb) = on_reference_pick.as_ref() {
                         cb(ref_id);
                     }

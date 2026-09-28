@@ -2180,25 +2180,26 @@ try {
     p = await lodProbe();
     assert.deepEqual(counts(p), [0, 0, 0, 0], "Delete 后画布图元必须清空（含级联关系）");
 
-    // WHEN 3：Ctrl+Z —— THEN（R-KBSEL-03）：一次 Undo 恢复整次删除
+    // WHEN 3：Ctrl+Z —— THEN（R-KBSEL-03）：一次 Undo 恢复整次表/关系删除
+    // 口径：便签/区域删除不入撤销栈（既有行为），undo 只恢复表与级联关系 → [3,2,0,0]
     await page.keyboard.press("Control+z");
-    await waitCounts([3, 2, 1, 1]);
+    await waitCounts([3, 2, 0, 0]);
     // WHEN 3b：Ctrl+Y 重放删除（对称 redo）
     await page.keyboard.press("Control+y");
     await waitCounts([0, 0, 0, 0]);
     await page.keyboard.press("Control+z");
-    await waitCounts([3, 2, 1, 1]);
+    await waitCounts([3, 2, 0, 0]);
 
     // WHEN 4：单选 t1 + Delete —— THEN：该表与其级联关系 r1 消失，可撤销
     const t1Head = await canvasPoint(page, { x: 60 + 100, y: 100 + 21 });
     await page.mouse.click(t1Head.x, t1Head.y);
     await page.locator('[data-testid="inspector-table-form"]:visible').waitFor();
     await page.keyboard.press("Delete");
-    await waitCounts([2, 1, 1, 1]);
+    await waitCounts([2, 1, 0, 0]);
     p = await lodProbe();
-    assert.deepEqual(counts(p), [2, 1, 1, 1], "删 t1 必须级联 r1（剩 t2/t3 + r2 + 便签 + 区域）");
+    assert.deepEqual(counts(p), [2, 1, 0, 0], "删 t1 必须级联 r1（剩 t2/t3 + r2，便签/区域此前已删且不可撤销）");
     await page.keyboard.press("Control+z");
-    await waitCounts([3, 2, 1, 1]);
+    await waitCounts([3, 2, 0, 0]);
 
     // WHEN 5：输入框内 Ctrl+A / Delete —— THEN（R-KBSEL-04）：原生文本行为，不触画布
     await page.mouse.click(t1Head.x, t1Head.y);
@@ -2209,13 +2210,13 @@ try {
     await nameInput.pressSequentially("tbl_renamed");
     assert.equal(await nameInput.inputValue(), "tbl_renamed", "输入框内 Ctrl+A 必须为原生文本全选");
     hl = await hlProbe();
-    assert.equal(hl.multi_n, 0, "输入框内 Ctrl+A 不得触发画布全选");
+    assert.equal(hl.multi_n, 1, "输入框内 Ctrl+A 不得触发画布全选（多选集须保持仅 t1，不得扩为 3）");
     await page.keyboard.press("Delete"); // 删除输入框内残留字符（若有）——不得删画布图元
     await page.waitForFunction(
       () => JSON.parse(window.__cdb_lod_probe).tables_n === 3, null, { timeout: 2_000, polling: 100 },
     ).catch(() => {});
     p = await lodProbe();
-    assert.deepEqual(counts(p), [3, 2, 1, 1], "输入框内 Delete 不得删除画布图元");
+    assert.deepEqual(counts(p), [3, 2, 0, 0], "输入框内 Delete 不得删除画布图元");
   });
 
   // ─── ST-CR-TAG-01：Inspector 字段 tag 受控输入（redesign-listview-type-length-canvas-fix） ──

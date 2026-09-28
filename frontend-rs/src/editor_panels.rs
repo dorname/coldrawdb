@@ -240,7 +240,14 @@ pub fn setup_editor_tool_shortcuts(
     on_delete_tables: Rc<dyn Fn(Vec<String>)>,
 ) {
     use wasm_bindgen::JsCast;
-    gloo::events::EventListener::new(&gloo::utils::document(), "keydown", move |ev| {
+    // fix-issues-36-37（issue #37，R-KBSEL-01）：gloo-events 0.2 默认 passive=true，
+    // preventDefault 会被浏览器忽略——本处理器必须显式 passive=false
+    // （Ctrl/Cmd+A 阻止页面全选、Delete/Backspace 阻止浏览器导航等默认行为依赖它）
+    gloo::events::EventListener::new_with_options(
+        &gloo::utils::document(),
+        "keydown",
+        gloo::events::EventListenerOptions::enable_prevent_default(),
+        move |ev| {
         let Some(ke) = ev.dyn_ref::<web_sys::KeyboardEvent>() else {
             return;
         };
@@ -348,7 +355,8 @@ pub fn setup_editor_tool_shortcuts(
             // #36：ViewDimension 已在只读门控之前处理并 return，此处不可达
             ToolShortcut::ViewDimension => {}
         }
-    })
+        },
+    )
     .forget();
 }
 
@@ -16629,6 +16637,12 @@ mod tests {
         let text_gate = handler.find("shortcut_event_is_text_target(ke)").expect("文本门控存在");
         let sel_all = handler.find("is_select_all_shortcut(&ke.key()").expect("全选分支存在");
         assert!(sel_all > text_gate, "UT-KB-05: 全选分支必须在文本输入门控之后（R-KBSEL-04）");
+        // 断言 2b：监听器必须显式 passive=false——gloo-events 默认 passive=true 会吞掉
+        // preventDefault（ST-KB-SEL-01 曾因此回归失败）
+        assert!(
+            handler.contains("enable_prevent_default()"),
+            "UT-KB-05: 快捷键监听器必须 passive=false 才能 preventDefault（R-KBSEL-01 生效前提）"
+        );
         let branch = &handler[sel_all..sel_all + 1200.min(handler.len() - sel_all)];
         assert!(branch.contains("ke.prevent_default();"), "UT-KB-05: 全选必须 preventDefault 页面全选");
         assert!(branch.contains("selected_table_ids.set("), "UT-KB-05: 必须写入表多选集");
