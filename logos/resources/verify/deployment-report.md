@@ -1,5 +1,32 @@
 # 部署报告
 
+## 2026-09-28 — fix-issues-38-41-canvas-interaction（本地/测试）
+
+| 项 | 值 |
+|---|---|
+| 变更 | `fix-issues-38-41-canvas-interaction` |
+| 部署时间 | 2026-09-28 |
+| 目标环境 | 本地 docker compose（coldrawdb + nginx + backup） |
+| 内容 | #38 pan-undo 回归锚点 / #39 选中保持平移 / #40 标签字号倍率+10px 钳制 / #41 区域锁定全链路（migration 0012_area_lock） |
+| 状态 | ✅ 部署完成；smoke Gate 3.8 PASS（10/10，Coverage 100%） |
+
+### 执行摘要
+
+1. `docker compose up -d --build coldrawdb` 重建镜像并起全栈；`schema_migrations` 实测 `0012_area_lock` 已应用，`area` 表含 `locked` 列（既有行默认 0=未锁定，幂等）
+2. 健康检查：`GET :9080/api/v1/diagrams/health` → 200 `{"status":"ok"}`；SPA 入口 200；宿主 :3000 无监听（后端仅内部网络）
+3. `openlogos verify` Gate 3.6 PASS（504/538，覆盖率 100%）
+4. `openlogos smoke` Gate 3.8 PASS（10/10）：含本提案新增 SMOKE-core-09（区域锁定 PUT 快照落库往返）；SMOKE-core-STABLE-01 增补「部署先行」判定（栈已在运行时直接验证，不再 up/down 误拆部署）
+5. 环境排障：Docker Desktop WSL 集成 socket 缺失经用户在 GUI 重新开启恢复；清理两处会话遗留进程（trunk serve :8080、dev backend :3000）解除构建竞态与端口冲突
+
+### 回滚点
+
+- `docker compose down` 停止 compose 栈；`0012_area_lock.down.sql` 提供 DROP COLUMN 配对（常规不需要——旧代码 serde default 兼容缺列）
+
+### 备注
+
+- smoke 沙箱 `status=warn`（auto 模式隔离副本内 cargo 指纹/DB 写入记非白名单警告），不影响 Gate 判定，同 2026-09-21 先例
+- 对外入口：http://localhost:9080/（nginx）
+
 ## 2026-09-21 — fix-diagram-import-persistence（本地/测试）
 
 | 项 | 值 |

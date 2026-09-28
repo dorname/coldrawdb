@@ -355,7 +355,7 @@ areas=d.get("areas") or []
 if len(areas)!=1:
     print(f"areas.length={len(areas)}"); raise SystemExit(1)
 if areas[0].get("locked") is not True:
-    print(f"locked={areas[0].get("locked")!r}"); raise SystemExit(1)
+    print(f"locked={areas[0].get('locked')!r}"); raise SystemExit(1)
 print("ok")' 2>&1)"
         if [[ "$al09_a1" != "ok" ]]; then
             al09_status="fail"
@@ -430,7 +430,24 @@ st_note="no docker daemon"
 if docker info >/dev/null 2>&1; then
     st_status="fail"
     st_note="docker compose up failed (port 3000 busy after stop-local?)"
-    if (cd "$REPO_ROOT" && docker compose up -d >/dev/null 2>&1); then
+    # fix-issues-38-41（部署先行流程）：deploy 先于 smoke，栈已在运行时直接验证既有部署，
+    # 不再 up/down——沙箱副本项目名不同，up 会撞 9080、down 会误拆正式部署
+    st_health="$(curl --silent --max-time 3 -o /dev/null -w '%{http_code}' \
+        "http://127.0.0.1:9080/api/v1/diagrams/health" 2>/dev/null)"
+    if [[ "$st_health" == "200" ]]; then
+        st_home="$(curl --silent --max-time 5 -o /dev/null -w '%{http_code}' \
+            "http://127.0.0.1:9080/" 2>&1)"
+        # compose-backend-port-internal-only：宿主 3000 应无监听（后端仅内部网络）
+        st_direct="$(curl --silent --max-time 3 -o /dev/null -w '%{http_code}' \
+            "http://127.0.0.1:3000/api/v1/diagrams/health" 2>/dev/null)"
+        if [[ "$st_home" =~ ^2[0-9][0-9]$ && "$st_direct" == "000" ]]; then
+            st_status="pass"
+            st_note="pre-deployed compose stack healthy via nginx :9080 (health=200, home=${st_home}, host:3000 closed)"
+        else
+            st_status="fail"
+            st_note="pre-deployed stack home=${st_home}, host:3000=${st_direct} (expect 2xx/000)"
+        fi
+    elif (cd "$REPO_ROOT" && docker compose up -d >/dev/null 2>&1); then
         st_health=""
         for _ in $(seq 1 60); do
             st_health="$(curl --silent --max-time 3 -o /dev/null -w '%{http_code}' \

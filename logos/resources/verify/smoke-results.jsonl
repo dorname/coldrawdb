@@ -7,3 +7,31 @@
 {"id":"SMOKE-core-08","status":"pass","duration_ms":50,"timestamp":"2026-09-24T10:33:03Z","scenario":"smoke","note":"anonymous 401 on POST/GET diagrams + bridge import/local + share mint; token accepted"}
 {"id":"SMOKE-core-06","status":"pass","duration_ms":2017,"timestamp":"2026-09-24T10:33:05Z","scenario":"smoke","note":"local start-local.sh + stop-local.sh round-trip"}
 {"id":"SMOKE-core-STABLE-01","status":"fail","duration_ms":8785,"timestamp":"2026-09-24T10:33:14Z","scenario":"smoke","note":"docker compose up failed (port 3000 busy after stop-local?)"}
+{"id":"SMOKE-core-01","status":"fail","duration_ms":0,"timestamp":"2026-09-28T11:17:39Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-02","status":"fail","duration_ms":0,"timestamp":"2026-09-28T11:17:39Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-03","status":"fail","duration_ms":0,"timestamp":"2026-09-28T11:17:39Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-04","status":"fail","duration_ms":0,"timestamp":"2026-09-28T11:17:39Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-05","status":"fail","duration_ms":0,"timestamp":"2026-09-28T11:17:39Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-06","status":"fail","duration_ms":0,"timestamp":"2026-09-28T11:17:39Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-07","status":"fail","duration_ms":0,"timestamp":"2026-09-28T11:17:39Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-08","status":"fail","duration_ms":0,"timestamp":"2026-09-28T11:17:39Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-09","status":"fail","duration_ms":0,"timestamp":"2026-09-28T11:17:39Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-01","status":"pass","duration_ms":13,"timestamp":"2026-09-28T11:24:49Z","scenario":"smoke","note":"backend health proxy (4xx on /non-existent is healthy) (http=401)"}
+{"id":"SMOKE-core-02","status":"pass","duration_ms":58,"timestamp":"2026-09-28T11:24:49Z","scenario":"smoke","note":"create/read/update/delete"}
+{"id":"SMOKE-core-03","status":"pass","duration_ms":108,"timestamp":"2026-09-28T11:24:49Z","scenario":"smoke","note":"POST /api/v1/bridge/import/local (SQL via payload) (http=200)"}
+{"id":"SMOKE-core-04","status":"pass","duration_ms":13,"timestamp":"2026-09-28T11:24:50Z","scenario":"smoke","note":"frontend index.html available (http=200)"}
+{"id":"SMOKE-core-05","status":"pass","duration_ms":13,"timestamp":"2026-09-28T11:24:50Z","scenario":"smoke","note":"GET /api/v1/bridge/config (DB-backed) (http=200)"}
+{"id":"SMOKE-core-07","status":"pass","duration_ms":96,"timestamp":"2026-09-28T11:24:50Z","scenario":"smoke","note":"import missing-id payload persisted (auto id + name fallback)"}
+{"id":"SMOKE-core-08","status":"pass","duration_ms":60,"timestamp":"2026-09-28T11:24:50Z","scenario":"smoke","note":"anonymous 401 on POST/GET diagrams + bridge import/local + share mint; token accepted"}
+{"id":"SMOKE-core-06","status":"pass","duration_ms":2021,"timestamp":"2026-09-28T11:24:52Z","scenario":"smoke","note":"local start-local.sh + stop-local.sh round-trip"}
+{"id":"SMOKE-core-STABLE-01","status":"fail","duration_ms":8526,"timestamp":"2026-09-28T11:25:00Z","scenario":"smoke","note":"docker compose up failed (port 3000 busy after stop-local?)"}
+{"id":"SMOKE-core-01","status":"pass","duration_ms":12,"timestamp":"2026-09-28T11:30:10Z","scenario":"smoke","note":"backend health proxy (4xx on /non-existent is healthy) (http=401)"}
+{"id":"SMOKE-core-02","status":"pass","duration_ms":65,"timestamp":"2026-09-28T11:30:10Z","scenario":"smoke","note":"create/read/update/delete"}
+{"id":"SMOKE-core-03","status":"pass","duration_ms":105,"timestamp":"2026-09-28T11:30:10Z","scenario":"smoke","note":"POST /api/v1/bridge/import/local (SQL via payload) (http=200)"}
+{"id":"SMOKE-core-04","status":"pass","duration_ms":13,"timestamp":"2026-09-28T11:30:10Z","scenario":"smoke","note":"frontend index.html available (http=200)"}
+{"id":"SMOKE-core-05","status":"pass","duration_ms":12,"timestamp":"2026-09-28T11:30:10Z","scenario":"smoke","note":"GET /api/v1/bridge/config (DB-backed) (http=200)"}
+{"id":"SMOKE-core-07","status":"pass","duration_ms":98,"timestamp":"2026-09-28T11:30:10Z","scenario":"smoke","note":"import missing-id payload persisted (auto id + name fallback)"}
+{"id":"SMOKE-core-08","status":"pass","duration_ms":61,"timestamp":"2026-09-28T11:30:10Z","scenario":"smoke","note":"anonymous 401 on POST/GET diagrams + bridge import/local + share mint; token accepted"}
+{"id":"SMOKE-core-09","status":"pass","duration_ms":177,"timestamp":"2026-09-28T11:30:11Z","scenario":"smoke","note":"area.locked persisted via PUT snapshot round-trip (migration 0012)"}
+{"id":"SMOKE-core-06","status":"pass","duration_ms":2019,"timestamp":"2026-09-28T11:30:13Z","scenario":"smoke","note":"local start-local.sh + stop-local.sh round-trip"}
+{"id":"SMOKE-core-STABLE-01","status":"pass","duration_ms":652,"timestamp":"2026-09-28T11:30:13Z","scenario":"smoke","note":"pre-deployed compose stack healthy via nginx :9080 (health=200, home=200, host:3000 closed)"}

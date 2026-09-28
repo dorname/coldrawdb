@@ -20,8 +20,8 @@
 
 ## [deploy] 部署任务
 
-- [ ] E1 verify PASS 且用户授权后：按部署方案重建后端（migration 0012 启动自动执行）+ 前端，确认服务可用
-- [ ] E2 用户授权后运行 `openlogos smoke`（区域锁定持久化冒烟须 PASS）
+- [x] E1 verify PASS 且用户授权后：按部署方案重建后端（migration 0012 启动自动执行）+ 前端，确认服务可用
+- [x] E2 用户授权后运行 `openlogos smoke`（区域锁定持久化冒烟须 PASS）
 
 ## [follow-up] 收尾
 
