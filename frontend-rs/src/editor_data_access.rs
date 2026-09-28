@@ -1485,6 +1485,9 @@ struct AreaOut {
     color: String,
     #[serde(default)]
     name: String,
+    // #41 R-AREALOCK-01：区域锁定；旧文档/旧后端缺省 false
+    #[serde(default)]
+    locked: bool,
 }
 
 #[derive(Deserialize)]
@@ -1604,6 +1607,7 @@ impl From<AreaOut> for Area {
             height: a.height,
             color: a.color,
             name: a.name,
+            locked: a.locked,
         }
     }
 }

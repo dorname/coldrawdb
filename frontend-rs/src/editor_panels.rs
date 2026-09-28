@@ -2089,6 +2089,8 @@ pub fn new_default_area(seq: i64) -> Area {
         height: 300.0,
         color: "#e6f1f5".into(),
         name: format!("新区域 {}", seq + 1),
+        // #41 R-AREALOCK-01：新建区域默认未锁定
+        locked: false,
     }
 }
 
@@ -2702,6 +2704,22 @@ pub fn FloatingControls(transform: RwSignal<Transform>, store: EditorStore) -> i
                 }
             >
                 {move || format!("维度：{}", store.view_dimension.get().label())}
+            </button>
+            // fix-issues-38-41-canvas-interaction（issue #40，core-01 §5.16 R-FONT-01/02）：
+            // 画布标签字号倍率循环按钮（本机偏好 localStorage cdb.label-font-scale，
+            // 不写图表文档、协作不同步、不进撤销栈；纯视图操作，只读可用）
+            <button
+                class="cdb-btn cdb-btn--ghost cdb-btn--small"
+                data-testid="canvas-font-scale"
+                title="切换画布标签字号倍率（80% / 100% / 125% / 150%）"
+                on:click=move |_| {
+                    crate::editor_core::set_label_font_scale(
+                        &store,
+                        store.label_font_scale.get_untracked().next(),
+                    );
+                }
+            >
+                {move || format!("字号：{}", store.label_font_scale.get().label())}
             </button>
         </div>
     }
@@ -7434,6 +7452,9 @@ pub fn Inspector(
                             let aid_delete = area_id.clone();
                             let on_upd_name = on_update_area.clone();
                             let on_upd_color = on_update_area.clone();
+                            let on_upd_lock = on_update_area.clone();
+                            let aid_lock = area_id.clone();
+                            let area_locked = a.locked;
                             let on_upd_resize_w = on_resize_area.clone();
                             let on_upd_resize_h = on_resize_area.clone();
                             let on_del_area = on_delete_area.clone();
@@ -7522,6 +7543,25 @@ pub fn Inspector(
                                                     } else {
                                                         area_height_draft.set(format!("{}", area_h));
                                                     }
+                                                }
+                                            />
+                                        </div>
+                                        // fix-issues-38-41-canvas-interaction（#41，R-AREALOCK-02b/07）：
+                                        // 锁定复选框（与画布右键菜单同口径；只读禁用）
+                                        <div class="cdb-form-group">
+                                            <label>"锁定（防误拖动）"</label>
+                                            <input
+                                                type="checkbox"
+                                                data-testid="inspector-area-locked"
+                                                prop:checked=area_locked
+                                                disabled=ro
+                                                on:change=move |ev| {
+                                                    let checked = event_target_checked(&ev);
+                                                    on_upd_lock(
+                                                        aid_lock.clone(),
+                                                        "locked",
+                                                        if checked { "1".to_string() } else { "0".to_string() },
+                                                    );
                                                 }
                                             />
                                         </div>
@@ -10561,8 +10601,10 @@ pub fn AppRoot(
     let selected_table_ids: RwSignal<Vec<String>> = create_rw_signal(Vec::new());
     let selected_note_ids: RwSignal<Vec<String>> = create_rw_signal(Vec::new());
     let selected_area_ids: RwSignal<Vec<String>> = create_rw_signal(Vec::new());
-    // fix-issues-36-37（issue #36，R-VIEW-DIM-02）：画布右键菜单状态（Some(屏幕坐标) = 打开）
-    let canvas_ctx_menu: RwSignal<Option<(f64, f64)>> = create_rw_signal(None);
+    // fix-issues-36-37（issue #36，R-VIEW-DIM-02）：画布右键菜单状态（Some = 打开）
+    // fix-issues-38-41-canvas-interaction（#41，R-AREALOCK-02a）：第三元 = 右键命中的区域 id
+    // （命中时菜单追加「锁定/解锁区域」项）
+    let canvas_ctx_menu: RwSignal<Option<(f64, f64, Option<String>)>> = create_rw_signal(None);
     // 主题信号提升到 AppRoot：Canvas 绘制 effect 需跟踪它以在主题切换时重绘调色板
     let theme_mode: RwSignal<String> = create_rw_signal(read_html_data_mode());
     let auth_session: RwSignal<Option<AuthSession>> = create_rw_signal(None);
@@ -12589,6 +12631,9 @@ pub fn AppRoot(
             match field {
                 "name" => a.name = value,
                 "color" => a.color = value,
+                // fix-issues-38-41-canvas-interaction（#41，R-AREALOCK-02/06）：
+                // 锁定切换与名称/颜色同通路落库（dirty + schedule_save + 协作 OT）
+                "locked" => a.locked = value == "1",
                 _ => return,
             }
             store.areas.set(areas);
@@ -13208,8 +13253,42 @@ pub fn AppRoot(
                     data-testid="editor-canvas-container"
                     // fix-issues-36-37（issue #36，R-VIEW-DIM-02）：画布右键菜单入口
                     on:contextmenu=move |ev| {
+                        use wasm_bindgen::JsCast;
                         ev.prevent_default();
-                        canvas_ctx_menu.set(Some((ev.client_x() as f64, ev.client_y() as f64)));
+                        // fix-issues-38-41-canvas-interaction（#41，R-AREALOCK-02a）：
+                        // 右键命中区域检测——坐标换算与画布 pointer 事件同口径
+                        // （(client − rect − pan) / zoom，见 editor_render screen_to_diagram）
+                        // 注：Leptos 事件委托下 ev.current_target() 不可靠（可能为 null），
+                        // 直接查询 canvas 元素取 bounding rect
+                        let hit_area = web_sys::window()
+                            .and_then(|w| w.document())
+                            .and_then(|d| {
+                                d.query_selector(
+                                    "[data-testid='editor-canvas-container'] canvas",
+                                )
+                                .ok()
+                                .flatten()
+                            })
+                            .and_then(|el| {
+                                wasm_bindgen::JsCast::dyn_into::<web_sys::HtmlCanvasElement>(el)
+                                    .ok()
+                            })
+                            .and_then(|c| {
+                                let r = c.get_bounding_client_rect();
+                                let t = canvas_transform.get_untracked();
+                                let dx = (ev.client_x() as f64 - r.left() - t.pan_x) / t.zoom;
+                                let dy = (ev.client_y() as f64 - r.top() - t.pan_y) / t.zoom;
+                                crate::editor_render::hit_test_area(
+                                    &store.areas.get_untracked(),
+                                    dx,
+                                    dy,
+                                )
+                            });
+                        canvas_ctx_menu.set(Some((
+                            ev.client_x() as f64,
+                            ev.client_y() as f64,
+                            hit_area,
+                        )));
                     }
                     // 左键点击画布任意处关闭右键菜单
                     on:click=move |_| canvas_ctx_menu.set(None)
@@ -13263,8 +13342,10 @@ pub fn AppRoot(
                     <FloatingControls transform=canvas_transform store=store.clone() />
                     // fix-issues-36-37（issue #36，R-VIEW-DIM-02）：画布右键菜单——
                     // 复用 cdb-menu-dropdown 样式，fixed 定位在鼠标处；仅含维度切换项
-                    {move || {
-                        canvas_ctx_menu.get().map(|(mx, my)| {
+                    // #41：预克隆 on_update_area——move 闭包整体捕获会夺走下方 Inspector 的绑定
+                    {let on_update_area_ctx = on_update_area.clone();
+                     move || {
+                        canvas_ctx_menu.get().map(|(mx, my, hit_area)| {
                             let store_ctx = store.clone();
                             view! {
                                 <div
@@ -13296,6 +13377,50 @@ pub fn AppRoot(
                                             }
                                         }}
                                     </button>
+                                    // fix-issues-38-41-canvas-interaction（#41，R-AREALOCK-02a/07）：
+                                    // 右键命中区域时追加「锁定/解锁区域」（与 Inspector 复选框
+                                    // 同走 on_update_area 通路；只读禁用——宿主侧也有只读守卫）
+                                    {match hit_area {
+                                        Some(aid) => {
+                                            let locked_now = store
+                                                .areas
+                                                .get_untracked()
+                                                .iter()
+                                                .find(|a| a.id == aid)
+                                                .map(|a| a.locked)
+                                                .unwrap_or(false);
+                                            let label =
+                                                if locked_now { "解锁区域" } else { "锁定区域" };
+                                            let on_upd_lock = on_update_area_ctx.clone();
+                                            view! {
+                                                <button
+                                                    class="cdb-menu-dropdown-item"
+                                                    data-testid="ctx-toggle-area-lock"
+                                                    disabled=editor_is_read_only(
+                                                        share_mode,
+                                                        current_room,
+                                                    )
+                                                    on:click=move |ev| {
+                                                        ev.stop_propagation();
+                                                        on_upd_lock(
+                                                            aid.clone(),
+                                                            "locked",
+                                                            if locked_now {
+                                                                "0".to_string()
+                                                            } else {
+                                                                "1".to_string()
+                                                            },
+                                                        );
+                                                        canvas_ctx_menu.set(None);
+                                                    }
+                                                >
+                                                    {label}
+                                                </button>
+                                            }
+                                                .into_view()
+                                        }
+                                        None => view! { <></> }.into_view(),
+                                    }}
                                 </div>
                             }
                         })
@@ -15160,6 +15285,7 @@ mod tests {
             height: 100.0,
             color: "#e6f1f5".into(),
             name: "user_area".into(),
+            locked: false,
         }];
         let enums = vec![EnumStub {
             id: "e1".into(),
@@ -15255,6 +15381,7 @@ mod tests {
             height: 100.0,
             color: String::new(),
             name: "a".into(),
+            locked: false,
         }]);
         assert_eq!(
             crate::editor_core::next_id_from_store(&store),

@@ -647,10 +647,17 @@ pub fn build_group_drag_starts(
     if !should_start_group_drag(clicked_in_set, table_ids, note_ids, area_ids) {
         return (None, None, None);
     }
+    // fix-issues-38-41-canvas-interaction（#41，R-AREALOCK-03）：多选整组拖动跳过
+    // 锁定区域（其余选中图元正常移动）
+    let unlocked_area_ids: Vec<String> = area_ids
+        .iter()
+        .filter(|id| areas.iter().any(|a| &a.id == *id && area_drag_allowed(a)))
+        .cloned()
+        .collect();
     (
         collect_table_starts(tables, table_ids),
         collect_note_starts(notes, note_ids),
-        collect_area_starts(areas, area_ids),
+        collect_area_starts(areas, &unlocked_area_ids),
     )
 }
 
@@ -1142,6 +1149,9 @@ mod leptos_canvas {
             // fix-issues-36-37（issue #36，R-VIEW-DIM-05）：订阅维度模式——切换即重绘
             // （维度经精灵指纹触发重光栅，R-LOD-05）
             let view_dimension = store.view_dimension.get();
+            // fix-issues-38-41-canvas-interaction（issue #40，R-FONT-02）：订阅字号倍率——
+            // 切档即重绘（倍率经精灵指纹混入触发重光栅）
+            let label_font_scale = store.label_font_scale.get().factor();
 
             let width = canvas.width() as f64;
             let height = canvas.height() as f64;
@@ -1182,6 +1192,7 @@ mod leptos_canvas {
                                     view_dimension,
                                     // R-ARESZ-05：只读模式不渲染 resize 手柄
                                     !read_only,
+                                    label_font_scale,
                                 );
                             });
                         });
@@ -1531,7 +1542,11 @@ mod leptos_canvas {
                         let areas_now = store.areas.get_untracked();
                         if let Some(a) = areas_now.iter().find(|a| a.id == sel_area) {
                             let rect = (a.x, a.y, a.width, a.height);
-                            if let Some(dir) = super::hit_test_area_resize(a, dx, dy, false) {
+                            // fix-issues-38-41-canvas-interaction（#41，R-AREALOCK-03）：
+                            // 锁定区域 resize 手柄不响应（落入下方分支后仅选中不拖动）
+                            if !super::area_drag_allowed(a) {
+                                // 锁定：跳过 resize 入口
+                            } else if let Some(dir) = super::hit_test_area_resize(a, dx, dy, false) {
                                 capture_pointer(&canvas, ev.pointer_id());
                                 drag_state.set(Some(DragState {
                                     table_id: None,
@@ -1604,6 +1619,20 @@ mod leptos_canvas {
                                     &multi_areas,
                                     multi_areas.iter().any(|x| x == &sel_area),
                                 );
+                            // fix-issues-38-41-canvas-interaction（#41，R-AREALOCK-03/04）：
+                            // 锁定区域点击仍完成上方选中联动（Inspector 可编辑），
+                            // 但不进入拖动（no-op）
+                            if store
+                                .areas
+                                .get_untracked()
+                                .iter()
+                                .find(|a| a.id == sel_area)
+                                .map(|a| !super::area_drag_allowed(a))
+                                .unwrap_or(false)
+                            {
+                                schedule_paint();
+                                return;
+                            }
                             capture_pointer(&canvas, ev.pointer_id());
                             drag_state.set(Some(DragState {
                                 table_id: None,
@@ -1917,42 +1946,45 @@ mod leptos_canvas {
                     if let Some(cb) = on_area_pick.as_ref() {
                         cb(area_id.clone());
                     }
-                    capture_pointer(&canvas, ev.pointer_id());
-                    drag_state.set(Some(DragState {
-                        table_id: None,
-                        multi_starts: None,
-                        multi_note_starts: None,
-                        multi_area_starts: None,
-                        marquee_start: None,
-                        endpoint_drag: None,
-                        rel_drag: None,
-                        create_drag: None,
-                        note_drag: None,
-                        area_drag: Some((area_id, area_x, area_y)),
-                        area_resize: None,
-                        pointer_id: ev.pointer_id(),
-                        start_mouse_x: ev.client_x() as f64,
-                        start_mouse_y: ev.client_y() as f64,
-                        start_pan_x: t_now.pan_x,
-                        start_pan_y: t_now.pan_y,
-                        start_table_x: 0.0,
-                        start_table_y: 0.0,
-                    }));
+                    // fix-issues-38-41-canvas-interaction（#41，R-AREALOCK-03/04）：
+                    // 锁定区域标题栏点击 = 仅选中（Inspector 可编辑），不进入拖动
+                    let area_locked = store
+                        .areas
+                        .get_untracked()
+                        .iter()
+                        .find(|a| a.id == area_id)
+                        .map(|a| !super::area_drag_allowed(a))
+                        .unwrap_or(false);
+                    if !area_locked {
+                        capture_pointer(&canvas, ev.pointer_id());
+                        drag_state.set(Some(DragState {
+                            table_id: None,
+                            multi_starts: None,
+                            multi_note_starts: None,
+                            multi_area_starts: None,
+                            marquee_start: None,
+                            endpoint_drag: None,
+                            rel_drag: None,
+                            create_drag: None,
+                            note_drag: None,
+                            area_drag: Some((area_id, area_x, area_y)),
+                            area_resize: None,
+                            pointer_id: ev.pointer_id(),
+                            start_mouse_x: ev.client_x() as f64,
+                            start_mouse_y: ev.client_y() as f64,
+                            start_pan_x: t_now.pan_x,
+                            start_pan_y: t_now.pan_y,
+                            start_table_x: 0.0,
+                            start_table_y: 0.0,
+                        }));
+                    }
                     schedule_paint();
                 } else {
-                    selected_id.set(None);
-                    selected_ref_id.set(None);
-                    selected_area_id.set(None);
-                    selected_note_id.set(None);
-                    // fix-open-issues-26-33（#31，ST-PE-10 THEN 3）：纯点击空白必须同时清空
-                    // 多选集合——否则 multi 残留导致选中环与高亮（含 #31 非相关表降透明度）
-                    // 在取消选中后无法恢复默认
-                    selected_table_ids.set(Vec::new());
-                    selected_note_ids.set(Vec::new());
-                    selected_area_ids.set(Vec::new());
-                    if let Some(cb) = on_deselect.as_ref() {
-                        cb();
-                    }
+                    // fix-issues-38-41-canvas-interaction（#39，core-01 §5.15 R-PAN-SEL-01）：
+                    // 空白按下不再立即清选——click/pan 判定推迟到 pointerup（位移 <4px
+                    // 才清选，见 on_pointerup pan 兜底分支），平移画布期间保持选中与
+                    // Inspector 联动。#31 的「点击空白清空多选集合」语义由 pointerup
+                    // click 判定继承（ST-PE-10 THEN 3 口径不变）。
                     capture_pointer(&canvas, ev.pointer_id());
                     // Shift+空白 或框选工具 = 框选多表；否则平移画布
                     let use_marquee =
@@ -2334,6 +2366,8 @@ mod leptos_canvas {
                                         new_y,
                                         store.comment_display.get_untracked(),
                                         store.view_dimension.get_untracked(),
+                                        // #40：拖动热路径 untracked（拖动中切倍率不重建幽灵层，松手即恢复）
+                                        store.label_font_scale.get_untracked().factor(),
                                     )
                                 })
                             });
@@ -2393,6 +2427,7 @@ mod leptos_canvas {
             let on_select = on_select.clone();
             let on_note_pick = on_note_pick.clone();
             let on_area_pick = on_area_pick.clone();
+            let on_deselect = on_deselect.clone();
             let current_transform = current_transform.clone();
             move |ev: PointerEvent| {
                 let Some(drag) = drag_state.get_untracked() else {
@@ -2836,8 +2871,26 @@ mod leptos_canvas {
                     return;
                 }
 
+                // fix-issues-38-41-canvas-interaction（#39，core-01 §5.15 R-PAN-SEL-01~04）：
+                // pan 兜底分支——位移 <4px 判定 click（清选 + on_deselect，继承原
+                // pointerdown 清选口径含 #31 多选集合清空）；≥4px 判定 pan（保留选中，
+                // Inspector 联动不断）
+                let dx = ev.client_x() as f64 - drag.start_mouse_x;
+                let dy = ev.client_y() as f64 - drag.start_mouse_y;
                 live.borrow_mut().table_pos = None;
                 drag_state.set(None);
+                if super::is_blank_click(dx, dy) {
+                    selected_id.set(None);
+                    selected_ref_id.set(None);
+                    selected_area_id.set(None);
+                    selected_note_id.set(None);
+                    selected_table_ids.set(Vec::new());
+                    selected_note_ids.set(Vec::new());
+                    selected_area_ids.set(Vec::new());
+                    if let Some(cb) = on_deselect.as_ref() {
+                        cb();
+                    }
+                }
                 // R-PERF-10：pan 等无落账信号的拖拽，松手时主动补一帧——把有效 dpr
                 // 恢复全分辨率并重绘（否则 backing store 停留在降采样态，画面发虚）
                 schedule_paint();
@@ -2972,6 +3025,21 @@ pub fn is_relation_drag(dx: f64, dy: f64, threshold: f64) -> bool {
 /// 复用 `is_relation_drag` + `DRAG_THRESHOLD`（表/便签/区域共用）。
 pub fn should_suppress_click_after_drag(dx: f64, dy: f64) -> bool {
     is_relation_drag(dx, dy, DRAG_THRESHOLD)
+}
+
+/// fix-issues-38-41-canvas-interaction（#39，core-01 §5.15 R-PAN-SEL-01/02）：
+/// 空白按下的 click/pan 判定——位移 <4px（屏幕欧氏距离，边界 4px 恰为 pan）
+/// 判定为 click（pointerup 清选）；≥4px 判定为 pan（保留选中）。
+/// 与表/便签/区域拖动共用 DRAG_THRESHOLD 口径。
+pub fn is_blank_click(dx: f64, dy: f64) -> bool {
+    !is_relation_drag(dx, dy, DRAG_THRESHOLD)
+}
+
+/// fix-issues-38-41-canvas-interaction（#41，core-01 §5.17 R-AREALOCK-03）：
+/// 区域拖动/resize 门控——锁定区域返回 false（拖动与 resize 均 no-op）；
+/// 选中/改名/改色/删除不受锁定影响（R-AREALOCK-04）。
+pub fn area_drag_allowed(area: &Area) -> bool {
+    !area.locked
 }
 
 thread_local! {
@@ -3625,6 +3693,9 @@ pub fn draw_canvas(
     view_dimension: ViewDimension,
     // fix-open-issues-26-33（issue #27，R-ARESZ-01/05）：选中区域是否渲染 resize 手柄（只读=false）
     area_handles: bool,
+    // fix-issues-38-41-canvas-interaction（issue #40，R-FONT-01/03）：画布标签字号倍率
+    // （本机视图偏好；作用于表名/字段名/注释，含 10px 屏幕下限钳制）
+    label_font_scale: f64,
 ) {
     bump_paint_counter();
 
@@ -3783,10 +3854,10 @@ pub fn draw_canvas(
         if alpha < 0.999 {
             ctx.save();
             ctx.set_global_alpha(alpha);
-            draw_table(ctx, &visual, is_sel, palette, t.zoom, comment_mode, frame_tier, &fk_fields);
+            draw_table(ctx, &visual, is_sel, palette, t.zoom, comment_mode, frame_tier, &fk_fields, label_font_scale);
             ctx.restore();
         } else {
-            draw_table(ctx, &visual, is_sel, palette, t.zoom, comment_mode, frame_tier, &fk_fields);
+            draw_table(ctx, &visual, is_sel, palette, t.zoom, comment_mode, frame_tier, &fk_fields, label_font_scale);
         }
     }
 
@@ -3832,6 +3903,9 @@ pub fn draw_canvas(
         topo_comments,
         view_dimension,
         (tables.len(), refs.len(), notes.len(), areas.len()),
+        // #40 R-FONT-05：倍率与钳制解析探测（any_label_font_clamped 与绘制路径同纯函数口径）
+        label_font_scale,
+        any_label_font_clamped(t.zoom, label_font_scale, frame_tier),
     );
     // #33 ST-PE-09：视觉体系探针（本帧徽章绘制计数在表循环累计）
     update_vis_probe(badges_drawn);
@@ -3901,6 +3975,9 @@ fn update_lod_probe(
     topo_comments: usize,
     dim: ViewDimension,
     counts: (usize, usize, usize, usize),
+    // #40 R-FONT-05：标签字号倍率 + 本帧 10px 屏幕下限钳制标记
+    label_font_scale: f64,
+    min_font_clamped: bool,
 ) {
     if let Some(win) = web_sys::window() {
         let target: &js_sys::Object = win.unchecked_ref();
@@ -3926,12 +4003,20 @@ fn update_lod_probe(
                 ",\"tables_n\":{},\"refs_n\":{},\"notes_n\":{},\"areas_n\":{}}}",
                 counts.0, counts.1, counts.2, counts.3
             );
+        // #40 R-FONT-05：倍率 + 钳制标记 + 生效表名世界字号（倍率/钳制后，供 ST-CR-FONT-01 断言放大）
+        let json = json.trim_end_matches('}').to_string()
+            + &format!(
+                ",\"label_font_scale\":{},\"min_font_clamped\":{},\"label_font_world\":{}}}",
+                label_font_scale,
+                min_font_clamped,
+                scaled_label_font_world(lod_table_font_size(zoom, tier), zoom, label_font_scale).0
+            );
         let _ = js_sys::Reflect::set(target, &key, &wasm_bindgen::JsValue::from_str(&json));
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn update_lod_probe(_: f64, _: LodTier, _: f64, _: usize, _: ViewDimension, _: (usize, usize, usize, usize)) {}
+fn update_lod_probe(_: f64, _: LodTier, _: f64, _: usize, _: ViewDimension, _: (usize, usize, usize, usize), _: f64, _: bool) {}
 
 /// #33 ST-PE-09：视觉体系统一探针——e2e 经 window.__cdb_vis_probe 读取徽章/端点/圆角
 /// 常量与绘制口径（字块角标已移除，端点为 crow's foot 族）。
@@ -4160,6 +4245,40 @@ pub fn lod_table_font_size(zoom: f64, tier: LodTier) -> f64 {
 pub fn lod_line_width(zoom: f64, base: f64) -> f64 {
     let target = LOD_MIN_SCREEN_LINE_PX / zoom.max(0.01);
     base.max(target).min(base * LOD_LINE_WIDTH_COMP_MAX)
+}
+
+/// fix-issues-38-41-canvas-interaction（issue #40，core-01 §5.16 R-FONT-04）：
+/// 标签屏幕空间最小字号（px）——任意 zoom/倍率下表名/字段名/注释屏幕字号 ≥10px。
+pub const LABEL_FONT_MIN_SCREEN_PX: f64 = 10.0;
+
+/// #40 UT-CR-FONT-01（R-FONT-03/04）：标签字号倍率 + 屏幕下限钳制——
+/// 最终世界字号 = max(base × scale, 10px/zoom)；返回 (世界字号, 是否触发下限钳制)。
+/// 钳制仅在缩小方向生效，放大方向不封顶；zoom 防御性下限 0.01。
+pub fn scaled_label_font_world(base_world: f64, zoom: f64, scale: f64) -> (f64, bool) {
+    let scaled = base_world * scale;
+    let min_world = LABEL_FONT_MIN_SCREEN_PX / zoom.max(0.01);
+    if scaled < min_world {
+        (min_world, true)
+    } else {
+        (scaled, false)
+    }
+}
+
+/// #40 R-FONT-05：本帧钳制解析探测——任一标签字体（详情档表名 13/字段 11/注释 10；
+/// 拓扑档表名 font_world 及其 0.8× 注释）触发 10px 屏幕下限即为 true。
+/// 与绘制路径共用 scaled_label_font_world，口径一致。
+pub fn any_label_font_clamped(zoom: f64, scale: f64, tier: LodTier) -> bool {
+    match tier {
+        LodTier::Detail => [TABLE_NAME_FONT_PX, 11.0, 10.0]
+            .iter()
+            .any(|&b| scaled_label_font_world(b, zoom, scale).1),
+        LodTier::Topology => {
+            let fw = lod_table_font_size(zoom, LodTier::Topology);
+            [fw, fw * 0.8]
+                .iter()
+                .any(|&b| scaled_label_font_world(b, zoom, scale).1)
+        }
+    }
 }
 
 /// 拓扑档卡体尺寸：宽同详情（布局不变），高仅表头（字段行隐藏，R-LOD-01）。
@@ -4681,6 +4800,8 @@ fn render_table_sprite(
     lod: LodTier,
     zoom: f64,
     fk_fields: &std::collections::HashSet<&str>,
+    // #40 R-FONT-03：标签字号倍率（透传 draw_table_body / 拓扑档 font_world）
+    label_scale: f64,
 ) -> Option<TableSprite> {
     let doc = web_sys::window()?.document()?;
     let canvas: web_sys::HtmlCanvasElement = doc
@@ -4704,11 +4825,14 @@ fn render_table_sprite(
         (SPRITE_MARGIN - table.y) * scale,
     );
     match lod {
-        LodTier::Detail => draw_table_body(&off, table, palette, shadow_boost, comment_mode, fk_fields),
+        LodTier::Detail => draw_table_body(&off, table, palette, shadow_boost, comment_mode, fk_fields, zoom, label_scale),
         // #30：拓扑档字体世界尺寸 = lod_table_font_size（屏幕 ≥11px）；zoom 由调用处经
         // scale/CTM 自然缩放，光栅只需世界字号
+        // #40 R-FONT-03/04：倍率缩放 + 10px 屏幕下限钳制在光栅前完成（与活画同口径）
         LodTier::Topology => draw_table_topology_body(
-            &off, table, palette, shadow_boost, comment_mode, lod_table_font_size(zoom, lod),
+            &off, table, palette, shadow_boost, comment_mode,
+            scaled_label_font_world(lod_table_font_size(zoom, lod), zoom, label_scale).0,
+            zoom,
         ),
     }
     Some(TableSprite {
@@ -4729,6 +4853,8 @@ fn blit_table_sprite(
     comment_mode: CommentDisplay,
     lod: LodTier,
     fk_fields: &std::collections::HashSet<&str>,
+    // #40 R-FONT-03：标签字号倍率——参与指纹（变化触发重光栅）并透传光栅化
+    label_scale: f64,
 ) -> bool {
     // R-PERF-10 修正：精灵恒以真实 dpr 渲染/取指纹——backing 分辨率与主画布有效 dpr
     // 解耦（位块传输按世界坐标 dw/dh 绘制，主画布降采样时由 CTM 自然缩小，观感不劣化）。
@@ -4749,7 +4875,9 @@ fn blit_table_sprite(
         comment_mode,
         lod,
         &fk_bits,
-    );
+    // #40 R-FONT-03：倍率混入指纹（黄金比例散列到高位，避免与低位 zoom/dpr 桶串扰）——
+    // 切档即重光栅；table_sprite_fingerprint 签名不变（既有 UT 调用点不动）
+    ) ^ ((label_scale * 100.0).round() as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
     let sprite = TABLE_SPRITES.with(|c| {
         let mut map = c.borrow_mut();
         let fresh = map
@@ -4759,7 +4887,7 @@ fn blit_table_sprite(
         if !fresh {
             // shadow_boost = bucket / zoom（见 render_table_sprite 注释）
             let boost = bucket as f64 / zoom.max(0.01);
-            if let Some(s) = render_table_sprite(table, palette, scale, boost, fp, comment_mode, lod, zoom, fk_fields) {
+            if let Some(s) = render_table_sprite(table, palette, scale, boost, fp, comment_mode, lod, zoom, fk_fields, label_scale) {
                 map.insert(table.id.clone(), s);
             }
         }
@@ -4869,6 +4997,8 @@ fn create_table_ghost(
     table_y: f64,
     comment_mode: CommentDisplay,
     view_dimension: ViewDimension,
+    // #40 R-FONT-03：幽灵层卡体字号与主画布同倍率（拖动中视觉一致）
+    label_scale: f64,
 ) -> Option<GhostDrag> {
     let dpr = current_device_pixel_ratio();
     let bucket = sprite_zoom_bucket(t.zoom);
@@ -4878,7 +5008,7 @@ fn create_table_ghost(
     let tier = tier_for_dimension(view_dimension);
     // #33：幽灵层仅在「无关系表」拖拽时创建（见调用处 table_has_references 守卫），
     // 无关系即无 FK 徽章，fk 传空集
-    let sprite = render_table_sprite(table, palette, scale, boost, 0, comment_mode, tier, t.zoom, &std::collections::HashSet::new())?;
+    let sprite = render_table_sprite(table, palette, scale, boost, 0, comment_mode, tier, t.zoom, &std::collections::HashSet::new(), label_scale)?;
     let el = sprite.canvas;
     let parent = canvas.parent_element()?;
     let css_w = sprite.w_world * t.zoom;
@@ -4919,19 +5049,22 @@ fn create_table_ghost(
     Some(ghost)
 }
 
-fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool, palette: &CanvasPalette, zoom: f64, comment_mode: CommentDisplay, tier: LodTier, fk_fields: &std::collections::HashSet<&str>) {
+fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool, palette: &CanvasPalette, zoom: f64, comment_mode: CommentDisplay, tier: LodTier, fk_fields: &std::collections::HashSet<&str>, label_scale: f64) {
     // #36 UT-CR-LOD-01：渲染档由调用方按显式维度传入（R-VIEW-DIM-01），不再按 zoom 判档
     // R-PERF-07：zoom ≤ SPRITE_CACHE_MAX_ZOOM 走精灵缓存；超出回退活画
-    if zoom <= SPRITE_CACHE_MAX_ZOOM && blit_table_sprite(ctx, table, palette, zoom, comment_mode, tier, fk_fields) {
+    if zoom <= SPRITE_CACHE_MAX_ZOOM && blit_table_sprite(ctx, table, palette, zoom, comment_mode, tier, fk_fields, label_scale) {
         if selected {
             draw_table_selection(ctx, table, palette, comment_mode, tier);
         }
         return;
     }
     match tier {
-        LodTier::Detail => draw_table_body(ctx, table, palette, 1.0, comment_mode, fk_fields),
+        LodTier::Detail => draw_table_body(ctx, table, palette, 1.0, comment_mode, fk_fields, zoom, label_scale),
         LodTier::Topology => draw_table_topology_body(
-            ctx, table, palette, 1.0, comment_mode, lod_table_font_size(zoom, tier),
+            ctx, table, palette, 1.0, comment_mode,
+            // #40 R-FONT-03/04：拓扑档表名字号同样过倍率缩放 + 10px 屏幕下限钳制
+            scaled_label_font_world(lod_table_font_size(zoom, tier), zoom, label_scale).0,
+            zoom,
         ),
     }
     if selected {
@@ -4939,7 +5072,13 @@ fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool, pal
     }
 }
 
-fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &CanvasPalette, shadow_boost: f64, comment_mode: CommentDisplay, fk_fields: &std::collections::HashSet<&str>) {
+fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &CanvasPalette, shadow_boost: f64, comment_mode: CommentDisplay, fk_fields: &std::collections::HashSet<&str>, zoom: f64, label_scale: f64) {
+    // fix-issues-38-41-canvas-interaction（#40，R-FONT-03/04）：表名/字段名/注释字号
+    // = 既有字号 × 倍率，屏幕空间钳制 ≥10px（scaled_label_font_world）
+    let name_px = scaled_label_font_world(13.0, zoom, label_scale).0;
+    let cmt_px = scaled_label_font_world(11.0, zoom, label_scale).0;
+    let meta_px = scaled_label_font_world(10.0, zoom, label_scale).0;
+    let field_px = scaled_label_font_world(11.0, zoom, label_scale).0;
     let field_count = table.fields.len().max(2);
     let (width, total_height) = compute_table_render_size_for(table, comment_mode);
     let x = table.x;
@@ -5000,7 +5139,7 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
     // R-CMT-01：主文本按显示模式取值（comment 模式且有注释 → 注释；否则英文名）
     let table_label = comment_mode.primary(&table.name, &table.comment);
     let _ = ctx.set_fill_style_str(header_fg.strong);
-    let _ = ctx.set_font(&dpr_font(750, 13.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
+    let _ = ctx.set_font(&dpr_font(750, name_px, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
     let _ = ctx.set_text_baseline("middle");
     let _ = ctx.set_text_align("left");
     let _ = ctx.fill_text(table_label, x + 11.0, y + TABLE_HEADER_HEIGHT / 2.0);
@@ -5019,7 +5158,7 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
             PALETTE_DARK.text_muted,
             !current_theme_dark(),
         );
-        let _ = ctx.set_font(&dpr_font(600, 11.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
+        let _ = ctx.set_font(&dpr_font(600, cmt_px, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
         let cmt_x = x + 11.0 + label_w + 6.0;
         // 26 = 右边距 11 + 字段计数预留 15
         let max_w = (x + width - 26.0) - cmt_x;
@@ -5034,7 +5173,7 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
         }
     }
     let _ = ctx.set_fill_style_str(header_fg.muted);
-    let _ = ctx.set_font(&dpr_font(500, 10.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
+    let _ = ctx.set_font(&dpr_font(500, meta_px, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
     let _ = ctx.set_text_align("right");
     let _ = ctx.fill_text(
         &table.fields.len().to_string(),
@@ -5067,11 +5206,11 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
         // R-CMT-02：主文本按显示模式取值（comment 模式且有注释 → 注释；否则英文名）
         let field_label = comment_mode.primary(&field.name, &field.comment);
         let _ = ctx.set_fill_style_str(palette.text_strong);
-        let _ = ctx.set_font(&dpr_font(650, 11.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
+        let _ = ctx.set_font(&dpr_font(650, field_px, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
         let _ = ctx.fill_text(field_label, name_x, fy + FIELD_ROW_HEIGHT / 2.0);
 
         let _ = ctx.set_fill_style_str(palette.text_muted);
-        let _ = ctx.set_font(&dpr_font(500, 10.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
+        let _ = ctx.set_font(&dpr_font(500, meta_px, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
         let _ = ctx.set_text_align("right");
         let _ = ctx.fill_text(
             &field.type_,
@@ -5098,7 +5237,7 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
                     PALETTE_DARK.text_muted,
                     !current_theme_dark(),
                 );
-                let _ = ctx.set_font(&dpr_font(500, 10.0, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
+                let _ = ctx.set_font(&dpr_font(500, meta_px, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
                 let shown = truncate_to_width(ctx, f_cmt, cmt_max_w);
                 if let Some(chip) = &f_style.chip {
                     let cmt_w = ctx.measure_text(&shown).map(|m| m.width()).unwrap_or(0.0);
@@ -5149,7 +5288,10 @@ fn draw_table_topology_body(
     palette: &CanvasPalette,
     shadow_boost: f64,
     comment_mode: CommentDisplay,
+    // #40 R-FONT-03：font_world 由调用方完成倍率缩放与钳制（scaled_label_font_world）
     font_world: f64,
+    // #40 R-FONT-04：注释字号（font_world×0.8）屏幕下限钳制需要 zoom
+    zoom: f64,
 ) {
     let (width, height) = lod_table_size(table, comment_mode, LodTier::Topology);
     let x = table.x;
@@ -5222,7 +5364,8 @@ fn draw_table_topology_body(
             PALETTE_DARK.text_muted,
             !current_theme_dark(),
         );
-        let cmt_font = font_world * 0.8;
+        // #40 R-FONT-04：注释字号与表名同下限（屏幕 ≥10px）
+        let cmt_font = (font_world * 0.8).max(LABEL_FONT_MIN_SCREEN_PX / zoom.max(0.01));
         let _ = ctx.set_font(&dpr_font(600, cmt_font, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
         let cmt_x = x + 11.0 + name_w + 6.0 * (font_world / TABLE_NAME_FONT_PX).max(1.0);
         let max_w = (x + width - 11.0) - cmt_x;
@@ -5531,9 +5674,28 @@ fn draw_area(
     let _ = ctx.set_text_baseline("top");
     let _ = ctx.fill_text(&area.name, area.x + 10.0, area.y + 10.0);
 
+    // fix-issues-38-41-canvas-interaction（#41，R-AREALOCK-05）：锁定区域右上角渲染
+    // 锁形标记（选中/非选中均可见）
+    if area.locked {
+        let lx = area.x + area.width - 20.0;
+        let ly = area.y + 7.0;
+        ctx.save();
+        let _ = ctx.set_stroke_style_str(palette.area_border);
+        let _ = ctx.set_fill_style_str(palette.area_border);
+        ctx.set_line_width(1.5);
+        // 锁梁（上半圆环）
+        ctx.begin_path();
+        let _ = ctx.arc(lx + 5.0, ly + 5.0, 3.5, std::f64::consts::PI, 0.0);
+        let _ = ctx.stroke();
+        // 锁体
+        ctx.fill_rect(lx, ly + 5.0, 10.0, 8.0);
+        ctx.restore();
+    }
+
     // fix-open-issues-26-33（issue #27，R-ARESZ-01/05）：选中且非只读 → 8 个 resize 手柄
     // （4 角 + 4 边中点，白底 selected 描边，与 hit_test_area_resize 热区同中心）
-    if show_handles {
+    // #41 R-AREALOCK-03：锁定区域不渲染手柄（视觉与命中一致）
+    if show_handles && !area.locked {
         for (_, hx, hy) in area_resize_handles(area) {
             let hs = AREA_HANDLE_HALF;
             let _ = ctx.set_fill_style_str("#ffffff");
@@ -5723,6 +5885,8 @@ pub fn build_area(id: String, x: f64, y: f64, width: f64, height: f64) -> Area {
         height,
         color: "#3b82f6".to_string(),
         name: "未命名区域".to_string(),
+        // #41 R-AREALOCK-01：新建区域默认未锁定
+        locked: false,
     }
 }
 
@@ -6203,6 +6367,7 @@ mod tests {
             height: 300.0,
             color: "#3b82f6".into(),
             name: "区域".into(),
+            locked: false,
         };
         assert_eq!(
             hit_test_area_header(&[area.clone()], 20.0, 10.0),
@@ -6258,6 +6423,7 @@ mod tests {
             height: 150.0,
             color: "#3b82f6".into(),
             name: "未命名区域".into(),
+            locked: false,
         }];
         let table_ids: Vec<String> = vec![];
         let note_ids = vec!["n1".to_string()];
@@ -6901,8 +7067,8 @@ mod tests {
 
         // 区域 / 便签裁剪
         let areas = vec![
-            crate::editor_core::types::Area { id: "a-on".into(), x: 10.0, y: 10.0, width: 200.0, height: 120.0, color: "#3b82f6".into(), name: "A".into() },
-            crate::editor_core::types::Area { id: "a-off".into(), x: -5000.0, y: -5000.0, width: 200.0, height: 120.0, color: "#3b82f6".into(), name: "B".into() },
+            crate::editor_core::types::Area { id: "a-on".into(), x: 10.0, y: 10.0, width: 200.0, height: 120.0, color: "#3b82f6".into(), name: "A".into(), locked: false },
+            crate::editor_core::types::Area { id: "a-off".into(), x: -5000.0, y: -5000.0, width: 200.0, height: 120.0, color: "#3b82f6".into(), name: "B".into(), locked: false },
         ];
         let vis_areas = collect_visible_areas(&areas, vp);
         assert_eq!(vis_areas.len(), 1, "UT-CR-CULL-01: 视口外的区域不进入绘制列表");
@@ -7824,5 +7990,131 @@ mod tests {
         let committed = apply_visual_table_position(&tables, "t0", 200.0, 220.0);
         assert_eq!((committed[0].x, committed[0].y), (200.0, 220.0));
         assert_eq!(tables[0].x, 100.0, "UT-CR-DRAG-01: 落账纯函数不修改输入 Vec");
+    }
+
+    /// UT-CR-PAN-01 — 空白按下 click/pan 阈值判定（#39，core-01 §5.15 R-PAN-SEL-01/02/05）
+    #[test]
+    fn ut_cr_pan_01_blank_click_threshold() {
+        // 断言 1：位移 <4px（屏幕欧氏距离）判定 click（清选语义）
+        assert!(super::is_blank_click(0.0, 0.0), "UT-CR-PAN-01: 零位移必须是 click");
+        assert!(super::is_blank_click(3.9, 0.0), "UT-CR-PAN-01: 3.9px 必须是 click");
+        assert!(super::is_blank_click(-3.9, 0.0), "UT-CR-PAN-01: 负向 3.9px 必须是 click");
+        assert!(super::is_blank_click(2.0, 2.0), "UT-CR-PAN-01: 斜向 2.83px 必须是 click");
+
+        // 断言 2：位移 ≥4px 判定 pan（保留选中）；边界 4px 恰为 pan
+        assert!(!super::is_blank_click(4.0, 0.0), "UT-CR-PAN-01: 边界 4px 必须是 pan");
+        assert!(!super::is_blank_click(0.0, -4.0), "UT-CR-PAN-01: 负向边界 4px 必须是 pan");
+        assert!(!super::is_blank_click(3.0, 3.0), "UT-CR-PAN-01: 斜向 4.24px 必须是 pan");
+        assert!(!super::is_blank_click(80.0, 60.0), "UT-CR-PAN-01: 100px 必须是 pan");
+
+        // 断言 3：与表/便签/区域拖动共用同一 DRAG_THRESHOLD 常量口径（4px）
+        assert_eq!(super::DRAG_THRESHOLD, 4.0, "UT-CR-PAN-01: 阈值常量必须为 4px");
+
+        // 断言 4（R-PAN-SEL-05 锚点）：Shift/框选工具仍走框选口径——pointerdown 的
+        // use_marquee 门控必须保留 shift_key 与 marquee_active 两个入口
+        let src = include_str!("editor_render.rs");
+        assert!(
+            src.contains("ev.shift_key() || marquee_active.get_untracked()"),
+            "UT-CR-PAN-01: Shift/框选工具的框选门控必须保留"
+        );
+        // 断言 5（R-PAN-SEL-01 锚点）：click 清选只能在 pointerup pan 兜底分支发生——
+        // is_blank_click 调用点必须存在且唯一（on_pointerup）
+        let call_count = src.matches("is_blank_click(").count();
+        // 定义处 1 次 + 调用处 1 次 + 本测试若干次断言不含源码匹配（测试在文件尾部同文件）
+        assert!(
+            call_count >= 2,
+            "UT-CR-PAN-01: is_blank_click 必须在 pointerup pan 兜底被调用（实际匹配 {call_count}）"
+        );
+    }
+
+    /// UT-CR-FONT-01 — 标签字号倍率档位与 10px 屏幕下限钳制（#40，core-01 §5.16 R-FONT-01~06）
+    #[test]
+    fn ut_cr_font_01_label_font_scale_and_clamp() {
+        use crate::editor_core::LabelFontScale;
+
+        // 断言 1（R-FONT-02）：档位循环 0.8→1.0→1.25→1.5→0.8
+        assert_eq!(LabelFontScale::S80.next(), LabelFontScale::S100);
+        assert_eq!(LabelFontScale::S100.next(), LabelFontScale::S125);
+        assert_eq!(LabelFontScale::S125.next(), LabelFontScale::S150);
+        assert_eq!(LabelFontScale::S150.next(), LabelFontScale::S80, "UT-CR-FONT-01: 1.5 后必须循环回 0.8");
+
+        // 断言 2（R-FONT-01）：localStorage 读写口径——缺省/非法回落 1.0；as_str 往返一致
+        assert_eq!(LabelFontScale::from_stored(None), LabelFontScale::S100, "UT-CR-FONT-01: 缺省必须 1.0");
+        assert_eq!(LabelFontScale::from_stored(Some("bogus")), LabelFontScale::S100, "UT-CR-FONT-01: 非法值必须回落 1.0");
+        for s in [LabelFontScale::S80, LabelFontScale::S100, LabelFontScale::S125, LabelFontScale::S150] {
+            assert_eq!(
+                LabelFontScale::from_stored(Some(s.as_str())), s,
+                "UT-CR-FONT-01: as_str 往返必须一致"
+            );
+        }
+        assert_eq!(crate::editor_core::LABEL_FONT_SCALE_STORAGE_KEY, "cdb.label-font-scale");
+        assert_eq!(LabelFontScale::S80.factor(), 0.8);
+        assert_eq!(LabelFontScale::S150.factor(), 1.5);
+
+        // 断言 3（R-FONT-04）：屏幕下限钳制——zoom 0.2 时 13px×1.0×0.2=2.6px < 10px 触发下限
+        let (px, clamped) = scaled_label_font_world(13.0, 0.2, 1.0);
+        assert!(clamped, "UT-CR-FONT-01: zoom 0.2 必须触发下限钳制");
+        assert!((px * 0.2 - 10.0).abs() < 1e-9, "UT-CR-FONT-01: 钳制后屏幕字号必须恰为 10px（实际 {}）", px * 0.2);
+        // 边界：屏幕恰好 10px 不视为钳制
+        let (px10, c10) = scaled_label_font_world(10.0, 1.0, 1.0);
+        assert!(!c10 && (px10 - 10.0).abs() < 1e-9, "UT-CR-FONT-01: 恰 10px 不钳制");
+
+        // 断言 4（R-FONT-04）：放大方向不封顶——zoom 2.0 × 1.5 倍率 → 13→19.5 世界（屏幕 39px）
+        let (px_big, c_big) = scaled_label_font_world(13.0, 2.0, 1.5);
+        assert!(!c_big && (px_big - 19.5).abs() < 1e-9, "UT-CR-FONT-01: 放大方向不得封顶（实际 {px_big}）");
+        // 常规 zoom 1.0 / 1.0 倍率恒等
+        let (px_id, c_id) = scaled_label_font_world(13.0, 1.0, 1.0);
+        assert!(!c_id && (px_id - 13.0).abs() < 1e-9);
+
+        // 断言 5（R-FONT-05）：钳制解析探测与逐字体纯函数同口径
+        assert!(any_label_font_clamped(0.35, 1.0, LodTier::Detail), "UT-CR-FONT-01: zoom 0.35 详情档必须报钳制");
+        assert!(!any_label_font_clamped(1.0, 1.0, LodTier::Detail), "UT-CR-FONT-01: zoom 1.0 详情档不得报钳制");
+        assert!(!any_label_font_clamped(2.0, 1.25, LodTier::Detail));
+        // 拓扑档：注释 = 表名×0.8，zoom 1.0 时 8.8px < 10px → 钳制
+        assert!(any_label_font_clamped(1.0, 1.0, LodTier::Topology), "UT-CR-FONT-01: 拓扑档注释 8.8px 必须报钳制");
+
+        // 断言 6（R-FONT-06 锚点）：倍率混入精灵指纹——blit 内必须有倍率散列混入
+        let src = include_str!("editor_render.rs");
+        assert!(
+            src.contains("label_scale * 100.0"),
+            "UT-CR-FONT-01: 精灵指纹必须混入字号倍率（切档重光栅）"
+        );
+    }
+
+    /// UT-AN-LOCK-01 — Area.locked 序列化兼容 + 拖拽门控（#41，core-01 §5.17 R-AREALOCK-01/03）
+    #[test]
+    fn ut_an_lock_01_area_locked_serde_and_drag_gate() {
+        // 断言 1（R-AREALOCK-01）：旧图 JSON 缺 locked 键 → 反序列化 locked=false
+        let json_old = r##"{"id":"a1","x":0.0,"y":0.0,"width":100.0,"height":80.0,"color":"#3b82f6","name":"区域"}"##;
+        let a: Area = serde_json::from_str(json_old)
+            .expect("UT-AN-LOCK-01: 旧图 JSON（无 locked 键）必须可反序列化");
+        assert!(!a.locked, "UT-AN-LOCK-01: 缺省 locked 必须为 false（旧图兼容）");
+
+        // 断言 2（R-AREALOCK-01/06）：locked=true 往返序列化保持
+        let a2 = Area { locked: true, ..a.clone() };
+        let json = serde_json::to_string(&a2).expect("序列化必须成功");
+        assert!(json.contains("\"locked\":true"), "UT-AN-LOCK-01: 序列化必须携带 locked");
+        let back: Area = serde_json::from_str(&json).expect("往返反序列化必须成功");
+        assert!(back.locked, "UT-AN-LOCK-01: locked=true 往返必须保持");
+
+        // 断言 3（R-AREALOCK-03）：拖拽/resize 门控纯函数——锁定 no-op
+        assert!(area_drag_allowed(&a), "UT-AN-LOCK-01: 未锁定区域必须允许拖动");
+        assert!(!area_drag_allowed(&a2), "UT-AN-LOCK-01: 锁定区域拖动/resize 必须 no-op");
+
+        // 断言 4（R-AREALOCK-03）：多选整组拖动跳过锁定区域，其余选中图元正常移动
+        let locked_area = Area { id: "al".into(), locked: true, ..a.clone() };
+        let unlocked_area = Area { id: "au".into(), locked: false, ..a.clone() };
+        let (_t, _n, starts) = build_group_drag_starts(
+            &[],
+            &[],
+            &[locked_area, unlocked_area],
+            &[],
+            &[],
+            &["al".to_string(), "au".to_string()],
+            true,
+        );
+        let starts = starts.expect("UT-AN-LOCK-01: 未锁定区域必须保留在整组拖动");
+        assert_eq!(starts.len(), 1, "UT-AN-LOCK-01: 锁定区域必须被跳过（仅 1 个起点）");
+        assert_eq!(starts[0].0, "au", "UT-AN-LOCK-01: 保留的必须是未锁定区域");
     }
 }

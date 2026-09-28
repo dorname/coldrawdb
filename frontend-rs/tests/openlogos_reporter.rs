@@ -77,6 +77,8 @@ const UT_PASS_IDS: &[&str] = &[
     // （ST-KB-SEL-01 由 parity-d 上报）
     "UT-KB-05",
     "UT-KB-06",
+    // fix-issues-38-41 / #38：pan/zoom 与撤销栈解耦锚点（ST-KB-UNDO-01 由 parity-d 上报）
+    "UT-KB-07",
     // S04 invite 公开基址
     "UT-S04-18",
     // core-UI-modals + modals-2 + KB (MM)
@@ -263,6 +265,12 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-S07-12",
     // fix-open-issues-19-22（#19/#20/#21/#22；tests/fix_issues_19_22_ut.rs 自行上报）
     "UT-CR-CLICK-01",
+    // fix-issues-38-41 / #39：空白 click/pan 4px 阈值判定（ST-CR-PAN-02 由 parity-d 上报）
+    "UT-CR-PAN-01",
+    // fix-issues-38-41 / #40：标签字号倍率档位 + 10px 屏幕下限钳制（ST-CR-FONT-01 由 parity-d 上报）
+    "UT-CR-FONT-01",
+    // fix-issues-38-41 / #41：Area.locked 缺省兼容 + 拖拽门控（ST-AN-03 由 parity-d 上报）
+    "UT-AN-LOCK-01",
     "UT-CR-WIDTH-01",
     "UT-CR-WIDTH-02",
     "UT-CR-WIDTH-03",

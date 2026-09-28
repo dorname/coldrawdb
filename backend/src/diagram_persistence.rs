@@ -164,6 +164,10 @@ pub struct AreaDto {
     pub color: String,
     #[serde(default)]
     pub name: String,
+    /// fix-issues-38-41-canvas-interaction（issue #41，R-AREALOCK-01）：区域锁定；
+    /// diagram JSON 缺省 false，旧图兼容
+    #[serde(default)]
+    pub locked: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -375,7 +379,8 @@ async fn load_reference<C: ConnectionTrait>(conn: &C, ref_id: &str) -> Result<Op
 
 async fn load_area<C: ConnectionTrait>(conn: &C, area_id: &str) -> Result<Option<AreaDto>, DrawDBError> {
     let q = format!(
-        "SELECT id, name, x, y, width, height, color FROM area WHERE id='{}' AND (is_deleted=0 OR is_deleted IS NULL) LIMIT 1",
+        // #41 R-AREALOCK-06：locked 列随迁移 0012 提供（启动期自动执行）
+        "SELECT id, name, x, y, width, height, color, locked FROM area WHERE id='{}' AND (is_deleted=0 OR is_deleted IS NULL) LIMIT 1",
         esc(area_id)
     );
     let row = conn
@@ -392,6 +397,8 @@ async fn load_area<C: ConnectionTrait>(conn: &C, area_id: &str) -> Result<Option
         width: row_f64(&row, "width"),
         height: row_f64(&row, "height"),
         color: row_str(&row, "color").unwrap_or_default(),
+        // 防御：旧库未迁移时缺列回落 false（正常路径启动迁移已保证列存在）
+        locked: row.try_get::<i64>("", "locked").unwrap_or(0) != 0,
     }))
 }
 
@@ -640,7 +647,7 @@ pub async fn save_diagram<C: ConnectionTrait + TransactionTrait>(
 
     for area in &diagram.areas {
         let ins_a = format!(
-            "INSERT INTO area(id, name, x, y, width, height, color, is_deleted) VALUES('{}','{}',{},{},{},{},{},0)",
+            "INSERT INTO area(id, name, x, y, width, height, color, is_deleted, locked) VALUES('{}','{}',{},{},{},{},{},0,{})",
             esc(&area.id),
             esc(&area.name),
             sql_num(area.x),
@@ -648,6 +655,8 @@ pub async fn save_diagram<C: ConnectionTrait + TransactionTrait>(
             sql_num(area.width),
             sql_num(area.height),
             sql_opt_str(Some(area.color.as_str())),
+            // #41 R-AREALOCK-06：locked 随 PUT 快照通路落库
+            if area.locked { 1 } else { 0 },
         );
         tx.execute(Statement::from_sql_and_values(DatabaseBackend::Sqlite, ins_a, vec![]))
             .await?;

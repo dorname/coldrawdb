@@ -1619,6 +1619,7 @@ mod tests {
             height: 10.0,
             color: "#0ff".into(),
             name: "a".into(),
+            locked: false,
         }
     }
 

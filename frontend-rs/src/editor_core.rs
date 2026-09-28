@@ -159,6 +159,10 @@ pub mod types {
         pub height: f64,
         pub color: String,
         pub name: String,
+        /// fix-issues-38-41-canvas-interaction（issue #41，core-01 §5.17 R-AREALOCK-01）：
+        /// 区域锁定（防误拖）；diagram JSON 缺省 false，旧图兼容
+        #[serde(default)]
+        pub locked: bool,
     }
 
     /// 后端 dialect（与后端 `Database` 枚举对齐；详 backend/src/diagrams_v1.rs:96）。
@@ -412,6 +416,101 @@ pub fn set_view_dimension(store: &EditorStore, dim: ViewDimension) {
     }
 }
 
+/// fix-issues-38-41-canvas-interaction（issue #40，core-01 §5.16 R-FONT-01）：
+/// 画布标签字号倍率本机偏好存储键（localStorage，不写入图表文档、协作不同步）。
+pub const LABEL_FONT_SCALE_STORAGE_KEY: &str = "cdb.label-font-scale";
+
+/// R-FONT-01：标签字号倍率档位——0.8 / 1.0（默认）/ 1.25 / 1.5，循环切换。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum LabelFontScale {
+    S80,
+    S100,
+    S125,
+    S150,
+}
+
+impl LabelFontScale {
+    /// 解析 localStorage 存储值；缺省/非法回落 1.0（规格默认）。
+    pub fn from_stored(stored: Option<&str>) -> Self {
+        match stored {
+            Some("0.8") => Self::S80,
+            Some("1.25") => Self::S125,
+            Some("1.5") => Self::S150,
+            _ => Self::S100,
+        }
+    }
+
+    /// 存入 localStorage 的规范值。
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::S80 => "0.8",
+            Self::S100 => "1.0",
+            Self::S125 => "1.25",
+            Self::S150 => "1.5",
+        }
+    }
+
+    /// 数值倍率（渲染侧乘法因子）。
+    pub fn factor(self) -> f64 {
+        match self {
+            Self::S80 => 0.8,
+            Self::S100 => 1.0,
+            Self::S125 => 1.25,
+            Self::S150 => 1.5,
+        }
+    }
+
+    /// R-FONT-02：循环 0.8→1.0→1.25→1.5→0.8。
+    pub fn next(self) -> Self {
+        match self {
+            Self::S80 => Self::S100,
+            Self::S100 => Self::S125,
+            Self::S125 => Self::S150,
+            Self::S150 => Self::S80,
+        }
+    }
+
+    /// 状态指示文案（「字号：{label}」）。
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::S80 => "80%",
+            Self::S100 => "100%",
+            Self::S125 => "125%",
+            Self::S150 => "150%",
+        }
+    }
+}
+
+/// 从 localStorage 读字号倍率（native 测试环境无 window → 默认 1.0）。
+pub fn initial_label_font_scale() -> LabelFontScale {
+    // 同 initial_view_dimension：web_sys::window() 在 non-wasm target 会 panic，必须 cfg 守卫
+    #[cfg(target_arch = "wasm32")]
+    {
+        let stored = web_sys::window()
+            .and_then(|w| w.local_storage().ok().flatten())
+            .and_then(|s| s.get_item(LABEL_FONT_SCALE_STORAGE_KEY).ok().flatten());
+        LabelFontScale::from_stored(stored.as_deref())
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        LabelFontScale::S100
+    }
+}
+
+/// R-FONT-01/02：切换/设置字号倍率并持久化（wasm 写 localStorage；native 仅置信号）。
+/// FloatingControls 循环按钮入口专用；纯视图偏好，不进撤销栈、不触发保存。
+pub fn set_label_font_scale(store: &EditorStore, scale: LabelFontScale) {
+    store.label_font_scale.set(scale);
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(local) = web_sys::window()
+            .and_then(|w| w.local_storage().ok().flatten())
+        {
+            let _ = local.set_item(LABEL_FONT_SCALE_STORAGE_KEY, scale.as_str());
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct EditorStore {
     pub tables: RwSignal<Vec<Table>>,
@@ -431,6 +530,9 @@ pub struct EditorStore {
     /// 画布表/字段维度（视图偏好，不落库 diagram 数据、不进 CommandStack）。
     /// 初值读 localStorage `cdb.view-dimension`，缺省/非法回落 `Field`（字段维度）。
     pub view_dimension: RwSignal<ViewDimension>,
+    /// fix-issues-38-41-canvas-interaction（issue #40，R-FONT-01）：画布标签字号倍率
+    /// （本机视图偏好；不落库、不进撤销栈、不触发保存）。
+    pub label_font_scale: RwSignal<LabelFontScale>,
 }
 
 /// 从现有 tables/fields/references/areas/notes 中解析最大数字 id，
@@ -540,6 +642,7 @@ impl EditorStore {
             dictionaries: create_rw_signal(Vec::new()),
             comment_display: create_rw_signal(initial_comment_display()),
             view_dimension: create_rw_signal(initial_view_dimension()),
+            label_font_scale: create_rw_signal(initial_label_font_scale()),
         }
     }
 
@@ -1558,11 +1661,13 @@ mod tests {
                     id: "a1".into(),
                     x: 0.0, y: 0.0, width: 100.0, height: 100.0,
                     color: "#000".into(), name: "Area 1".into(),
+                    locked: false,
                 },
                 Area {
                     id: "a2".into(),
                     x: 200.0, y: 200.0, width: 50.0, height: 50.0,
                     color: "#111".into(), name: "Area 2".into(),
+                    locked: false,
                 },
             ],
             dictionaries: Vec::new(),
@@ -1647,6 +1752,79 @@ mod tests {
         let popped = stack.undo();
         assert!(popped.is_none(), "UT-MM-15: 空 undo 栈应返回 None");
         assert_eq!(stack.redo.len(), 0, "UT-MM-15: 空 undo 栈调用后 redo 仍为空");
+    }
+
+    /// UT-KB-07 — pan/zoom 与撤销栈解耦（issue #38，core-01 §5.14 R-PAN-UNDO-01~04）。
+    ///
+    /// #38 实证：现行构建（含 fix-issues-36-37 的 gloo passive 监听器修复 a3a541a6）
+    /// 下 ST-KB-UNDO-01 不可复现；本用例作为「pan/zoom 代码路径永不触碰 CommandStack」
+    /// 的源码锚点 + 栈语义纯函数锚点，防止未来回归击穿快捷键链路。
+    #[test]
+    fn test_pan_zoom_never_touch_command_stack_ut_kb_07() {
+        let render_src = include_str!("editor_render.rs");
+
+        // 断言 1（R-PAN-UNDO-01 锚点）：pan pointermove 分支（pending_transform 落账块）
+        // 内不得出现任何撤销栈写入
+        let pan_marker = "// R-PERF-05：pan 与 wheel 共用 pending_transform 通道";
+        let pan_start = render_src
+            .find(pan_marker)
+            .expect("UT-KB-07: pan 落账块锚点注释必须存在");
+        let pan_end = render_src[pan_start..]
+            .find("schedule_paint();")
+            .map(|i| pan_start + i)
+            .expect("UT-KB-07: pan 落账块必须以 schedule_paint 收尾");
+        let pan_block = &render_src[pan_start..pan_end];
+        for banned in ["record(", "Command::", "CommandStack"] {
+            assert!(
+                !pan_block.contains(banned),
+                "UT-KB-07: pan 路径禁止触碰撤销栈（发现 {banned}）"
+            );
+        }
+
+        // 断言 2（R-PAN-UNDO-01 锚点）：wheel 缩放处理器同样不得触碰撤销栈
+        let wheel_start = render_src
+            .find("let on_wheel = {")
+            .expect("UT-KB-07: on_wheel 处理器必须存在");
+        let wheel_end = render_src[wheel_start..]
+            .find("on:wheel=on_wheel")
+            .map(|i| wheel_start + i)
+            .expect("UT-KB-07: on_wheel 必须挂载到 canvas");
+        let wheel_block = &render_src[wheel_start..wheel_end];
+        for banned in ["record(", "Command::", "CommandStack"] {
+            assert!(
+                !wheel_block.contains(banned),
+                "UT-KB-07: zoom 路径禁止触碰撤销栈（发现 {banned}）"
+            );
+        }
+
+        // 断言 3（R-PAN-UNDO-02/03 纯函数口径）：建表入栈 → pan 序列对栈零操作
+        // （由断言 1/2 保证）→ undo/redo 往返无损
+        let mut stack = CommandStack::new();
+        let cmd = Command::AddTable(Table {
+            id: "t-kb07".into(),
+            name: "orders".into(),
+            x: 0.0,
+            y: 0.0,
+            color: "".into(),
+            comment: "".into(),
+            fields: Vec::new(),
+            indices: Vec::new(),
+            width: None,
+            min_height: None,
+        });
+        stack.undo.push(cmd.clone());
+        // 模拟多次 pan/zoom：栈长度不变（pan/zoom 不产生任何栈写入）
+        let (undo_before, redo_before) = (stack.undo_len(), stack.redo_len());
+        assert_eq!((undo_before, redo_before), (1, 0), "UT-KB-07: pan 前栈基线");
+        // pan 后 Ctrl+Z / Ctrl+Y 语义不变
+        assert_eq!(stack.undo(), Some(cmd.clone()), "UT-KB-07: pan 后 undo 必须弹出建表命令");
+        assert_eq!(stack.redo(), Some(cmd), "UT-KB-07: undo 后 redo 必须可重做");
+        assert_eq!((stack.undo_len(), stack.redo_len()), (1, 0), "UT-KB-07: 往返后栈复原");
+
+        // 断言 4：空栈在 pan 后按 Ctrl+Z/Y 幂等（不 panic、不自增）
+        let mut empty = CommandStack::new();
+        assert!(empty.undo().is_none() && empty.redo().is_none());
+        assert_eq!((empty.undo_len(), empty.redo_len()), (0, 0), "UT-KB-07: 空栈 undo/redo 幂等");
     }
 
     #[test]

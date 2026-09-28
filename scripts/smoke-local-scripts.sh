@@ -90,7 +90,7 @@ fi
 
 if [[ "$services_ok" -ne 1 ]]; then
     # services 起不来 → 全部用例都 fail
-    for id in SMOKE-core-01 SMOKE-core-02 SMOKE-core-03 SMOKE-core-04 SMOKE-core-05 SMOKE-core-06 SMOKE-core-07 SMOKE-core-08; do
+    for id in SMOKE-core-01 SMOKE-core-02 SMOKE-core-03 SMOKE-core-04 SMOKE-core-05 SMOKE-core-06 SMOKE-core-07 SMOKE-core-08 SMOKE-core-09; do
         run_smoke_case "$id" "fail" 0 "start-local.sh failed; services unavailable"
     done
     bash "$STOP_SCRIPT" >/dev/null 2>&1 || true
@@ -310,6 +310,99 @@ if [[ -n "$a08_bad" ]]; then
 fi
 a08_end=$(date +%s%3N)
 run_smoke_case "SMOKE-core-08" "$a08_status" "$((a08_end - a08_start))" "$a08_note"
+
+# ─── Stage 6d: SMOKE-core-09 区域锁定持久化（fix-issues-38-41 / #41，规格 §8.8）───
+# migration 0012_area_lock 生效 + locked 经 PUT 快照通路落库往返（R-AREALOCK-01/06）。
+al09_start=$(date +%s%3N)
+al09_status="pass"
+al09_note="area.locked persisted via PUT snapshot round-trip (migration 0012)"
+al09_id=""
+
+# 1) 创建 diagram
+al09_create="$(curl --silent --max-time 5 -X POST -H 'Content-Type: application/json' "${AUTH_HEADER[@]}" \
+    -d '{"name":"smoke_area_lock"}' -w '\n%{http_code}' \
+    "http://127.0.0.1:${BACKEND_PORT}/api/v1/diagrams" 2>&1)"
+al09_create_http="$(printf '%s' "$al09_create" | tail -n1)"
+al09_create_body="$(printf '%s' "$al09_create" | sed '$d')"
+if [[ "$al09_create_http" =~ ^2[0-9][0-9]$ ]]; then
+    al09_id="$(AL09_RESP="$al09_create_body" python3 -c 'import os,json
+print((json.loads(os.environ["AL09_RESP"]).get("data") or {}).get("id") or "")' 2>/dev/null)"
+fi
+if [[ -z "$al09_id" ]]; then
+    al09_status="fail"
+    al09_note="POST /diagrams failed (http=${al09_create_http}, body=${al09_create_body:0:160})"
+fi
+
+# 2) PUT 快照 areas[0].locked=true → GET 读回断言 true
+if [[ "$al09_status" == "pass" ]]; then
+    al09_get0="$(curl --silent --max-time 5 "${AUTH_HEADER[@]}" \
+        "http://127.0.0.1:${BACKEND_PORT}/api/v1/diagrams/${al09_id}" 2>/dev/null)"
+    al09_rev="$(AL09_GET="$al09_get0" python3 -c 'import os,json
+print((json.loads(os.environ["AL09_GET"]).get("data") or {}).get("revision") or 0)' 2>/dev/null)"
+    al09_put1="$(curl --silent --max-time 5 -X PUT -H 'Content-Type: application/json' "${AUTH_HEADER[@]}" \
+        -d "{\"expected_revision\":${al09_rev:-1},\"diagram\":{\"id\":\"${al09_id}\",\"name\":\"smoke_area_lock\",\"tables\":[],\"references\":[],\"notes\":[],\"areas\":[{\"id\":\"sa1\",\"x\":0,\"y\":0,\"width\":100,\"height\":80,\"name\":\"锁区\",\"locked\":true}]}}" \
+        -w '\n%{http_code}' "http://127.0.0.1:${BACKEND_PORT}/api/v1/diagrams/${al09_id}" 2>&1)"
+    al09_put1_http="$(printf '%s' "$al09_put1" | tail -n1)"
+    if [[ ! "$al09_put1_http" =~ ^2[0-9][0-9]$ ]]; then
+        al09_status="fail"
+        al09_note="PUT locked=true failed (http=${al09_put1_http})"
+    else
+        al09_get1="$(curl --silent --max-time 5 "${AUTH_HEADER[@]}" \
+            "http://127.0.0.1:${BACKEND_PORT}/api/v1/diagrams/${al09_id}" 2>/dev/null)"
+        al09_a1="$(AL09_GET="$al09_get1" python3 -c 'import os,json
+d=(json.loads(os.environ["AL09_GET"]).get("data") or {})
+areas=d.get("areas") or []
+if len(areas)!=1:
+    print(f"areas.length={len(areas)}"); raise SystemExit(1)
+if areas[0].get("locked") is not True:
+    print(f"locked={areas[0].get("locked")!r}"); raise SystemExit(1)
+print("ok")' 2>&1)"
+        if [[ "$al09_a1" != "ok" ]]; then
+            al09_status="fail"
+            al09_note="GET after PUT locked=true assert failed: ${al09_a1}"
+        fi
+    fi
+fi
+
+# 3) PUT locked=false 往返 → GET 断言 false
+if [[ "$al09_status" == "pass" ]]; then
+    al09_rev2="$(AL09_GET="$al09_get1" python3 -c 'import os,json
+print((json.loads(os.environ["AL09_GET"]).get("data") or {}).get("revision") or 1)' 2>/dev/null)"
+    al09_put2="$(curl --silent --max-time 5 -X PUT -H 'Content-Type: application/json' "${AUTH_HEADER[@]}" \
+        -d "{\"expected_revision\":${al09_rev2:-2},\"diagram\":{\"id\":\"${al09_id}\",\"name\":\"smoke_area_lock\",\"tables\":[],\"references\":[],\"notes\":[],\"areas\":[{\"id\":\"sa1\",\"x\":0,\"y\":0,\"width\":100,\"height\":80,\"name\":\"锁区\",\"locked\":false}]}}" \
+        -w '\n%{http_code}' "http://127.0.0.1:${BACKEND_PORT}/api/v1/diagrams/${al09_id}" 2>&1)"
+    al09_put2_http="$(printf '%s' "$al09_put2" | tail -n1)"
+    if [[ ! "$al09_put2_http" =~ ^2[0-9][0-9]$ ]]; then
+        al09_status="fail"
+        al09_note="PUT locked=false failed (http=${al09_put2_http})"
+    else
+        al09_get2="$(curl --silent --max-time 5 "${AUTH_HEADER[@]}" \
+            "http://127.0.0.1:${BACKEND_PORT}/api/v1/diagrams/${al09_id}" 2>/dev/null)"
+        al09_a2="$(AL09_GET="$al09_get2" python3 -c 'import os,json
+d=(json.loads(os.environ["AL09_GET"]).get("data") or {})
+areas=d.get("areas") or []
+if len(areas)!=1 or areas[0].get("locked") is not False:
+    print(f"locked round-trip failed: {areas!r}"); raise SystemExit(1)
+print("ok")' 2>&1)"
+        if [[ "$al09_a2" != "ok" ]]; then
+            al09_status="fail"
+            al09_note="GET after PUT locked=false assert failed: ${al09_a2}"
+        fi
+    fi
+fi
+
+# 4) 清理：DELETE 图
+if [[ -n "$al09_id" ]]; then
+    al09_del="$(curl --silent --max-time 5 -o /dev/null -w '%{http_code}' -X DELETE "${AUTH_HEADER[@]}" \
+        "http://127.0.0.1:${BACKEND_PORT}/api/v1/diagrams/${al09_id}" 2>&1)"
+    if [[ ! "$al09_del" =~ ^2[0-9][0-9]$ && "$al09_status" == "pass" ]]; then
+        al09_status="fail"
+        al09_note="cleanup DELETE failed (http=${al09_del})"
+    fi
+fi
+
+al09_end=$(date +%s%3N)
+run_smoke_case "SMOKE-core-09" "$al09_status" "$((al09_end - al09_start))" "$al09_note"
 
 # ─── Stage 7: stop services + SMOKE-core-06 ───────────────────────────────
 stop_start=$(date +%s%3N)

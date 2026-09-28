@@ -12,11 +12,11 @@
 
 ## [code] 代码实现
 
-- [ ] C1 #38：ST-KB-UNDO-01 先行复现（红）→ 根因定位 → 修复 → UT-KB-07 + ST-KB-UNDO-01 转绿 + reporter（本批覆盖：UT-KB-07 / ST-KB-UNDO-01）
-- [ ] C2 #39：空白 pointerdown/pointerup 阈值化（4px）+ pan 保留选中；UT-CR-PAN-01 / ST-CR-PAN-02 + reporter
-- [ ] C3 #40：label-font-scale 设置（localStorage + FloatingControls 入口）+ draw 字号钳制；UT-CR-FONT-01 / ST-CR-FONT-01 + reporter；探针 __cdb_lod_probe 增补 label_font_scale / min_font_clamped
-- [ ] C4 #41：Area.locked 全链路（前端 struct/拖拽门控/右键菜单/Inspector/视觉提示 + 后端 AreaDto + migration 0012）；UT-AN-LOCK-01 / ST-AN-03 + reporter
-- [ ] C5 smoke 脚本增补区域锁定持久化用例（对齐 D4）
+- [x] C1 #38：ST-KB-UNDO-01 先行复现（**绿，不可复现**——现行构建已含 fix-issues-36-37 的 gloo passive 监听器修复 a3a541a6，根因已被覆盖）→ 交付回归锚点：UT-KB-07（pan/zoom 零触碰撤销栈锚点 + 栈语义纯函数）+ ST-KB-UNDO-01 常绿 + reporter
+- [x] C2 #39：空白 pointerdown 不再立即清选，pointerup 位移 <4px（`is_blank_click`）才清选、≥4px pan 保留选中；UT-CR-PAN-01（lib PASS）/ ST-CR-PAN-02（e2e PASS：点表头选中 → pan 保留 → 单击清选 → Shift 框选恢复）+ reporter
+- [x] C3 #40：label-font-scale 设置（localStorage + FloatingControls 入口）+ draw 字号钳制；UT-CR-FONT-01 / ST-CR-FONT-01 + reporter；探针 __cdb_lod_probe 增补 label_font_scale / min_font_clamped
+- [x] C4 #41：Area.locked 全链路（前端 struct/拖拽门控/右键菜单/Inspector/视觉提示 + 后端 AreaDto + migration 0012）；UT-AN-LOCK-01 / ST-AN-03 + reporter
+- [x] C5 smoke 脚本增补区域锁定持久化用例（对齐 D4）
 
 ## [deploy] 部署任务
 

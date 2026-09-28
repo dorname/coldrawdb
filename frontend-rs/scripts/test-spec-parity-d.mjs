@@ -2566,6 +2566,253 @@ try {
     assert.equal(table2.x, 340, "松手后 x 必须吸附为 20 的倍数（332→340）");
     assert.equal(table2.y, 240, "松手后 y 必须吸附为 20 的倍数（243→240）");
   });
+
+  // ─── ST-KB-UNDO-01：pan 后 Ctrl+Z / Ctrl+Y 仍生效（fix-issues-38-41 / #38，§5.14）───
+  await run(["ST-KB-UNDO-01"], "拖动画布后撤销/重做快捷键不失效", async page => {
+    await installApi(page);
+    await login(page);
+    await createRoomAndEnter(page);
+    await page.waitForFunction(() => !!window.__cdb_lod_probe, null, { timeout: 8_000 });
+    const tablesN = () => page.evaluate(() => JSON.parse(window.__cdb_lod_probe).tables_n);
+    const waitTablesN = (want) => page.waitForFunction(
+      w => JSON.parse(window.__cdb_lod_probe)?.tables_n === w, want, { timeout: 6_000, polling: 100 },
+    );
+
+    // GIVEN：空画布（0 表）
+    assert.equal(await tablesN(), 0, "基线应为 0 表");
+
+    // WHEN 1：T 建表（undoable op，Command::AddTable 入栈）
+    await page.keyboard.press("t");
+    await page.locator('[data-testid="inspector-table-name"]').waitFor();
+    await waitSaved(page);
+    await waitTablesN(1);
+
+    // WHEN 2：空白拖动 pan（位移 ≥50px，纯视图操作）
+    const panOnce = async () => {
+      const blank = await canvasPoint(page, { x: 900, y: 600 });
+      await page.mouse.move(blank.x, blank.y);
+      await page.mouse.down();
+      await page.mouse.move(blank.x - 80, blank.y - 60, { steps: 5 });
+      await page.mouse.up();
+      await page.waitForTimeout(250); // rAF 落账
+    };
+    await panOnce();
+
+    // THEN（R-PAN-UNDO-02）：pan 后 Ctrl+Z 撤销建表
+    await page.keyboard.press("Control+z");
+    await waitTablesN(0);
+    // Ctrl+Y 重做
+    await page.keyboard.press("Control+y");
+    await waitTablesN(1);
+    // 再 pan 一次 → Ctrl+Z 仍生效（R-PAN-UNDO-04 回归锚点）
+    await panOnce();
+    await page.keyboard.press("Control+z");
+    await waitTablesN(0);
+  });
+
+  // ─── ST-CR-PAN-02：选中表后 pan 保留选中 / 空白单击清选（fix-issues-38-41 / #39，§5.15）───
+  await run(["ST-CR-PAN-02"], "选中表时平移画布保持选中、空白单击才清选", async page => {
+    await installApi(page);
+    await login(page);
+    await createRoomAndEnter(page);
+    await page.waitForFunction(() => !!window.__cdb_hl_probe && !!window.__cdb_lod_probe, null, { timeout: 8_000 });
+    const hl = () => page.evaluate(() => JSON.parse(window.__cdb_hl_probe));
+
+    // GIVEN：T 建表后点击表头完成画布选中（render 层 selected_id 由画布点击驱动，
+    // T 建表只开 Inspector 不置 selected_id）
+    await page.keyboard.press("t");
+    const inspector = page.locator('[data-testid="inspector-table-name"]');
+    await inspector.waitFor();
+    await waitSaved(page);
+    const header = await canvasPoint(page, { x: 295, y: 166.5 }); // 表1 落位 (180,145) 表头中心
+    await page.mouse.move(header.x, header.y);
+    await page.mouse.down();
+    await page.mouse.up();
+    await page.waitForFunction(
+      () => JSON.parse(window.__cdb_hl_probe)?.sel_table === true,
+      null, { timeout: 6_000, polling: 100 },
+    );
+
+    // WHEN 1：空白拖动 pan（位移 100px ≥ 4px 阈值）
+    const blank = await canvasPoint(page, { x: 900, y: 600 });
+    await page.mouse.move(blank.x, blank.y);
+    await page.mouse.down();
+    await page.mouse.move(blank.x - 80, blank.y - 60, { steps: 5 });
+    await page.mouse.up();
+    await page.waitForTimeout(250); // rAF 落账
+
+    // THEN（R-PAN-SEL-03/04）：pan 保留选中——Inspector 仍在、sel_table 仍 true
+    assert.equal(await inspector.isVisible(), true, "pan 后 Inspector 应保持显示（R-PAN-SEL-04）");
+    const h1 = await hl();
+    assert.equal(h1.sel_table, true, "pan 后 sel_table 应保持 true（R-PAN-SEL-03）");
+
+    // WHEN 2：空白单击（零位移 < 4px → click 语义；取 canvas 内安全空白点，防越出画布）
+    const blank2 = await canvasPoint(page, { x: 950, y: 580 });
+    await page.mouse.move(blank2.x, blank2.y);
+    await page.mouse.down();
+    await page.mouse.up();
+    await page.waitForTimeout(250);
+
+    // THEN（R-PAN-SEL-02）：单击清选——sel_table/any_sel 均 false，Inspector 关闭
+    await page.waitForFunction(
+      () => {
+        const p = JSON.parse(window.__cdb_hl_probe);
+        return p && p.sel_table === false && p.any_sel === false;
+      },
+      null, { timeout: 6_000, polling: 100 },
+    );
+    assert.equal(await inspector.isVisible().catch(() => false), false, "单击空白后 Inspector 应关闭（R-PAN-SEL-02）");
+
+    // WHEN 3：Shift+框选回该表（R-PAN-SEL-05：框选口径不受 #39 影响）
+    // canvasPoint 为 canvas 内屏幕像素（不做世界换算）；pan(-80,-60) 后表约占屏幕
+    // (100..330, 85..190)，框选矩形取 (60,60)-(560,400) 完全覆盖
+    const tl = await canvasPoint(page, { x: 60, y: 60 });
+    const br = await canvasPoint(page, { x: 560, y: 400 });
+    await page.keyboard.down("Shift");
+    await page.mouse.move(tl.x, tl.y);
+    await page.mouse.down();
+    await page.mouse.move(br.x, br.y, { steps: 5 });
+    await page.mouse.up();
+    await page.keyboard.up("Shift");
+    await page.waitForTimeout(250);
+    const h3 = await hl();
+    assert.equal(h3.multi_n >= 1 || h3.sel_table, true, "Shift 框选应重新选中该表（R-PAN-SEL-05）");
+  });
+
+  // ─── ST-CR-FONT-01：标签字号倍率循环 + 持久化 + 低 zoom 钳制（fix-issues-38-41 / #40，§5.16）───
+  await run(["ST-CR-FONT-01"], "画布标签字号倍率可调且屏幕最小 10px 钳制", async page => {
+    await installApi(page);
+    await login(page);
+    await createRoomAndEnter(page);
+    await page.waitForFunction(() => !!window.__cdb_lod_probe, null, { timeout: 8_000 });
+    const lod = () => page.evaluate(() => JSON.parse(window.__cdb_lod_probe));
+
+    // GIVEN：建表（有标签文本可渲染）
+    await page.keyboard.press("t");
+    await page.locator('[data-testid="inspector-table-name"]').waitFor();
+    await waitSaved(page);
+
+    // 基线（R-FONT-01）：默认倍率 1.0，详情档表名世界字号 13px
+    const p0 = await lod();
+    assert.equal(p0.label_font_scale, 1.0, "默认倍率必须为 1.0（R-FONT-01）");
+    assert.ok(Math.abs(p0.label_font_world - 13.0) < 1e-6, `基线表名世界字号必须 13px（实际 ${p0.label_font_world}）`);
+
+    // WHEN 1：点击字号按钮 → 1.25（R-FONT-02 循环入口）
+    const btn = page.locator('[data-testid="canvas-font-scale"]');
+    await btn.click();
+    await page.waitForFunction(
+      () => JSON.parse(window.__cdb_lod_probe)?.label_font_scale === 1.25,
+      null, { timeout: 6_000, polling: 100 },
+    );
+    assert.equal(await btn.textContent(), "字号：125%", "按钮文案必须随档位更新（R-FONT-02）");
+    const p1 = await lod();
+    assert.ok(Math.abs(p1.label_font_world - 16.25) < 1e-6, `1.25× 后表名字号必须放大为 16.25（实际 ${p1.label_font_world}）`);
+
+    // WHEN 2：reload → 倍率经 localStorage 持久保持（R-FONT-01）
+    // （刷新回落房间列表，需重新进入房间——同 ST-AN-01/ST-VIEW-DIM 先例）
+    await page.reload();
+    await createRoomAndEnter(page);
+    await page.waitForFunction(() => !!window.__cdb_lod_probe, null, { timeout: 8_000 });
+    await page.waitForFunction(
+      () => JSON.parse(window.__cdb_lod_probe)?.label_font_scale === 1.25,
+      null, { timeout: 6_000, polling: 100 },
+    );
+
+    // WHEN 3：缩小到 zoom ≤ 0.35（R-FONT-04 低 zoom 钳制）——滚轮缩放（与用户操作同口径，
+    // 规避 floating-controls 按钮在某些布局下的可见性抖动）
+    const center = await canvasPoint(page, { x: 700, y: 450 });
+    await page.mouse.move(center.x, center.y);
+    for (let i = 0; i < 40; i++) {
+      const z = (await lod()).zoom;
+      if (z <= 0.35) break;
+      await page.mouse.wheel(0, 240);
+      await page.waitForTimeout(120);
+    }
+    const p2 = await lod();
+    assert.ok(p2.zoom <= 0.35, `zoom 必须缩到 ≤0.35（实际 ${p2.zoom}）`);
+    // THEN（R-FONT-04/05）：触发下限钳制且屏幕字号 ≥10px
+    assert.equal(p2.min_font_clamped, true, "低 zoom 下必须触发 10px 下限钳制（R-FONT-05）");
+    const screenPx = p2.label_font_world * p2.zoom;
+    assert.ok(screenPx >= 10.0 - 1e-6, `钳制后表名屏幕字号必须 ≥10px（实际 ${screenPx}）`);
+  });
+
+  // ─── ST-AN-03：区域锁定全链路（fix-issues-38-41 / #41，§5.17 R-AREALOCK-02~06）───
+  await run(["ST-AN-03"], "区域锁定：右键锁定 → 拖动无效 → 持久化 → Inspector 解锁恢复", async page => {
+    const state = await installApi(page, { persistGet: true });
+    await login(page);
+    await createRoomAndEnter(page);
+    // 空画布有 EmptyGuide 引导层会拦截 pointer——先建两表（同 ST-AN-01 先例）
+    await createTwoTables(page);
+
+    // GIVEN：拖框建区域（屏幕 (600,400)-(900,600)，zoom=1 世界=屏幕）
+    await page.locator('[data-testid="tool-new-area"]').click();
+    const from = await canvasPoint(page, { x: 600, y: 400 });
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 300, from.y + 200, { steps: 5 });
+    await page.mouse.up();
+    await page.locator('[data-testid="inspector-area-form"]:visible').waitFor();
+    await waitSaved(page);
+    assert.equal(state.lastPutBody?.diagram?.areas?.length, 1, "区域必须已落账");
+    assert.equal(state.lastPutBody.diagram.areas[0].locked ?? false, false, "新建区域默认未锁定（R-AREALOCK-01）");
+    const baseX = state.lastPutBody.diagram.areas[0].x;
+
+    // WHEN 1：右键区域 → 菜单出现「锁定区域」（R-AREALOCK-02a）
+    await page.mouse.click(from.x + 60, from.y + 20, { button: "right" });
+    const lockItem = page.locator('[data-testid="ctx-toggle-area-lock"]');
+    await lockItem.waitFor();
+    assert.equal(await lockItem.textContent(), "锁定区域", "未锁定时菜单项必须为「锁定区域」");
+    await lockItem.click();
+    await waitSaved(page);
+    assert.equal(state.lastPutBody?.diagram?.areas?.[0]?.locked, true, "锁定必须随 PUT 落库（R-AREALOCK-06）");
+
+    // THEN 1（R-AREALOCK-03）：锁定态拖动 no-op——拖区域标题栏 +100px 不触发新落账
+    const putsBefore = state.putCalls;
+    await page.mouse.move(from.x + 60, from.y + 20);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 160, from.y + 20, { steps: 5 });
+    await page.mouse.up();
+    await page.waitForTimeout(600); // 等过 1s debounce 前窗口的一半以上无保存即不再触发（无 dirty）
+    assert.equal(state.putCalls, putsBefore, "锁定区域拖动不得触发落账（拖动 no-op）");
+
+    // THEN 2（R-AREALOCK-04）：锁定区域仍可选中——点击标题栏开 Inspector
+    await page.mouse.click(from.x + 60, from.y + 20);
+    await page.locator('[data-testid="inspector-area-form"]:visible').waitFor();
+    const lockCheckbox = page.locator('[data-testid="inspector-area-locked"]');
+    await lockCheckbox.waitFor();
+    assert.equal(await lockCheckbox.isChecked(), true, "Inspector 复选框必须反映锁定态（R-AREALOCK-02b）");
+
+    // WHEN 2：reload → 锁定持久保持（R-AREALOCK-06，persistGet 回放最近 PUT 文档）
+    await page.reload();
+    await createRoomAndEnter(page); // 刷新回落房间列表，重新进入（同 ST-AN-01 先例）
+    await page.locator('[data-testid="editor-canvas-container"] canvas').waitFor();
+    await page.waitForFunction(() => !!window.__cdb_lod_probe, null, { timeout: 8_000 });
+    await page.mouse.click(from.x + 60, from.y + 20, { button: "right" });
+    const unlockItem = page.locator('[data-testid="ctx-toggle-area-lock"]');
+    await unlockItem.waitFor();
+    assert.equal(await unlockItem.textContent(), "解锁区域", "reload 后必须仍为锁定态（菜单显示「解锁区域」）");
+    await page.mouse.click(from.x + 450, from.y - 150); // 左键点空白关菜单（容器 on:click 关闭）
+    await page.waitForTimeout(150);
+
+    // WHEN 3：Inspector 复选框解锁（R-AREALOCK-02b）
+    await page.mouse.click(from.x + 60, from.y + 20);
+    await page.locator('[data-testid="inspector-area-form"]:visible').waitFor();
+    await page.locator('[data-testid="inspector-area-locked"]').uncheck();
+    await waitSaved(page);
+    assert.equal(state.lastPutBody?.diagram?.areas?.[0]?.locked, false, "解锁必须落库");
+
+    // THEN 3（R-AREALOCK-03）：解锁后拖动恢复——拖 +100px 落账 x=baseX+100
+    await page.mouse.move(from.x + 60, from.y + 20);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 160, from.y + 20, { steps: 5 });
+    await page.mouse.up();
+    await waitSaved(page);
+    const newX = state.lastPutBody?.diagram?.areas?.[0]?.x;
+    assert.ok(
+      Math.abs(newX - (baseX + 100)) <= 1.0,
+      `解锁后拖动必须落账新坐标（期望 ≈${baseX + 100}，实际 ${newX}；同时证明锁定态拖动确实未位移）`,
+    );
+  });
 } finally {
   await browser?.close();
   frontend?.kill("SIGTERM");
