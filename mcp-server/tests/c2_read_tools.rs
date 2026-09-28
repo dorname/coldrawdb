@@ -98,7 +98,7 @@ async fn ut_mcp_02_03_initialize_and_contract() {
     .await
     .unwrap();
     let tools = listed.pointer("/result/tools").unwrap().as_array().unwrap();
-    assert_eq!(tools.len(), 11);
+    assert_eq!(tools.len(), 12); // mcp-dictionary-tools（2026-09-28）：+update_dictionary
     assert_eq!(
         tools
             .iter()
@@ -246,7 +246,7 @@ fn st_mcp_01_real_stdio_handshake() {
             .as_array()
             .unwrap()
             .len(),
-        11
+        12 // mcp-dictionary-tools（2026-09-28）：+update_dictionary
     );
     assert!(child.wait().unwrap().success());
     record(&["ST-MCP-01"], started);
