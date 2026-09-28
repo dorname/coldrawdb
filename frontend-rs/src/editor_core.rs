@@ -335,6 +335,83 @@ pub fn initial_comment_display() -> CommentDisplay {
     }
 }
 
+/// fix-issues-36-37（issue #36，core-01 §5.12 R-VIEW-DIM-01/04）：
+/// 画布表/字段维度视图偏好存储键（localStorage，不落库 diagram 数据）。
+pub const VIEW_DIMENSION_STORAGE_KEY: &str = "cdb.view-dimension";
+
+/// R-VIEW-DIM-01：显式维度模式——Table = 表维度（仅表头，原拓扑档渲染），
+/// Field = 字段维度（字段展开，原详情档渲染，默认）。维度由用户显式切换，
+/// 不再随 zoom 阈值隐式切换（R-LOD-01 #36 修订）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ViewDimension {
+    Table,
+    Field,
+}
+
+impl ViewDimension {
+    /// 解析 localStorage 存储值；缺省/非法回落 Field（规格默认）。
+    pub fn from_stored(stored: Option<&str>) -> Self {
+        match stored {
+            Some("table") => Self::Table,
+            _ => Self::Field,
+        }
+    }
+
+    /// 存入 localStorage 的规范值。
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Table => "table",
+            Self::Field => "field",
+        }
+    }
+
+    /// 双态互换：table ↔ field。
+    pub fn next(self) -> Self {
+        match self {
+            Self::Table => Self::Field,
+            Self::Field => Self::Table,
+        }
+    }
+
+    /// 状态指示文案（「维度：{label}」）。
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Table => "表",
+            Self::Field => "字段",
+        }
+    }
+}
+
+/// 从 localStorage 读维度模式（native 测试环境无 window → 默认 Field）。
+pub fn initial_view_dimension() -> ViewDimension {
+    // 同 initial_comment_display：web_sys::window() 在 non-wasm target 会 panic，必须 cfg 守卫
+    #[cfg(target_arch = "wasm32")]
+    {
+        let stored = web_sys::window()
+            .and_then(|w| w.local_storage().ok().flatten())
+            .and_then(|s| s.get_item(VIEW_DIMENSION_STORAGE_KEY).ok().flatten());
+        ViewDimension::from_stored(stored.as_deref())
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        ViewDimension::Field
+    }
+}
+
+/// R-VIEW-DIM-02/04：切换/设置维度并持久化（wasm 写 localStorage；native 仅置信号）。
+/// 三入口（右键菜单 / ToolRail / 快捷键 V）与 FloatingControls 指示共用本函数，状态一致。
+pub fn set_view_dimension(store: &EditorStore, dim: ViewDimension) {
+    store.view_dimension.set(dim);
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(local) = web_sys::window()
+            .and_then(|w| w.local_storage().ok().flatten())
+        {
+            let _ = local.set_item(VIEW_DIMENSION_STORAGE_KEY, dim.as_str());
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct EditorStore {
     pub tables: RwSignal<Vec<Table>>,
@@ -350,6 +427,10 @@ pub struct EditorStore {
     /// 画布注释显示模式（视图偏好，不落库 diagram 数据）。初值读 localStorage
     /// `cdb.comment-display`，缺省/非法回落 `NameComment`（英文名+注释）。
     pub comment_display: RwSignal<CommentDisplay>,
+    /// fix-issues-36-37（issue #36，core-01 §5.12 R-VIEW-DIM-01/04）：
+    /// 画布表/字段维度（视图偏好，不落库 diagram 数据、不进 CommandStack）。
+    /// 初值读 localStorage `cdb.view-dimension`，缺省/非法回落 `Field`（字段维度）。
+    pub view_dimension: RwSignal<ViewDimension>,
 }
 
 /// 从现有 tables/fields/references/areas/notes 中解析最大数字 id，
@@ -458,6 +539,7 @@ impl EditorStore {
             database: create_rw_signal(Database::Generic),
             dictionaries: create_rw_signal(Vec::new()),
             comment_display: create_rw_signal(initial_comment_display()),
+            view_dimension: create_rw_signal(initial_view_dimension()),
         }
     }
 
@@ -521,6 +603,13 @@ pub enum Command {
     /// 删除关系：保留完整快照以便 undo 恢复（fix-remote-github-issues / UT-KB-03）
     DeleteReference {
         reference: Reference,
+    },
+    /// fix-issues-36-37（issue #37，core-01 §5.13 R-KBSEL-03）：批量删表命令——
+    /// 表快照 + 级联关系快照（调用方组装）；一次删除按键 = 一个撤销单元
+    /// （单表删除为长度 1 特例）。apply/execute 按快照移除，revert 全量恢复。
+    DeleteTables {
+        tables: Vec<Table>,
+        references: Vec<Reference>,
     },
     ChangeType {
         field_id: String,
@@ -860,6 +949,15 @@ impl CommandStack {
                 }
                 store.references.set(refs);
             }
+            Command::DeleteTables { tables, references } => {
+                // R-KBSEL-03：按快照移除选中表与级联关系（快照由调用方在删除前组装）
+                let mut cur = store.tables.get();
+                cur.retain(|t| !tables.iter().any(|rt| rt.id == t.id));
+                store.tables.set(cur);
+                let mut refs = store.references.get();
+                refs.retain(|r| !references.iter().any(|rr| rr.id == r.id));
+                store.references.set(refs);
+            }
             Command::ChangeType { field_id, new_type } => {
                 let mut tables = store.tables.get();
                 let mut found = false;
@@ -968,6 +1066,31 @@ impl CommandStack {
                 refs.push(reference.clone());
                 store.references.set(refs);
             }
+            Command::DeleteTables { tables, references } => {
+                // R-KBSEL-03：撤销删除——恢复全部表与级联关系（重复 id 视为异常）
+                let mut cur = store.tables.get();
+                for t in tables {
+                    if cur.iter().any(|e| e.id == t.id) {
+                        return Err(CoreError::new(format!(
+                            "table id '{}' already exists",
+                            t.id
+                        )));
+                    }
+                }
+                cur.extend(tables.iter().cloned());
+                store.tables.set(cur);
+                let mut refs = store.references.get();
+                for r in references {
+                    if refs.iter().any(|e| e.id == r.id) {
+                        return Err(CoreError::new(format!(
+                            "reference id '{}' already exists",
+                            r.id
+                        )));
+                    }
+                }
+                refs.extend(references.iter().cloned());
+                store.references.set(refs);
+            }
             Command::ChangeType { field_id: _, new_type: _ } => {
                 return Err(CoreError::new("ChangeType revert not supported in V1"));
             }
@@ -1053,6 +1176,15 @@ impl CommandStack {
                         reference.id
                     )));
                 }
+                store.references.set(refs);
+            }
+            Command::DeleteTables { tables, references } => {
+                // R-KBSEL-03：按快照移除选中表与级联关系（快照由调用方在删除前组装）
+                let mut cur = store.tables.get();
+                cur.retain(|t| !tables.iter().any(|rt| rt.id == t.id));
+                store.tables.set(cur);
+                let mut refs = store.references.get();
+                refs.retain(|r| !references.iter().any(|rr| rr.id == r.id));
                 store.references.set(refs);
             }
             Command::DictSnapshot {
@@ -1792,5 +1924,106 @@ mod tests {
         // 老整串兼容：历史 VARCHAR(255)/DECIMAL(10,2) 解析后基类型正确
         assert_eq!(parse_field_type("VARCHAR(255)").base, "VARCHAR");
         assert_eq!(parse_field_type("DECIMAL(10,2)").base, "DECIMAL");
+    }
+
+    /// UT-KB-06（fix-issues-36-37 / #37，core-01 §5.13 R-KBSEL-02/03）：
+    /// DeleteTables 命令级联快照与撤销/重做——apply 按快照移除表+级联关系，
+    /// revert 全量恢复（含坐标/字段/关系端点），execute（redo）对称重放；
+    /// 多表批量 = 单条命令一次撤销单元。
+    #[test]
+    fn test_delete_tables_undo_redo_ut_kb_06() {
+        let store = EditorStore::new();
+        let mk_table = |id: &str, x: f64| Table {
+            id: id.into(),
+            name: format!("name_{id}"),
+            x,
+            y: 10.0,
+            color: "#abc".into(),
+            comment: "注释".into(),
+            fields: vec![Field {
+                id: format!("{id}_f1"),
+                name: "id".into(),
+                type_: "INT".into(),
+                default: String::new(),
+                check: String::new(),
+                primary: true,
+                unique: false,
+                not_null: true,
+                increment: true,
+                comment: "主键".into(),
+                tag: String::new(),
+                dict_code: String::new(),
+            }],
+            indices: Vec::new(),
+            width: None,
+            min_height: None,
+        };
+        let mk_ref = |id: &str, from: &str, to: &str| Reference {
+            id: id.into(),
+            name: String::new(),
+            start_table_id: from.into(),
+            end_table_id: to.into(),
+            start_field_id: format!("{from}_f1"),
+            end_field_id: format!("{to}_f1"),
+            type_: "one_to_many".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+            color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
+        };
+        // 3 表 + 2 关系：r1 级联 t1↔t2，r2 仅连 t3? —— r2 连 t2↔t3（t2 删除时级联）
+        let t1 = mk_table("t1", 0.0);
+        let t2 = mk_table("t2", 300.0);
+        let t3 = mk_table("t3", 600.0);
+        let r1 = mk_ref("r1", "t1", "t2");
+        let r2 = mk_ref("r2", "t2", "t3");
+        store.tables.set(vec![t1.clone(), t2.clone(), t3.clone()]);
+        store.references.set(vec![r1.clone(), r2.clone()]);
+
+        // 断言 1：apply —— 删 t1（快照含 r1）→ t1/r1 移除，t2/t3/r2 保留
+        let cmd = Command::DeleteTables {
+            tables: vec![t1.clone()],
+            references: vec![r1.clone()],
+        };
+        CommandStack::execute(&store, &cmd).expect("execute apply 路径");
+        assert_eq!(store.tables.get().len(), 2, "UT-KB-06: 删 t1 后必须剩 2 表");
+        assert_eq!(store.references.get().len(), 1, "UT-KB-06: 级联 r1 必须移除");
+        assert_eq!(store.references.get()[0].id, "r2", "UT-KB-06: 独立关系 r2 必须保留");
+
+        // 断言 2：revert —— t1 与 r1 完整恢复（字段/坐标/端点逐一相等）
+        CommandStack::revert(&store, &cmd).expect("revert");
+        let tables = store.tables.get();
+        let refs = store.references.get();
+        assert_eq!(tables.len(), 3);
+        assert_eq!(refs.len(), 2);
+        let t1r = tables.iter().find(|t| t.id == "t1").expect("t1 恢复");
+        assert_eq!(*t1r, t1, "UT-KB-06: revert 恢复的表必须与快照完全一致");
+        let r1r = refs.iter().find(|r| r.id == "r1").expect("r1 恢复");
+        assert_eq!(*r1r, r1, "UT-KB-06: revert 恢复的关系必须与快照完全一致");
+
+        // 断言 3：redo（execute 重放）→ 再次移除，对称
+        CommandStack::execute(&store, &cmd).expect("redo");
+        assert_eq!(store.tables.get().len(), 2);
+        assert_eq!(store.references.get().len(), 1);
+
+        // 断言 4：多表批量单命令——删 t2+t3（级联 r2，r1 已不在库）；一次 revert 全恢复
+        CommandStack::revert(&store, &cmd).expect("undo redo 前的撤销");
+        let cmd_batch = Command::DeleteTables {
+            tables: vec![t2.clone(), t3.clone()],
+            // t2 同时参与 r1/r2 —— 级联快照必须两条都含（与 on_delete_tables 组装口径一致）
+            references: vec![r1.clone(), r2.clone()],
+        };
+        CommandStack::execute(&store, &cmd_batch).expect("批量删除");
+        assert_eq!(store.tables.get().len(), 1, "UT-KB-06: 批量删后必须只剩 t1");
+        assert_eq!(store.references.get().len(), 0, "UT-KB-06: r1/r2 均级联删除");
+        CommandStack::revert(&store, &cmd_batch).expect("批量撤销");
+        assert_eq!(store.tables.get().len(), 3, "UT-KB-06: 单条命令 revert 必须恢复全部表");
+        assert_eq!(store.references.get().len(), 2, "UT-KB-06: 级联关系必须随撤销恢复");
+
+        // 断言 5：revert 幂等防御——表已存在时报错不双插
+        let dup = CommandStack::revert(&store, &cmd_batch);
+        assert!(dup.is_err(), "UT-KB-06: 重复 revert（id 已存在）必须报错");
+        assert_eq!(store.tables.get().len(), 3, "UT-KB-06: 报错后不得双插");
     }
 }

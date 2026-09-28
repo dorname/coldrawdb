@@ -175,11 +175,14 @@ fn shortcut_event_is_text_target(ke: &web_sys::KeyboardEvent) -> bool {
         .unwrap_or(false)
 }
 
-/// 单键工具快捷键（无修饰键）：与主原型 tool-tip 标注一致（新建表 T / 创建关系 R）。
+/// 单键工具快捷键（无修饰键）：与主原型 tool-tip 标注一致（新建表 T / 创建关系 R /
+/// 切换维度 V——fix-issues-36-37 / #36 R-VIEW-DIM-02）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ToolShortcut {
     CreateTable,
     Relationship,
+    /// #36：表/字段维度切换（纯视图操作，只读下也可用）
+    ViewDimension,
 }
 
 /// 判定 keydown 是否映射到工具快捷键；带 Ctrl/Meta/Alt 修饰时不拦截（如 Ctrl+R 刷新）。
@@ -190,6 +193,7 @@ pub fn tool_shortcut_for_key(key: &str, ctrl: bool, meta: bool, alt: bool) -> Op
     match key.to_ascii_lowercase().as_str() {
         "t" => Some(ToolShortcut::CreateTable),
         "r" => Some(ToolShortcut::Relationship),
+        "v" => Some(ToolShortcut::ViewDimension),
         _ => None,
     }
 }
@@ -200,6 +204,12 @@ pub fn tool_shortcut_for_key(key: &str, ctrl: bool, meta: bool, alt: bool) -> Op
 /// p0-fix 定点 3：Delete/Backspace 键判定（UT-MM-34）
 pub fn is_delete_key(key: &str) -> bool {
     matches!(key, "Delete" | "Backspace")
+}
+
+/// fix-issues-36-37（issue #37，core-01 §5.13 R-KBSEL-01 / UT-KB-05）：
+/// Ctrl/Cmd+A 全选判定——须带 Ctrl 或 Meta，且不带 Alt/Shift（避免与文本扩展选择等冲突）。
+pub fn is_select_all_shortcut(key: &str, ctrl: bool, meta: bool, alt: bool, shift: bool) -> bool {
+    (ctrl || meta) && !alt && !shift && key.eq_ignore_ascii_case("a")
 }
 
 pub fn setup_editor_tool_shortcuts(
@@ -218,6 +228,16 @@ pub fn setup_editor_tool_shortcuts(
     // p0-fix 定点 2：Delete 键删除选中区域 / 便签
     on_delete_area: Rc<dyn Fn(String)>,
     on_delete_note: Rc<dyn Fn(String)>,
+    // fix-issues-36-37（issue #36，R-VIEW-DIM-02）：快捷键 V 切换表/字段维度
+    // （纯视图操作——先于只读门控，Viewer / 分享只读也可用）
+    on_toggle_view_dimension: Rc<dyn Fn()>,
+    // fix-issues-36-37（issue #37，R-KBSEL-01/02）：Ctrl/Cmd+A 全选与表删除
+    // （全选为纯视图操作先于只读门控；删除走 on_delete_tables 批量命令入栈）
+    store: EditorStore,
+    selected_table_ids: RwSignal<Vec<String>>,
+    selected_note_ids: RwSignal<Vec<String>>,
+    selected_area_ids: RwSignal<Vec<String>>,
+    on_delete_tables: Rc<dyn Fn(Vec<String>)>,
 ) {
     use wasm_bindgen::JsCast;
     gloo::events::EventListener::new(&gloo::utils::document(), "keydown", move |ev| {
@@ -227,10 +247,6 @@ pub fn setup_editor_tool_shortcuts(
         // 编辑器页门控：auth / rooms / invite 页不响应工具快捷键
         let page = current_page.get_untracked();
         if !matches!(page, PageState::RoomEditor | PageState::ShareEdit) {
-            return;
-        }
-        // 只读门控（ST-KB-VIEWER）：分享只读 / Viewer 角色不响应
-        if editor_is_read_only(share_mode, current_room) {
             return;
         }
         // 浮层门控：命令面板 / 代码视图 / 主模态打开时不触发
@@ -244,10 +260,64 @@ pub fn setup_editor_tool_shortcuts(
         if shortcut_event_is_text_target(ke) {
             return;
         }
+        // #36 R-VIEW-DIM-02：V 切换维度——纯视图操作，先于只读门控（只读/Viewer 可用）
+        if matches!(
+            tool_shortcut_for_key(&ke.key(), ke.ctrl_key(), ke.meta_key(), ke.alt_key()),
+            Some(ToolShortcut::ViewDimension)
+        ) {
+            on_toggle_view_dimension();
+            return;
+        }
+        // #37 R-KBSEL-01：Ctrl/Cmd+A 全选画布图元——preventDefault 浏览器页面全选，
+        // 改为全量填充多选集（表/便签/区域）；关系经两端表选中按 §4.4 相关线口径自动
+        // 高亮，无需单独入集。纯视图操作，先于只读门控（R-KBSEL-05：只读允许全选）。
+        if is_select_all_shortcut(&ke.key(), ke.ctrl_key(), ke.meta_key(), ke.alt_key(), ke.shift_key())
+        {
+            ke.prevent_default();
+            selected_table_ids.set(
+                store.tables.get_untracked().iter().map(|t| t.id.clone()).collect(),
+            );
+            selected_note_ids.set(
+                store.notes.get_untracked().iter().map(|n| n.id.clone()).collect(),
+            );
+            selected_area_ids.set(
+                store.areas.get_untracked().iter().map(|a| a.id.clone()).collect(),
+            );
+            return;
+        }
+        // 只读门控（ST-KB-VIEWER）：分享只读 / Viewer 角色不响应编辑类快捷键
+        if editor_is_read_only(share_mode, current_room) {
+            return;
+        }
         // p0-fix 定点 3：Delete/Backspace 删除选中连线（ST-PB-04）
         // p0-fix 定点 2：同键删除选中区域 / 便签
+        // #37 R-KBSEL-02：增补表删除——多选集非空（含全选态）整批删除，
+        // 或单选 SelectionKind::Table；表删除经 on_delete_tables 单命令入栈（R-KBSEL-03）
         if is_delete_key(&ke.key()) {
+            let multi_tables = selected_table_ids.get_untracked();
+            let multi_notes = selected_note_ids.get_untracked();
+            let multi_areas = selected_area_ids.get_untracked();
+            if !multi_tables.is_empty() || !multi_notes.is_empty() || !multi_areas.is_empty() {
+                ke.prevent_default();
+                if !multi_tables.is_empty() {
+                    on_delete_tables(multi_tables);
+                }
+                // 便签/区域沿用既有逐条删除回调（既有行为本就不可撤销，与规格 §5.13 一致）
+                for id in multi_notes {
+                    on_delete_note(id);
+                }
+                for id in multi_areas {
+                    on_delete_area(id);
+                }
+                selected_note_ids.set(Vec::new());
+                selected_area_ids.set(Vec::new());
+                return;
+            }
             match selection.get_untracked() {
+                SelectionKind::Table(table_id) => {
+                    ke.prevent_default();
+                    on_delete_tables(vec![table_id]);
+                }
                 SelectionKind::Reference(ref_id) => {
                     ke.prevent_default();
                     on_delete_ref(ref_id);
@@ -275,6 +345,8 @@ pub fn setup_editor_tool_shortcuts(
                 active_tool.set(ActiveTool::Relationship);
                 rel_tool_state.set(RelToolState::PickSource);
             }
+            // #36：ViewDimension 已在只读门控之前处理并 return，此处不可达
+            ToolShortcut::ViewDimension => {}
         }
     })
     .forget();
@@ -2606,6 +2678,22 @@ pub fn FloatingControls(transform: RwSignal<Transform>, store: EditorStore) -> i
                 }
             >
                 {move || format!("注释：{}", store.comment_display.get().label())}
+            </button>
+            // fix-issues-36-37（issue #36，R-VIEW-DIM-03）：维度状态指示 + 切换入口
+            // （与 ToolRail / 右键菜单 / 快捷键 V 共用 set_view_dimension，状态一致；
+            // 视图偏好 localStorage `cdb.view-dimension`，不落库、不进撤销栈）
+            <button
+                class="cdb-btn cdb-btn--ghost cdb-btn--small"
+                data-testid="canvas-view-dimension"
+                title="切换画布维度（表：仅表头 / 字段：展开字段，快捷键 V）"
+                on:click=move |_| {
+                    crate::editor_core::set_view_dimension(
+                        &store,
+                        store.view_dimension.get_untracked().next(),
+                    );
+                }
+            >
+                {move || format!("维度：{}", store.view_dimension.get().label())}
             </button>
         </div>
     }
@@ -5366,7 +5454,7 @@ pub fn ToolRail(
     current_room: RwSignal<Option<RoomDetail>>,
     read_only: bool,
 ) -> impl IntoView {
-    let _ = (store, selection, inspector_open);
+    let _ = (selection, inspector_open);
     let rel_disabled = move || read_only || room_is_viewer(current_room);
 
     view! {
@@ -5467,6 +5555,24 @@ pub fn ToolRail(
                 <span class="cdb-tool-tip">"添加便签"</span>
             </button>
             <div class="cdb-tool-rail__divider"></div>
+            // fix-issues-36-37（issue #36，R-VIEW-DIM-02/03）：表/字段维度切换按钮——
+            // 表维度时 cdb-is-active 激活态可见；纯视图操作，只读/Viewer 也可用（不挂 rel_disabled）
+            <button
+                class="cdb-tool-btn"
+                class:cdb-is-active=move || {
+                    store.view_dimension.get() == crate::editor_core::ViewDimension::Table
+                }
+                data-testid="tool-view-dimension"
+                on:click=move |_| {
+                    crate::editor_core::set_view_dimension(
+                        &store,
+                        store.view_dimension.get_untracked().next(),
+                    );
+                }
+            >
+                <IconBox size="md"><IconEye /></IconBox>
+                <span class="cdb-tool-tip">"切换表/字段维度 "<kbd>"V"</kbd></span>
+            </button>
             <button
                 class="cdb-tool-btn"
                 data-testid="toolrail-dicts"
@@ -10447,6 +10553,8 @@ pub fn AppRoot(
     let selected_table_ids: RwSignal<Vec<String>> = create_rw_signal(Vec::new());
     let selected_note_ids: RwSignal<Vec<String>> = create_rw_signal(Vec::new());
     let selected_area_ids: RwSignal<Vec<String>> = create_rw_signal(Vec::new());
+    // fix-issues-36-37（issue #36，R-VIEW-DIM-02）：画布右键菜单状态（Some(屏幕坐标) = 打开）
+    let canvas_ctx_menu: RwSignal<Option<(f64, f64)>> = create_rw_signal(None);
     // 主题信号提升到 AppRoot：Canvas 绘制 effect 需跟踪它以在主题切换时重绘调色板
     let theme_mode: RwSignal<String> = create_rw_signal(read_html_data_mode());
     let auth_session: RwSignal<Option<AuthSession>> = create_rw_signal(None);
@@ -12080,21 +12188,54 @@ pub fn AppRoot(
         })
     };
 
-    let on_delete_table = {
+    // fix-issues-36-37（issue #37，core-01 §5.13 R-KBSEL-02/03）：批量删表——
+    // 删除前组装表快照 + 级联关系快照，mutate 后以单条 Command::DeleteTables 入栈
+    // （一次按键 = 一个撤销单元；单表删除为长度 1 特例）。Inspector 删除按钮与
+    // 键盘 Delete 统一走此路径。
+    let on_delete_tables = {
         let store = store.clone();
         let debouncer = debouncer.clone();
-        Rc::new(move |table_id: String| {
-            if editor_is_read_only(share_mode, current_room) {
+        let command_stack = command_stack.clone();
+        let selection = selection.clone();
+        Rc::new(move |table_ids: Vec<String>| {
+            if editor_is_read_only(share_mode, current_room) || table_ids.is_empty() {
                 return;
             }
+            // R-KBSEL-03：删除前快照——选中表 + 级联关系（任一端点参与即级联）
+            let removed_tables: Vec<_> = store
+                .tables
+                .get_untracked()
+                .into_iter()
+                .filter(|t| table_ids.contains(&t.id))
+                .collect();
+            if removed_tables.is_empty() {
+                return;
+            }
+            let removed_refs: Vec<_> = store
+                .references
+                .get_untracked()
+                .into_iter()
+                .filter(|r| {
+                    table_ids.contains(&r.start_table_id) || table_ids.contains(&r.end_table_id)
+                })
+                .collect();
             let mut tables = store.tables.get();
-            tables.retain(|t| t.id != table_id);
+            tables.retain(|t| !table_ids.contains(&t.id));
             store.tables.set(tables);
-            // 级联清理：该表参与的所有关系
             let mut refs = store.references.get();
-            refs.retain(|r| r.start_table_id != table_id && r.end_table_id != table_id);
+            refs.retain(|r| {
+                !table_ids.contains(&r.start_table_id) && !table_ids.contains(&r.end_table_id)
+            });
             store.references.set(refs);
+            command_stack
+                .get()
+                .borrow_mut()
+                .record(crate::editor_core::Command::DeleteTables {
+                    tables: removed_tables,
+                    references: removed_refs,
+                });
             selection.set(SelectionKind::None);
+            selected_table_ids.set(Vec::new());
             store.dirty.set(true);
             schedule_save(
                 client_for_delete_table.clone(),
@@ -12112,6 +12253,11 @@ pub fn AppRoot(
                 auth_session.clone(),
             );
         })
+    };
+    // Inspector 删除按钮等既有单表入口：委托批量版（R-KBSEL-03 单表 = 长度 1 特例）
+    let on_delete_table = {
+        let on_delete_tables = on_delete_tables.clone();
+        Rc::new(move |table_id: String| on_delete_tables(vec![table_id]))
     };
 
     let on_update_ref_field = {
@@ -12856,6 +13002,18 @@ pub fn AppRoot(
         })
     };
 
+    // #36 R-VIEW-DIM-02：快捷键 V 切换维度入口（与 ToolRail / 右键菜单 / FloatingControls
+    // 共用 set_view_dimension，状态一致）
+    let on_toggle_view_dimension = {
+        let store = store.clone();
+        Rc::new(move || {
+            crate::editor_core::set_view_dimension(
+                &store,
+                store.view_dimension.get_untracked().next(),
+            );
+        })
+    };
+
     // D 批：T/R 工具快捷键 + Esc 浮层层级（ST-KB-T-01/R-01/ESC-01/VIEWER）
     setup_editor_tool_shortcuts(
         current_page,
@@ -12871,6 +13029,13 @@ pub fn AppRoot(
         on_delete_ref.clone(),
         on_delete_area.clone(),
         on_delete_note.clone(),
+        on_toggle_view_dimension.clone(),
+        // #37 R-KBSEL-01/02：全选集合读写 + 表删除入栈回调
+        store.clone(),
+        selected_table_ids,
+        selected_note_ids,
+        selected_area_ids,
+        on_delete_tables.clone(),
     );
     setup_escape_layer_handler(
         palette_visible,
@@ -13030,7 +13195,17 @@ pub fn AppRoot(
                     current_room=current_room
                     read_only=share_mode
                 />
-                <div class="cdb-canvas-container" data-testid="editor-canvas-container">
+                <div
+                    class="cdb-canvas-container"
+                    data-testid="editor-canvas-container"
+                    // fix-issues-36-37（issue #36，R-VIEW-DIM-02）：画布右键菜单入口
+                    on:contextmenu=move |ev| {
+                        ev.prevent_default();
+                        canvas_ctx_menu.set(Some((ev.client_x() as f64, ev.client_y() as f64)));
+                    }
+                    // 左键点击画布任意处关闭右键菜单
+                    on:click=move |_| canvas_ctx_menu.set(None)
+                >
                     {let open_import_guide = open_import_drawer.clone();
                      move || if store.tables.get().is_empty() {
                         view! {
@@ -13078,6 +13253,45 @@ pub fn AppRoot(
                     />
                     <ActivityFeed items=activity_feed visible=activity_open />
                     <FloatingControls transform=canvas_transform store=store.clone() />
+                    // fix-issues-36-37（issue #36，R-VIEW-DIM-02）：画布右键菜单——
+                    // 复用 cdb-menu-dropdown 样式，fixed 定位在鼠标处；仅含维度切换项
+                    {move || {
+                        canvas_ctx_menu.get().map(|(mx, my)| {
+                            let store_ctx = store.clone();
+                            view! {
+                                <div
+                                    class="cdb-menu-dropdown cdb-canvas-ctx-menu"
+                                    data-testid="canvas-context-menu"
+                                    style=format!(
+                                        "position:fixed;left:{mx}px;top:{my}px;z-index:60;"
+                                    )
+                                >
+                                    <button
+                                        class="cdb-menu-dropdown-item"
+                                        data-testid="ctx-toggle-dimension"
+                                        on:click=move |ev| {
+                                            ev.stop_propagation();
+                                            crate::editor_core::set_view_dimension(
+                                                &store_ctx,
+                                                store_ctx.view_dimension.get_untracked().next(),
+                                            );
+                                            canvas_ctx_menu.set(None);
+                                        }
+                                    >
+                                        {move || {
+                                            if store_ctx.view_dimension.get()
+                                                == crate::editor_core::ViewDimension::Table
+                                            {
+                                                "切换为字段维度"
+                                            } else {
+                                                "切换为表维度"
+                                            }
+                                        }}
+                                    </button>
+                                </div>
+                            }
+                        })
+                    }}
                 </div>
                 <Splitter kind=SplitterKind::Inspector />
                 <Inspector
@@ -16391,6 +16605,52 @@ mod tests {
         assert!(
             !modals::is_redo_shortcut("z", true, false),
             "UT-KB-01: 不带 Shift 属 undo → false"
+        );
+    }
+
+    /// UT-KB-05（fix-issues-36-37 / #37，core-01 §5.13 R-KBSEL-01/02/04）：
+    /// Ctrl/Cmd+A 全选判定与门控——修饰键真值表 + 处理器结构锚点。
+    #[test]
+    fn test_select_all_shortcut_ut_kb_05() {
+        // 断言 1：判定真值表（R-KBSEL-01）
+        assert!(is_select_all_shortcut("a", true, false, false, false), "UT-KB-05: Ctrl+A → true");
+        assert!(is_select_all_shortcut("A", true, false, false, false), "UT-KB-05: 大小写无关");
+        assert!(is_select_all_shortcut("a", false, true, false, false), "UT-KB-05: Cmd+A → true");
+        assert!(!is_select_all_shortcut("a", false, false, false, false), "UT-KB-05: 裸 A → false");
+        assert!(!is_select_all_shortcut("a", true, false, true, false), "UT-KB-05: 带 Alt → false");
+        assert!(!is_select_all_shortcut("a", true, false, false, true), "UT-KB-05: 带 Shift → false");
+        assert!(!is_select_all_shortcut("b", true, false, false, false), "UT-KB-05: 其他键 → false");
+
+        // 断言 2：处理器锚点——全选分支在文本目标门控之后、带 prevent_default、
+        // 全量写入表/便签/区域三个多选集（find 取首个出现 = 处理器实现，非本测试）
+        let panels = include_str!("editor_panels.rs");
+        let handler_start = panels.find("pub fn setup_editor_tool_shortcuts").expect("处理器存在");
+        let handler = &panels[handler_start..];
+        let text_gate = handler.find("shortcut_event_is_text_target(ke)").expect("文本门控存在");
+        let sel_all = handler.find("is_select_all_shortcut(&ke.key()").expect("全选分支存在");
+        assert!(sel_all > text_gate, "UT-KB-05: 全选分支必须在文本输入门控之后（R-KBSEL-04）");
+        let branch = &handler[sel_all..sel_all + 1200.min(handler.len() - sel_all)];
+        assert!(branch.contains("ke.prevent_default();"), "UT-KB-05: 全选必须 preventDefault 页面全选");
+        assert!(branch.contains("selected_table_ids.set("), "UT-KB-05: 必须写入表多选集");
+        assert!(branch.contains("selected_note_ids.set("), "UT-KB-05: 必须写入便签多选集");
+        assert!(branch.contains("selected_area_ids.set("), "UT-KB-05: 必须写入区域多选集");
+
+        // 断言 3：Delete 表分支锚点——SelectionKind::Table 与多选集路径均走 on_delete_tables
+        let del = handler.find("if is_delete_key(&ke.key())").expect("Delete 分支存在");
+        let del_block = &handler[del..del + 1600.min(handler.len() - del)];
+        assert!(
+            del_block.contains("SelectionKind::Table(table_id)"),
+            "UT-KB-05: Delete 必须覆盖选中表（R-KBSEL-02）"
+        );
+        assert!(
+            del_block.contains("on_delete_tables(multi_tables)"),
+            "UT-KB-05: 多选/全选删除必须走批量入栈回调"
+        );
+
+        // 断言 4：表删除必须经 Command::DeleteTables 入撤销栈（R-KBSEL-03）
+        assert!(
+            panels.contains("Command::DeleteTables"),
+            "UT-KB-05: 表删除必须进 CommandStack（可撤销）"
         );
     }
 

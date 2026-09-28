@@ -1958,11 +1958,10 @@ try {
     assert.ok(rail.hasActive && rail.activeBordered, "亮主题激活态规则无漂移");
   });
 
-  // ─── ST-CR-LOD-01：小缩放拓扑可读性 e2e（fix-open-issues-26-33 / #30，core-CR §6.y） ──
-  // 裁决注记：UT-CR-LOD-01 要求 0.35 触发字号夹紧上限（30px 世界），与「35% 屏幕字号 ≥11px」
-  // 数学上不可兼得（11/0.35=31.4 为临界）——夹紧上限优先（避免单表文字占满视口），
-  // 35% 档按规格括注走截图锚点 + 夹紧探针（屏幕 ≈9.8px 但表名已 ~2.3× 放大）。
-  await run(["ST-CR-LOD-01"], "小缩放 LOD 拓扑档 + 回 100% 恢复", async page => {
+  // ─── ST-CR-LOD-01：显式维度切换 e2e（fix-issues-36-37 / #36，core-01 §5.12 改写） ──
+  // 口径：维度由显式切换决定（快捷键 V / ToolRail / 右键菜单），不随 zoom 串档；
+  // zoom 仅在表维度内驱动字号/线宽补偿。0.35 夹紧裁决同旧注记（夹紧上限优先）。
+  await run(["ST-CR-LOD-01"], "显式维度切换 + 缩放不串档 + 三入口一致 + 持久", async page => {
     const field = (id, name, extra = {}) => ({
       id, name, type_: "INT", default: "", check: "", primary: false, unique: false,
       not_null: false, increment: false, comment: "", tag: "", dict_code: "", ...extra,
@@ -1975,7 +1974,7 @@ try {
       const row = Math.floor(i / 5);
       tables.push({
         id: `t${i}`, name: `table_${i}`, x: 80 + col * 340, y: 80 + row * 240, color: "",
-        // #35：t5/t7 带中文注释（拓扑档注释可见性断言）
+        // #35：t5/t7 带中文注释（表维度注释可见性断言）
         comment: i === 5 ? "订单主表注释" : i === 7 ? "用户信息表注释" : "",
         fields: [field(`f${i}_id`, "id", { primary: true }), field(`f${i}_fk`, "ref_id")],
         indices: [],
@@ -2005,16 +2004,20 @@ try {
     const zoomIn = page.locator('[data-testid="btn-zoom-in"]').first();
     const waitZoom = (cmp, timeout = 4_000) =>
       page.waitForFunction(cmp, null, { timeout });
+    const dimBtn = page.locator('[data-testid="canvas-view-dimension"]');
+    const railBtn = page.locator('[data-testid="tool-view-dimension"]');
 
-    // 基线 100%：详情档、默认字号线宽
+    // 基线 100%：默认字段维度、详情档、默认字号线宽
     let p = await lodProbe();
-    assert.equal(p.tier, "detail", "100% 必须为详情档");
-    assert.equal(p.lod_scale, 1, "详情档线宽补偿必须为 1");
-    assert.equal(p.font_world, 13, "详情档表名必须为默认 13px");
-    assert.equal(p.anchor_mode, "field", "详情档关系线必须字段维度锚定（#35 R-LOD-08）");
+    assert.equal(p.view_dimension, "field", "默认必须为字段维度（R-VIEW-DIM-01）");
+    assert.equal(p.tier, "detail", "字段维度必须详情档渲染");
+    assert.equal(p.lod_scale, 1, "字段维度线宽补偿必须为 1");
+    assert.equal(p.font_world, 13, "字段维度表名必须为默认 13px");
+    assert.equal(p.anchor_mode, "field", "字段维度关系线必须字段锚定（R-LOD-08）");
+    await dimBtn.waitFor();
+    assert.equal(await dimBtn.innerText(), "维度：字段", "指示器必须为「维度：字段」（R-VIEW-DIM-03）");
 
-    // 先在 100% 点击选中 t5（i=5 → col0/row1 → 世界 (80,320)，表头中心）——
-    // 选中态跨 zoom 保持；palette 选表只开 Inspector 不驱动 canvas 高亮信号（既有行为）
+    // 先在 100% 点击选中 t5（i=5 → col0/row1 → 世界 (80,320)，表头中心）
     const head = await canvasPoint(page, { x: 80 + 100, y: 320 + 21 });
     await page.mouse.click(head.x, head.y);
     await page.locator('[data-testid="inspector-table-form"]:visible').waitFor();
@@ -2022,47 +2025,197 @@ try {
       () => JSON.parse(window.__cdb_hl_probe).any_sel === true, null, { timeout: 4_000, polling: 100 },
     );
 
-    // WHEN：缩至 ≈50%（zoom-out ×3 → 0.512）
+    // WHEN：缩至 ≈50%（zoom-out ×3 → 0.512）——THEN 1：维度不随缩放串档（核心）
     await zoomOut.click(); await zoomOut.click(); await zoomOut.click();
     await waitZoom(() => JSON.parse(window.__cdb_lod_probe).zoom < 0.6);
     p = await lodProbe();
-    // THEN 1：拓扑档 + 表名屏幕字号 ≥11px（22px 世界 × 0.512 ≈ 11.3）
-    assert.equal(p.tier, "topology", `0.512 必须拓扑档（实际 ${p.tier}）`);
+    assert.equal(p.view_dimension, "field", "缩到 51% 维度必须仍为字段（R-VIEW-DIM-01）");
+    assert.equal(p.tier, "detail", `0.512 必须仍详情档（实际 ${p.tier}）`);
+    assert.equal(p.anchor_mode, "field", "0.512 必须仍字段锚定");
+    assert.equal(p.lod_scale, 1, "字段维度任意缩放不得补偿线宽");
+    assert.equal(p.font_world, 13, "字段维度任意缩放不得补偿字号");
+
+    // WHEN：快捷键 V 切表维度（R-VIEW-DIM-02 入口 ③）
+    await page.keyboard.press("v");
+    await page.waitForFunction(
+      () => JSON.parse(window.__cdb_lod_probe).view_dimension === "table", null, { timeout: 4_000, polling: 100 },
+    );
+    p = await lodProbe();
+    // THEN 2：表维度——拓扑渲染 + 维度内补偿 + 中文注释可见 + 表级锚定（#35 沿用）
+    assert.equal(p.tier, "topology", "V 后必须表维度渲染");
+    assert.equal(p.anchor_mode, "table", "表维度关系线必须表级锚定（R-LOD-08）");
     assert.ok(p.font_world * p.zoom >= 11.0,
-      `拓扑档表名屏幕字号必须 ≥11px（${p.font_world}×${p.zoom}=${(p.font_world * p.zoom).toFixed(2)}）`);
-    // THEN 2：关系线宽补偿 ≥ 1.5px 屏幕下限（lod_scale ≈ 1.46）
-    assert.ok(p.lod_scale >= 1.4, `拓扑档线宽补偿必须 ≥1.4（实际 ${p.lod_scale}）`);
-    // THEN 2b（#35）：拓扑档关系线表级锚定 + 中文注释可见
-    assert.equal(p.anchor_mode, "table", "拓扑档关系线必须表级锚定（R-LOD-08）");
+      `表维度表名屏幕字号必须 ≥11px（${p.font_world}×${p.zoom}=${(p.font_world * p.zoom).toFixed(2)}）`);
+    assert.ok(p.lod_scale >= 1.4, `表维度 0.512 线宽补偿必须 ≥1.4（实际 ${p.lod_scale}）`);
     assert.ok(p.topo_comments > 0,
-      `拓扑档 NameComment 模式中文注释必须渲染（R-LOD-02 补齐，实际计数 ${p.topo_comments}）`);
-
-    // THEN 3：选中 t5（r4/r5 两端相连）保持 → 相关连线 §4.4 × R-LOD-04 叠乘加粗
+      `表维度 NameComment 模式中文注释必须渲染（R-LOD-02，实际计数 ${p.topo_comments}）`);
+    // THEN 3a：三入口状态一致——指示器文案 + ToolRail 激活态
+    assert.equal(await dimBtn.innerText(), "维度：表", "切表维度后指示器必须为「维度：表」");
+    assert.ok(await railBtn.evaluate(el => el.classList.contains("cdb-is-active")),
+      "表维度下 ToolRail 维度按钮必须为激活态");
+    // THEN 2b：选中 t5 保持 → 相关连线 §4.4 × R-LOD-04 叠乘加粗
     const hl = await hlProbe();
-    assert.equal(hl.any_sel, true, "缩放后选中态必须保持");
+    assert.equal(hl.any_sel, true, "切换维度后选中态必须保持");
     assert.ok(hl.rel_width_scale_max >= 2.1,
-      `拓扑档选中后相关线必须叠乘加粗 ≥2.1×（1.5×1.46，实际 ${hl.rel_width_scale_max}）`);
-    const topoShot = await page.locator('[data-testid="editor-canvas-container"] canvas').screenshot();
+      `表维度选中后相关线必须叠乘加粗 ≥2.1×（实际 ${hl.rel_width_scale_max}）`);
 
-    // WHEN：续缩至 ≈35%（zoom-out ×2 → 0.328）——截图锚点（夹紧生效，见用例头裁决注记）
+    // WHEN：续缩至 ≈35%（zoom-out ×2 → 0.328）——维度不变，补偿随 zoom 加深
     await zoomOut.click(); await zoomOut.click();
     await waitZoom(() => JSON.parse(window.__cdb_lod_probe).zoom < 0.4);
     p = await lodProbe();
-    assert.equal(p.tier, "topology", "0.328 必须保持拓扑档");
+    assert.equal(p.view_dimension, "table", "表维度内缩放不得串档");
+    assert.equal(p.tier, "topology", "0.328 必须保持表维度渲染");
     assert.equal(p.font_world, 30, "0.328 表名字号必须触发夹紧上限 30px");
     assert.ok(p.lod_scale >= 2.2, `0.328 线宽补偿必须 ≥2.2（实际 ${p.lod_scale}）`);
-    const deepShot = await page.locator('[data-testid="editor-canvas-container"] canvas').screenshot();
-    assert.ok(!topoShot.equals(deepShot), "50% 与 35% 渲染必须不同（字号/线宽随档补偿）");
 
-    // WHEN：回 100%（zoom-in ×5，0.8×1.25 互逆）→ THEN 4：详情档恢复默认
+    // WHEN：回 100%（zoom-in ×5）——维度仍表（关键新行为：zoom 不再驱动维度）
     for (let i = 0; i < 5; i++) await zoomIn.click();
     await waitZoom(() => JSON.parse(window.__cdb_lod_probe).zoom > 0.95);
     p = await lodProbe();
-    assert.equal(p.tier, "detail", "回 100% 必须恢复详情档（字段行恢复）");
-    assert.equal(p.lod_scale, 1, "回 100% 线宽必须回默认");
-    assert.equal(p.anchor_mode, "field", "回 100% 关系线必须恢复字段维度锚定（#35）");
-    assert.equal(p.topo_comments, 0, "回 100% 拓扑注释计数必须复位");
-    assert.equal(p.font_world, 13, "回 100% 字号必须回默认 13px");
+    assert.equal(p.view_dimension, "table", "回 100% 必须仍为表维度（缩放只负责缩放）");
+    assert.equal(p.tier, "topology", "回 100% 必须保持表维度渲染");
+    assert.equal(p.anchor_mode, "table", "回 100% 必须保持表级锚定");
+    assert.ok(Math.abs(p.font_world - 11.0) < 0.2,
+      `表维度 ≈100% 字号必须为 11/zoom ≈ 11px（实际 ${p.font_world}@zoom ${p.zoom}）`);
+    assert.ok(p.lod_scale <= 1.01, "表维度 100% 线宽补偿必须回落 ≈1");
+
+    // WHEN：ToolRail 按钮切回字段维度（R-VIEW-DIM-02 入口 ②）
+    await railBtn.click();
+    await page.waitForFunction(
+      () => JSON.parse(window.__cdb_lod_probe).view_dimension === "field", null, { timeout: 4_000, polling: 100 },
+    );
+    p = await lodProbe();
+    assert.equal(p.tier, "detail", "ToolRail 切回必须恢复详情档");
+    assert.equal(p.anchor_mode, "field", "ToolRail 切回必须恢复字段锚定");
+    assert.equal(p.topo_comments, 0, "字段维度拓扑注释计数必须复位");
+    assert.equal(await dimBtn.innerText(), "维度：字段", "指示器必须随 ToolRail 切换一致");
+    assert.ok(!(await railBtn.evaluate(el => el.classList.contains("cdb-is-active"))),
+      "字段维度下 ToolRail 维度按钮不得为激活态");
+
+    // WHEN：右键菜单切表维度（R-VIEW-DIM-02 入口 ①）
+    const blank = await canvasPoint(page, { x: 640, y: 480 });
+    await page.mouse.click(blank.x, blank.y, { button: "right" });
+    const ctxMenu = page.locator('[data-testid="canvas-context-menu"]:visible');
+    await ctxMenu.waitFor();
+    await page.locator('[data-testid="ctx-toggle-dimension"]').click();
+    await page.waitForFunction(
+      () => JSON.parse(window.__cdb_lod_probe).view_dimension === "table", null, { timeout: 4_000, polling: 100 },
+    );
+    assert.equal(await dimBtn.innerText(), "维度：表", "右键菜单切换后指示器必须一致");
+    assert.equal((await lodProbe()).tier, "topology", "右键菜单切换后必须表维度渲染");
+    assert.equal(
+      await page.locator('[data-testid="canvas-context-menu"]:visible').count(), 0,
+      "维度切换后右键菜单必须关闭",
+    );
+
+    // THEN 4：持久化（R-VIEW-DIM-04）——刷新后仍为表维度
+    // （token 在 localStorage 跨刷新存活，无需重登；刷新回落房间列表，重新进入）
+    await page.reload();
+    await createRoomAndEnter(page);
+    await page.waitForFunction(() => !!window.__cdb_lod_probe, null, { timeout: 8_000 });
+    p = await lodProbe();
+    assert.equal(p.view_dimension, "table", "刷新后维度必须持久为表（cdb.view-dimension）");
+    assert.equal(p.tier, "topology", "刷新后必须保持表维度渲染");
+  });
+
+  // ─── ST-KB-SEL-01：Ctrl+A 全选 + Delete 删除 + 撤销 e2e（fix-issues-36-37 / #37，core-01 §5.13） ──
+  await run(["ST-KB-SEL-01"], "全选图元 + 删除 + 撤销/重做 + 输入框豁免", async page => {
+    const field = (id, extra = {}) => ({
+      id, name: "id", type_: "INT", default: "", check: "", primary: true, unique: false,
+      not_null: true, increment: false, comment: "", tag: "", dict_code: "", ...extra,
+    });
+    const mkTable = (id, x) => ({
+      id, name: `tbl_${id}`, x, y: 100, color: "", comment: "",
+      fields: [field(`${id}_f1`)], indices: [],
+    });
+    const mkRef = (id, from, to) => ({
+      id, name: "", start_table_id: from, end_table_id: to,
+      start_field_id: `${from}_f1`, end_field_id: `${to}_f1`,
+      type_: "one_to_many", on_delete: "RESTRICT", on_update: "RESTRICT",
+      color: "", line_type: "", stroke_style: "",
+    });
+    await installApi(page, {
+      presetDiagram: {
+        tables: [mkTable("t1", 60), mkTable("t2", 380), mkTable("t3", 700)],
+        references: [mkRef("r1", "t1", "t2"), mkRef("r2", "t2", "t3")],
+        areas: [{ id: "a1", x: 40, y: 60, width: 900, height: 300, color: "", name: "区域一" }],
+        notes: [{ id: "n1", x: 80, y: 420, content: "便签一", color: "" }],
+      },
+    });
+    await login(page);
+    await createRoomAndEnter(page);
+    await page.waitForFunction(() => !!window.__cdb_lod_probe, null, { timeout: 8_000 });
+    const lodProbe = () => page.evaluate(() => JSON.parse(window.__cdb_lod_probe));
+    const hlProbe = () => page.evaluate(() => JSON.parse(window.__cdb_hl_probe));
+    const counts = p => [p.tables_n, p.refs_n, p.notes_n, p.areas_n];
+    const waitCounts = (want, timeout = 4_000) => page.waitForFunction(
+      w => {
+        const pr = window.__cdb_lod_probe && JSON.parse(window.__cdb_lod_probe);
+        return pr && [pr.tables_n, pr.refs_n, pr.notes_n, pr.areas_n].join(",") === w.join(",");
+      },
+      want, { timeout, polling: 100 },
+    );
+
+    // GIVEN：基线计数 3 表 / 2 关系 / 1 便签 / 1 区域
+    let p = await lodProbe();
+    assert.deepEqual(counts(p), [3, 2, 1, 1], `基线计数必须 3/2/1/1（实际 ${counts(p)}）`);
+
+    // 画布空白点击获得焦点（并清空任何既有选中）
+    const blank = await canvasPoint(page, { x: 1150, y: 620 });
+    await page.mouse.click(blank.x, blank.y);
+
+    // WHEN 1：Ctrl+A —— THEN（R-KBSEL-01）：页面无文本高亮 + 全部图元入选中集
+    await page.keyboard.press("Control+a");
+    await page.waitForFunction(
+      () => JSON.parse(window.__cdb_hl_probe).multi_n === 3, null, { timeout: 4_000, polling: 100 },
+    );
+    const domSel = await page.evaluate(() => String(window.getSelection()));
+    assert.equal(domSel, "", "Ctrl+A 不得产生浏览器页面文本全选（须 preventDefault）");
+    let hl = await hlProbe();
+    assert.equal(hl.multi_n, 3, "Ctrl+A 后 3 张表必须全部进入多选集");
+
+    // WHEN 2：Delete —— THEN（R-KBSEL-02）：全部选中图元删除（表级联关系）
+    await page.keyboard.press("Delete");
+    await waitCounts([0, 0, 0, 0]);
+    p = await lodProbe();
+    assert.deepEqual(counts(p), [0, 0, 0, 0], "Delete 后画布图元必须清空（含级联关系）");
+
+    // WHEN 3：Ctrl+Z —— THEN（R-KBSEL-03）：一次 Undo 恢复整次删除
+    await page.keyboard.press("Control+z");
+    await waitCounts([3, 2, 1, 1]);
+    // WHEN 3b：Ctrl+Y 重放删除（对称 redo）
+    await page.keyboard.press("Control+y");
+    await waitCounts([0, 0, 0, 0]);
+    await page.keyboard.press("Control+z");
+    await waitCounts([3, 2, 1, 1]);
+
+    // WHEN 4：单选 t1 + Delete —— THEN：该表与其级联关系 r1 消失，可撤销
+    const t1Head = await canvasPoint(page, { x: 60 + 100, y: 100 + 21 });
+    await page.mouse.click(t1Head.x, t1Head.y);
+    await page.locator('[data-testid="inspector-table-form"]:visible').waitFor();
+    await page.keyboard.press("Delete");
+    await waitCounts([2, 1, 1, 1]);
+    p = await lodProbe();
+    assert.deepEqual(counts(p), [2, 1, 1, 1], "删 t1 必须级联 r1（剩 t2/t3 + r2 + 便签 + 区域）");
+    await page.keyboard.press("Control+z");
+    await waitCounts([3, 2, 1, 1]);
+
+    // WHEN 5：输入框内 Ctrl+A / Delete —— THEN（R-KBSEL-04）：原生文本行为，不触画布
+    await page.mouse.click(t1Head.x, t1Head.y);
+    await page.locator('[data-testid="inspector-table-form"]:visible').waitFor();
+    const nameInput = page.locator('[data-testid="inspector-table-name"]');
+    await nameInput.click();
+    await page.keyboard.press("Control+a");
+    await nameInput.pressSequentially("tbl_renamed");
+    assert.equal(await nameInput.inputValue(), "tbl_renamed", "输入框内 Ctrl+A 必须为原生文本全选");
+    hl = await hlProbe();
+    assert.equal(hl.multi_n, 0, "输入框内 Ctrl+A 不得触发画布全选");
+    await page.keyboard.press("Delete"); // 删除输入框内残留字符（若有）——不得删画布图元
+    await page.waitForFunction(
+      () => JSON.parse(window.__cdb_lod_probe).tables_n === 3, null, { timeout: 2_000, polling: 100 },
+    ).catch(() => {});
+    p = await lodProbe();
+    assert.deepEqual(counts(p), [3, 2, 1, 1], "输入框内 Delete 不得删除画布图元");
   });
 
   // ─── ST-CR-TAG-01：Inspector 字段 tag 受控输入（redesign-listview-type-length-canvas-fix） ──

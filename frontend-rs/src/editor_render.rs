@@ -8,7 +8,7 @@
 //! All types re-exported from `crate::editor_core::types`.
 
 use crate::editor_core::types::{Area, Note, Reference, Table};
-use crate::editor_core::CommentDisplay;
+use crate::editor_core::{CommentDisplay, ViewDimension};
 use leptos::{RwSignal, SignalGet, SignalSet, SignalUpdate};
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -1139,6 +1139,9 @@ mod leptos_canvas {
             // fix-remote-github-issues-7-18（issue #10，R-CMT-04）：订阅注释显示模式——
             // 切换即重绘（精灵指纹含 mode，自动触发重光栅）
             let comment_mode = store.comment_display.get();
+            // fix-issues-36-37（issue #36，R-VIEW-DIM-05）：订阅维度模式——切换即重绘
+            // （维度经精灵指纹触发重光栅，R-LOD-05）
+            let view_dimension = store.view_dimension.get();
 
             let width = canvas.width() as f64;
             let height = canvas.height() as f64;
@@ -1176,6 +1179,7 @@ mod leptos_canvas {
                                     table_override,
                                     ghost_skip.as_deref(),
                                     comment_mode,
+                                    view_dimension,
                                     // R-ARESZ-05：只读模式不渲染 resize 手柄
                                     !read_only,
                                 );
@@ -1839,8 +1843,8 @@ mod leptos_canvas {
                     &refs,
                     dx,
                     dy,
-                    // #35 R-LOD-08：与 draw_canvas 同一判档口径（prev=Detail 防滞回抖动分歧）
-                    super::lod_tier(t_now.zoom, super::LodTier::Detail),
+                    // #35 R-LOD-08 / #36 R-VIEW-DIM-01：与 draw_canvas 同一维度口径（显式维度驱动）
+                    super::tier_for_dimension(store.view_dimension.get_untracked()),
                 ) {
                     // relation-inspector-and-ddl-io：点击连线（表未命中时）→ 选中高亮 + Inspector 展示（不再弹详情模态）
                     // 命中顺序在表之后：连线被表遮住时点击应选中表而非不可见的线
@@ -2324,6 +2328,7 @@ mod leptos_canvas {
                                         new_x,
                                         new_y,
                                         store.comment_display.get_untracked(),
+                                        store.view_dimension.get_untracked(),
                                     )
                                 })
                             });
@@ -3610,6 +3615,9 @@ pub fn draw_canvas(
     ghost_skip: Option<&str>,
     // fix-remote-github-issues-7-18（issue #10，R-CMT-04）：画布注释显示模式（视图偏好）
     comment_mode: CommentDisplay,
+    // fix-issues-36-37（issue #36，R-VIEW-DIM-01）：显式维度模式——渲染档位由维度决定，
+    // 不再由 zoom 阈值隐式切换（R-LOD-01 #36 修订）
+    view_dimension: ViewDimension,
     // fix-open-issues-26-33（issue #27，R-ARESZ-01/05）：选中区域是否渲染 resize 手柄（只读=false）
     area_handles: bool,
 ) {
@@ -3657,8 +3665,9 @@ pub fn draw_canvas(
 
     // R-PERF-06：refs 端点查找先建 id → &Table HashMap，O(refs + tables)
     let table_map: HashMap<&str, &Table> = tables.iter().map(|t| (t.id.as_str(), t)).collect();
-    // #30 UT-CR-LOD-01：本帧 LOD 档与线宽补偿倍率（详情档恒 1.0 无回归）
-    let frame_tier = lod_tier(t.zoom, LodTier::Detail);
+    // #36 UT-CR-LOD-01：本帧渲染档由显式维度决定（R-VIEW-DIM-01）；
+    // zoom 仅驱动表维度内线宽补偿倍率（字段维度恒 1.0 无回归）
+    let frame_tier = tier_for_dimension(view_dimension);
     let lod_scale = match frame_tier {
         LodTier::Detail => 1.0,
         LodTier::Topology => lod_line_width(t.zoom, 2.0) / 2.0,
@@ -3769,10 +3778,10 @@ pub fn draw_canvas(
         if alpha < 0.999 {
             ctx.save();
             ctx.set_global_alpha(alpha);
-            draw_table(ctx, &visual, is_sel, palette, t.zoom, comment_mode, &fk_fields);
+            draw_table(ctx, &visual, is_sel, palette, t.zoom, comment_mode, frame_tier, &fk_fields);
             ctx.restore();
         } else {
-            draw_table(ctx, &visual, is_sel, palette, t.zoom, comment_mode, &fk_fields);
+            draw_table(ctx, &visual, is_sel, palette, t.zoom, comment_mode, frame_tier, &fk_fields);
         }
     }
 
@@ -3811,7 +3820,14 @@ pub fn draw_canvas(
     } else {
         0
     };
-    update_lod_probe(t.zoom, frame_tier, lod_scale, topo_comments);
+    update_lod_probe(
+        t.zoom,
+        frame_tier,
+        lod_scale,
+        topo_comments,
+        view_dimension,
+        (tables.len(), refs.len(), notes.len(), areas.len()),
+    );
     // #33 ST-PE-09：视觉体系探针（本帧徽章绘制计数在表循环累计）
     update_vis_probe(badges_drawn);
 
@@ -3872,7 +3888,15 @@ fn update_hl_probe(_: bool, _: bool, _: usize, _: f64, _: f64, _: bool) {}
 /// （JSON 字符串：zoom / tier / font_world / lod_scale），供 e2e 断言拓扑档
 /// 「字段行隐藏、表名屏幕字号 ≥11px、关系线宽补偿」在真实渲染路径生效。
 #[cfg(target_arch = "wasm32")]
-fn update_lod_probe(zoom: f64, tier: LodTier, lod_scale: f64, topo_comments: usize) {
+#[allow(clippy::too_many_arguments)]
+fn update_lod_probe(
+    zoom: f64,
+    tier: LodTier,
+    lod_scale: f64,
+    topo_comments: usize,
+    dim: ViewDimension,
+    counts: (usize, usize, usize, usize),
+) {
     if let Some(win) = web_sys::window() {
         let target: &js_sys::Object = win.unchecked_ref();
         let key = wasm_bindgen::JsValue::from_str("__cdb_lod_probe");
@@ -3880,21 +3904,29 @@ fn update_lod_probe(zoom: f64, tier: LodTier, lod_scale: f64, topo_comments: usi
             LodTier::Detail => ("detail", "field"),
             LodTier::Topology => ("topology", "table"),
         };
+        // #36 R-VIEW-DIM-03：暴露显式维度（e2e 三入口一致性断言）
         let json = format!(
-            "{{\"zoom\":{},\"tier\":\"{}\",\"font_world\":{},\"lod_scale\":{},\"anchor_mode\":\"{}\",\"topo_comments\":{}}}",
+            "{{\"zoom\":{},\"tier\":\"{}\",\"font_world\":{},\"lod_scale\":{},\"anchor_mode\":\"{}\",\"topo_comments\":{},\"view_dimension\":\"{}\"}}",
             zoom,
             tier_str,
             lod_table_font_size(zoom, tier),
             lod_scale,
             anchor_mode,
-            topo_comments
+            topo_comments,
+            dim.as_str()
         );
+        // #37 ST-KB-SEL-01：暴露图元计数（表/关系/便签/区域），供全选删除/撤销 e2e 断言
+        let json = json.trim_end_matches('}').to_string()
+            + &format!(
+                ",\"tables_n\":{},\"refs_n\":{},\"notes_n\":{},\"areas_n\":{}}}",
+                counts.0, counts.1, counts.2, counts.3
+            );
         let _ = js_sys::Reflect::set(target, &key, &wasm_bindgen::JsValue::from_str(&json));
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn update_lod_probe(_: f64, _: LodTier, _: f64, _: usize) {}
+fn update_lod_probe(_: f64, _: LodTier, _: f64, _: usize, _: ViewDimension, _: (usize, usize, usize, usize)) {}
 
 /// #33 ST-PE-09：视觉体系统一探针——e2e 经 window.__cdb_vis_probe 读取徽章/端点/圆角
 /// 常量与绘制口径（字块角标已移除，端点为 crow's foot 族）。
@@ -4074,44 +4106,40 @@ pub fn sprite_zoom_bucket(zoom: f64) -> u32 {
     if zoom <= 1.0 { 1 } else { 2 }
 }
 
-// ─── #30 UT-CR-LOD-01：小缩放 LOD 分档（core-CR §6.y / R-LOD-01~04） ──────────
+// ─── #30/#36 UT-CR-LOD-01：LOD 分档与显式维度（core-01 §5.12 / R-LOD-02~08 / R-VIEW-DIM） ──────────
 
-/// LOD 拓扑档阈值：zoom 低于该值进入拓扑档（字段行隐藏、仅表头+大字表名）。
-/// core-07 §15.4 token `canvas.lod.topology-zoom`。
-pub const LOD_TOPOLOGY_ZOOM: f64 = 0.55;
-/// 滞回半宽：阈值 ±0.03 内保持原档，避免边界缩放抖动（R-LOD-02）。
-pub const LOD_HYSTERESIS: f64 = 0.03;
-/// 拓扑档表名屏幕字号下限（px，R-LOD-03）。
+// fix-issues-36-37（issue #36，R-LOD-01 修订）：拓扑档 zoom 阈值常量与 ±0.03
+// 滞回随「zoom 触发档位切换」一并退役——维度由用户显式切换（R-VIEW-DIM-01），
+// zoom 仅驱动表维度内可读性补偿（R-LOD-03/04）。
+
+/// 表维度表名屏幕字号下限（px，R-LOD-03）。
 pub const LOD_MIN_SCREEN_FONT_PX: f64 = 11.0;
-/// 拓扑档表名世界字号夹紧上限（px）——极小 zoom 下避免单表占满视口。
+/// 表维度表名世界字号夹紧上限（px）——极小 zoom 下避免单表占满视口。
 pub const LOD_TABLE_FONT_WORLD_MAX: f64 = 30.0;
-/// 详情档表名默认世界字号（draw_table_body 表名 13px，R-LOD-01 回默认锚点）。
+/// 字段维度表名默认世界字号（draw_table_body 表名 13px，R-LOD-03 字段维度不补偿）。
 pub const TABLE_NAME_FONT_PX: f64 = 13.0;
-/// LOD 线宽补偿目标屏幕线宽（px，R-LOD-04）。
+/// 表维度线宽补偿目标屏幕线宽（px，R-LOD-04）。
 pub const LOD_MIN_SCREEN_LINE_PX: f64 = 1.5;
-/// LOD 线宽补偿倍率夹紧上限（相对 base）。
+/// 表维度线宽补偿倍率夹紧上限（相对 base）。
 pub const LOD_LINE_WIDTH_COMP_MAX: f64 = 4.0;
 
-/// LOD 档位：详情档（现状渲染）/ 拓扑档（字段行隐藏、大字表名、线宽补偿）。
+/// LOD 渲染档：详情档（字段维度渲染）/ 拓扑档（表维度渲染——字段行隐藏、大字表名、线宽补偿）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LodTier {
     Detail,
     Topology,
 }
 
-/// #30 UT-CR-LOD-01：LOD 档位判定（带滞回）。滞回带 [0.52, 0.58) 内保持 prev 不抖动。
-pub fn lod_tier(zoom: f64, prev: LodTier) -> LodTier {
-    if zoom >= LOD_TOPOLOGY_ZOOM - LOD_HYSTERESIS && zoom < LOD_TOPOLOGY_ZOOM + LOD_HYSTERESIS {
-        return prev;
-    }
-    if zoom < LOD_TOPOLOGY_ZOOM {
-        LodTier::Topology
-    } else {
-        LodTier::Detail
+/// #36 UT-CR-LOD-01（R-VIEW-DIM-01）：显式维度 → 渲染档映射。与 zoom 无关——
+/// 任何缩放级别下同一维度档位不变（维度不随缩放串档）。
+pub fn tier_for_dimension(dim: ViewDimension) -> LodTier {
+    match dim {
+        ViewDimension::Table => LodTier::Topology,
+        ViewDimension::Field => LodTier::Detail,
     }
 }
 
-/// #30 UT-CR-LOD-01：表名世界字号——拓扑档按 11px 屏幕字号下限放大（夹紧 30px）；
+/// #30/#36 UT-CR-LOD-01：表名世界字号——表维度按 11px 屏幕字号下限放大（夹紧 30px）；
 /// 详情档返回默认 13px。
 pub fn lod_table_font_size(zoom: f64, tier: LodTier) -> f64 {
     match tier {
@@ -4835,13 +4863,14 @@ fn create_table_ghost(
     table_x: f64,
     table_y: f64,
     comment_mode: CommentDisplay,
+    view_dimension: ViewDimension,
 ) -> Option<GhostDrag> {
     let dpr = current_device_pixel_ratio();
     let bucket = sprite_zoom_bucket(t.zoom);
     let scale = dpr * bucket as f64;
     let boost = bucket as f64 / t.zoom.max(0.01);
-    // #30：幽灵层卡体与被拖表同档位（拓扑档拖的是拓扑卡）
-    let tier = lod_tier(t.zoom, LodTier::Detail);
+    // #30/#36：幽灵层卡体与被拖表同维度（表维度拖的是表维度卡）；档位随显式维度（R-VIEW-DIM-01）
+    let tier = tier_for_dimension(view_dimension);
     // #33：幽灵层仅在「无关系表」拖拽时创建（见调用处 table_has_references 守卫），
     // 无关系即无 FK 徽章，fk 传空集
     let sprite = render_table_sprite(table, palette, scale, boost, 0, comment_mode, tier, t.zoom, &std::collections::HashSet::new())?;
@@ -4885,9 +4914,8 @@ fn create_table_ghost(
     Some(ghost)
 }
 
-fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool, palette: &CanvasPalette, zoom: f64, comment_mode: CommentDisplay, fk_fields: &std::collections::HashSet<&str>) {
-    // #30 UT-CR-LOD-01：每帧按 zoom 判档（渲染层无状态，滞回带内偏 Detail 防抖动）
-    let tier = lod_tier(zoom, LodTier::Detail);
+fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool, palette: &CanvasPalette, zoom: f64, comment_mode: CommentDisplay, tier: LodTier, fk_fields: &std::collections::HashSet<&str>) {
+    // #36 UT-CR-LOD-01：渲染档由调用方按显式维度传入（R-VIEW-DIM-01），不再按 zoom 判档
     // R-PERF-07：zoom ≤ SPRITE_CACHE_MAX_ZOOM 走精灵缓存；超出回退活画
     if zoom <= SPRITE_CACHE_MAX_ZOOM && blit_table_sprite(ctx, table, palette, zoom, comment_mode, tier, fk_fields) {
         if selected {
@@ -7264,20 +7292,38 @@ mod tests {
         assert_eq!(crate::editor_core::CommentDisplay::NameComment.secondary("  "), None);
     }
 
-    /// UT-CR-LOD-01 — LOD 档位判定与参数纯函数（#30，core-CR §6.y / R-LOD-01~04）
+    /// UT-CR-LOD-01 — 维度模式与可读性补偿纯函数（#30/#35/#36，core-01 §5.12 / R-VIEW-DIM / R-LOD-02~08）
     #[test]
-    fn ut_cr_lod_01_lod_tier_and_params() {
-        // 断言 1：0.5 / 0.35 → 拓扑档；0.56 / 1.0 → 详情档；滞回带 ±0.03 内保持原档
-        assert_eq!(lod_tier(0.5, LodTier::Detail), LodTier::Topology, "UT-CR-LOD-01: 0.5 必须拓扑档");
-        assert_eq!(lod_tier(0.35, LodTier::Detail), LodTier::Topology, "UT-CR-LOD-01: 0.35 必须拓扑档");
-        assert_eq!(lod_tier(0.56, LodTier::Detail), LodTier::Detail, "UT-CR-LOD-01: 0.56 滞回带内保持详情档");
-        assert_eq!(lod_tier(1.0, LodTier::Detail), LodTier::Detail, "UT-CR-LOD-01: 1.0 必须详情档");
-        assert_eq!(lod_tier(0.56, LodTier::Topology), LodTier::Topology, "UT-CR-LOD-01: 0.56 滞回带内保持拓扑档（不抖动）");
-        assert_eq!(lod_tier(0.53, LodTier::Topology), LodTier::Topology, "UT-CR-LOD-01: 0.53 滞回带内保持拓扑档");
-        assert_eq!(lod_tier(0.51, LodTier::Detail), LodTier::Topology, "UT-CR-LOD-01: 0.51 出滞回带必须切拓扑档");
-        assert_eq!(lod_tier(0.59, LodTier::Topology), LodTier::Detail, "UT-CR-LOD-01: 0.59 出滞回带必须切详情档");
+    fn ut_cr_lod_01_view_dimension_and_params() {
+        // 断言 1（#36 R-VIEW-DIM-04）：ViewDimension 存储合同——缺省/非法回落 Field；
+        // as_str 往返一致；next 双态互换
+        use crate::editor_core::ViewDimension;
+        assert_eq!(ViewDimension::from_stored(None), ViewDimension::Field, "UT-CR-LOD-01: 缺省必须字段维度");
+        assert_eq!(ViewDimension::from_stored(Some("bogus")), ViewDimension::Field, "UT-CR-LOD-01: 非法值必须回落字段维度");
+        assert_eq!(ViewDimension::from_stored(Some("table")), ViewDimension::Table);
+        assert_eq!(ViewDimension::from_stored(Some("field")), ViewDimension::Field);
+        for d in [ViewDimension::Table, ViewDimension::Field] {
+            assert_eq!(ViewDimension::from_stored(Some(d.as_str())), d, "UT-CR-LOD-01: as_str 往返必须一致");
+        }
+        assert_eq!(ViewDimension::Field.next(), ViewDimension::Table);
+        assert_eq!(ViewDimension::Table.next(), ViewDimension::Field);
+        assert_eq!(crate::editor_core::VIEW_DIMENSION_STORAGE_KEY, "cdb.view-dimension");
 
-        // 断言 2：拓扑档表名世界字号保证屏幕 ≥11px（22px@0.5）；0.35 触发夹紧上限；详情档默认 13px
+        // 断言 2（#36 R-LOD-01 修订 / R-VIEW-DIM-01）：维度→渲染档映射与 zoom 无关——
+        // Table→Topology、Field→Detail；zoom 阈值判档（旧 lod_tier / 阈值常量）已退役（源码锚点）
+        assert_eq!(tier_for_dimension(ViewDimension::Table), LodTier::Topology);
+        assert_eq!(tier_for_dimension(ViewDimension::Field), LodTier::Detail);
+        let src = include_str!("editor_render.rs");
+        assert!(
+            !src.contains(concat!("lo", "d_tier(")),
+            "UT-CR-LOD-01: zoom 阈值判档函数必须退役（R-LOD-01 #36 修订）"
+        );
+        assert!(
+            !src.contains(concat!("LOD_TOPOLOGY", "_ZOOM")),
+            "UT-CR-LOD-01: 拓扑档 zoom 阈值常量必须退役"
+        );
+
+        // 断言 3：拓扑档表名世界字号保证屏幕 ≥11px（22px@0.5）；0.35 触发夹紧上限；详情档默认 13px
         let f50 = lod_table_font_size(0.5, LodTier::Topology);
         assert!((f50 - 22.0).abs() < 1e-9, "UT-CR-LOD-01: 0.5 世界字号必须 22px（实际 {f50}）");
         assert!(f50 * 0.5 >= 11.0 - 1e-9, "UT-CR-LOD-01: 屏幕字号必须 ≥11px");
@@ -7286,14 +7332,14 @@ mod tests {
         assert_eq!(lod_table_font_size(0.5, LodTier::Detail), TABLE_NAME_FONT_PX, "UT-CR-LOD-01: 详情档必须返回默认字号");
         assert_eq!(lod_table_font_size(1.0, LodTier::Detail), TABLE_NAME_FONT_PX);
 
-        // 断言 3：lod_line_width(0.5, base=2) ≥ 1.5/0.5=3px 世界宽；补偿倍率夹紧 ≤4×
+        // 断言 5：lod_line_width(0.5, base=2) ≥ 1.5/0.5=3px 世界宽；补偿倍率夹紧 ≤4×
         let w50 = lod_line_width(0.5, 2.0);
         assert!(w50 >= 1.5 / 0.5 - 1e-9, "UT-CR-LOD-01: 0.5 世界线宽必须 ≥3px（实际 {w50}）");
         let w01 = lod_line_width(0.1, 2.0);
         assert!(w01 <= 2.0 * 4.0 + 1e-9, "UT-CR-LOD-01: 补偿倍率必须夹紧 ≤4×（实际 {w01}）");
         assert!((w01 - 8.0).abs() < 1e-9, "UT-CR-LOD-01: 0.1 必须夹到 base×4=8（实际 {w01}）");
 
-        // 断言 4：LOD 档位进入精灵指纹——跨档不同、同档内相同（拖动不触发重光栅）
+        // 断言 6（R-LOD-05 / R-VIEW-DIM-05）：维度（渲染档）进入精灵指纹——跨档不同、同档内相同（拖动不触发重光栅）
         let t = Table {
             id: "t1".into(),
             name: "orders".into(),
@@ -7323,7 +7369,7 @@ mod tests {
             "UT-CR-LOD-01: 同档内拖动指纹必须相同"
         );
 
-        // 断言 5（#35 R-LOD-08）：表级锚点纯函数——拓扑档锚点纵坐标 = 表头中线、
+        // 断言 7（#35 R-LOD-08）：表级锚点纯函数——拓扑档锚点纵坐标 = 表头中线、
         // 横坐标 = 卡体左/右缘；详情档保持字段锚点；三路径函数同口径
         let fld = |id: &str, name: &str| Field {
             id: id.into(),
@@ -7415,7 +7461,7 @@ mod tests {
             "UT-CR-LOD-01: 拓扑档命中必须与表级锚定绘制同口径"
         );
 
-        // 断言 6（#35 R-LOD-02 补齐）：拓扑档注释宽度口径——NameComment 且注释非空时
+        // 断言 8（#35 R-LOD-02 补齐）：拓扑档注释宽度口径——NameComment 且注释非空时
         // 卡宽估算覆盖「表名 + 注释」（注释在拓扑档可见，必须有空间）；空注释不增宽
         let mut tc = ta.clone();
         // 长注释（12 CJK ≈ 168px）使表头行估算超过 TABLE_WIDTH 下限 230，增宽才可观测

@@ -73,6 +73,10 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-KB-02",
     "UT-KB-03",
     "UT-KB-04",
+    // fix-issues-36-37 / #37：Ctrl/Cmd+A 全选判定与门控；DeleteTables 级联快照撤销/重做
+    // （ST-KB-SEL-01 由 parity-d 上报）
+    "UT-KB-05",
+    "UT-KB-06",
     // S04 invite 公开基址
     "UT-S04-18",
     // core-UI-modals + modals-2 + KB (MM)

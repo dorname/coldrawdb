@@ -16,13 +16,13 @@
 
 ## [code] C1 #36 显式维度切换
 
-- [ ] C1.1 列出本批覆盖 UT/ST ID（UT-CR-LOD-01 / ST-CR-LOD-01）并实现：`ViewDimension` 枚举 + `VIEW_DIMENSION_STORAGE_KEY` + EditorStore 信号；`draw_canvas` 档位改由显式维度驱动（zoom 仅作表维度内补偿）；ToolRail 维度按钮（激活态）+ 快捷键 `V` + 画布右键菜单切换项 + FloatingControls 状态指示；lod 探针暴露 `view_dimension`
-- [ ] C1.2 改写 UT-CR-LOD-01 与 ST-CR-LOD-01 断言（显式维度口径）并同批补齐 OpenLogos reporter 记录
+- [x] C1.1 列出本批覆盖 UT/ST ID（UT-CR-LOD-01 / ST-CR-LOD-01）并实现：`ViewDimension` 枚举 + `VIEW_DIMENSION_STORAGE_KEY` + EditorStore 信号；`draw_canvas` 档位改由显式维度驱动（zoom 仅作表维度内补偿）；ToolRail 维度按钮（激活态）+ 快捷键 `V` + 画布右键菜单切换项 + FloatingControls 状态指示；lod 探针暴露 `view_dimension`
+- [x] C1.2 改写 UT-CR-LOD-01 与 ST-CR-LOD-01 断言（显式维度口径）并同批补齐 OpenLogos reporter 记录
 
 ## [code] C2 #37 全选与可撤销删除
 
-- [ ] C2.1 列出本批覆盖 UT/ST ID（UT-KB-05 / UT-KB-06 / ST-KB-SEL-01）并实现：`Command::DeleteTable { table, references }`（apply/revert 级联快照）+ `on_delete_table` 入栈；快捷键处理器新增 Ctrl/Cmd+A（preventDefault 全选图元）与 Delete/Backspace 表/多选/全选分支；多选删除合并单条撤销单元
-- [ ] C2.2 编写 UT-KB-05 / UT-KB-06 / ST-KB-SEL-01 并同批补齐 OpenLogos reporter 记录
+- [x] C2.1 列出本批覆盖 UT/ST ID（UT-KB-05 / UT-KB-06 / ST-KB-SEL-01）并实现：`Command::DeleteTable { table, references }`（apply/revert 级联快照）+ `on_delete_table` 入栈；快捷键处理器新增 Ctrl/Cmd+A（preventDefault 全选图元）与 Delete/Backspace 表/多选/全选分支；多选删除合并单条撤销单元
+- [x] C2.2 编写 UT-KB-05 / UT-KB-06 / ST-KB-SEL-01 并同批补齐 OpenLogos reporter 记录
 
 ## [follow-up] 关闭 issue 与归档
 
@@ -33,7 +33,7 @@
 
 - [x] H1 用户确认本提案后，才开始产出 delta（D1～D2）（/goal「继续拉取issue,并分析解决issue,直到关闭」全程授权）
 - [x] H2 delta 完成后，等待用户明确授权 `openlogos merge fix-issues-36-37-view-dimension-select-all`（/goal 授权）
-- [ ] H3 merge 完成后自动提交规格文档，并按合并规格实现（C1、C2 分批闭环），完成后自动提交代码
+- [x] H3 merge 完成后自动提交规格文档，并按合并规格实现（C1、C2 分批闭环），完成后自动提交代码
 - [ ] H4 实现完成后，等待用户明确授权 `openlogos verify`（/goal 授权）
 - [ ] H5 verify PASS 后，等待用户明确授权 `openlogos archive fix-issues-36-37-view-dimension-select-all`（/goal 授权）
 - [ ] H6 归档提交完成后，询问用户是否执行 `git push`（/goal 授权）
