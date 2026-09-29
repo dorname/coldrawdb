@@ -240,7 +240,7 @@ fn ut_cr_ghost_02_ghost_highlight_is_rounded() {
     // 2) 改用幽灵 canvas 内 round_rect 描边（draw_table_selection 同一函数；
     //    #30 起带 comment_mode/tier 参数；#33 圆角口径 TABLE_CORNER_RADIUS）
     assert!(
-        ghost_block.contains("draw_table_selection(&off, table, palette, comment_mode, tier)"),
+        ghost_block.contains("draw_table_selection(&off, table, palette, comment_mode, tier,"),
         "R-HL-01/02：幽灵层必须在 canvas 内用 draw_table_selection 画圆角选中环"
     );
     // set_transform 与 sprite 渲染同参数（环落在表体世界坐标处）

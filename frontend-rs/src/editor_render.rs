@@ -1398,8 +1398,10 @@ mod leptos_canvas {
 
                 let tables = store.tables.get_untracked();
                 let refs = store.references.get_untracked();
+                let hit_tier = super::tier_for_dimension(store.view_dimension.get_untracked());
+                let hit_label_scale = store.label_font_scale.get_untracked().factor();
                 if read_only {
-                    if let Some(id) = super::hit_test(&tables, dx, dy) {
+                    if let Some(id) = super::hit_test_with(&tables, dx, dy, t_now.zoom, hit_label_scale, hit_tier) {
                         selected_id.set(Some(id.clone()));
                         if let Some(cb) = on_select.as_ref() {
                             cb(id);
@@ -1409,11 +1411,11 @@ mod leptos_canvas {
                 }
                 if rel_tool_active.get_untracked() {
                     // #3 reopen：仅左右连接点起拖连；字段行点击仍走 on_field_pick（两点选取）
-                    if let Some((tid, fid, side)) = super::hit_test_field_port(&tables, dx, dy) {
+                    if let Some((tid, fid, side)) = super::hit_test_field_port_with(&tables, dx, dy, t_now.zoom, hit_label_scale, hit_tier) {
                         let (anchor_x, anchor_y) = tables
                             .iter()
                             .find(|t| t.id == tid)
-                            .map(|t| super::field_anchor_for_side(t, &fid, side))
+                            .map(|t| super::field_anchor_for_side_with(t, &fid, side, t_now.zoom, hit_label_scale, hit_tier))
                             .unwrap_or((dx, dy));
                         capture_pointer(&canvas, ev.pointer_id());
                         drag_state.set(Some(DragState {
@@ -1444,7 +1446,7 @@ mod leptos_canvas {
                         }));
                         return;
                     }
-                    if let Some((tid, fid)) = super::hit_test_field(&tables, dx, dy) {
+                    if let Some((tid, fid)) = super::hit_test_field_with(&tables, dx, dy, t_now.zoom, hit_label_scale, hit_tier) {
                         if let Some(cb) = on_field_pick.as_ref() {
                             cb(tid, fid);
                         }
@@ -1479,7 +1481,7 @@ mod leptos_canvas {
                 // #3 reopen：触发面改为左右 port，非整行；行内短按仍经表命中 → on_field_pick
                 // #5：Shift 或已多选集合内拖动时让路给框选/多表拖
                 if !read_only {
-                    if let Some((tid, fid, side)) = super::hit_test_field_port(&tables, dx, dy) {
+                    if let Some((tid, fid, side)) = super::hit_test_field_port_with(&tables, dx, dy, t_now.zoom, hit_label_scale, hit_tier) {
                         let multi = selected_table_ids.get_untracked();
                         if !super::prefer_selection_over_field_rel(
                             ev.shift_key() || marquee_active.get_untracked(),
@@ -1489,7 +1491,7 @@ mod leptos_canvas {
                             let (anchor_x, anchor_y) = tables
                                 .iter()
                                 .find(|t| t.id == tid)
-                                .map(|t| super::field_anchor_for_side(t, &fid, side))
+                                .map(|t| super::field_anchor_for_side_with(t, &fid, side, t_now.zoom, hit_label_scale, hit_tier))
                                 .unwrap_or((dx, dy));
                             capture_pointer(&canvas, ev.pointer_id());
                             drag_state.set(Some(DragState {
@@ -1556,7 +1558,7 @@ mod leptos_canvas {
                         return;
                     }
                 }
-                if let Some((ref_id, end)) = super::hit_test_endpoint(&tables, &refs, dx, dy) {
+                if let Some((ref_id, end)) = super::hit_test_endpoint_with(&tables, &refs, dx, dy, t_now.zoom, hit_label_scale, hit_tier) {
                     capture_pointer(&canvas, ev.pointer_id());
                     drag_state.set(Some(DragState {
                         table_id: None,
@@ -1843,14 +1845,14 @@ mod leptos_canvas {
                         return;
                     }
                 }
-                if let Some(id) = super::hit_test(&tables, dx, dy) {
+                if let Some(id) = super::hit_test_with(&tables, dx, dy, t_now.zoom, hit_label_scale, hit_tier) {
                     let table_x = tables.iter().find(|t| t.id == id).map(|t| t.x).unwrap_or(0.0);
                     let table_y = tables.iter().find(|t| t.id == id).map(|t| t.y).unwrap_or(0.0);
                     selected_id.set(Some(id.clone()));
                     selected_ref_id.set(None);
                     // 字段行（非 port）短按：选中字段；框选/Shift 手势下不抢选字段
                     if !ev.shift_key() && !marquee_active.get_untracked() {
-                        if let Some((tid, fid)) = super::hit_test_field(&tables, dx, dy) {
+                        if let Some((tid, fid)) = super::hit_test_field_with(&tables, dx, dy, t_now.zoom, hit_label_scale, hit_tier) {
                             if tid == id {
                                 if let Some(cb) = on_field_pick.as_ref() {
                                     cb(tid, fid);
@@ -2559,6 +2561,8 @@ mod leptos_canvas {
 
                 if let Some(rel) = drag.rel_drag {
                     let tables = store.tables.get_untracked();
+                    let hit_tier = super::tier_for_dimension(store.view_dimension.get_untracked());
+                    let hit_label_scale = store.label_font_scale.get_untracked().factor();
                     let (diag_x, diag_y) = canvas
                         .as_ref()
                         .map(|c| {
@@ -2580,7 +2584,7 @@ mod leptos_canvas {
                         }
                         return;
                     }
-                    match super::hit_test_field(&tables, diag_x, diag_y) {
+                    match super::hit_test_field_with(&tables, diag_x, diag_y, t_now.zoom, hit_label_scale, hit_tier) {
                         Some((tid, fid))
                             if tid != rel.start_table_id || fid != rel.start_field_id =>
                         {
@@ -3040,7 +3044,9 @@ mod leptos_canvas {
                     &t_now,
                 );
                 let tables = store.tables.get_untracked();
-                if super::hit_test(&tables, dx, dy).is_none() {
+                let dbl_tier = super::tier_for_dimension(store.view_dimension.get_untracked());
+                let dbl_label_scale = store.label_font_scale.get_untracked().factor();
+                if super::hit_test_with(&tables, dx, dy, t_now.zoom, dbl_label_scale, dbl_tier).is_none() {
                     if let Some(cb) = on_dblclick_blank.as_ref() {
                         cb();
                     }
@@ -3202,6 +3208,33 @@ pub fn collect_visible_tables(tables: &[Table], vp: (f64, f64, f64, f64)) -> Vec
         .collect()
 }
 
+/// #48 R-WIDTH-08 / R-LOD-09：effective 字号下的表渲染 AABB。
+pub fn table_aabb_with(
+    table: &Table,
+    comment_mode: CommentDisplay,
+    zoom: f64,
+    label_scale: f64,
+    tier: LodTier,
+) -> (f64, f64, f64, f64) {
+    let (w, h) = compute_table_render_size_for_with(table, comment_mode, zoom, label_scale, tier);
+    (table.x, table.y, w, h)
+}
+
+/// #48 R-WIDTH-08 / R-LOD-09：effective 字号下仅收集与视口 AABB 相交的表。
+pub fn collect_visible_tables_with(
+    tables: &[Table],
+    vp: (f64, f64, f64, f64),
+    comment_mode: CommentDisplay,
+    zoom: f64,
+    label_scale: f64,
+    tier: LodTier,
+) -> Vec<&Table> {
+    tables
+        .iter()
+        .filter(|t| aabb_intersects(table_aabb_with(t, comment_mode, zoom, label_scale, tier), vp))
+        .collect()
+}
+
 /// R-PERF-01：仅收集与视口 AABB 相交的区域（纯函数）。
 pub fn collect_visible_areas(areas: &[Area], vp: (f64, f64, f64, f64)) -> Vec<&Area> {
     areas
@@ -3224,6 +3257,27 @@ pub fn collect_visible_refs<'a>(
     tables: &'a [Table],
     vp: (f64, f64, f64, f64),
 ) -> Vec<&'a Reference> {
+    collect_visible_refs_with(
+        refs,
+        tables,
+        vp,
+        CommentDisplay::NameComment,
+        1.0,
+        1.0,
+        LodTier::Detail,
+    )
+}
+
+/// #48 R-WIDTH-08 / R-LOD-09：effective 字号下关系可见性判断。
+pub fn collect_visible_refs_with<'a>(
+    refs: &'a [Reference],
+    tables: &'a [Table],
+    vp: (f64, f64, f64, f64),
+    comment_mode: CommentDisplay,
+    zoom: f64,
+    label_scale: f64,
+    tier: LodTier,
+) -> Vec<&'a Reference> {
     let table_map: HashMap<&str, &Table> = tables.iter().map(|t| (t.id.as_str(), t)).collect();
     refs.iter()
         .filter(|r| {
@@ -3232,7 +3286,8 @@ pub fn collect_visible_refs<'a>(
                 table_map.get(r.end_table_id.as_str()),
             ) {
                 (Some(f), Some(to)) => {
-                    aabb_intersects(table_aabb(f), vp) || aabb_intersects(table_aabb(to), vp)
+                    aabb_intersects(table_aabb_with(f, comment_mode, zoom, label_scale, tier), vp)
+                        || aabb_intersects(table_aabb_with(to, comment_mode, zoom, label_scale, tier), vp)
                 }
                 _ => false,
             }
@@ -3267,9 +3322,25 @@ pub fn compute_table_render_size(table: &Table) -> (f64, f64) {
 
 /// 带注释显示模式的渲染尺寸（绘制路径传入真实 mode）。
 pub fn compute_table_render_size_for(table: &Table, comment_mode: CommentDisplay) -> (f64, f64) {
+    compute_table_render_size_for_with(table, comment_mode, 1.0, 1.0, LodTier::Detail)
+}
+
+/// #48 R-WIDTH-06/07：effective 字号下的表卡渲染尺寸。
+pub fn compute_table_render_size_for_with(
+    table: &Table,
+    comment_mode: CommentDisplay,
+    zoom: f64,
+    label_scale: f64,
+    tier: LodTier,
+) -> (f64, f64) {
     let field_count = table.fields.len().max(2);
-    let width = resolve_table_width(table, comment_mode);
-    let auto_height = TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT * field_count as f64;
+    let width = resolve_table_width_for(table, comment_mode, zoom, label_scale, tier);
+    let header_h = scaled_table_header_height(zoom, label_scale, tier);
+    let row_h = scaled_field_row_height(zoom, label_scale);
+    let auto_height = match tier {
+        LodTier::Topology => header_h,
+        LodTier::Detail => header_h + row_h * field_count as f64,
+    };
     let total_height = table
         .min_height
         .map(|h| h as f64)
@@ -3278,18 +3349,58 @@ pub fn compute_table_render_size_for(table: &Table, comment_mode: CommentDisplay
     (width, total_height)
 }
 
+/// #48 R-WIDTH-07：effective 字号下的表头高。
+pub fn scaled_table_header_height(zoom: f64, label_scale: f64, tier: LodTier) -> f64 {
+    let name_px = match tier {
+        LodTier::Detail => scaled_label_font_world(TABLE_NAME_FONT_PX, zoom, label_scale).0,
+        LodTier::Topology => scaled_label_font_world(lod_table_font_size(zoom, tier), zoom, label_scale).0,
+    };
+    // 基线 TABLE_HEADER_HEIGHT=43 对应 name_px=13，上下留白各 15
+    name_px.max(TABLE_NAME_FONT_PX) + (TABLE_HEADER_HEIGHT - TABLE_NAME_FONT_PX)
+}
+
+/// #48 R-WIDTH-07：effective 字号下的字段行高。
+pub fn scaled_field_row_height(zoom: f64, label_scale: f64) -> f64 {
+    let field_px = scaled_label_font_world(11.0, zoom, label_scale).0;
+    // 基线 FIELD_ROW_HEIGHT=35 对应 field_px=11，上下留白各 12
+    field_px.max(11.0) + (FIELD_ROW_HEIGHT - 11.0)
+}
+
 /// #20：解析有效表宽。`None` / `Some(0)` = auto；正数 = 用户固定宽。
 pub fn resolve_table_width(table: &Table, comment_mode: CommentDisplay) -> f64 {
+    resolve_table_width_for(table, comment_mode, 1.0, 1.0, LodTier::Detail)
+}
+
+/// #48 R-WIDTH-06：effective 字号下的有效表宽。
+pub fn resolve_table_width_for(
+    table: &Table,
+    comment_mode: CommentDisplay,
+    zoom: f64,
+    label_scale: f64,
+    tier: LodTier,
+) -> f64 {
     match table.width {
         Some(w) if w > 0 => w as f64,
-        _ => estimate_content_width(table, comment_mode).clamp(TABLE_WIDTH, TABLE_WIDTH_MAX),
+        _ => estimate_content_width_for(table, comment_mode, zoom, label_scale, tier)
+            .clamp(TABLE_WIDTH, TABLE_WIDTH_MAX),
     }
 }
 
 /// #20 / #25：按注释显示模式估算内容所需宽度（纯函数，无 canvas measure）。
 /// ASCII ≈ 8px/字，CJK ≈ 14px/字。
-/// NameComment 下注释与主文本/类型**并排累加**（对齐 `draw_table_body`），禁止对各文本段取 max。
+/// NameComment 下注释与主文本/类型**并排累加**（对齐 `draw_table_body`），禁止对各文本段取 max 代替横向之和。
 pub fn estimate_content_width(table: &Table, comment_mode: CommentDisplay) -> f64 {
+    estimate_content_width_for(table, comment_mode, 1.0, 1.0, LodTier::Detail)
+}
+
+/// #48 R-WIDTH-06：effective 字号下的内容宽度估算。
+pub fn estimate_content_width_for(
+    table: &Table,
+    comment_mode: CommentDisplay,
+    zoom: f64,
+    label_scale: f64,
+    tier: LodTier,
+) -> f64 {
     // 与 draw_table_body 布局常量对齐
     const LEFT_PAD: f64 = 11.0;
     const RIGHT_PAD: f64 = 11.0;
@@ -3297,13 +3408,34 @@ pub fn estimate_content_width(table: &Table, comment_mode: CommentDisplay) -> f6
     const HEADER_COUNT_RESERVE: f64 = 15.0; // 字段计数右对齐占位
     const FIELD_GAP: f64 = 8.0; // 名称↔注释、注释↔类型
 
+    // effective 字号相对基线的统一缩放因子；取最保守（最大）比例，避免低估任意文本段。
+    let scale_factor = match tier {
+        LodTier::Topology => {
+            let name_px = scaled_label_font_world(lod_table_font_size(zoom, tier), zoom, label_scale).0;
+            let cmt_px = scaled_label_font_world(name_px * 0.8, zoom, label_scale).0;
+            (name_px / TABLE_NAME_FONT_PX).max(cmt_px / 11.0)
+        }
+        LodTier::Detail => {
+            let name_px = scaled_label_font_world(TABLE_NAME_FONT_PX, zoom, label_scale).0;
+            let field_px = scaled_label_font_world(11.0, zoom, label_scale).0;
+            let type_px = scaled_label_font_world(10.0, zoom, label_scale).0;
+            let header_cmt_px = scaled_label_font_world(11.0, zoom, label_scale).0;
+            let field_cmt_px = scaled_label_font_world(10.0, zoom, label_scale).0;
+            (name_px / TABLE_NAME_FONT_PX)
+                .max(field_px / 11.0)
+                .max(type_px / 10.0)
+                .max(header_cmt_px / 11.0)
+                .max(field_cmt_px / 10.0)
+        }
+    };
+
     let table_label = comment_mode.primary(&table.name, &table.comment);
-    let mut max_w = LEFT_PAD + measure_text_approx(table_label) + HEADER_COUNT_RESERVE + RIGHT_PAD;
+    let mut max_w = LEFT_PAD + measure_text_approx(table_label) * scale_factor + HEADER_COUNT_RESERVE + RIGHT_PAD;
     if let Some(cmt) = comment_mode.secondary(&table.comment) {
         max_w = LEFT_PAD
-            + measure_text_approx(table_label)
+            + measure_text_approx(table_label) * scale_factor
             + HEADER_NAME_CMT_GAP
-            + measure_text_approx(cmt)
+            + measure_text_approx(cmt) * scale_factor
             + HEADER_COUNT_RESERVE
             + RIGHT_PAD;
     }
@@ -3315,14 +3447,14 @@ pub fn estimate_content_width(table: &Table, comment_mode: CommentDisplay) -> f6
         // 低估 BADGE_SIZE+GAP≈15px，名称截断由 draw 侧留白吸收）。
         let badges_extra =
             field_badges_width(field_badges(field.primary, false, field.not_null, field.unique).len());
-        let label_w = measure_text_approx(label);
-        let type_w = measure_text_approx(&field.type_);
+        let label_w = measure_text_approx(label) * scale_factor;
+        let type_w = measure_text_approx(&field.type_) * scale_factor;
         let row = if let Some(fc) = comment_mode.secondary(&field.comment) {
             LEFT_PAD
                 + badges_extra
                 + label_w
                 + FIELD_GAP
-                + measure_text_approx(fc)
+                + measure_text_approx(fc) * scale_factor
                 + FIELD_GAP
                 + type_w
                 + RIGHT_PAD
@@ -3354,8 +3486,20 @@ pub fn field_anchor_start(table: &Table, field_id: &str) -> (f64, f64) {
 
 /// 字段左右连接点锚点（#3：从对应侧 port 拖出）。宽走 `resolve_table_width`。
 pub fn field_anchor_for_side(table: &Table, field_id: &str, side: FieldPortSide) -> (f64, f64) {
-    let width = resolve_table_width(table, CommentDisplay::NameComment);
-    let y = field_anchor_y(table, field_id);
+    field_anchor_for_side_with(table, field_id, side, 1.0, 1.0, LodTier::Detail)
+}
+
+/// #48 R-WIDTH-08：带 effective 字号的字段锚点。
+pub fn field_anchor_for_side_with(
+    table: &Table,
+    field_id: &str,
+    side: FieldPortSide,
+    zoom: f64,
+    label_scale: f64,
+    tier: LodTier,
+) -> (f64, f64) {
+    let width = resolve_table_width_for(table, CommentDisplay::NameComment, zoom, label_scale, tier);
+    let y = field_anchor_y_for(table, field_id, zoom, label_scale);
     match side {
         FieldPortSide::Start => (table.x, y),
         FieldPortSide::End => (table.x + width, y),
@@ -3363,13 +3507,26 @@ pub fn field_anchor_for_side(table: &Table, field_id: &str, side: FieldPortSide)
 }
 
 /// #35 R-LOD-08（UT-CR-LOD-01）：tier 感知锚点——拓扑档字段行隐藏，关系线收敛表级端口
+/// #35 R-LOD-08（UT-CR-LOD-01）：tier 感知锚点——拓扑档字段行隐藏，关系线收敛表级端口
 /// （纵 = 表头中线，横 = 卡体左/右缘，选侧沿用 pick_port_sides）；详情档保持字段锚点。
 pub fn anchor_for_tier(table: &Table, field_id: &str, side: FieldPortSide, tier: LodTier) -> (f64, f64) {
+    anchor_for_tier_with(table, field_id, side, tier, 1.0, 1.0)
+}
+
+/// #48 R-WIDTH-08：带 effective 字号的关系锚点。
+pub fn anchor_for_tier_with(
+    table: &Table,
+    field_id: &str,
+    side: FieldPortSide,
+    tier: LodTier,
+    zoom: f64,
+    label_scale: f64,
+) -> (f64, f64) {
     match tier {
-        LodTier::Detail => field_anchor_for_side(table, field_id, side),
+        LodTier::Detail => field_anchor_for_side_with(table, field_id, side, zoom, label_scale, tier),
         LodTier::Topology => {
-            let width = resolve_table_width(table, CommentDisplay::NameComment);
-            let y = table.y + TABLE_HEADER_HEIGHT / 2.0;
+            let width = resolve_table_width_for(table, CommentDisplay::NameComment, zoom, label_scale, tier);
+            let y = table.y + scaled_table_header_height(zoom, label_scale, tier) / 2.0;
             match side {
                 FieldPortSide::Start => (table.x, y),
                 FieldPortSide::End => (table.x + width, y),
@@ -3483,9 +3640,22 @@ pub fn calc_path_tier(
     to_field_id: &str,
     tier: LodTier,
 ) -> RelationPath {
+    calc_path_tier_with(from, from_field_id, to, to_field_id, tier, 1.0, 1.0)
+}
+
+/// #48 R-WIDTH-08：effective 字号感知的贝塞尔路径。
+pub fn calc_path_tier_with(
+    from: &Table,
+    from_field_id: &str,
+    to: &Table,
+    to_field_id: &str,
+    tier: LodTier,
+    zoom: f64,
+    label_scale: f64,
+) -> RelationPath {
     let (out_side, in_side) = pick_port_sides(from, to);
-    let (x1, y1) = anchor_for_tier(from, from_field_id, out_side, tier);
-    let (x2, y2) = anchor_for_tier(to, to_field_id, in_side, tier);
+    let (x1, y1) = anchor_for_tier_with(from, from_field_id, out_side, tier, zoom, label_scale);
+    let (x2, y2) = anchor_for_tier_with(to, to_field_id, in_side, tier, zoom, label_scale);
     let (cx1, cy1, cx2, cy2) = bezier_controls_sided(x1, y1, x2, y2, out_side, in_side);
     RelationPath {
         x1,
@@ -3518,9 +3688,22 @@ pub fn calc_orthogonal_path_tier(
     to_field_id: &str,
     tier: LodTier,
 ) -> Vec<(f64, f64)> {
+    calc_orthogonal_path_tier_with(from, from_field_id, to, to_field_id, tier, 1.0, 1.0)
+}
+
+/// #48 R-WIDTH-08：effective 字号感知的正交折线路径。
+pub fn calc_orthogonal_path_tier_with(
+    from: &Table,
+    from_field_id: &str,
+    to: &Table,
+    to_field_id: &str,
+    tier: LodTier,
+    zoom: f64,
+    label_scale: f64,
+) -> Vec<(f64, f64)> {
     let (out_side, in_side) = pick_port_sides(from, to);
-    let (x1, y1) = anchor_for_tier(from, from_field_id, out_side, tier);
-    let (x2, y2) = anchor_for_tier(to, to_field_id, in_side, tier);
+    let (x1, y1) = anchor_for_tier_with(from, from_field_id, out_side, tier, zoom, label_scale);
+    let (x2, y2) = anchor_for_tier_with(to, to_field_id, in_side, tier, zoom, label_scale);
     let mid_x = (x1 + x2) / 2.0;
     vec![(x1, y1), (mid_x, y1), (mid_x, y2), (x2, y2)]
 }
@@ -3543,9 +3726,22 @@ pub fn calc_straight_path_tier(
     to_field_id: &str,
     tier: LodTier,
 ) -> (f64, f64, f64, f64) {
+    calc_straight_path_tier_with(from, from_field_id, to, to_field_id, tier, 1.0, 1.0)
+}
+
+/// #48 R-WIDTH-08：effective 字号感知的直线路径。
+pub fn calc_straight_path_tier_with(
+    from: &Table,
+    from_field_id: &str,
+    to: &Table,
+    to_field_id: &str,
+    tier: LodTier,
+    zoom: f64,
+    label_scale: f64,
+) -> (f64, f64, f64, f64) {
     let (out_side, in_side) = pick_port_sides(from, to);
-    let (x1, y1) = anchor_for_tier(from, from_field_id, out_side, tier);
-    let (x2, y2) = anchor_for_tier(to, to_field_id, in_side, tier);
+    let (x1, y1) = anchor_for_tier_with(from, from_field_id, out_side, tier, zoom, label_scale);
+    let (x2, y2) = anchor_for_tier_with(to, to_field_id, in_side, tier, zoom, label_scale);
     (x1, y1, x2, y2)
 }
 
@@ -3860,7 +4056,8 @@ pub fn draw_canvas(
         ) {
             // R-PERF-01：仅当任一表端点与视口相交才绘制该关系
             (Some(f), Some(tbl)) => {
-                aabb_intersects(table_aabb(f), vp) || aabb_intersects(table_aabb(tbl), vp)
+                aabb_intersects(table_aabb_with(f, comment_mode, t.zoom, label_font_scale, frame_tier), vp)
+                    || aabb_intersects(table_aabb_with(tbl, comment_mode, t.zoom, label_font_scale, frame_tier), vp)
             }
             _ => false,
         };
@@ -3918,6 +4115,8 @@ pub fn draw_canvas(
                 lod_scale,
                 &r.type_,
                 frame_tier,
+                t.zoom,
+                label_font_scale,
             );
         }
     }
@@ -3927,7 +4126,7 @@ pub fn draw_canvas(
     // #33 UT-PE-VIS-01：FK 字段集（many 侧），供字段行徽章图标族渲染
     let fk_fields = fk_field_ids(refs);
     let mut badges_drawn = 0_usize;
-    for table in collect_visible_tables(tables, vp) {
+    for table in collect_visible_tables_with(tables, vp, comment_mode, t.zoom, label_font_scale, frame_tier) {
         badges_drawn += table
             .fields
             .iter()
@@ -4001,7 +4200,7 @@ pub fn draw_canvas(
     );
     // ST-CR-LOD-01 探针：暴露本帧 LOD 档位参数（#35：锚定模式 + 拓扑档注释渲染计数）
     let topo_comments = if frame_tier == LodTier::Topology {
-        collect_visible_tables(tables, vp)
+        collect_visible_tables_with(tables, vp, comment_mode, t.zoom, label_font_scale, frame_tier)
             .iter()
             .filter(|tbl| comment_mode.secondary(&tbl.comment).is_some())
             .count()
@@ -4018,6 +4217,15 @@ pub fn draw_canvas(
         // #40 R-FONT-05：倍率与钳制解析探测（any_label_font_clamped 与绘制路径同纯函数口径）
         label_font_scale,
         any_label_font_clamped(t.zoom, label_font_scale, frame_tier),
+    );
+    // #48 ST-CR-FONT-02：可见表 effective 字号一致性 + 尺寸范围探测
+    update_font_consistency_probe(
+        tables,
+        vp,
+        comment_mode,
+        t.zoom,
+        label_font_scale,
+        frame_tier,
     );
     // #33 ST-PE-09：视觉体系探针（本帧徽章绘制计数在表循环累计）
     update_vis_probe(badges_drawn);
@@ -4141,6 +4349,68 @@ fn update_lod_probe(
 
 #[cfg(not(target_arch = "wasm32"))]
 fn update_lod_probe(_: f64, _: LodTier, _: f64, _: usize, _: ViewDimension, _: (usize, usize, usize, usize), _: f64, _: bool) {}
+
+/// #48 ST-CR-FONT-02：暴露当前帧可见表的 effective 字号一致性与尺寸范围，
+/// 供 e2e 断言缩小到全景后无斑块式字号差异。
+#[cfg(target_arch = "wasm32")]
+fn update_font_consistency_probe(
+    tables: &[Table],
+    vp: (f64, f64, f64, f64),
+    comment_mode: CommentDisplay,
+    zoom: f64,
+    label_scale: f64,
+    tier: LodTier,
+) {
+    use wasm_bindgen::JsValue;
+    if let Some(win) = web_sys::window() {
+        let visible = collect_visible_tables_with(tables, vp, comment_mode, zoom, label_scale, tier);
+        let buckets: Vec<u32> = visible
+            .iter()
+            .map(|_| effective_font_bucket(zoom, label_scale, tier))
+            .collect();
+        let consistent = buckets
+            .first()
+            .map(|first| buckets.iter().all(|b| b == first))
+            .unwrap_or(true);
+        let (min_w, max_w, min_h, max_h) = visible
+            .iter()
+            .map(|t| table_aabb_with(t, comment_mode, zoom, label_scale, tier))
+            .fold((f64::MAX, f64::MIN, f64::MAX, f64::MIN), |(min_w, max_w, min_h, max_h), aabb| {
+                (
+                    min_w.min(aabb.2),
+                    max_w.max(aabb.2),
+                    min_h.min(aabb.3),
+                    max_h.max(aabb.3),
+                )
+            });
+        let json = format!(
+            "{{\"visible_n\":{},\"font_bucket_consistent\":{},\"min_aabb_w\":{},\"max_aabb_w\":{},\"min_aabb_h\":{},\"max_aabb_h\":{}}}",
+            visible.len(),
+            consistent,
+            if min_w == f64::MAX { 0.0 } else { min_w },
+            if max_w == f64::MIN { 0.0 } else { max_w },
+            if min_h == f64::MAX { 0.0 } else { min_h },
+            if max_h == f64::MIN { 0.0 } else { max_h },
+        );
+        let target: &js_sys::Object = win.unchecked_ref();
+        let _ = js_sys::Reflect::set(
+            target,
+            &JsValue::from_str("__cdb_font_consistency_probe"),
+            &JsValue::from_str(&json),
+        );
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn update_font_consistency_probe(
+    _: &[Table],
+    _: (f64, f64, f64, f64),
+    _: CommentDisplay,
+    _: f64,
+    _: f64,
+    _: LodTier,
+) {
+}
 
 /// #33 ST-PE-09：视觉体系统一探针——e2e 经 window.__cdb_vis_probe 读取徽章/端点/圆角
 /// 常量与绘制口径（字块角标已移除，端点为 crow's foot 族）。
@@ -4388,6 +4658,17 @@ pub fn scaled_label_font_world(base_world: f64, zoom: f64, scale: f64) -> (f64, 
     }
 }
 
+/// #48 R-FONT-07：把 effective 字号离散化为缓存 bucket（2px 一档），
+/// 确保 zoom / label_scale 变化导致字号差异足够大时触发重光栅。
+pub fn effective_font_bucket(zoom: f64, label_scale: f64, tier: LodTier) -> u32 {
+    let base = match tier {
+        LodTier::Detail => TABLE_NAME_FONT_PX,
+        LodTier::Topology => lod_table_font_size(zoom, tier),
+    };
+    let (world, _) = scaled_label_font_world(base, zoom, label_scale);
+    (world / 2.0).ceil().max(1.0) as u32
+}
+
 /// #40 R-FONT-05：本帧钳制解析探测——任一标签字体（详情档表名 13/字段 11/注释 10；
 /// 拓扑档表名 font_world 及其 0.8× 注释）触发 10px 屏幕下限即为 true。
 /// 与绘制路径共用 scaled_label_font_world，口径一致。
@@ -4407,10 +4688,19 @@ pub fn any_label_font_clamped(zoom: f64, scale: f64, tier: LodTier) -> bool {
 
 /// 拓扑档卡体尺寸：宽同详情（布局不变），高仅表头（字段行隐藏，R-LOD-01）。
 pub fn lod_table_size(table: &Table, comment_mode: CommentDisplay, tier: LodTier) -> (f64, f64) {
-    match tier {
-        LodTier::Detail => compute_table_render_size_for(table, comment_mode),
-        LodTier::Topology => (resolve_table_width(table, comment_mode), TABLE_HEADER_HEIGHT),
-    }
+    // #48：兼容旧签名，使用基线 zoom/label_scale；绘制路径将改用带 zoom 版本。
+    lod_table_size_with(table, comment_mode, tier, 1.0, 1.0)
+}
+
+/// #48 R-WIDTH-08：带 effective 字号的拓扑档/详情档尺寸。
+pub fn lod_table_size_with(
+    table: &Table,
+    comment_mode: CommentDisplay,
+    tier: LodTier,
+    zoom: f64,
+    label_scale: f64,
+) -> (f64, f64) {
+    compute_table_render_size_for_with(table, comment_mode, zoom, label_scale, tier)
 }
 
 /// R-PERF-07：卡体内容指纹（UT-CR-SPRITE-01）。位置（x/y）与选中态不参与——
@@ -4855,7 +5145,17 @@ fn draw_field_badges(
 /// 表/字段 comment 与注释显示模式混入指纹（R-CMT-03——注释内容/模式变化必须重光栅）。
 /// #30 UT-CR-LOD-01：LOD 档位混入指纹（R-LOD-01——跨档重光栅；同档内指纹相同，
 /// 拖动/同档 zoom 微调不触发重光栅）。
-pub fn table_sprite_fingerprint(table: &Table, theme_dark: bool, dpr_x100: u32, zoom_bucket: u32, comment_mode: CommentDisplay, lod: LodTier, fk_bits: &[bool]) -> u64 {
+pub fn table_sprite_fingerprint(
+    table: &Table,
+    theme_dark: bool,
+    dpr_x100: u32,
+    zoom_bucket: u32,
+    comment_mode: CommentDisplay,
+    lod: LodTier,
+    fk_bits: &[bool],
+    // #48 R-FONT-07：effective 字号 bucket 混入指纹，避免同一 zoom_bucket 内不同字号共享缓存
+    font_bucket: u32,
+) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     let mut mix = |bytes: &[u8]| {
         for &b in bytes {
@@ -4885,6 +5185,7 @@ pub fn table_sprite_fingerprint(table: &Table, theme_dark: bool, dpr_x100: u32, 
     mix(&dpr_x100.to_le_bytes());
     mix(&(zoom_bucket as u32).to_le_bytes());
     mix(&[lod as u8]);
+    mix(&font_bucket.to_le_bytes());
     h
 }
 
@@ -4933,8 +5234,8 @@ fn render_table_sprite(
         .ok()?
         .dyn_into()
         .ok()?;
-    // #30：拓扑档卡体仅表头高（字段行隐藏），精灵尺寸按档位取
-    let (w, h) = lod_table_size(table, comment_mode, lod);
+    // #48：精灵尺寸按 effective 字号自适应
+    let (w, h) = lod_table_size_with(table, comment_mode, lod, zoom, label_scale);
     let w_world = w + SPRITE_MARGIN * 2.0;
     let h_world = h + SPRITE_MARGIN * 2.0;
     canvas.set_width((w_world * scale).ceil().max(1.0) as u32);
@@ -4957,6 +5258,7 @@ fn render_table_sprite(
             &off, table, palette, shadow_boost, comment_mode,
             scaled_label_font_world(lod_table_font_size(zoom, lod), zoom, label_scale).0,
             zoom,
+            label_scale,
         ),
     }
     Some(TableSprite {
@@ -4991,6 +5293,7 @@ fn blit_table_sprite(
         .iter()
         .map(|f| fk_fields.contains(f.id.as_str()))
         .collect();
+    let font_bucket = effective_font_bucket(zoom, label_scale, lod);
     let fp = table_sprite_fingerprint(
         table,
         current_theme_dark(),
@@ -4999,6 +5302,7 @@ fn blit_table_sprite(
         comment_mode,
         lod,
         &fk_bits,
+        font_bucket,
     // #40 R-FONT-03：倍率混入指纹（黄金比例散列到高位，避免与低位 zoom/dpr 桶串扰）——
     // 切档即重光栅；table_sprite_fingerprint 签名不变（既有 UT 调用点不动）
     ) ^ ((label_scale * 100.0).round() as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
@@ -5150,7 +5454,7 @@ fn create_table_ghost(
                 (sprite.margin - table.x) * scale,
                 (sprite.margin - table.y) * scale,
             );
-            draw_table_selection(&off, table, palette, comment_mode, tier);
+            draw_table_selection(&off, table, palette, comment_mode, tier, t.zoom, label_scale);
         }
     }
     // will-change 提示合成器把幽灵层提升为独立层，transform 移动纯合成器完成
@@ -5178,7 +5482,7 @@ fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool, pal
     // R-PERF-07：zoom ≤ SPRITE_CACHE_MAX_ZOOM 走精灵缓存；超出回退活画
     if zoom <= SPRITE_CACHE_MAX_ZOOM && blit_table_sprite(ctx, table, palette, zoom, comment_mode, tier, fk_fields, label_scale) {
         if selected {
-            draw_table_selection(ctx, table, palette, comment_mode, tier);
+            draw_table_selection(ctx, table, palette, comment_mode, tier, zoom, label_scale);
         }
         return;
     }
@@ -5189,10 +5493,11 @@ fn draw_table(ctx: &CanvasRenderingContext2d, table: &Table, selected: bool, pal
             // #40 R-FONT-03/04：拓扑档表名字号同样过倍率缩放 + 10px 屏幕下限钳制
             scaled_label_font_world(lod_table_font_size(zoom, tier), zoom, label_scale).0,
             zoom,
+            label_scale,
         ),
     }
     if selected {
-        draw_table_selection(ctx, table, palette, comment_mode, tier);
+        draw_table_selection(ctx, table, palette, comment_mode, tier, zoom, label_scale);
     }
 }
 
@@ -5203,8 +5508,11 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
     let cmt_px = scaled_label_font_world(11.0, zoom, label_scale).0;
     let meta_px = scaled_label_font_world(10.0, zoom, label_scale).0;
     let field_px = scaled_label_font_world(11.0, zoom, label_scale).0;
+    // #48 R-WIDTH-07：表头高/行高随 effective 字号自适应
+    let header_h = scaled_table_header_height(zoom, label_scale, LodTier::Detail);
+    let row_h = scaled_field_row_height(zoom, label_scale);
     let field_count = table.fields.len().max(2);
-    let (width, total_height) = compute_table_render_size_for(table, comment_mode);
+    let (width, total_height) = compute_table_render_size_for_with(table, comment_mode, zoom, label_scale, LodTier::Detail);
     let x = table.x;
     let y = table.y;
 
@@ -5248,15 +5556,15 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
     );
     ctx.save();
     ctx.begin_path();
-    round_rect_top(ctx, x, y, width, TABLE_HEADER_HEIGHT, TABLE_CORNER_RADIUS);
+    round_rect_top(ctx, x, y, width, header_h, TABLE_CORNER_RADIUS);
     ctx.clip();
     // 135° 族对角渐变：左上 → 右下（水平为主、带纵向分量，对齐 CSS 135deg 观感）
-    let gradient = ctx.create_linear_gradient(x, y, x + width, y + TABLE_HEADER_HEIGHT);
+    let gradient = ctx.create_linear_gradient(x, y, x + width, y + header_h);
     gradient.add_color_stop(0.0, header_tint).ok();
     gradient.add_color_stop(1.0, "rgba(0,0,0,0)").ok();
     let _ = ctx.set_fill_style_str("rgba(0,0,0,0)");
     ctx.set_fill_style_canvas_gradient(&gradient);
-    ctx.fill_rect(x, y, width, TABLE_HEADER_HEIGHT);
+    ctx.fill_rect(x, y, width, header_h);
     ctx.restore();
 
     // 表名（750/13px 强色）+ 字段计数（text-3 10px 右对齐）
@@ -5266,7 +5574,7 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
     let _ = ctx.set_font(&dpr_font(750, name_px, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
     let _ = ctx.set_text_baseline("middle");
     let _ = ctx.set_text_align("left");
-    let _ = ctx.fill_text(table_label, x + 11.0, y + TABLE_HEADER_HEIGHT / 2.0);
+    let _ = ctx.fill_text(table_label, x + 11.0, y + header_h / 2.0);
     // R-CMT-01：name+comment 模式且 comment 非空 → 表名右侧渲染注释（小字次要色，单行省略）；
     // 空 comment 不渲染、不留占位（R-CMT-03）。canvas 无 DOM title——截断省略与原型一致。
     if let Some(cmt) = comment_mode.secondary(&table.comment) {
@@ -5290,10 +5598,10 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
             let shown = truncate_to_width(ctx, cmt, max_w);
             let cmt_w = ctx.measure_text(&shown).map(|m| m.width()).unwrap_or(0.0);
             if let Some(chip) = &cmt_style.chip {
-                draw_comment_chip(ctx, chip, cmt_x, y + TABLE_HEADER_HEIGHT / 2.0 + 0.5, cmt_w);
+                draw_comment_chip(ctx, chip, cmt_x, y + header_h / 2.0 + 0.5, cmt_w);
             }
             let _ = ctx.set_fill_style_str(&cmt_style.fg);
-            let _ = ctx.fill_text(&shown, cmt_x, y + TABLE_HEADER_HEIGHT / 2.0 + 0.5);
+            let _ = ctx.fill_text(&shown, cmt_x, y + header_h / 2.0 + 0.5);
         }
     }
     let _ = ctx.set_fill_style_str(header_fg.muted);
@@ -5302,7 +5610,7 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
     let _ = ctx.fill_text(
         &table.fields.len().to_string(),
         x + width - 11.0,
-        y + TABLE_HEADER_HEIGHT / 2.0,
+        y + header_h / 2.0,
     );
     let _ = ctx.set_text_align("left");
 
@@ -5310,14 +5618,14 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
     let _ = ctx.set_stroke_style_str(palette.table_border);
     ctx.set_line_width(1.0);
     ctx.begin_path();
-    ctx.move_to(x, y + TABLE_HEADER_HEIGHT);
-    ctx.line_to(x + width, y + TABLE_HEADER_HEIGHT);
+    ctx.move_to(x, y + header_h);
+    ctx.line_to(x + width, y + header_h);
     ctx.stroke();
 
     // 字段行：#33 语义徽章图标族（PK/FK/NN/UQ 线条图标）+ 名称 650/11px + 类型等宽 10px text-3
     // （主原型 .table-field；字块角标路径已按 core-08 §11 移除）
     for (i, field) in table.fields.iter().enumerate() {
-        let fy = y + TABLE_HEADER_HEIGHT + i as f64 * FIELD_ROW_HEIGHT;
+        let fy = y + header_h + i as f64 * row_h;
 
         let badges = field_badges(
             field.primary,
@@ -5325,13 +5633,13 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
             field.not_null,
             field.unique,
         );
-        let badges_w = draw_field_badges(ctx, &badges, palette, x + 11.0, fy + FIELD_ROW_HEIGHT / 2.0);
+        let badges_w = draw_field_badges(ctx, &badges, palette, x + 11.0, fy + row_h / 2.0);
         let name_x = x + 11.0 + badges_w;
         // R-CMT-02：主文本按显示模式取值（comment 模式且有注释 → 注释；否则英文名）
         let field_label = comment_mode.primary(&field.name, &field.comment);
         let _ = ctx.set_fill_style_str(palette.text_strong);
         let _ = ctx.set_font(&dpr_font(650, field_px, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
-        let _ = ctx.fill_text(field_label, name_x, fy + FIELD_ROW_HEIGHT / 2.0);
+        let _ = ctx.fill_text(field_label, name_x, fy + row_h / 2.0);
 
         let _ = ctx.set_fill_style_str(palette.text_muted);
         let _ = ctx.set_font(&dpr_font(500, meta_px, &resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO)));
@@ -5339,7 +5647,7 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
         let _ = ctx.fill_text(
             &field.type_,
             x + width - 11.0,
-            fy + FIELD_ROW_HEIGHT / 2.0,
+            fy + row_h / 2.0,
         );
         // R-CMT-02：name+comment 模式且 comment 非空 → 类型左侧渲染注释（灰色 9px）。
         // 截断优先级 名称 > 类型 > 注释：注释可用宽 = 类型左缘 − 名称右缘 − 间距，不足则省略。
@@ -5365,16 +5673,16 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
                 let shown = truncate_to_width(ctx, f_cmt, cmt_max_w);
                 if let Some(chip) = &f_style.chip {
                     let cmt_w = ctx.measure_text(&shown).map(|m| m.width()).unwrap_or(0.0);
-                    draw_comment_chip(ctx, chip, type_left - 8.0 - cmt_w, fy + FIELD_ROW_HEIGHT / 2.0 + 0.5, cmt_w);
+                    draw_comment_chip(ctx, chip, type_left - 8.0 - cmt_w, fy + row_h / 2.0 + 0.5, cmt_w);
                 }
                 let _ = ctx.set_fill_style_str(&f_style.fg);
-                let _ = ctx.fill_text(&shown, type_left - 8.0, fy + FIELD_ROW_HEIGHT / 2.0 + 0.5);
+                let _ = ctx.fill_text(&shown, type_left - 8.0, fy + row_h / 2.0 + 0.5);
             }
         }
         let _ = ctx.set_text_align("left");
 
         // #3：字段左右连接点（可见触发点，半径小于命中半径以便易点）
-        let cy = fy + FIELD_ROW_HEIGHT / 2.0;
+        let cy = fy + row_h / 2.0;
         let port_r = 3.5;
         let _ = ctx.set_fill_style_str(palette.selected);
         ctx.begin_path();
@@ -5396,8 +5704,8 @@ fn draw_table_body(ctx: &CanvasRenderingContext2d, table: &Table, palette: &Canv
             let _ = ctx.set_stroke_style_str(palette.row_separator);
             ctx.set_line_width(1.0);
             ctx.begin_path();
-            ctx.move_to(x, fy + FIELD_ROW_HEIGHT);
-            ctx.line_to(x + width, fy + FIELD_ROW_HEIGHT);
+            ctx.move_to(x, fy + row_h);
+            ctx.line_to(x + width, fy + row_h);
             ctx.stroke();
         }
     }
@@ -5416,8 +5724,10 @@ fn draw_table_topology_body(
     font_world: f64,
     // #40 R-FONT-04：注释字号（font_world×0.8）屏幕下限钳制需要 zoom
     zoom: f64,
+    // #48 R-FONT-07：label_scale 用于尺寸自适应
+    label_scale: f64,
 ) {
-    let (width, height) = lod_table_size(table, comment_mode, LodTier::Topology);
+    let (width, height) = lod_table_size_with(table, comment_mode, LodTier::Topology, zoom, label_scale);
     let x = table.x;
     let y = table.y;
 
@@ -5507,9 +5817,9 @@ fn draw_table_topology_body(
 
 /// 选中态：主原型 .is-selected —— brand 描边 + 3px brand-soft 外环。
 /// R-PERF-07：选中环每帧活画（不含在精灵缓存内），选中切换不失效卡体缓存。
-fn draw_table_selection(ctx: &CanvasRenderingContext2d, table: &Table, palette: &CanvasPalette, comment_mode: CommentDisplay, tier: LodTier) {
+fn draw_table_selection(ctx: &CanvasRenderingContext2d, table: &Table, palette: &CanvasPalette, comment_mode: CommentDisplay, tier: LodTier, zoom: f64, label_scale: f64) {
     // #30：选中环尺寸按档位取（拓扑档仅表头高，避免圈出隐藏的字段区）
-    let (width, total_height) = lod_table_size(table, comment_mode, tier);
+    let (width, total_height) = lod_table_size_with(table, comment_mode, tier, zoom, label_scale);
     let x = table.x;
     let y = table.y;
     let _ = ctx.set_stroke_style_str(palette.selected_soft);
@@ -5527,12 +5837,19 @@ fn draw_table_selection(ctx: &CanvasRenderingContext2d, table: &Table, palette: 
 }
 
 fn field_anchor_y(table: &Table, field_id: &str) -> f64 {
+    field_anchor_y_for(table, field_id, 1.0, 1.0)
+}
+
+/// #48 R-WIDTH-08：effective 字号下的字段纵向锚点。
+fn field_anchor_y_for(table: &Table, field_id: &str, zoom: f64, label_scale: f64) -> f64 {
     let idx = table
         .fields
         .iter()
         .position(|f| f.id == field_id)
         .unwrap_or(0);
-    table.y + TABLE_HEADER_HEIGHT + idx as f64 * FIELD_ROW_HEIGHT + FIELD_ROW_HEIGHT / 2.0
+    let header_h = scaled_table_header_height(zoom, label_scale, LodTier::Detail);
+    let row_h = scaled_field_row_height(zoom, label_scale);
+    table.y + header_h + idx as f64 * row_h + row_h / 2.0
 }
 
 /// 空串 / 未知 → bezier（#21）。
@@ -5586,6 +5903,9 @@ fn draw_relation(
     lod_scale: f64,
     cardinality: &str,
     tier: LodTier,
+    // #48 R-WIDTH-08：关系锚点随 effective 字号自适应
+    zoom: f64,
+    label_scale: f64,
 ) {
     let stroke = relation_stroke_color(ref_color, source_table_color, palette.relation);
     // #33 UT-PE-VIS-01：端点统一 crow's foot 几何族（替代旧箭头+圆点）
@@ -5602,7 +5922,7 @@ fn draw_relation(
 
     match line_type {
         "orthogonal" => {
-            let pts = calc_orthogonal_path_tier(from, from_field_id, to, to_field_id, tier);
+            let pts = calc_orthogonal_path_tier_with(from, from_field_id, to, to_field_id, tier, zoom, label_scale);
             // 光晕
             let _ = ctx.set_stroke_style_str(halo);
             ctx.set_line_width(halo_w);
@@ -5624,7 +5944,7 @@ fn draw_relation(
             }
         }
         "straight" => {
-            let (x1, y1, x2, y2) = calc_straight_path_tier(from, from_field_id, to, to_field_id, tier);
+            let (x1, y1, x2, y2) = calc_straight_path_tier_with(from, from_field_id, to, to_field_id, tier, zoom, label_scale);
             let _ = ctx.set_stroke_style_str(halo);
             ctx.set_line_width(halo_w);
             clear_stroke_dash(ctx);
@@ -5645,7 +5965,7 @@ fn draw_relation(
         }
         _ => {
             // bezier 默认
-            let path = calc_path_tier(from, from_field_id, to, to_field_id, tier);
+            let path = calc_path_tier_with(from, from_field_id, to, to_field_id, tier, zoom, label_scale);
             let _ = ctx.set_stroke_style_str(halo);
             ctx.set_line_width(halo_w);
             clear_stroke_dash(ctx);
@@ -5873,22 +6193,34 @@ fn draw_note(ctx: &CanvasRenderingContext2d, note: &Note, palette: &CanvasPalett
 // ─── Hit testing ─────────────────────────────────────────────────────────────
 
 pub fn hit_test_field(tables: &[Table], x: f64, y: f64) -> Option<(String, String)> {
+    hit_test_field_with(tables, x, y, 1.0, 1.0, LodTier::Detail)
+}
+
+/// #48 R-WIDTH-08：effective 字号下的字段命中检测。
+pub fn hit_test_field_with(
+    tables: &[Table],
+    x: f64,
+    y: f64,
+    zoom: f64,
+    label_scale: f64,
+    tier: LodTier,
+) -> Option<(String, String)> {
     for table in tables.iter().rev() {
-        // feat-table-resize: 命中宽度跟随 table.width,fallback 到 TABLE_WIDTH 默认
-        let width = resolve_table_width(table, CommentDisplay::NameComment);
+        let width = resolve_table_width_for(table, CommentDisplay::NameComment, zoom, label_scale, tier);
         if x < table.x || x > table.x + width {
             continue;
         }
-        if y < table.y + TABLE_HEADER_HEIGHT {
+        let header_h = scaled_table_header_height(zoom, label_scale, tier);
+        if y < table.y + header_h {
             continue;
         }
+        let row_h = scaled_field_row_height(zoom, label_scale);
         let field_count = table.fields.len().max(1);
-        let body_bottom =
-            table.y + TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT * field_count as f64;
+        let body_bottom = table.y + header_h + row_h * field_count as f64;
         if y > body_bottom {
             continue;
         }
-        let idx = ((y - table.y - TABLE_HEADER_HEIGHT) / FIELD_ROW_HEIGHT).floor() as usize;
+        let idx = ((y - table.y - header_h) / row_h).floor() as usize;
         if let Some(field) = table.fields.get(idx) {
             return Some((table.id.clone(), field.id.clone()));
         }
@@ -5911,10 +6243,22 @@ pub fn hit_test_field_port(
     x: f64,
     y: f64,
 ) -> Option<(String, String, FieldPortSide)> {
+    hit_test_field_port_with(tables, x, y, 1.0, 1.0, LodTier::Detail)
+}
+
+/// #48 R-WIDTH-08：effective 字号下的字段连接点命中检测。
+pub fn hit_test_field_port_with(
+    tables: &[Table],
+    x: f64,
+    y: f64,
+    zoom: f64,
+    label_scale: f64,
+    tier: LodTier,
+) -> Option<(String, String, FieldPortSide)> {
     for table in tables.iter().rev() {
-        let width = resolve_table_width(table, CommentDisplay::NameComment);
+        let width = resolve_table_width_for(table, CommentDisplay::NameComment, zoom, label_scale, tier);
         for field in &table.fields {
-            let cy = field_anchor_y(table, &field.id);
+            let cy = field_anchor_y_for(table, &field.id, zoom, label_scale);
             let left_dx = x - table.x;
             let left_dy = y - cy;
             if left_dx * left_dx + left_dy * left_dy <= FIELD_PORT_HIT_RADIUS * FIELD_PORT_HIT_RADIUS
@@ -5935,11 +6279,21 @@ pub fn hit_test_field_port(
 }
 
 pub fn hit_test(tables: &[Table], x: f64, y: f64) -> Option<String> {
+    hit_test_with(tables, x, y, 1.0, 1.0, LodTier::Detail)
+}
+
+/// #48 R-WIDTH-08：effective 字号下的表卡命中检测。
+pub fn hit_test_with(
+    tables: &[Table],
+    x: f64,
+    y: f64,
+    zoom: f64,
+    label_scale: f64,
+    tier: LodTier,
+) -> Option<String> {
     for table in tables.iter().rev() {
-        // feat-table-resize: 命中宽度跟随 table.width,fallback 到 TABLE_WIDTH 默认
-        let width = resolve_table_width(table, CommentDisplay::NameComment);
-        let h = TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT * table.fields.len().max(2) as f64;
-        if x >= table.x && x <= table.x + width && y >= table.y && y <= table.y + h {
+        let (width, height) = compute_table_render_size_for_with(table, CommentDisplay::NameComment, zoom, label_scale, tier);
+        if x >= table.x && x <= table.x + width && y >= table.y && y <= table.y + height {
             return Some(table.id.clone());
         }
     }
@@ -5964,14 +6318,29 @@ pub fn hit_test_endpoint(
     x: f64,
     y: f64,
 ) -> Option<(String, EndpointEnd)> {
+    hit_test_endpoint_with(tables, refs, x, y, 1.0, 1.0, LodTier::Detail)
+}
+
+/// #48 R-WIDTH-08：effective 字号下的关系端点命中检测。
+pub fn hit_test_endpoint_with(
+    tables: &[Table],
+    refs: &[Reference],
+    x: f64,
+    y: f64,
+    zoom: f64,
+    label_scale: f64,
+    tier: LodTier,
+) -> Option<(String, EndpointEnd)> {
     for r in refs {
         let from = tables.iter().find(|t| t.id == r.start_table_id);
         let to = tables.iter().find(|t| t.id == r.end_table_id);
         if let (Some(f), Some(t)) = (from, to) {
-            let sx = f.x + TABLE_WIDTH;
-            let sy = f.y + TABLE_HEADER_HEIGHT / 2.0;
+            let header_h = scaled_table_header_height(zoom, label_scale, tier);
+            let from_w = resolve_table_width_for(f, CommentDisplay::NameComment, zoom, label_scale, tier);
+            let sx = f.x + from_w;
+            let sy = f.y + header_h / 2.0;
             let ex = t.x;
-            let ey = t.y + TABLE_HEADER_HEIGHT / 2.0;
+            let ey = t.y + header_h / 2.0;
             let r2 = 36.0; // 6^2 squared radius
             if (x - sx).powi(2) + (y - sy).powi(2) <= r2 {
                 return Some((r.id.clone(), EndpointEnd::Start));
@@ -7642,31 +8011,31 @@ mod tests {
         moved.x = 999.0;
         moved.y = -40.0;
         assert_eq!(
-            table_sprite_fingerprint(&t, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[]),
-            table_sprite_fingerprint(&moved, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[]),
+            table_sprite_fingerprint(&t, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[], 1),
+            table_sprite_fingerprint(&moved, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[], 1),
             "UT-CR-SPRITE-01: 位置变化不得改变指纹"
         );
 
         // 内容变更失效：改名 / 改字段类型 / 改主键 / 改色 / 改宽 / 主题 / dpr / 分档
-        let base = table_sprite_fingerprint(&t, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[]);
+        let base = table_sprite_fingerprint(&t, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[], 1);
         let mut renamed = t.clone();
         renamed.name = "other".into();
-        assert_ne!(table_sprite_fingerprint(&renamed, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[]), base, "改名失效");
+        assert_ne!(table_sprite_fingerprint(&renamed, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[], 1), base, "改名失效");
         let mut retyped = t.clone();
         retyped.fields[0].type_ = "UUID".into();
-        assert_ne!(table_sprite_fingerprint(&retyped, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[]), base, "改字段类型失效");
+        assert_ne!(table_sprite_fingerprint(&retyped, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[], 1), base, "改字段类型失效");
         let mut unpk = t.clone();
         unpk.fields[0].primary = false;
-        assert_ne!(table_sprite_fingerprint(&unpk, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[]), base, "改主键失效");
+        assert_ne!(table_sprite_fingerprint(&unpk, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[], 1), base, "改主键失效");
         let mut recolor = t.clone();
         recolor.color = "#fff".into();
-        assert_ne!(table_sprite_fingerprint(&recolor, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[]), base, "改色失效");
+        assert_ne!(table_sprite_fingerprint(&recolor, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[], 1), base, "改色失效");
         let mut resized = t.clone();
         resized.width = Some(320);
-        assert_ne!(table_sprite_fingerprint(&resized, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[]), base, "改宽失效");
-        assert_ne!(table_sprite_fingerprint(&t, false, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[]), base, "主题切换失效");
-        assert_ne!(table_sprite_fingerprint(&t, true, 100, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[]), base, "dpr 变化失效");
-        assert_ne!(table_sprite_fingerprint(&t, true, 200, 2, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[]), base, "zoom 分档切换失效");
+        assert_ne!(table_sprite_fingerprint(&resized, true, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[], 1), base, "改宽失效");
+        assert_ne!(table_sprite_fingerprint(&t, false, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[], 1), base, "主题切换失效");
+        assert_ne!(table_sprite_fingerprint(&t, true, 100, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[], 1), base, "dpr 变化失效");
+        assert_ne!(table_sprite_fingerprint(&t, true, 200, 2, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[], 1), base, "zoom 分档切换失效");
     }
 
     /// UT-CR-GUARD-01 — DOM 写守护：值未变不写（R-PERF-08）
@@ -8024,18 +8393,18 @@ mod tests {
             min_height: None,
         };
         let mode = crate::editor_core::CommentDisplay::NameComment;
-        let fp_detail = table_sprite_fingerprint(&t, true, 200, 1, mode, LodTier::Detail, &[]);
-        let fp_topo = table_sprite_fingerprint(&t, true, 200, 1, mode, LodTier::Topology, &[]);
+        let fp_detail = table_sprite_fingerprint(&t, true, 200, 1, mode, LodTier::Detail, &[], 1);
+        let fp_topo = table_sprite_fingerprint(&t, true, 200, 1, mode, LodTier::Topology, &[], 1);
         assert_ne!(fp_detail, fp_topo, "UT-CR-LOD-01: 跨档指纹必须不同（触发重光栅）");
         assert_eq!(
-            table_sprite_fingerprint(&t, true, 200, 1, mode, LodTier::Topology, &[]),
+            table_sprite_fingerprint(&t, true, 200, 1, mode, LodTier::Topology, &[], 1),
             fp_topo,
             "UT-CR-LOD-01: 同档内指纹必须相同"
         );
         // 同档内移动（x/y 变化）指纹不变——拖动不触发重光栅
         let moved = Table { x: 40.0, y: 80.0, ..t.clone() };
         assert_eq!(
-            table_sprite_fingerprint(&moved, true, 200, 1, mode, LodTier::Topology, &[]),
+            table_sprite_fingerprint(&moved, true, 200, 1, mode, LodTier::Topology, &[], 1),
             fp_topo,
             "UT-CR-LOD-01: 同档内拖动指纹必须相同"
         );
@@ -8148,10 +8517,21 @@ mod tests {
             w_name_only, w_without,
             "UT-CR-LOD-01: Name 模式注释不参与宽度估算"
         );
-        // 拓扑档卡宽 = resolve_table_width（注释感知），高度恒为表头高
+        // 拓扑档卡宽 = resolve_table_width_for（注释感知 + effective 字号），高度为 effective 表头高
         let (tw, th) = lod_table_size(&tc, crate::editor_core::CommentDisplay::NameComment, LodTier::Topology);
-        assert_eq!(tw, w_with, "UT-CR-LOD-01: 拓扑档卡宽必须注释感知");
-        assert_eq!(th, TABLE_HEADER_HEIGHT, "UT-CR-LOD-01: 拓扑档卡高恒为表头高");
+        let w_with_topo = resolve_table_width_for(
+            &tc,
+            crate::editor_core::CommentDisplay::NameComment,
+            1.0,
+            1.0,
+            LodTier::Topology,
+        );
+        assert_eq!(tw, w_with_topo, "UT-CR-LOD-01: 拓扑档卡宽必须注释感知");
+        assert_eq!(
+            th,
+            scaled_table_header_height(1.0, 1.0, LodTier::Topology),
+            "UT-CR-LOD-01: 拓扑档卡高为 effective 表头高"
+        );
     }
 
     /// #33 UT-PE-VIS-01 — 语义图标统一族锚点（core-08 §11 / core-07 §15.5）
@@ -8578,6 +8958,115 @@ mod tests {
         assert!(
             src.contains("label_scale * 100.0"),
             "UT-CR-FONT-01: 精灵指纹必须混入字号倍率（切档重光栅）"
+        );
+    }
+
+    /// UT-CR-FONT-02 — effective 字号下表卡尺寸自适应（#48 R-WIDTH-06~08 / R-FONT-07 / R-LOD-09）
+    #[test]
+    fn ut_cr_font_02_effective_font_table_size_adapt() {
+        use crate::editor_core::types::{Field, Table};
+        use crate::editor_core::CommentDisplay;
+
+        let table = Table {
+            id: "t1".into(),
+            name: "LongTableName".into(),
+            x: 0.0,
+            y: 0.0,
+            color: "#3b82f6".into(),
+            comment: String::new(),
+            fields: vec![
+                Field {
+                    id: "f1".into(),
+                    name: "very_long_field_name_abc".into(),
+                    type_: "VARCHAR".into(),
+                    default: String::new(),
+                    check: String::new(),
+                    primary: true,
+                    unique: false,
+                    not_null: true,
+                    increment: false,
+                    comment: String::new(),
+                    tag: String::new(),
+                    dict_code: String::new(),
+                },
+                Field {
+                    id: "f2".into(),
+                    name: "another_long_field_xyz".into(),
+                    type_: "INT".into(),
+                    default: String::new(),
+                    check: String::new(),
+                    primary: false,
+                    unique: false,
+                    not_null: false,
+                    increment: false,
+                    comment: String::new(),
+                    tag: String::new(),
+                    dict_code: String::new(),
+                },
+            ],
+            indices: Vec::new(),
+            width: None,
+            min_height: None,
+        };
+        let cm = CommentDisplay::NameComment;
+
+        // 断言 1（R-WIDTH-06/07）：低 zoom 触发 10px 下限钳制，effective 字号变大，
+        // auto 表宽与行高应同步放大
+        let (w_base, h_base) = compute_table_render_size_for_with(&table, cm, 1.0, 1.0, LodTier::Detail);
+        let (w_low, h_low) = compute_table_render_size_for_with(&table, cm, 0.2, 1.0, LodTier::Detail);
+        assert!(
+            w_low > w_base,
+            "UT-CR-FONT-02: zoom 0.2 effective 字号变大后 auto 表宽应增加（base {w_base} vs low {w_low}）"
+        );
+        assert!(
+            h_low > h_base,
+            "UT-CR-FONT-02: zoom 0.2 effective 字号变大后表高应增加（base {h_base} vs low {h_low}）"
+        );
+
+        // 断言 2（R-WIDTH-06）：用户固定 width > 0 时宽度不变，但行高仍随字号自适应
+        let fixed = Table { width: Some(300), ..table.clone() };
+        let (w_fixed, h_fixed) = compute_table_render_size_for_with(&fixed, cm, 0.2, 1.0, LodTier::Detail);
+        assert_eq!(w_fixed, 300.0, "UT-CR-FONT-02: 固定宽度 300 必须被尊重");
+        assert!(
+            h_fixed > h_base,
+            "UT-CR-FONT-02: 固定宽度表在低 zoom 下行高仍应放大（base {h_base} vs fixed {h_fixed}）"
+        );
+
+        // 断言 3（R-WIDTH-08 / R-LOD-09）：effective 字号 AABB 在低 zoom 下包围盒变大，
+        // 且拓扑档仅表头（高度小于详情档）
+        let aabb_base = table_aabb_with(&table, cm, 1.0, 1.0, LodTier::Detail);
+        let aabb_low = table_aabb_with(&table, cm, 0.2, 1.0, LodTier::Detail);
+        assert!(
+            aabb_low.2 > aabb_base.2 && aabb_low.3 > aabb_base.3,
+            "UT-CR-FONT-02: 低 zoom AABB 宽高应放大（base {:?} vs low {:?})", aabb_base, aabb_low
+        );
+        let (_, h_topo) = compute_table_render_size_for_with(&table, cm, 0.5, 1.0, LodTier::Topology);
+        assert!(
+            h_topo < h_base,
+            "UT-CR-FONT-02: 拓扑档仅渲染表头，高度应小于详情档（detail {h_base} vs topology {h_topo}）"
+        );
+
+        // 断言 4（R-FONT-07）：字号 bucket 混入精灵指纹，同 zoom_bucket 内字号变化必须产生不同指纹
+        let fk_bits: Vec<bool> = table.fields.iter().map(|_| false).collect();
+        let make_fp = |zoom, scale, lod| {
+            let font_bucket = effective_font_bucket(zoom, scale, lod);
+            let base = table_sprite_fingerprint(
+                &table, false, 100, 1, cm, lod, &fk_bits, font_bucket,
+            );
+            // 与生产 render_table_sprite 保持同口径的 label_scale 混入
+            base ^ ((scale * 100.0).round() as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        };
+        let fp_detail = make_fp(1.0, 1.0, LodTier::Detail);
+        let fp_low = make_fp(0.2, 1.0, LodTier::Detail);
+        assert_ne!(
+            fp_detail, fp_low,
+            "UT-CR-FONT-02: zoom 变化导致字号变化后精灵指纹必须不同（避免离屏/可见表字号不一致）"
+        );
+        // 同档位同字号指纹稳定
+        assert_eq!(
+            make_fp(1.0, 1.0, LodTier::Detail),
+            make_fp(0.98, 1.0, LodTier::Detail),
+            "UT-CR-FONT-02: 同一 effective 字号 bucket 内指纹应保持稳定"
         );
     }
 

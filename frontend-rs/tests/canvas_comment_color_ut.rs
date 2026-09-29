@@ -87,23 +87,23 @@ fn ut_cr_comment_01_display_mode_semantics() {
 
     // 3) R-CMT-03：注释参与精灵指纹——表 comment / 字段 comment / 显示模式变化 → 指纹不同
     let t = table_with_comment("用户表", "主键");
-    let base = table_sprite_fingerprint(&t, true, 200, 1, CommentDisplay::NameComment, LodTier::Detail, &[]);
+    let base = table_sprite_fingerprint(&t, true, 200, 1, CommentDisplay::NameComment, LodTier::Detail, &[], 1);
     let mut t2 = t.clone();
     t2.comment = "账户表".into();
     assert_ne!(
-        table_sprite_fingerprint(&t2, true, 200, 1, CommentDisplay::NameComment, LodTier::Detail, &[]),
+        table_sprite_fingerprint(&t2, true, 200, 1, CommentDisplay::NameComment, LodTier::Detail, &[], 1),
         base,
         "表 comment 变化必须触发重光栅"
     );
     let mut t3 = t.clone();
     t3.fields[0].comment = "编号".into();
     assert_ne!(
-        table_sprite_fingerprint(&t3, true, 200, 1, CommentDisplay::NameComment, LodTier::Detail, &[]),
+        table_sprite_fingerprint(&t3, true, 200, 1, CommentDisplay::NameComment, LodTier::Detail, &[], 1),
         base,
         "字段 comment 变化必须触发重光栅"
     );
     assert_ne!(
-        table_sprite_fingerprint(&t, true, 200, 1, CommentDisplay::Name, LodTier::Detail, &[]),
+        table_sprite_fingerprint(&t, true, 200, 1, CommentDisplay::Name, LodTier::Detail, &[], 1),
         base,
         "显示模式切换必须触发重光栅（R-CMT-04 切换即重绘）"
     );
@@ -354,7 +354,7 @@ fn ut_cr_color_03_header_contrast_adaptive() {
 
     // 6) 渲染锚点
     let body = RENDER.find("fn draw_table_body").expect("draw_table_body");
-    let block = &RENDER[body..body + 2500.min(RENDER.len() - body)];
+    let block = &RENDER[body..];
     assert!(
         block.contains("header_foreground_colors("),
         "R-COLOR-04：表头文字必须经 header_foreground_colors"

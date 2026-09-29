@@ -2755,6 +2755,78 @@ try {
     assert.ok(screenPx >= 10.0 - 1e-6, `钳制后表名屏幕字号必须 ≥10px（实际 ${screenPx}）`);
   });
 
+  // ─── ST-CR-FONT-02：缩小全景后所有表卡字体/尺寸一致（#48 R-WIDTH-06~08 / R-FONT-07 / R-LOD-09）───
+  await run(["ST-CR-FONT-02"], "缩小全景后离屏与可见表字体尺寸一致", async page => {
+    // GIVEN：预置两表，t2 初始在远处，zoom=1 时离屏
+    const presetDiagram = {
+      tables: [
+        { id: "t1", name: "LongTableNameVisible", x: 120, y: 120, color: "", comment: "",
+          fields: [{ id: "f1", name: "very_long_field_name_abc", type_: "VARCHAR", default: "", check: "", primary: true, unique: false, not_null: true, increment: false, comment: "", tag: "", dict_code: "" }],
+          indices: [] },
+        { id: "t2", name: "LongTableNameOffscreen", x: 1800, y: 1200, color: "", comment: "",
+          fields: [{ id: "f2", name: "another_long_field_xyz", type_: "INT", default: "", check: "", primary: true, unique: false, not_null: true, increment: false, comment: "", tag: "", dict_code: "" }],
+          indices: [] },
+      ],
+      references: [], areas: [], notes: [],
+    };
+    await installApi(page, { presetDiagram });
+    await login(page);
+    await createRoomAndEnter(page);
+    await page.waitForFunction(() => !!window.__cdb_font_consistency_probe, null, { timeout: 8_000 });
+
+    const probe = () => page.evaluate(() => JSON.parse(window.__cdb_font_consistency_probe));
+    const pBase = await probe();
+    assert.equal(pBase.visible_n, 1, "zoom=1 时仅 t1 在视口内（t2 离屏）");
+    assert.equal(pBase.font_bucket_consistent, true, "单表必然 consistent");
+    const baseMinW = pBase.min_aabb_w;
+
+    // WHEN 1：缩放到 zoom ≤ 0.2，使离屏 t2 进入视口
+    const lod = () => page.evaluate(() => JSON.parse(window.__cdb_lod_probe));
+    const center = await canvasPoint(page, { x: 700, y: 450 });
+    await page.mouse.move(center.x, center.y);
+    for (let i = 0; i < 60; i++) {
+      const z = (await lod()).zoom;
+      if (z <= 0.2) break;
+      await page.mouse.wheel(0, 240);
+      await page.waitForTimeout(120);
+    }
+    await page.waitForFunction(
+      () => JSON.parse(window.__cdb_font_consistency_probe)?.visible_n >= 2,
+      null, { timeout: 6_000, polling: 100 },
+    );
+    const pLow = await probe();
+    const zLow = (await lod()).zoom;
+    assert.ok(zLow <= 0.2, `zoom 必须缩到 ≤0.2（实际 ${zLow}）`);
+    assert.equal(pLow.visible_n, 2, `低 zoom 全景下两表都必须可见（实际 ${pLow.visible_n}）`);
+    assert.equal(pLow.font_bucket_consistent, true, "两表 effective 字号必须一致（无斑块差异）");
+    assert.ok(pLow.min_aabb_w > baseMinW, `低 zoom 下表宽应随 effective 字号放大（${pLow.min_aabb_w} > ${baseMinW}）`);
+
+    // WHEN 2：缩回到 zoom≈1 后切字号到 1.5 档，表框再次加宽（低 zoom 已触发 10px 下限钳制，
+    // 此时切字号不会继续放大；回退到非钳制 zoom 才能观测字号倍率对表宽的影响）
+    for (let i = 0; i < 80; i++) {
+      const z = (await lod()).zoom;
+      if (z >= 0.99) break;
+      await page.mouse.wheel(0, -120);
+      await page.waitForTimeout(80);
+    }
+    await page.waitForFunction(
+      () => JSON.parse(window.__cdb_lod_probe)?.zoom >= 0.99,
+      null, { timeout: 8_000, polling: 100 },
+    );
+    const pZoomBack = await probe();
+    const btn = page.locator('[data-testid="canvas-font-scale"]');
+    // 1.0 → 1.25 → 1.5
+    await btn.click();
+    await btn.click();
+    await page.waitForFunction(
+      () => JSON.parse(window.__cdb_lod_probe)?.label_font_scale === 1.5,
+      null, { timeout: 6_000, polling: 100 },
+    );
+    const pScale = await probe();
+    assert.equal(pScale.font_bucket_consistent, true, "1.5× 字号下仍 consistent");
+    assert.ok(pScale.min_aabb_w > pZoomBack.min_aabb_w, `1.5× 字号下表框应再次加宽（${pScale.min_aabb_w} > ${pZoomBack.min_aabb_w}）`);
+  });
+
   // ─── ST-AN-03：区域锁定全链路（fix-issues-38-41 / #41，§5.17 R-AREALOCK-02~06）───
   await run(["ST-AN-03"], "区域锁定：右键锁定 → 拖动无效 → 持久化 → Inspector 解锁恢复", async page => {
     const state = await installApi(page, { persistGet: true });

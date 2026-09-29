@@ -271,6 +271,8 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-CR-PAN-01",
     // fix-issues-38-41 / #40：标签字号倍率档位 + 10px 屏幕下限钳制（ST-CR-FONT-01 由 parity-d 上报）
     "UT-CR-FONT-01",
+    // fix-font-lod-consistency-and-table-resize / #48：effective 字号下表宽/行高自适应（ST-CR-FONT-02 由 parity-d 上报）
+    "UT-CR-FONT-02",
     // fix-issues-38-41 / #41：Area.locked 缺省兼容 + 拖拽门控（ST-AN-03 由 parity-d 上报）
     "UT-AN-LOCK-01",
     // fix-issues-42-44：#44 关系线命中合同 + #43 悬浮 tooltip
