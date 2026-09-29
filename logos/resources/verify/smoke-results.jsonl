@@ -130,3 +130,13 @@
 {"id":"SMOKE-core-09","status":"pass","duration_ms":177,"timestamp":"2026-09-29T06:54:42Z","scenario":"smoke","note":"area.locked persisted via PUT snapshot round-trip (migration 0012)"}
 {"id":"SMOKE-core-06","status":"pass","duration_ms":2019,"timestamp":"2026-09-29T06:54:44Z","scenario":"smoke","note":"local start-local.sh + stop-local.sh round-trip"}
 {"id":"SMOKE-core-STABLE-01","status":"pass","duration_ms":645,"timestamp":"2026-09-29T06:54:45Z","scenario":"smoke","note":"pre-deployed compose stack healthy via nginx :9080 (health=200, home=200, host:3000 closed)"}
+{"id":"SMOKE-core-01","status":"pass","duration_ms":12,"timestamp":"2026-09-29T11:53:50Z","scenario":"smoke","note":"backend health proxy (4xx on /non-existent is healthy) (http=401)"}
+{"id":"SMOKE-core-02","status":"pass","duration_ms":68,"timestamp":"2026-09-29T11:53:50Z","scenario":"smoke","note":"create/read/update/delete"}
+{"id":"SMOKE-core-03","status":"pass","duration_ms":100,"timestamp":"2026-09-29T11:53:50Z","scenario":"smoke","note":"POST /api/v1/bridge/import/local (SQL via payload) (http=200)"}
+{"id":"SMOKE-core-04","status":"pass","duration_ms":14,"timestamp":"2026-09-29T11:53:50Z","scenario":"smoke","note":"frontend index.html available (http=200)"}
+{"id":"SMOKE-core-05","status":"pass","duration_ms":13,"timestamp":"2026-09-29T11:53:50Z","scenario":"smoke","note":"GET /api/v1/bridge/config (DB-backed) (http=200)"}
+{"id":"SMOKE-core-07","status":"pass","duration_ms":98,"timestamp":"2026-09-29T11:53:50Z","scenario":"smoke","note":"import missing-id payload persisted (auto id + name fallback)"}
+{"id":"SMOKE-core-08","status":"pass","duration_ms":67,"timestamp":"2026-09-29T11:53:50Z","scenario":"smoke","note":"anonymous 401 on POST/GET diagrams + bridge import/local + share mint; token accepted"}
+{"id":"SMOKE-core-09","status":"pass","duration_ms":173,"timestamp":"2026-09-29T11:53:50Z","scenario":"smoke","note":"area.locked persisted via PUT snapshot round-trip (migration 0012)"}
+{"id":"SMOKE-core-06","status":"pass","duration_ms":2021,"timestamp":"2026-09-29T11:53:52Z","scenario":"smoke","note":"local start-local.sh + stop-local.sh round-trip"}
+{"id":"SMOKE-core-STABLE-01","status":"pass","duration_ms":659,"timestamp":"2026-09-29T11:53:53Z","scenario":"smoke","note":"pre-deployed compose stack healthy via nginx :9080 (health=200, home=200, host:3000 closed)"}
