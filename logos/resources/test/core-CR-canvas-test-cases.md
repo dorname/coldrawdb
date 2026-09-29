@@ -698,6 +698,7 @@
 | UT-CR-FONT-01 | 标签字号倍率与钳制纯函数（#40 §5.16） | 档位循环 0.8→1.0→1.25→1.5→0.8；localStorage 读写/非法值回落 1.0；`max(世界字号 × zoom × 倍率, 10px)` 钳制：zoom 0.2 时触发下限、zoom 2.0 不封顶 |
 | UT-CR-FONT-02 | `compute_table_render_size_for` / `estimate_content_width_for` 在 effective 字号变化时的自适应（#48 §5.10/5.16） | zoom=1.0、label_scale=1.0 时基线宽/高与现状一致；zoom=0.2 触发 R-FONT-04 下限钳制后，auto 宽度 ≥ 基线宽、字段行高 ≥ `FIELD_ROW_HEIGHT`、表头高 ≥ `TABLE_HEADER_HEIGHT`；手动 `table.width=300` 时宽度固定为 300，但行高仍随字号放大；拓扑档（tier=Topology）下表头高随 `lod_table_font_size` 补偿放大 |
 | UT-AN-LOCK-01 | Area.locked 序列化兼容（#41 §5.17） | JSON 缺 `locked` 键 → 反序列化 locked=false（旧图兼容）；locked=true 往返序列化保持；锁定区域拖拽/resize 门控纯函数返回 no-op |
+| UT-CR-ANCHOR-01 | 同一表在三种 `CommentDisplay` 模式（`Name` / `NameComment` / `Comment`）下计算字段维度左右锚点与表维度左右表级锚点 | `field_anchor_for_side_with(..., Left)` 的 x 坐标恒等于 `table.x`；`field_anchor_for_side_with(..., Right)` 的 x 坐标恒等于 `table.x + resolve_table_width_for(table, mode, zoom, label_scale, tier)`；`anchor_for_tier_with(..., Left/Right)` 在表维度下同样满足；三种模式之间，有注释时 `NameComment`/`Comment` 的右缘与 `Name` 不同，但锚点仍精确贴齐当前模式宽 |
 
 ## ADDED — ST 用例（追加）
 
@@ -707,6 +708,7 @@
 | ST-CR-FONT-01 | e2e：默认倍率基线字号 → 点 `canvas-font-scale` 切到 1.25 → 探针 label_font_scale=1.25 且表名字号放大 → reload 后倍率保持（localStorage）→ 缩放到 zoom ≤0.35 → min_font_clamped=true 且屏幕字号 ≥10px | R-FONT-01/02/04/05 全覆盖；工具栏 UI 字号不受影响（R-FONT-03 负断言） |
 | ST-CR-FONT-02 | e2e：预置两表（一长表名、一长字段名）→ 默认 zoom 截图/探针基线 → 缩放到 zoom=0.2 → 断言所有表卡（含初始离屏后进入视口的表）effective 字号一致、无斑块式大小差异；断言 auto 宽表框随字号加宽、字段行垂直居中无截断；切 `canvas-font-scale` 到 1.5 后表框再次加宽、高亮 | R-WIDTH-06/07/08、R-FONT-07、R-LOD-09 全覆盖；离屏表与可见表渲染一致 |
 | ST-AN-03 | e2e：建区域 → 右键区域 → 「锁定区域」→ 拖动区域无位移、resize 手柄无响应 → 锁图标可见 → 保存 reload 仍锁定 → Inspector 复选框解锁 → 拖动恢复 | R-AREALOCK-02/03/05/06 全覆盖；锁定区域仍可选中与删除（R-AREALOCK-04） |
+| ST-CR-ANCHOR-01 | e2e：建两表并建关系 → 默认 `name+comment` 下截图/探针基线 → 切注释模式到 `name` → 断言关系线端点仍贴齐当前模式卡边（无可见空隙）→ 切到 `comment` → 同样断言 → 切回 `name+comment` 回归 | R-WIDTH-08 / R-LOD-08 在 `comment_mode` 维度上的同口径覆盖；任意注释模式切换后关系线不悬空 |
 
 ## MODIFIED — 用例登记（OpenLogos verify 解析用，追加行）
 
@@ -716,7 +718,9 @@
 | UT-CR-FONT-01 | UT | 字号倍率档位 + 10px 屏幕下限钳制（#40） |
 | UT-CR-FONT-02 | UT | effective 字号下表宽/行高自适应（#48） |
 | UT-AN-LOCK-01 | UT | Area.locked 缺省兼容 + 拖拽门控（#41） |
+| UT-CR-ANCHOR-01 | UT | 三种注释模式下关系锚点与当前 mode 卡宽对齐（#49） |
 | ST-CR-PAN-02 | ST | 空白拖动平移保留选中 / 单击清选（#39） |
 | ST-CR-FONT-01 | ST | 字号倍率循环 + 持久化 + 低 zoom 钳制（#40） |
 | ST-CR-FONT-02 | ST | 缩小全景后字体/表尺寸一致（#48） |
 | ST-AN-03 | ST | 区域锁定全链路 e2e + 持久化（#41） |
+| ST-CR-ANCHOR-01 | ST | 注释模式切换后关系线贴边 e2e（#49） |

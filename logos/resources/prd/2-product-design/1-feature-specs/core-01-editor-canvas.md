@@ -589,7 +589,7 @@ focus_transform(table_aabb, viewport_css, current_transform) -> Transform
 | R-WIDTH-05 | Set Table Width 文案「0 = auto」语义必须与 R-WIDTH-01 一致（禁止把 `0` 当成 0px 窄表） |
 | R-WIDTH-06 | **effective 字号变化时 auto 宽度必须重测**：`estimate_content_width` 需感知 `zoom`、`label_font_scale`、`tier`；当 R-FONT-04 / R-LOD-03 导致实际绘制字号变大时，字符宽度按 effective 字号比例放大，auto 宽度应同步增加（仍夹在 `[TABLE_WIDTH, TABLE_WIDTH_MAX]`）。禁止在字号被钳制/补偿后仍使用 zoom=1.0/label_scale=1.0 的静态宽度，导致文本截断。 |
 | R-WIDTH-07 | **表头高与字段行高随 effective 字号自适应**：字段维度下字段行高 = `max(FIELD_ROW_HEIGHT, effective_field_px + 2 × 行内留白)`，表头高 = `max(TABLE_HEADER_HEIGHT, effective_name_px + 2 × 表头留白)`；拓扑档表头高同 R-LOD-09。保证字号放大后行内文本垂直居中、不贴边、不被底部截断。 |
-| R-WIDTH-08 | **命中/锚点/精灵缓存与绘制同口径**：`resolve_table_width`、`field_anchor_for_side`、`anchor_for_tier`、`compute_table_render_size`、`table_sprite_fingerprint` 必须使用与 `draw_table_body` / `draw_table_topology_body` 同一组 effective 字号参数（`zoom`、`label_font_scale`、`tier`），禁止绘制宽、命中宽、关系锚点、精灵尺寸四者分叉。 |
+| R-WIDTH-08 | **命中/锚点/精灵缓存与绘制同口径**：`resolve_table_width`、`field_anchor_for_side`、`anchor_for_tier`、`compute_table_render_size`、`table_sprite_fingerprint` 必须使用与 `draw_table_body` / `draw_table_topology_body` 同一组 **effective 字号参数（`zoom`、`label_font_scale`、`tier`）以及同一 `comment_mode`**，禁止绘制宽、命中宽、关系锚点、精灵尺寸四者分叉。特别地，`field_anchor_for_side`、`anchor_for_tier`、`pick_port_sides` 在 `Name` / `NameComment` / `Comment` 任一模式下均须按该模式解析的有效宽取缘，不得写死 `NameComment`（fix-issue-49）。 |
 
 **验收口径**：长表名（如 `asset_v2.virtualization_cluster_profile`）在 auto 下表头完整可辨（或至少显著宽于 230px 且逼近测量宽）；手动设宽后不再被内容强制撑开；**短英文名 + 非空中文注释（`name+comment`）时估算宽严格大于无注释对照（未触达 480 上限前）**；低 zoom 下表名/字段名因 10px 下限被放大后，auto 宽表显著宽于 230px，字段行垂直居中，关系线仍准确连接卡体左右缘，离屏表与可见表字体/尺寸一致。
 
@@ -662,7 +662,7 @@ focus_transform(table_aabb, viewport_css, current_transform) -> Transform
 | R-LOD-05 | 精灵缓存兼容：维度模式纳入 R-PERF-07 卡体指纹（维度切换触发重光栅，同维度内拖动/平移仍位块传输）；表维度卡体与字段维度卡体缓存互不污染 |
 | R-LOD-06 | 表维度下命中/交互不变：表/关系选中、拖动、resize（#27）与字段维度一致；hover 表卡 tooltip 可见字段摘要属可选增强，不在本期 |
 | R-LOD-07 | 补偿参数登记到 `core-07-design-tokens.md` §15.4（`canvas.lod.*`），亮/暗主题成对 |
-| R-LOD-08 | 表维度关系线**表级锚定**（#35）：字段行隐藏时，关系线两端锚点收敛到表级端口——纵坐标 = 表头纵向中线（`table.y + TABLE_HEADER_HEIGHT / 2`），横坐标 = 卡体左/右缘，选侧沿用 §3.4 `pick_port_sides`（bezier / orthogonal / straight 三线型同口径）；同一表多条关系线在表级端口汇聚；切回字段维度恢复字段维度锚定。crow's foot 端点记号随表级锚点绘制 |
+| R-LOD-08 | 表维度关系线**表级锚定**（#35）：字段行隐藏时，关系线两端锚点收敛到表级端口——纵坐标 = 表头纵向中线（`table.y + TABLE_HEADER_HEIGHT / 2`），横坐标 = 卡体左/右缘（按当前 `comment_mode` 下的有效宽计算），选侧沿用 §3.4 `pick_port_sides` 并传入当前 `comment_mode`（bezier / orthogonal / straight 三线型同口径）；同一表多条关系线在表级端口汇聚；切回字段维度恢复字段维度锚定。crow's foot 端点记号随表级锚点绘制（fix-issue-49）。 |
 | R-LOD-09 | **表维度表头高随表名字号补偿自适应**（#48）：拓扑档表头高 = `max(TABLE_HEADER_HEIGHT, scaled_label_font_world(lod_table_font_size(zoom, tier), zoom, label_scale).0 + 2 × 留白)`，与 R-WIDTH-07 同源，确保表维度下放大表名后不被截断。 |
 | R-VIEW-DIM-01 | 显式维度模式 `ViewDimension { Table, Field }`：Table = 表维度（仅表头，R-LOD-02 渲染），Field = 字段维度（字段展开，原详情档渲染）；**默认 Field**；任何 zoom 下维度保持不变——缩放控件只负责缩放 |
 | R-VIEW-DIM-02 | 三入口切换（状态一致）：① 画布/表**右键菜单**「切换为表维度 / 切换为字段维度」项；② **ToolRail 维度按钮**（`cdb-is-active` 激活态可见，只读/Viewer 下仍可用——纯视图切换）；③ **快捷键 `V`**（无修饰键，沿用工具快捷键门控链：编辑器页 / 非文本输入目标 / 无浮层；只读下可用） |
