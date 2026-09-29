@@ -236,7 +236,7 @@ Table users {
 | 类型筛选 | 按 field type 过滤（drawdb 行为） |
 | 引用图谱 | 选中某对象时显示其引用关系（drawdb 行为） |
 
-## 10.5 列表视图（ListView 表树 + 单表字段网格，PDManer 式）
+## 10.5 列表视图（ListView 表树 + 单表字段网格，PDManer 式）（feat-issue-50-listview-grouping-and-relations / #50 按 Area 分组 + 关联表可视化）
 
 **定位**：字段明细编辑网格（redesign-listview-type-length-canvas-fix 确立行内编辑能力；listview-tree-master-detail 重构布局），对标 PDManer 字段明细表格——列表视图即字段编辑主场，与画布/Inspector 同源同账。**布局为 master-detail 两栏：左侧表树导航 + 右侧当前表字段网格**，解决表多场景下全量堆叠网格的定位困难。
 
@@ -246,11 +246,17 @@ Table users {
 
 - 左侧表树 `[data-testid="list-tree"]`（固定窄栏，独立纵向滚动）：
   - 顶部搜索框 `[data-testid="list-tree-search"]`：按表名模糊匹配过滤（复用 Tables Tab 搜索口径 `filter_tables`），清空恢复全量
+  - **树节点按 Area 分组渲染（fix-issue-50 / #50）**：
+    - 分组头 `[data-testid="list-tree-group-{area_id}"]` 显示区域名 + 表数量；无 Area 的表归入「未分组」分组
+    - 分组支持折叠/展开：点击分组头切换该分组的展开态；搜索时含匹配表的分组自动展开，无匹配分组自动折叠
+    - 分组头样式与现有暗色主题一致，与「数据字典」分组视觉同级
   - 树节点 `[data-testid="list-tree-node-<table_name>"]`：显示表名 + 字段数（`表名（N 字段）`）；当前选中态高亮
+  - **关联表高亮（fix-issue-50 / #50）**：当前表存在关联关系时，树中关联表节点追加 `data-testid="list-tree-node-related"` 并高亮；非关联表节点弱化（`data-testid="list-tree-node-unrelated"`）
   - 单击节点 → 选中该表（Inspector 同步，对齐原组头单击语义）；双击节点 → 切回画布并选中该表（对齐原组头双击语义）
   - 默认选中首张表；搜索无命中 → 树内空态提示
 - 右侧单表字段网格（占据剩余宽度，独立纵向滚动）：
   - 网格标题：当前表名 `表名（N 字段）`
+  - **关联表摘要区（fix-issue-50 / #50）**：网格标题下方、字段行上方展示当前选中表的关联表清单 `[data-testid="list-related-tables"]`，按入边/出边分组，显示关系类型（1:1 / 1:N / N:M）；点击关联表名在左树中定位并切换选中。无关联时隐藏不占位。
   - 工具条：增字段 `[data-testid="list-add-field"]`、删字段、上移、下移（后三者作用于选中字段行，未选中禁用）；右侧依次「导入」`[data-testid="list-btn-import"]`、「导出」`[data-testid="list-btn-export"]`、「返回画布」（fix-overflow-menu-room-delete-listview-io：ListView 补齐 IO 入口）
   - 只渲染当前选中表的字段行（不再按表堆叠组头行）
 - 列定义（对齐 PDManer，数据域列不做）：
@@ -288,6 +294,7 @@ Table users {
 - ❌ 主题域树 / 多表 Tab 条 / 逻辑实体 / 多表透视（PDManer 左树体系——本变更的表树仅为表级扁平列表，不含主题域分组层级）
 - ❌ 数据域列、列设置、表格式编辑、入库/标注工具
 - ❌ 跨表全量网格模式（「全部表」虚拟节点）/ 分组模式切换 / 批量类型面板
+- ❌ 用户自定义分组（本期仅按既有 `Table.area` 分组）
 
 > 注：「数据字典」自 S07（feat-data-dictionary）起纳入，入口形态为 ToolRail `toolrail-dicts` + DictPanel 抽屉（非本文件侧栏 Tab 体系，见 §7A 与 `core-01e-data-dictionary.md`），不再列为排除项；ListView 字段网格「说明」列仅追加只读字典映射摘要，绑定编辑仍在 Inspector。
 
