@@ -84,3 +84,49 @@
 {"id":"SMOKE-core-09","status":"pass","duration_ms":206,"timestamp":"2026-09-28T17:22:26Z","scenario":"smoke","note":"area.locked persisted via PUT snapshot round-trip (migration 0012)"}
 {"id":"SMOKE-core-06","status":"pass","duration_ms":2023,"timestamp":"2026-09-28T17:22:28Z","scenario":"smoke","note":"local start-local.sh + stop-local.sh round-trip"}
 {"id":"SMOKE-core-STABLE-01","status":"skip","duration_ms":75,"timestamp":"2026-09-28T17:22:28Z","scenario":"smoke","note":"no docker daemon"}
+{"id":"SMOKE-core-01","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:41:59Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-02","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:41:59Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-03","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:41:59Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-04","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:41:59Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-05","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:41:59Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-06","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:41:59Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-07","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:41:59Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-08","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:41:59Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-09","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:41:59Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-01","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:12Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-02","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:12Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-03","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:12Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-04","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:12Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-05","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:12Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-06","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:12Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-07","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:12Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-08","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:12Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-09","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:12Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-01","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:20Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-02","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:20Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-03","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:20Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-04","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:20Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-05","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:20Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-06","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:20Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-07","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:20Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-08","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:20Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-09","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:20Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-01","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:35Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-02","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:35Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-03","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:35Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-04","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:35Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-05","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:35Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-06","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:35Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-07","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:35Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-08","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:35Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-09","status":"fail","duration_ms":0,"timestamp":"2026-09-29T06:42:35Z","scenario":"smoke","note":"start-local.sh failed; services unavailable"}
+{"id":"SMOKE-core-01","status":"pass","duration_ms":12,"timestamp":"2026-09-29T06:54:41Z","scenario":"smoke","note":"backend health proxy (4xx on /non-existent is healthy) (http=401)"}
+{"id":"SMOKE-core-02","status":"pass","duration_ms":67,"timestamp":"2026-09-29T06:54:41Z","scenario":"smoke","note":"create/read/update/delete"}
+{"id":"SMOKE-core-03","status":"pass","duration_ms":96,"timestamp":"2026-09-29T06:54:42Z","scenario":"smoke","note":"POST /api/v1/bridge/import/local (SQL via payload) (http=200)"}
+{"id":"SMOKE-core-04","status":"pass","duration_ms":13,"timestamp":"2026-09-29T06:54:42Z","scenario":"smoke","note":"frontend index.html available (http=200)"}
+{"id":"SMOKE-core-05","status":"pass","duration_ms":12,"timestamp":"2026-09-29T06:54:42Z","scenario":"smoke","note":"GET /api/v1/bridge/config (DB-backed) (http=200)"}
+{"id":"SMOKE-core-07","status":"pass","duration_ms":95,"timestamp":"2026-09-29T06:54:42Z","scenario":"smoke","note":"import missing-id payload persisted (auto id + name fallback)"}
+{"id":"SMOKE-core-08","status":"pass","duration_ms":57,"timestamp":"2026-09-29T06:54:42Z","scenario":"smoke","note":"anonymous 401 on POST/GET diagrams + bridge import/local + share mint; token accepted"}
+{"id":"SMOKE-core-09","status":"pass","duration_ms":177,"timestamp":"2026-09-29T06:54:42Z","scenario":"smoke","note":"area.locked persisted via PUT snapshot round-trip (migration 0012)"}
+{"id":"SMOKE-core-06","status":"pass","duration_ms":2019,"timestamp":"2026-09-29T06:54:44Z","scenario":"smoke","note":"local start-local.sh + stop-local.sh round-trip"}
+{"id":"SMOKE-core-STABLE-01","status":"pass","duration_ms":645,"timestamp":"2026-09-29T06:54:45Z","scenario":"smoke","note":"pre-deployed compose stack healthy via nginx :9080 (health=200, home=200, host:3000 closed)"}
