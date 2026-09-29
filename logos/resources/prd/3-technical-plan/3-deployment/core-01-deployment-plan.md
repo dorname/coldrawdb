@@ -375,6 +375,8 @@ services:
 
 **调试直连后端（非交付形态）**：排查问题时可用 `docker compose run --service-ports --rm coldrawdb` 临时获得宿主 3000 直连，或 `docker run -p 3000:3000 -v ./data:/data coldrawdb:v1` 单容器启动（无 nginx，3000 即入口）。
 
+> **fix-font-lod-consistency-and-table-resize 部署注记**：本变更为纯前端画布渲染逻辑（表卡尺寸随 effective 字号自适应 + 精灵缓存一致性），**无 DB migration、无 API 变更**。部署形态为 `docker compose up -d --build coldrawdb` 重建镜像（前端产物随镜像），nginx/backup 不变。部署顺序无要求，对旧后端完全兼容；回滚只需回退上一镜像。部署后 smoke 沿用既有套件全量回归（SMOKE-core-STABLE-01），不新增用例。
+
 ### 5.2 nginx 反代
 
 仓库根 `nginx.conf`：`/api/` 与 `/ws/` 透传后端，其余回源后端静态服务（后端对非 API 路径回源 `index.html`）：
