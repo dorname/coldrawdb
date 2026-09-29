@@ -1,5 +1,23 @@
 # 部署报告
 
+## 2026-09-29 — main 全量重部署（#48 / #49 / #50 已归档后，本地/测试）
+
+| 项 | 值 |
+|---|---|
+| 变更 | `feat-issue-50-listview-grouping-and-relations`（连带此前已归档的 #48 / #49 一并随最新 main 生效） |
+| 部署时间 | 2026-09-29（镜像构建 16:27:30Z，容器启动 16:27:35Z） |
+| 目标环境 | 本地 docker compose（coldrawdb + nginx + backup） |
+| 内容 | #50 列表视图按 Area 分组 + 关联表可视化；#49 关系锚点 comment_mode 对齐；#48 表维度卡宽上限 640px。均为纯前端改动：无 migration、无 API 变更 |
+| 状态 | ✅ 部署完成；健康检查 PASS（待 smoke 授权回归） |
+
+### 执行摘要
+
+1. 部署前置：`./scripts/stop-local.sh` 清理残留 dev 双进程（backend :3000 / trunk :8080，先例 #42-44 smoke 冲突源）
+2. `docker compose up -d --build coldrawdb` 重建镜像（前端产物随镜像），容器 recreate 后 **healthy**；nginx/backup 未动
+3. 健康检查：`:9080/api/v1/diagrams/health` → 200 `{"status":"ok"}`；`GET /` → 200（index.html）；`GET /editor` → 200（SPA 回源）
+4. 回滚点：回退上一 `coldrawdb:v1` 镜像即可，无数据迁移
+
+
 ## 2026-09-29 — fix-issue-46-hover-perf-and-corner-summary（本地/测试）
 
 | 项 | 值 |
