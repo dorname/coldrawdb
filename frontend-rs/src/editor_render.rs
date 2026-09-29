@@ -22,6 +22,9 @@ use web_sys::{CanvasRenderingContext2d, MouseEvent, PointerEvent, WheelEvent};
 pub const TABLE_WIDTH: f64 = 230.0;
 /// 自适应表宽上限（对齐 ListView 列宽 max=480，#20）。
 pub const TABLE_WIDTH_MAX: f64 = 480.0;
+/// 表维度自适应表宽上限（fix-issue-48-topology-card-readability / #48）：
+/// 表维度下字号经 LOD 补偿变大，中英并排长文本更易截断，故单独放宽上限。
+pub const TABLE_WIDTH_MAX_TOPOLOGY: f64 = 640.0;
 const TABLE_HEADER_HEIGHT: f64 = 43.0;
 const FIELD_ROW_HEIGHT: f64 = 35.0;
 /// 便签渲染 / 命中尺寸（与 draw_note 一致）
@@ -3393,10 +3396,14 @@ pub fn resolve_table_width_for(
     label_scale: f64,
     tier: LodTier,
 ) -> f64 {
+    let max_w = match tier {
+        LodTier::Topology => TABLE_WIDTH_MAX_TOPOLOGY,
+        LodTier::Detail => TABLE_WIDTH_MAX,
+    };
     match table.width {
         Some(w) if w > 0 => w as f64,
         _ => estimate_content_width_for(table, comment_mode, zoom, label_scale, tier)
-            .clamp(TABLE_WIDTH, TABLE_WIDTH_MAX),
+            .clamp(TABLE_WIDTH, max_w),
     }
 }
 
@@ -8568,6 +8575,79 @@ mod tests {
             th,
             scaled_table_header_height(1.0, 1.0, LodTier::Topology),
             "UT-CR-LOD-01: 拓扑档卡高为 effective 表头高"
+        );
+    }
+
+    /// UT-CR-TOPO-WIDTH-01 — 表维度卡宽上限高于字段维度（fix-issue-48-topology-card-readability / #48 R-LOD-10）
+    #[test]
+    fn ut_cr_topo_width_01_topology_wider_than_detail() {
+        use crate::editor_core::types::{Field, Table};
+        use crate::editor_core::CommentDisplay;
+
+        let mut table = Table {
+            id: "ta".into(),
+            name: "asset_object_registry_for_inventory".into(),
+            x: 0.0,
+            y: 0.0,
+            color: String::new(),
+            comment: "统一资产主表用于资产管理系统全局".into(),
+            fields: vec![Field {
+                id: "fa".into(),
+                name: "id".into(),
+                type_: "INT".into(),
+                default: String::new(),
+                check: String::new(),
+                primary: true,
+                unique: false,
+                not_null: true,
+                increment: false,
+                comment: String::new(),
+                tag: String::new(),
+                dict_code: String::new(),
+            }],
+            indices: Vec::new(),
+            width: None,
+            min_height: None,
+        };
+
+        // 使用 zoom=0.5：表维度字号补偿生效，且表维度上限 640 高于字段维度 480。
+        // 长表头文本在两种维度下估算均超过各自上限，字段维度夹紧到 480，表维度夹紧到 640。
+        let w_detail = resolve_table_width_for(
+            &table, CommentDisplay::NameComment, 0.5, 1.0, LodTier::Detail);
+        let w_topology = resolve_table_width_for(
+            &table, CommentDisplay::NameComment, 0.5, 1.0, LodTier::Topology);
+
+        assert!(
+            w_detail <= TABLE_WIDTH_MAX,
+            "UT-CR-TOPO-WIDTH-01: 字段维度宽度应 ≤ TABLE_WIDTH_MAX（{w_detail} ≤ {TABLE_WIDTH_MAX})"
+        );
+        assert!(
+            w_topology <= TABLE_WIDTH_MAX_TOPOLOGY,
+            "UT-CR-TOPO-WIDTH-01: 表维度宽度应 ≤ TABLE_WIDTH_MAX_TOPOLOGY（{w_topology} ≤ {TABLE_WIDTH_MAX_TOPOLOGY})"
+        );
+        assert!(
+            w_topology > w_detail,
+            "UT-CR-TOPO-WIDTH-01: 表维度上限放宽后长文本应撑宽（{w_topology} > {w_detail})"
+        );
+        assert!(
+            w_topology > TABLE_WIDTH_MAX,
+            "UT-CR-TOPO-WIDTH-01: 表维度应能突破字段维度上限（{w_topology} > {TABLE_WIDTH_MAX})"
+        );
+
+        // 短名/空注释时两者均回落至 TABLE_WIDTH
+        table.name = "t1".into();
+        table.comment = String::new();
+        let w_detail_short = resolve_table_width_for(
+            &table, CommentDisplay::NameComment, 0.5, 1.0, LodTier::Detail);
+        let w_topology_short = resolve_table_width_for(
+            &table, CommentDisplay::NameComment, 0.5, 1.0, LodTier::Topology);
+        assert!(
+            (w_detail_short - w_topology_short).abs() < 1e-9,
+            "UT-CR-TOPO-WIDTH-01: 短文本时两维度宽度应一致（{w_detail_short} vs {w_topology_short})"
+        );
+        assert!(
+            (w_detail_short - TABLE_WIDTH).abs() < 1e-9,
+            "UT-CR-TOPO-WIDTH-01: 短文本应回落至 TABLE_WIDTH（{w_detail_short})"
         );
     }
 

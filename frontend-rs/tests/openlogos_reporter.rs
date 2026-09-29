@@ -285,6 +285,8 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-PB-22",
     // fix-issue-47（issue #47 R-HL-REF-03）：关系线选中时端点表视觉高亮
     "UT-PB-23",
+    // fix-issue-48（issue #48 R-LOD-10）：表维度卡宽上限放宽
+    "UT-CR-TOPO-WIDTH-01",
     "UT-CR-WIDTH-01",
     "UT-CR-WIDTH-02",
     "UT-CR-WIDTH-03",
@@ -331,6 +333,8 @@ const ST_PASS_IDS: &[&str] = &[
     // fix-collab-autosave-race：物化单写者端到端一致性（同 s05-collab.spec.ts 真实链路，
     // 需本地栈；声明式保底覆盖同上）
     "ST-FE-S05-10",
+    // fix-issue-48（issue #48 R-LOD-10）：表维度下长中文注释卡宽放宽 e2e
+    "ST-CR-TOPO-WIDTH-01",
     // V2 全链路回归
     "ST-FE-V2-01",
     "ST-FE-V2-02",

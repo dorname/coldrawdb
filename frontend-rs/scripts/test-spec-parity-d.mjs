@@ -3098,6 +3098,74 @@ try {
     assert.ok(Math.abs(name.x2 - 600) < 2, `Name 模式下 t2 左锚点应贴齐 600（x2=${name.x2}）`);
   });
 
+  // ─── ST-CR-TOPO-WIDTH-01：表维度下长中文注释卡宽放宽、可读性提升（fix-issue-48 / #48 R-LOD-10）───
+  await run(["ST-CR-TOPO-WIDTH-01"], "表维度下长中文注释卡宽放宽且关系锚点同步", async page => {
+    const mkT = (id, x, y, fid) => ({
+      id, name: "asset_object_registry_inventory_master", x, y, color: "", comment: "统一资产主表用于资产管理系统全局",
+      fields: [{ id: fid, name: fid, type_: "INT", default: "", check: "", primary: true, unique: false, not_null: true, increment: false, comment: "", tag: "", dict_code: "" }],
+      indices: [],
+    });
+    const presetDiagram = {
+      tables: [mkT("t1", 100, 130, "f1"), mkT("t2", 700, 130, "f2")],
+      references: [{ id: "r1", name: "", start_table_id: "t1", end_table_id: "t2", start_field_id: "f1", end_field_id: "f2",
+        type_: "one_to_many", on_delete: "RESTRICT", on_update: "RESTRICT", color: "", line_type: "", stroke_style: "" }],
+      areas: [], notes: [],
+    };
+    await installApi(page, { presetDiagram });
+    await login(page);
+    await createRoomAndEnter(page);
+
+    async function relationEndpoints() {
+      const d = await page.locator('[data-testid="editor-canvas-container"] canvas').getAttribute("data-follow-path");
+      assert.ok(d && d.startsWith("M"), "关系线 data-follow-path 必须存在");
+      const nums = d.match(/-?\d+\.?\d*/g).map(Number);
+      const [x1, y1, , , , , x2, y2] = nums;
+      return { x1, y1, x2, y2 };
+    }
+
+    // 默认字段维度
+    const detail = await relationEndpoints();
+    const detailPath = await page.locator('[data-testid="editor-canvas-container"] canvas').getAttribute("data-follow-path");
+
+    // 切换到表维度
+    const dimBtn = page.locator('[data-testid="canvas-view-dimension"]');
+    for (let i = 0; i < 3; i++) {
+      const text = await dimBtn.textContent();
+      if (text?.includes("维度：表")) break;
+      await dimBtn.click();
+      await page.waitForTimeout(80);
+    }
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="canvas-view-dimension"]')?.textContent?.includes("维度：表"),
+      { timeout: 3_000 },
+    );
+    await page.waitForFunction(
+      (prev) => document.querySelector('[data-testid="editor-canvas-container"] canvas')?.getAttribute("data-follow-path") !== prev,
+      detailPath,
+      { timeout: 3_000, polling: 100 },
+    );
+    const topo = await relationEndpoints();
+
+    // t1 右侧锚点右移（表维度更宽）；t2 左侧锚点恒为 table.x=700，不随宽度变化
+    assert.ok(topo.x1 > detail.x1, `表维度 t1 应更宽（${topo.x1} > ${detail.x1}）`);
+    assert.ok(Math.abs(topo.x2 - 700) < 2, `t2 左锚点应贴齐 700（x2=${topo.x2}）`);
+
+    // 切回字段维度，path 恢复
+    for (let i = 0; i < 3; i++) {
+      const text = await dimBtn.textContent();
+      if (text?.includes("维度：字段")) break;
+      await dimBtn.click();
+      await page.waitForTimeout(80);
+    }
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="canvas-view-dimension"]')?.textContent?.includes("维度：字段"),
+      { timeout: 3_000 },
+    );
+    const back = await relationEndpoints();
+    assert.ok(Math.abs(back.x1 - detail.x1) < 2, "切回字段维度后 t1 右锚点应恢复");
+    assert.ok(Math.abs(back.x2 - detail.x2) < 2, "切回字段维度后 t2 左锚点应恢复");
+  });
+
   // ─── ST-S04-UI-17：房间卡片重命名（fix-issue-45-room-rename，issue #45，core-S04 §2.4） ──
   await run(["ST-S04-UI-17"], "owner 重命名入口 + 模态 + PATCH 落账 + 列表即时一致 + 字段解耦", async page => {
     const state = await installApi(page, {
