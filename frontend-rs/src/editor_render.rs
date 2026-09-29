@@ -1034,6 +1034,7 @@ mod leptos_canvas {
                     dx,
                     dy,
                     tier,
+                    store.comment_display.get_untracked(),
                     t_now.zoom,
                 );
                 // R-PERF-HOV-02 写守卫：同 ref 命中不反复 set（文案不变 → DOM 不重建）
@@ -1271,8 +1272,17 @@ mod leptos_canvas {
                             .find(|tbl| tbl.id == first.end_table_id)
                             .map(|tbl| super::table_with_override(tbl, table_override));
                         if let (Some(from), Some(to_tbl)) = (from, to_tbl) {
-                            let d = super::calc_path(&from, &first.start_field_id, &to_tbl, &first.end_field_id)
-                                .to_svg_d();
+                            let d = super::calc_path_tier_with(
+                                &from,
+                                &first.start_field_id,
+                                &to_tbl,
+                                &first.end_field_id,
+                                super::tier_for_dimension(view_dimension),
+                                comment_mode,
+                                t.zoom,
+                                label_font_scale,
+                            )
+                            .to_svg_d();
                             // R-PERF-08：仅路径变化才写信号 + DOM 属性
                             if super::dom_write_guard(&mut last_follow_d.borrow_mut(), &d) {
                                 follow_path.set(d.clone());
@@ -1396,12 +1406,13 @@ mod leptos_canvas {
                     &t_now,
                 );
 
+                let comment_mode = store.comment_display.get_untracked();
                 let tables = store.tables.get_untracked();
                 let refs = store.references.get_untracked();
                 let hit_tier = super::tier_for_dimension(store.view_dimension.get_untracked());
                 let hit_label_scale = store.label_font_scale.get_untracked().factor();
                 if read_only {
-                    if let Some(id) = super::hit_test_with(&tables, dx, dy, t_now.zoom, hit_label_scale, hit_tier) {
+                    if let Some(id) = super::hit_test_with(&tables, dx, dy, comment_mode, t_now.zoom, hit_label_scale, hit_tier) {
                         selected_id.set(Some(id.clone()));
                         if let Some(cb) = on_select.as_ref() {
                             cb(id);
@@ -1411,11 +1422,11 @@ mod leptos_canvas {
                 }
                 if rel_tool_active.get_untracked() {
                     // #3 reopen：仅左右连接点起拖连；字段行点击仍走 on_field_pick（两点选取）
-                    if let Some((tid, fid, side)) = super::hit_test_field_port_with(&tables, dx, dy, t_now.zoom, hit_label_scale, hit_tier) {
+                    if let Some((tid, fid, side)) = super::hit_test_field_port_with(&tables, dx, dy, comment_mode, t_now.zoom, hit_label_scale, hit_tier) {
                         let (anchor_x, anchor_y) = tables
                             .iter()
                             .find(|t| t.id == tid)
-                            .map(|t| super::field_anchor_for_side_with(t, &fid, side, t_now.zoom, hit_label_scale, hit_tier))
+                            .map(|t| super::field_anchor_for_side_with(t, &fid, side, comment_mode, t_now.zoom, hit_label_scale, hit_tier))
                             .unwrap_or((dx, dy));
                         capture_pointer(&canvas, ev.pointer_id());
                         drag_state.set(Some(DragState {
@@ -1446,7 +1457,7 @@ mod leptos_canvas {
                         }));
                         return;
                     }
-                    if let Some((tid, fid)) = super::hit_test_field_with(&tables, dx, dy, t_now.zoom, hit_label_scale, hit_tier) {
+                    if let Some((tid, fid)) = super::hit_test_field_with(&tables, dx, dy, comment_mode, t_now.zoom, hit_label_scale, hit_tier) {
                         if let Some(cb) = on_field_pick.as_ref() {
                             cb(tid, fid);
                         }
@@ -1481,7 +1492,7 @@ mod leptos_canvas {
                 // #3 reopen：触发面改为左右 port，非整行；行内短按仍经表命中 → on_field_pick
                 // #5：Shift 或已多选集合内拖动时让路给框选/多表拖
                 if !read_only {
-                    if let Some((tid, fid, side)) = super::hit_test_field_port_with(&tables, dx, dy, t_now.zoom, hit_label_scale, hit_tier) {
+                    if let Some((tid, fid, side)) = super::hit_test_field_port_with(&tables, dx, dy, comment_mode, t_now.zoom, hit_label_scale, hit_tier) {
                         let multi = selected_table_ids.get_untracked();
                         if !super::prefer_selection_over_field_rel(
                             ev.shift_key() || marquee_active.get_untracked(),
@@ -1491,7 +1502,7 @@ mod leptos_canvas {
                             let (anchor_x, anchor_y) = tables
                                 .iter()
                                 .find(|t| t.id == tid)
-                                .map(|t| super::field_anchor_for_side_with(t, &fid, side, t_now.zoom, hit_label_scale, hit_tier))
+                                .map(|t| super::field_anchor_for_side_with(t, &fid, side, comment_mode, t_now.zoom, hit_label_scale, hit_tier))
                                 .unwrap_or((dx, dy));
                             capture_pointer(&canvas, ev.pointer_id());
                             drag_state.set(Some(DragState {
@@ -1558,7 +1569,7 @@ mod leptos_canvas {
                         return;
                     }
                 }
-                if let Some((ref_id, end)) = super::hit_test_endpoint_with(&tables, &refs, dx, dy, t_now.zoom, hit_label_scale, hit_tier) {
+                if let Some((ref_id, end)) = super::hit_test_endpoint_with(&tables, &refs, dx, dy, comment_mode, t_now.zoom, hit_label_scale, hit_tier) {
                     capture_pointer(&canvas, ev.pointer_id());
                     drag_state.set(Some(DragState {
                         table_id: None,
@@ -1845,14 +1856,14 @@ mod leptos_canvas {
                         return;
                     }
                 }
-                if let Some(id) = super::hit_test_with(&tables, dx, dy, t_now.zoom, hit_label_scale, hit_tier) {
+                if let Some(id) = super::hit_test_with(&tables, dx, dy, comment_mode, t_now.zoom, hit_label_scale, hit_tier) {
                     let table_x = tables.iter().find(|t| t.id == id).map(|t| t.x).unwrap_or(0.0);
                     let table_y = tables.iter().find(|t| t.id == id).map(|t| t.y).unwrap_or(0.0);
                     selected_id.set(Some(id.clone()));
                     selected_ref_id.set(None);
                     // 字段行（非 port）短按：选中字段；框选/Shift 手势下不抢选字段
                     if !ev.shift_key() && !marquee_active.get_untracked() {
-                        if let Some((tid, fid)) = super::hit_test_field_with(&tables, dx, dy, t_now.zoom, hit_label_scale, hit_tier) {
+                        if let Some((tid, fid)) = super::hit_test_field_with(&tables, dx, dy, comment_mode, t_now.zoom, hit_label_scale, hit_tier) {
                             if tid == id {
                                 if let Some(cb) = on_field_pick.as_ref() {
                                     cb(tid, fid);
@@ -1924,6 +1935,7 @@ mod leptos_canvas {
                     dy,
                     // #35 R-LOD-08 / #36 R-VIEW-DIM-01：与 draw_canvas 同一维度口径（显式维度驱动）
                     super::tier_for_dimension(store.view_dimension.get_untracked()),
+                    comment_mode,
                     t_now.zoom,
                 ) {
                     // relation-inspector-and-ddl-io：点击连线（表未命中时）→ 选中高亮 + Inspector 展示（不再弹详情模态）
@@ -2560,6 +2572,7 @@ mod leptos_canvas {
                 }
 
                 if let Some(rel) = drag.rel_drag {
+                    let comment_mode = store.comment_display.get_untracked();
                     let tables = store.tables.get_untracked();
                     let hit_tier = super::tier_for_dimension(store.view_dimension.get_untracked());
                     let hit_label_scale = store.label_font_scale.get_untracked().factor();
@@ -2584,7 +2597,7 @@ mod leptos_canvas {
                         }
                         return;
                     }
-                    match super::hit_test_field_with(&tables, diag_x, diag_y, t_now.zoom, hit_label_scale, hit_tier) {
+                    match super::hit_test_field_with(&tables, diag_x, diag_y, comment_mode, t_now.zoom, hit_label_scale, hit_tier) {
                         Some((tid, fid))
                             if tid != rel.start_table_id || fid != rel.start_field_id =>
                         {
@@ -3043,10 +3056,11 @@ mod leptos_canvas {
                     &canvas,
                     &t_now,
                 );
+                let comment_mode = store.comment_display.get_untracked();
                 let tables = store.tables.get_untracked();
                 let dbl_tier = super::tier_for_dimension(store.view_dimension.get_untracked());
                 let dbl_label_scale = store.label_font_scale.get_untracked().factor();
-                if super::hit_test_with(&tables, dx, dy, t_now.zoom, dbl_label_scale, dbl_tier).is_none() {
+                if super::hit_test_with(&tables, dx, dy, comment_mode, t_now.zoom, dbl_label_scale, dbl_tier).is_none() {
                     if let Some(cb) = on_dblclick_blank.as_ref() {
                         cb();
                     }
@@ -3486,7 +3500,7 @@ pub fn field_anchor_start(table: &Table, field_id: &str) -> (f64, f64) {
 
 /// 字段左右连接点锚点（#3：从对应侧 port 拖出）。宽走 `resolve_table_width`。
 pub fn field_anchor_for_side(table: &Table, field_id: &str, side: FieldPortSide) -> (f64, f64) {
-    field_anchor_for_side_with(table, field_id, side, 1.0, 1.0, LodTier::Detail)
+    field_anchor_for_side_with(table, field_id, side, CommentDisplay::NameComment, 1.0, 1.0, LodTier::Detail)
 }
 
 /// #48 R-WIDTH-08：带 effective 字号的字段锚点。
@@ -3494,11 +3508,12 @@ pub fn field_anchor_for_side_with(
     table: &Table,
     field_id: &str,
     side: FieldPortSide,
+    comment_mode: CommentDisplay,
     zoom: f64,
     label_scale: f64,
     tier: LodTier,
 ) -> (f64, f64) {
-    let width = resolve_table_width_for(table, CommentDisplay::NameComment, zoom, label_scale, tier);
+    let width = resolve_table_width_for(table, comment_mode, zoom, label_scale, tier);
     let y = field_anchor_y_for(table, field_id, zoom, label_scale);
     match side {
         FieldPortSide::Start => (table.x, y),
@@ -3510,7 +3525,7 @@ pub fn field_anchor_for_side_with(
 /// #35 R-LOD-08（UT-CR-LOD-01）：tier 感知锚点——拓扑档字段行隐藏，关系线收敛表级端口
 /// （纵 = 表头中线，横 = 卡体左/右缘，选侧沿用 pick_port_sides）；详情档保持字段锚点。
 pub fn anchor_for_tier(table: &Table, field_id: &str, side: FieldPortSide, tier: LodTier) -> (f64, f64) {
-    anchor_for_tier_with(table, field_id, side, tier, 1.0, 1.0)
+    anchor_for_tier_with(table, field_id, side, tier, CommentDisplay::NameComment, 1.0, 1.0)
 }
 
 /// #48 R-WIDTH-08：带 effective 字号的关系锚点。
@@ -3519,13 +3534,14 @@ pub fn anchor_for_tier_with(
     field_id: &str,
     side: FieldPortSide,
     tier: LodTier,
+    comment_mode: CommentDisplay,
     zoom: f64,
     label_scale: f64,
 ) -> (f64, f64) {
     match tier {
-        LodTier::Detail => field_anchor_for_side_with(table, field_id, side, zoom, label_scale, tier),
+        LodTier::Detail => field_anchor_for_side_with(table, field_id, side, comment_mode, zoom, label_scale, tier),
         LodTier::Topology => {
-            let width = resolve_table_width_for(table, CommentDisplay::NameComment, zoom, label_scale, tier);
+            let width = resolve_table_width_for(table, comment_mode, zoom, label_scale, tier);
             let y = table.y + scaled_table_header_height(zoom, label_scale, tier) / 2.0;
             match side {
                 FieldPortSide::Start => (table.x, y),
@@ -3591,8 +3607,17 @@ fn bezier_controls(x1: f64, y1: f64, x2: f64, y2: f64) -> (f64, f64, f64, f64) {
 /// 目标表中心 x < 源表中心 x → **左出右进**；否则 → **右出左进**（含中心 x 相等的稳定性默认）。
 /// 输入仅依赖两表几何（x / width），与字段无关。
 pub fn pick_port_sides(from: &Table, to: &Table) -> (FieldPortSide, FieldPortSide) {
-    let from_w = resolve_table_width(from, CommentDisplay::NameComment);
-    let to_w = resolve_table_width(to, CommentDisplay::NameComment);
+    pick_port_sides_with(from, to, CommentDisplay::NameComment)
+}
+
+/// #49 R-WIDTH-08：comment_mode 感知的自动选侧。
+pub fn pick_port_sides_with(
+    from: &Table,
+    to: &Table,
+    comment_mode: CommentDisplay,
+) -> (FieldPortSide, FieldPortSide) {
+    let from_w = resolve_table_width_for(from, comment_mode, 1.0, 1.0, LodTier::Detail);
+    let to_w = resolve_table_width_for(to, comment_mode, 1.0, 1.0, LodTier::Detail);
     let from_cx = from.x + from_w / 2.0;
     let to_cx = to.x + to_w / 2.0;
     if to_cx < from_cx {
@@ -3640,7 +3665,7 @@ pub fn calc_path_tier(
     to_field_id: &str,
     tier: LodTier,
 ) -> RelationPath {
-    calc_path_tier_with(from, from_field_id, to, to_field_id, tier, 1.0, 1.0)
+    calc_path_tier_with(from, from_field_id, to, to_field_id, tier, CommentDisplay::NameComment, 1.0, 1.0)
 }
 
 /// #48 R-WIDTH-08：effective 字号感知的贝塞尔路径。
@@ -3650,12 +3675,13 @@ pub fn calc_path_tier_with(
     to: &Table,
     to_field_id: &str,
     tier: LodTier,
+    comment_mode: CommentDisplay,
     zoom: f64,
     label_scale: f64,
 ) -> RelationPath {
-    let (out_side, in_side) = pick_port_sides(from, to);
-    let (x1, y1) = anchor_for_tier_with(from, from_field_id, out_side, tier, zoom, label_scale);
-    let (x2, y2) = anchor_for_tier_with(to, to_field_id, in_side, tier, zoom, label_scale);
+    let (out_side, in_side) = pick_port_sides_with(from, to, comment_mode);
+    let (x1, y1) = anchor_for_tier_with(from, from_field_id, out_side, tier, comment_mode, zoom, label_scale);
+    let (x2, y2) = anchor_for_tier_with(to, to_field_id, in_side, tier, comment_mode, zoom, label_scale);
     let (cx1, cy1, cx2, cy2) = bezier_controls_sided(x1, y1, x2, y2, out_side, in_side);
     RelationPath {
         x1,
@@ -3688,7 +3714,7 @@ pub fn calc_orthogonal_path_tier(
     to_field_id: &str,
     tier: LodTier,
 ) -> Vec<(f64, f64)> {
-    calc_orthogonal_path_tier_with(from, from_field_id, to, to_field_id, tier, 1.0, 1.0)
+    calc_orthogonal_path_tier_with(from, from_field_id, to, to_field_id, tier, CommentDisplay::NameComment, 1.0, 1.0)
 }
 
 /// #48 R-WIDTH-08：effective 字号感知的正交折线路径。
@@ -3698,12 +3724,13 @@ pub fn calc_orthogonal_path_tier_with(
     to: &Table,
     to_field_id: &str,
     tier: LodTier,
+    comment_mode: CommentDisplay,
     zoom: f64,
     label_scale: f64,
 ) -> Vec<(f64, f64)> {
-    let (out_side, in_side) = pick_port_sides(from, to);
-    let (x1, y1) = anchor_for_tier_with(from, from_field_id, out_side, tier, zoom, label_scale);
-    let (x2, y2) = anchor_for_tier_with(to, to_field_id, in_side, tier, zoom, label_scale);
+    let (out_side, in_side) = pick_port_sides_with(from, to, comment_mode);
+    let (x1, y1) = anchor_for_tier_with(from, from_field_id, out_side, tier, comment_mode, zoom, label_scale);
+    let (x2, y2) = anchor_for_tier_with(to, to_field_id, in_side, tier, comment_mode, zoom, label_scale);
     let mid_x = (x1 + x2) / 2.0;
     vec![(x1, y1), (mid_x, y1), (mid_x, y2), (x2, y2)]
 }
@@ -3726,7 +3753,7 @@ pub fn calc_straight_path_tier(
     to_field_id: &str,
     tier: LodTier,
 ) -> (f64, f64, f64, f64) {
-    calc_straight_path_tier_with(from, from_field_id, to, to_field_id, tier, 1.0, 1.0)
+    calc_straight_path_tier_with(from, from_field_id, to, to_field_id, tier, CommentDisplay::NameComment, 1.0, 1.0)
 }
 
 /// #48 R-WIDTH-08：effective 字号感知的直线路径。
@@ -3736,12 +3763,13 @@ pub fn calc_straight_path_tier_with(
     to: &Table,
     to_field_id: &str,
     tier: LodTier,
+    comment_mode: CommentDisplay,
     zoom: f64,
     label_scale: f64,
 ) -> (f64, f64, f64, f64) {
-    let (out_side, in_side) = pick_port_sides(from, to);
-    let (x1, y1) = anchor_for_tier_with(from, from_field_id, out_side, tier, zoom, label_scale);
-    let (x2, y2) = anchor_for_tier_with(to, to_field_id, in_side, tier, zoom, label_scale);
+    let (out_side, in_side) = pick_port_sides_with(from, to, comment_mode);
+    let (x1, y1) = anchor_for_tier_with(from, from_field_id, out_side, tier, comment_mode, zoom, label_scale);
+    let (x2, y2) = anchor_for_tier_with(to, to_field_id, in_side, tier, comment_mode, zoom, label_scale);
     (x1, y1, x2, y2)
 }
 
@@ -4115,6 +4143,7 @@ pub fn draw_canvas(
                 lod_scale,
                 &r.type_,
                 frame_tier,
+                comment_mode,
                 t.zoom,
                 label_font_scale,
             );
@@ -5903,6 +5932,8 @@ fn draw_relation(
     lod_scale: f64,
     cardinality: &str,
     tier: LodTier,
+    // #49 R-WIDTH-08：关系锚点/选侧必须随当前 comment_mode 变化
+    comment_mode: CommentDisplay,
     // #48 R-WIDTH-08：关系锚点随 effective 字号自适应
     zoom: f64,
     label_scale: f64,
@@ -5922,7 +5953,7 @@ fn draw_relation(
 
     match line_type {
         "orthogonal" => {
-            let pts = calc_orthogonal_path_tier_with(from, from_field_id, to, to_field_id, tier, zoom, label_scale);
+            let pts = calc_orthogonal_path_tier_with(from, from_field_id, to, to_field_id, tier, comment_mode, zoom, label_scale);
             // 光晕
             let _ = ctx.set_stroke_style_str(halo);
             ctx.set_line_width(halo_w);
@@ -5944,7 +5975,7 @@ fn draw_relation(
             }
         }
         "straight" => {
-            let (x1, y1, x2, y2) = calc_straight_path_tier_with(from, from_field_id, to, to_field_id, tier, zoom, label_scale);
+            let (x1, y1, x2, y2) = calc_straight_path_tier_with(from, from_field_id, to, to_field_id, tier, comment_mode, zoom, label_scale);
             let _ = ctx.set_stroke_style_str(halo);
             ctx.set_line_width(halo_w);
             clear_stroke_dash(ctx);
@@ -5965,7 +5996,7 @@ fn draw_relation(
         }
         _ => {
             // bezier 默认
-            let path = calc_path_tier_with(from, from_field_id, to, to_field_id, tier, zoom, label_scale);
+            let path = calc_path_tier_with(from, from_field_id, to, to_field_id, tier, comment_mode, zoom, label_scale);
             let _ = ctx.set_stroke_style_str(halo);
             ctx.set_line_width(halo_w);
             clear_stroke_dash(ctx);
@@ -6193,7 +6224,7 @@ fn draw_note(ctx: &CanvasRenderingContext2d, note: &Note, palette: &CanvasPalett
 // ─── Hit testing ─────────────────────────────────────────────────────────────
 
 pub fn hit_test_field(tables: &[Table], x: f64, y: f64) -> Option<(String, String)> {
-    hit_test_field_with(tables, x, y, 1.0, 1.0, LodTier::Detail)
+    hit_test_field_with(tables, x, y, CommentDisplay::NameComment, 1.0, 1.0, LodTier::Detail)
 }
 
 /// #48 R-WIDTH-08：effective 字号下的字段命中检测。
@@ -6201,12 +6232,13 @@ pub fn hit_test_field_with(
     tables: &[Table],
     x: f64,
     y: f64,
+    comment_mode: CommentDisplay,
     zoom: f64,
     label_scale: f64,
     tier: LodTier,
 ) -> Option<(String, String)> {
     for table in tables.iter().rev() {
-        let width = resolve_table_width_for(table, CommentDisplay::NameComment, zoom, label_scale, tier);
+        let width = resolve_table_width_for(table, comment_mode, zoom, label_scale, tier);
         if x < table.x || x > table.x + width {
             continue;
         }
@@ -6243,7 +6275,7 @@ pub fn hit_test_field_port(
     x: f64,
     y: f64,
 ) -> Option<(String, String, FieldPortSide)> {
-    hit_test_field_port_with(tables, x, y, 1.0, 1.0, LodTier::Detail)
+    hit_test_field_port_with(tables, x, y, CommentDisplay::NameComment, 1.0, 1.0, LodTier::Detail)
 }
 
 /// #48 R-WIDTH-08：effective 字号下的字段连接点命中检测。
@@ -6251,12 +6283,13 @@ pub fn hit_test_field_port_with(
     tables: &[Table],
     x: f64,
     y: f64,
+    comment_mode: CommentDisplay,
     zoom: f64,
     label_scale: f64,
     tier: LodTier,
 ) -> Option<(String, String, FieldPortSide)> {
     for table in tables.iter().rev() {
-        let width = resolve_table_width_for(table, CommentDisplay::NameComment, zoom, label_scale, tier);
+        let width = resolve_table_width_for(table, comment_mode, zoom, label_scale, tier);
         for field in &table.fields {
             let cy = field_anchor_y_for(table, &field.id, zoom, label_scale);
             let left_dx = x - table.x;
@@ -6279,7 +6312,7 @@ pub fn hit_test_field_port_with(
 }
 
 pub fn hit_test(tables: &[Table], x: f64, y: f64) -> Option<String> {
-    hit_test_with(tables, x, y, 1.0, 1.0, LodTier::Detail)
+    hit_test_with(tables, x, y, CommentDisplay::NameComment, 1.0, 1.0, LodTier::Detail)
 }
 
 /// #48 R-WIDTH-08：effective 字号下的表卡命中检测。
@@ -6287,12 +6320,13 @@ pub fn hit_test_with(
     tables: &[Table],
     x: f64,
     y: f64,
+    comment_mode: CommentDisplay,
     zoom: f64,
     label_scale: f64,
     tier: LodTier,
 ) -> Option<String> {
     for table in tables.iter().rev() {
-        let (width, height) = compute_table_render_size_for_with(table, CommentDisplay::NameComment, zoom, label_scale, tier);
+        let (width, height) = compute_table_render_size_for_with(table, comment_mode, zoom, label_scale, tier);
         if x >= table.x && x <= table.x + width && y >= table.y && y <= table.y + height {
             return Some(table.id.clone());
         }
@@ -6318,7 +6352,7 @@ pub fn hit_test_endpoint(
     x: f64,
     y: f64,
 ) -> Option<(String, EndpointEnd)> {
-    hit_test_endpoint_with(tables, refs, x, y, 1.0, 1.0, LodTier::Detail)
+    hit_test_endpoint_with(tables, refs, x, y, CommentDisplay::NameComment, 1.0, 1.0, LodTier::Detail)
 }
 
 /// #48 R-WIDTH-08：effective 字号下的关系端点命中检测。
@@ -6327,6 +6361,7 @@ pub fn hit_test_endpoint_with(
     refs: &[Reference],
     x: f64,
     y: f64,
+    comment_mode: CommentDisplay,
     zoom: f64,
     label_scale: f64,
     tier: LodTier,
@@ -6336,7 +6371,7 @@ pub fn hit_test_endpoint_with(
         let to = tables.iter().find(|t| t.id == r.end_table_id);
         if let (Some(f), Some(t)) = (from, to) {
             let header_h = scaled_table_header_height(zoom, label_scale, tier);
-            let from_w = resolve_table_width_for(f, CommentDisplay::NameComment, zoom, label_scale, tier);
+            let from_w = resolve_table_width_for(f, comment_mode, zoom, label_scale, tier);
             let sx = f.x + from_w;
             let sy = f.y + header_h / 2.0;
             let ex = t.x;
@@ -6593,12 +6628,13 @@ pub fn dist_to_reference(
     x: f64,
     y: f64,
     tier: LodTier,
+    comment_mode: CommentDisplay,
 ) -> Option<f64> {
     let from = tables.iter().find(|t| t.id == r.start_table_id)?;
     let to = tables.iter().find(|t| t.id == r.end_table_id)?;
     match effective_line_type(&r.line_type) {
         "orthogonal" => {
-            let pts = calc_orthogonal_path_tier(from, &r.start_field_id, to, &r.end_field_id, tier);
+            let pts = calc_orthogonal_path_tier_with(from, &r.start_field_id, to, &r.end_field_id, tier, comment_mode, 1.0, 1.0);
             let mut best = f64::MAX;
             for w in pts.windows(2) {
                 best = best.min(dist_point_segment(x, y, w[0].0, w[0].1, w[1].0, w[1].1));
@@ -6606,7 +6642,7 @@ pub fn dist_to_reference(
             Some(best)
         }
         _ => {
-            let path = calc_path_tier(from, &r.start_field_id, to, &r.end_field_id, tier);
+            let path = calc_path_tier_with(from, &r.start_field_id, to, &r.end_field_id, tier, comment_mode, 1.0, 1.0);
             Some(dist_point_bezier(&path, x, y))
         }
     }
@@ -6615,7 +6651,7 @@ pub fn dist_to_reference(
 /// p0-fix 定点 3：纯函数 — (x, y) 命中哪条 reference 连线（UT-MM-33）
 /// 几何与 `draw_bezier_fields` 一致（calc_path 贝塞尔）；返回 reference id
 pub fn hit_test_reference(tables: &[Table], refs: &[Reference], x: f64, y: f64, zoom: f64) -> Option<String> {
-    hit_test_reference_tier(tables, refs, x, y, LodTier::Detail, zoom)
+    hit_test_reference_tier(tables, refs, x, y, LodTier::Detail, CommentDisplay::NameComment, zoom)
 }
 
 /// #35 R-LOD-08：tier 感知命中检测——拓扑档线几何为表级锚定，命中必须与绘制同口径
@@ -6660,11 +6696,12 @@ pub fn hit_test_reference_tier(
     x: f64,
     y: f64,
     tier: LodTier,
+    comment_mode: CommentDisplay,
     zoom: f64,
 ) -> Option<String> {
     let mut best: Option<(f64, &str)> = None;
     for r in refs {
-        if let Some(d) = dist_to_reference(tables, r, x, y, tier) {
+        if let Some(d) = dist_to_reference(tables, r, x, y, tier, comment_mode) {
             // fix-issue-47：命中带宽 8 屏幕像素等价（世界距离 * zoom）
             if d * zoom <= 8.0 && best.map_or(true, |(bd, _)| d < bd) {
                 best = Some((d, r.id.as_str()));
@@ -8496,7 +8533,7 @@ mod tests {
         }];
         let tables = vec![ta.clone(), tb.clone()];
         assert_eq!(
-            hit_test_reference_tier(&tables, &refs, mid_x, mid_y, LodTier::Topology, 1.0),
+            hit_test_reference_tier(&tables, &refs, mid_x, mid_y, LodTier::Topology, CommentDisplay::NameComment, 1.0),
             Some("r1".to_string()),
             "UT-CR-LOD-01: 拓扑档命中必须与表级锚定绘制同口径"
         );
@@ -9067,6 +9104,92 @@ mod tests {
             make_fp(1.0, 1.0, LodTier::Detail),
             make_fp(0.98, 1.0, LodTier::Detail),
             "UT-CR-FONT-02: 同一 effective 字号 bucket 内指纹应保持稳定"
+        );
+    }
+
+    /// UT-CR-ANCHOR-01 — 三种注释模式下关系锚点与当前 mode 卡宽对齐（#49 R-WIDTH-08 / R-LOD-08）
+    #[test]
+    fn ut_cr_anchor_01_comment_mode_anchors_align() {
+        use crate::editor_core::types::{Field, Table};
+        use crate::editor_core::CommentDisplay;
+
+        let mut table = Table {
+            id: "ta".into(),
+            name: "asset_object_registry".into(),
+            x: 100.0,
+            y: 100.0,
+            color: "#3b82f6".into(),
+            comment: "统一资产主表".into(),
+            fields: vec![Field {
+                id: "fa".into(),
+                name: "id".into(),
+                type_: "INT".into(),
+                default: String::new(),
+                check: String::new(),
+                primary: true,
+                unique: false,
+                not_null: true,
+                increment: false,
+                comment: "Primary key for the registry".into(),
+                tag: String::new(),
+                dict_code: String::new(),
+            }],
+            indices: Vec::new(),
+            width: None,
+            min_height: None,
+        };
+
+        for mode in [CommentDisplay::Name, CommentDisplay::NameComment, CommentDisplay::Comment] {
+            let w_detail = resolve_table_width_for(&table, mode, 1.0, 1.0, LodTier::Detail);
+            let left = field_anchor_for_side_with(&table, "fa", FieldPortSide::Start, mode, 1.0, 1.0, LodTier::Detail);
+            let right = field_anchor_for_side_with(&table, "fa", FieldPortSide::End, mode, 1.0, 1.0, LodTier::Detail);
+            assert!(
+                (left.0 - table.x).abs() < 1e-9,
+                "UT-CR-ANCHOR-01: 字段左锚点必须贴齐 table.x（mode={mode:?}, left={left:?})"
+            );
+            assert!(
+                (right.0 - (table.x + w_detail)).abs() < 1e-9,
+                "UT-CR-ANCHOR-01: 字段右锚点必须贴齐 table.x + width（mode={mode:?}, right={right:?}, w={w_detail})"
+            );
+
+            let w_topo = resolve_table_width_for(
+                &table, mode, 1.0, 1.0, LodTier::Topology);
+            let topo_left = anchor_for_tier_with(
+                &table, "fa", FieldPortSide::Start, LodTier::Topology, mode, 1.0, 1.0);
+            let topo_right = anchor_for_tier_with(
+                &table, "fa", FieldPortSide::End, LodTier::Topology, mode, 1.0, 1.0);
+            assert!(
+                (topo_left.0 - table.x).abs() < 1e-9,
+                "UT-CR-ANCHOR-01: 表维度左锚点必须贴齐 table.x（mode={mode:?})"
+            );
+            assert!(
+                (topo_right.0 - (table.x + w_topo)).abs() < 1e-9,
+                "UT-CR-ANCHOR-01: 表维度右锚点必须贴齐 table.x + width（mode={mode:?}, w={w_topo})"
+            );
+        }
+
+        // 有中文注释时，NameComment / Comment 的右缘必须宽于 Name
+        let w_name = resolve_table_width_for(&table, CommentDisplay::Name, 1.0, 1.0, LodTier::Detail);
+        let w_nc = resolve_table_width_for(&table, CommentDisplay::NameComment, 1.0, 1.0, LodTier::Detail);
+        let w_comment = resolve_table_width_for(&table, CommentDisplay::Comment, 1.0, 1.0, LodTier::Detail);
+        assert!(
+            w_nc > w_name,
+            "UT-CR-ANCHOR-01: NameComment 含注释时应宽于 Name（{w_nc} > {w_name}）"
+        );
+        assert!(
+            w_comment > w_name,
+            "UT-CR-ANCHOR-01: Comment 模式也应宽于 Name（{w_comment} > {w_name}）"
+        );
+
+        // 空注释时三种模式宽度一致
+        table.fields[0].comment = String::new();
+        table.comment = String::new();
+        let w_name_empty = resolve_table_width_for(&table, CommentDisplay::Name, 1.0, 1.0, LodTier::Detail);
+        let w_nc_empty = resolve_table_width_for(
+            &table, CommentDisplay::NameComment, 1.0, 1.0, LodTier::Detail);
+        assert!(
+            (w_name_empty - w_nc_empty).abs() < 1e-9,
+            "UT-CR-ANCHOR-01: 空注释时 Name 与 NameComment 宽应一致"
         );
     }
 

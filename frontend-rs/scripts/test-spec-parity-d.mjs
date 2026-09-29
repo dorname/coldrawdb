@@ -3042,6 +3042,62 @@ try {
       () => !document.querySelector('[data-testid="rel-hover-tooltip"]'), null, { timeout: 4_000, polling: 100 },
     );
   });
+  // ─── ST-CR-ANCHOR-01：comment_mode 切换后关系锚点与当前卡宽对齐（fix-issue-49 / #49 R-WIDTH-08）───
+  await run(["ST-CR-ANCHOR-01"], "comment_mode 切换后关系锚点与当前卡宽对齐", async page => {
+    const mkT = (id, x, y, fid) => ({
+      id, name: id, x, y, color: "", comment: "表级注释",
+      fields: [{ id: fid, name: fid, type_: "INT", default: "", check: "", primary: true, unique: false, not_null: true, increment: false, comment: "字段注释用于撑宽字段注释字段注释", tag: "", dict_code: "" }],
+      indices: [],
+    });
+    const presetDiagram = {
+      tables: [mkT("t1", 100, 130, "f1"), mkT("t2", 600, 130, "f2")],
+      references: [{ id: "r1", name: "", start_table_id: "t1", end_table_id: "t2", start_field_id: "f1", end_field_id: "f2",
+        type_: "one_to_many", on_delete: "RESTRICT", on_update: "RESTRICT", color: "", line_type: "", stroke_style: "" }],
+      areas: [], notes: [],
+    };
+    await installApi(page, { presetDiagram });
+    await login(page);
+    await createRoomAndEnter(page);
+
+    // 辅助：从 data-follow-path 解析端点
+    async function relationEndpoints() {
+      const d = await page.locator('[data-testid="editor-canvas-container"] canvas').getAttribute("data-follow-path");
+      assert.ok(d && d.startsWith("M"), "关系线 data-follow-path 必须存在");
+      const nums = d.match(/-?\d+\.?\d*/g).map(Number);
+      const [x1, y1, , , , , x2, y2] = nums;
+      return { x1, y1, x2, y2 };
+    }
+
+    // 默认 NameComment（含注释，表宽 > 230）
+    const nc = await relationEndpoints();
+    const ncPath = await page.locator('[data-testid="editor-canvas-container"] canvas').getAttribute("data-follow-path");
+
+    // 切换到 Name only：字段/表注释不渲染，表宽回落 230
+    const btn = page.locator('[data-testid="canvas-comment-display"]');
+    for (let i = 0; i < 3; i++) {
+      const text = await btn.textContent();
+      if (text?.includes("仅英文名")) break;
+      await btn.click();
+      await page.waitForTimeout(80);
+    }
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="canvas-comment-display"]')?.textContent?.includes("仅英文名"),
+      { timeout: 3_000 },
+    );
+    // 等 path 随 mode 切换重绘
+    await page.waitForFunction(
+      (prev) => document.querySelector('[data-testid="editor-canvas-container"] canvas')?.getAttribute("data-follow-path") !== prev,
+      ncPath,
+      { timeout: 3_000, polling: 100 },
+    );
+    const name = await relationEndpoints();
+
+    // NameComment 因注释撑宽，右锚点必须比 Name 更靠右；Name 模式贴齐 230 宽表卡
+    assert.ok(nc.x1 > name.x1, `NameComment 右锚点应宽于 Name（${nc.x1} > ${name.x1}）`);
+    assert.ok(Math.abs(name.x1 - 330) < 2, `Name 模式下 t1 右锚点应贴齐 330（x1=${name.x1}）`);
+    assert.ok(Math.abs(name.x2 - 600) < 2, `Name 模式下 t2 左锚点应贴齐 600（x2=${name.x2}）`);
+  });
+
   // ─── ST-S04-UI-17：房间卡片重命名（fix-issue-45-room-rename，issue #45，core-S04 §2.4） ──
   await run(["ST-S04-UI-17"], "owner 重命名入口 + 模态 + PATCH 落账 + 列表即时一致 + 字段解耦", async page => {
     const state = await installApi(page, {

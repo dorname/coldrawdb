@@ -294,6 +294,8 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-PB-13",
     "UT-PB-14",
     "UT-PB-15",
+    // fix-issue-49（issue #49 R-WIDTH-08 / R-LOD-08）：关系锚点随 comment_mode 对齐
+    "UT-CR-ANCHOR-01",
     // layout-after-import-command / #23（src/layout.rs + command_palette 单测）
     "UT-PB-16",
     "UT-CR-LAYOUT-01",
