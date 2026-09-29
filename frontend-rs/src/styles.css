@@ -2144,6 +2144,95 @@ textarea {
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
+/* feat-issue-50-listview-grouping-and-relations（issue #50）：Area 分组头（可折叠，与字典分组视觉同级） */
+.cdb-list-tree-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 10px 4px;
+  border: 0;
+  background: transparent;
+  font-size: 10px;
+  font-weight: 850;
+  color: var(--cdb-color-text-3, rgba(255, 255, 255, 0.4));
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-align: left;
+}
+.cdb-list-tree-group:hover {
+  color: var(--cdb-color-text-2, rgba(255, 255, 255, 0.65));
+}
+.cdb-list-tree-group__caret {
+  font-size: 9px;
+  width: 10px;
+  flex: none;
+}
+.cdb-list-tree-group__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cdb-list-tree-group__count {
+  margin-left: auto;
+  font-weight: 400;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+/* feat-issue-50（issue #50）：树节点关联高亮 / 非关联弱化 + 关联标记 */
+.cdb-list-tree-node.is-related {
+  color: var(--cdb-color-text, #fff);
+  background: rgba(56, 189, 248, 0.12);
+  box-shadow: inset 2px 0 0 rgba(56, 189, 248, 0.8);
+}
+.cdb-list-tree-node.is-unrelated {
+  opacity: 0.45;
+}
+.cdb-list-tree-node__relmark {
+  font-size: 10px;
+  color: rgba(56, 189, 248, 0.9);
+  flex: none;
+}
+/* feat-issue-50（issue #50）：右侧关联表摘要区（入边/出边芯片） */
+.cdb-list-related {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  padding: 8px 12px;
+  margin: 8px 12px 0;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 8px;
+  background: rgba(56, 189, 248, 0.06);
+}
+.cdb-list-related__group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cdb-list-related__dir {
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(56, 189, 248, 0.9);
+  letter-spacing: 0.08em;
+}
+.cdb-list-related__chip {
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--cdb-color-text-2, rgba(255, 255, 255, 0.65));
+  font-size: 11px;
+  padding: 2px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cdb-list-related__chip:hover {
+  background: rgba(56, 189, 248, 0.15);
+  color: var(--cdb-color-text, #fff);
+}
 .cdb-list-dict-detail__meta {
   display: flex;
   align-items: center;

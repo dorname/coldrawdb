@@ -8554,6 +8554,115 @@ pub fn resolve_list_current_table(tables: &[Table], list_table_id: &Option<Strin
     tables.first().map(|t| t.id.clone())
 }
 
+/// feat-issue-50-listview-grouping-and-relations（issue #50）：按画布 Area 对表分组。
+/// 分组依据为几何包含：表卡中心（x + TABLE_WIDTH/2, y + TABLE_HEADER_HEIGHT/2 估算）
+/// 落入某 Area 矩形内即归该组；未落入任何 Area 的表归入「未分组」（area_id = "ungrouped"）。
+/// 返回 Vec<(area_id, 分组名, 表列表)>，分组顺序按 areas 输入顺序 + 末尾「未分组」；空分组不返回。
+pub fn group_tables_by_area(tables: &[Table], areas: &[Area]) -> Vec<(String, String, Vec<Table>)> {
+    const APPROX_HALF_WIDTH: f64 = 115.0; // TABLE_WIDTH/2 估算中心 x
+    const APPROX_HALF_HEADER: f64 = 21.5; // TABLE_HEADER_HEIGHT/2
+    let mut groups: Vec<(String, String, Vec<Table>)> = areas
+        .iter()
+        .map(|a| (a.id.clone(), a.name.clone(), Vec::new()))
+        .collect();
+    let mut ungrouped = Vec::new();
+    for t in tables {
+        let cx = t.x + APPROX_HALF_WIDTH;
+        let cy = t.y + APPROX_HALF_HEADER;
+        let mut hit = false;
+        for (i, a) in areas.iter().enumerate() {
+            if cx >= a.x && cx <= a.x + a.width && cy >= a.y && cy <= a.y + a.height {
+                groups[i].2.push(t.clone());
+                hit = true;
+                break;
+            }
+        }
+        if !hit {
+            ungrouped.push(t.clone());
+        }
+    }
+    // 空分组不返回（含空 Area 与空「未分组」），树区只渲染非空分组
+    groups.retain(|(_, _, g)| !g.is_empty());
+    if !ungrouped.is_empty() {
+        groups.push(("ungrouped".to_string(), "未分组".to_string(), ungrouped));
+    }
+    groups
+}
+
+/// feat-issue-50-listview-grouping-and-relations（issue #50）：获取与指定表存在关系的关联表 ID 集合。
+/// 包含入边（其他表指向本表）与出边（本表指向其他表）。
+pub fn related_table_ids(
+    table_id: &str,
+    refs: &[Reference],
+) -> std::collections::HashSet<String> {
+    let mut set = std::collections::HashSet::new();
+    for r in refs {
+        if r.start_table_id == table_id && r.end_table_id != table_id {
+            set.insert(r.end_table_id.clone());
+        } else if r.end_table_id == table_id && r.start_table_id != table_id {
+            set.insert(r.start_table_id.clone());
+        }
+    }
+    set
+}
+
+/// feat-issue-50-listview-grouping-and-relations（issue #50）：关联表清单项。
+#[derive(Clone, Debug, PartialEq)]
+pub struct RelatedTable {
+    pub table_id: String,
+    pub table_name: String,
+    pub direction: RelationDirection,
+    pub cardinality: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RelationDirection {
+    Incoming,
+    Outgoing,
+}
+
+/// feat-issue-50-listview-grouping-and-relations（issue #50）：关系类型存储值 → 显示标签。
+/// 值域对齐关系工具存储（"one_to_one"/"one_to_many"/"many_to_one"/"many_to_many"，
+/// 见 editor_panels CARDINALITY 常量）；已是显示标签（"1:N" 等）或未知值原样返回。
+pub fn cardinality_label(type_: &str) -> String {
+    match type_ {
+        "one_to_one" => "1:1".into(),
+        "one_to_many" => "1:N".into(),
+        "many_to_one" => "N:1".into(),
+        "many_to_many" => "N:M".into(),
+        other => other.to_string(),
+    }
+}
+
+/// feat-issue-50-listview-grouping-and-relations（issue #50）：构造当前表的关联表清单。
+/// 按方向分组，关系类型经 cardinality_label 映射为显示标签（core-04 §10.5：1:1 / 1:N / N:M）。
+pub fn related_tables_for(
+    table_id: &str,
+    tables: &[Table],
+    refs: &[Reference],
+) -> Vec<RelatedTable> {
+    let mut out = Vec::new();
+    let name_of = |id: &str| tables.iter().find(|t| t.id == id).map(|t| t.name.clone()).unwrap_or_default();
+    for r in refs {
+        if r.start_table_id == table_id && r.end_table_id != table_id {
+            out.push(RelatedTable {
+                table_id: r.end_table_id.clone(),
+                table_name: name_of(&r.end_table_id),
+                direction: RelationDirection::Outgoing,
+                cardinality: cardinality_label(&r.type_),
+            });
+        } else if r.end_table_id == table_id && r.start_table_id != table_id {
+            out.push(RelatedTable {
+                table_id: r.start_table_id.clone(),
+                table_name: name_of(&r.start_table_id),
+                direction: RelationDirection::Incoming,
+                cardinality: cardinality_label(&r.type_),
+            });
+        }
+    }
+    out
+}
+
 /// ux-canvas-batch 批次2：列表视图批量重命名纯函数（UT-MM-24）
 /// 规则（重名冲突处理真值表，外环判词 C-1 强制 + B2-S1 补充规则）：
 ///   - 冲突判定以改名前快照为准（{A→B,B→C} 全跳过——B→C 时 B 仍存在于改名前快照，C 冲突）
@@ -9256,11 +9365,35 @@ pub fn ListView(
     // fix-dict-save-and-layout（core-01e §3.1）：树选中字典 id（与 list_table 互斥）
     let list_dict: RwSignal<Option<String>> = create_rw_signal(None);
     let tree_search: RwSignal<String> = create_rw_signal(String::new());
+    // feat-issue-50-listview-grouping-and-relations（issue #50）：Area 分组折叠态（area_id 集合）；
+    // 搜索时含匹配分组自动展开（渲染层忽略折叠集），无匹配分组因空分组不渲染而自动折叠
+    let collapsed_groups: RwSignal<std::collections::HashSet<String>> =
+        create_rw_signal(std::collections::HashSet::new());
 
     // 当前表解析（UT-MM-38 纯函数）：list_table 命中 || 首表 || None；与树过滤解耦
     let current_table_id: Rc<dyn Fn() -> Option<String>> = {
         let store = store.clone();
         Rc::new(move || resolve_list_current_table(&store.tables.get(), &list_table.get()))
+    };
+
+    // feat-issue-50（issue #50）：当前表关联表清单（入边/出边 + cardinality）与关联表 id 集合
+    let related_list: Rc<dyn Fn() -> Vec<RelatedTable>> = {
+        let store = store;
+        let current_table_id = current_table_id.clone();
+        Rc::new(move || {
+            current_table_id()
+                .map(|cid| related_tables_for(&cid, &store.tables.get(), &store.references.get()))
+                .unwrap_or_default()
+        })
+    };
+    let related_ids: Rc<dyn Fn() -> std::collections::HashSet<String>> = {
+        let store = store;
+        let current_table_id = current_table_id.clone();
+        Rc::new(move || {
+            current_table_id()
+                .map(|cid| related_table_ids(&cid, &store.references.get()))
+                .unwrap_or_default()
+        })
     };
 
     let add_field = {
@@ -9470,6 +9603,10 @@ pub fn ListView(
                     let cur_for_tree = current_table_id.clone();
                     let cur_for_title = current_table_id.clone();
                     let cur_for_grid = current_table_id.clone();
+                    // feat-issue-50（issue #50）：树关联标记 + 右侧关联表摘要区句柄
+                    let rel_ids_for_tree = related_ids.clone();
+                    let rel_list_for_summary = related_list.clone();
+                    let on_select_rel = on_select_table.clone();
                     view! {
                 <div
                     class="cdb-list-view-body"
@@ -9486,55 +9623,182 @@ pub fn ListView(
                             />
                         </div>
                         <div class="cdb-list-tree__nodes">
+                            // feat-issue-50-listview-grouping-and-relations（issue #50）：
+                            // 树节点按 Area 几何包含分组渲染；分组头可折叠/展开，搜索时含匹配
+                            // 分组自动展开（忽略折叠集），无匹配分组因空分组不返回而不再渲染
                             <For
                                 each=move || {
-                                    // 复用 filter_tables 名称模糊匹配口径（core-04 §10.5）
-                                    filter_tables(&store.tables.get(), &tree_search.get(), "", None)
+                                    // 复用 filter_tables 名称模糊匹配口径（core-04 §10.5）后再分组
+                                    let tables = store.tables.get();
+                                    let filtered = filter_tables(&tables, &tree_search.get(), "", None);
+                                    group_tables_by_area(&filtered, &store.areas.get())
                                 }
-                                key=|t| t.id.clone()
-                                children=move |t: Table| {
-                                    let tid_active = t.id.clone();
-                                    let tid_click = t.id.clone();
-                                    let tid_dbl = t.id.clone();
-                                    let on_select = on_select_tree.clone();
-                                    let on_jump = on_jump_tree.clone();
-                                    let cur = cur_for_tree.clone();
-                                    let list_dict_active = list_dict.clone();
-                                    let list_dict_click = list_dict.clone();
+                                key=|g| g.0.clone()
+                                children=move |(area_id, area_name, _): (String, String, Vec<Table>)| {
+                                    // 外层 children 为 Fn（每组一次调用）：Rc 句柄按调用克隆出局部量，
+                                    // 内层 move 闭包捕获局部量（不搬走外层捕获）
+                                    let on_select_tree = on_select_tree.clone();
+                                    let on_jump_tree = on_jump_tree.clone();
+                                    let cur_for_tree = cur_for_tree.clone();
+                                    let rel_ids_for_tree = rel_ids_for_tree.clone();
+                                    let area_id_caret = area_id.clone();
+                                    let area_id_cnt = area_id.clone();
+                                    let area_id_toggle = area_id.clone();
+                                    let area_id_body = area_id.clone();
+                                    let area_id_inner = area_id.clone();
+                                    let store_cnt = store;
+                                    let store_inner = store;
                                     view! {
                                         <button
-                                            class="cdb-list-tree-node"
-                                            // fix-dict-save-and-layout（core-01e §3.1）：字典选中时表节点不高亮（树选中互斥）
-                                            class:is-active=move || list_dict_active.get().is_none() && cur() == Some(tid_active.clone())
-                                            data-testid=format!("list-tree-node-{}", t.name)
+                                            class="cdb-list-tree-group"
+                                            data-testid=format!("list-tree-group-{}", area_id)
                                             on:click=move |_| {
-                                                // 单击：树选中 + Inspector 同步；清空字段行/字典选中态
-                                                list_sel.set(None);
-                                                list_dict_click.set(None);
-                                                list_table.set(Some(tid_click.clone()));
-                                                on_select(Some(tid_click.clone()));
-                                            }
-                                            on:dblclick=move |_| on_jump(tid_dbl.clone())
-                                        >
-                                            // fix-canvas-zoom-invite-comment-resize（core-01a §1.4.1，UT-PC-29）：
-                                            // 表名下方追加注释行；无注释不渲染、不占位
-                                            <span class="cdb-list-tree-node__main">
-                                                <span>{t.name}</span>
-                                                {(!t.comment.is_empty()).then(|| {
-                                                    view! {
-                                                        <small
-                                                            class="cdb-list-tree-comment"
-                                                            data-testid=format!("list-table-comment-{}", t.id)
-                                                        >
-                                                            {t.comment.clone()}
-                                                        </small>
+                                                // 点击分组头：切换该分组折叠态（搜索展开态由渲染层覆盖）
+                                                collapsed_groups.update(|s| {
+                                                    if !s.remove(&area_id_toggle) {
+                                                        s.insert(area_id_toggle.clone());
                                                     }
-                                                })}
+                                                });
+                                            }
+                                        >
+                                            <span class="cdb-list-tree-group__caret">
+                                                {move || {
+                                                    let collapsed = collapsed_groups.get().contains(&area_id_caret);
+                                                    if tree_search.get().is_empty() && collapsed { "▸" } else { "▾" }
+                                                }}
                                             </span>
-                                            <span class="cdb-list-tree-node__count">
-                                                {format!("{} 字段", t.fields.len())}
+                                            <span class="cdb-list-tree-group__name">{area_name}</span>
+                                            <span class="cdb-list-tree-group__count">
+                                                {move || {
+                                                    // 响应式重算该分组表数（同名口径：搜索过滤后分组）
+                                                    let tables = store_cnt.tables.get();
+                                                    let filtered = filter_tables(&tables, &tree_search.get(), "", None);
+                                                    group_tables_by_area(&filtered, &store_cnt.areas.get())
+                                                        .into_iter()
+                                                        .find(|g| g.0 == area_id_cnt)
+                                                        .map(|g| g.2.len())
+                                                        .unwrap_or(0)
+                                                }}
                                             </span>
                                         </button>
+                                        <div
+                                            class="cdb-list-tree-group__nodes"
+                                            style:display=move || {
+                                                // 搜索时含匹配分组自动展开（忽略折叠集）；空搜索才尊重折叠集
+                                                let collapsed = collapsed_groups.get().contains(&area_id_body);
+                                                if tree_search.get().is_empty() && collapsed { "none" } else { "" }
+                                            }
+                                        >
+                                            <For
+                                                each=move || {
+                                                    // 内层响应式重算：tables/areas/搜索变化时该组成员随之更新
+                                                    let tables = store_inner.tables.get();
+                                                    let filtered = filter_tables(&tables, &tree_search.get(), "", None);
+                                                    group_tables_by_area(&filtered, &store_inner.areas.get())
+                                                        .into_iter()
+                                                        .find(|g| g.0 == area_id_inner)
+                                                        .map(|g| g.2)
+                                                        .unwrap_or_default()
+                                                }
+                                                key=|t| t.id.clone()
+                                                children=move |t: Table| {
+                                                    let tid_active = t.id.clone();
+                                                    let tid_click = t.id.clone();
+                                                    let tid_dbl = t.id.clone();
+                                                    // 每个响应式闭包独占一份克隆（move 语义，互不共享）
+                                                    let tid_related = t.id.clone();
+                                                    let tid_dim = t.id.clone();
+                                                    let tid_mark = t.id.clone();
+                                                    let on_select = on_select_tree.clone();
+                                                    let on_jump = on_jump_tree.clone();
+                                                    // 每个响应式闭包独占一份 cur 克隆（Rc 非 Copy，move 语义）
+                                                    let cur_active = cur_for_tree.clone();
+                                                    let cur_rel = cur_for_tree.clone();
+                                                    let cur_dim = cur_for_tree.clone();
+                                                    let cur_mark = cur_for_tree.clone();
+                                                    let rel_cls = rel_ids_for_tree.clone();
+                                                    let rel_dim = rel_ids_for_tree.clone();
+                                                    let rel_mark = rel_ids_for_tree.clone();
+                                                    let list_dict_active = list_dict.clone();
+                                                    let list_dict_click = list_dict.clone();
+                                                    view! {
+                                                        <button
+                                                            class="cdb-list-tree-node"
+                                                            // fix-dict-save-and-layout（core-01e §3.1）：字典选中时表节点不高亮（树选中互斥）
+                                                            class:is-active=move || list_dict_active.get().is_none() && cur_active() == Some(tid_active.clone())
+                                                            // feat-issue-50（issue #50）：当前表存在关联时——关联表高亮、
+                                                            // 非关联表弱化；当前表自身既不算关联也不算非关联
+                                                            class:is-related=move || {
+                                                                let r = rel_cls();
+                                                                !r.is_empty()
+                                                                    && cur_rel() != Some(tid_related.clone())
+                                                                    && r.contains(&tid_related)
+                                                            }
+                                                            class:is-unrelated=move || {
+                                                                let r = rel_dim();
+                                                                let cur_id = cur_dim();
+                                                                !r.is_empty()
+                                                                    && cur_id.as_deref() != Some(tid_dim.as_str())
+                                                                    && !r.contains(&tid_dim)
+                                                            }
+                                                            data-testid=format!("list-tree-node-{}", t.name)
+                                                            on:click=move |_| {
+                                                                // 单击：树选中 + Inspector 同步；清空字段行/字典选中态
+                                                                list_sel.set(None);
+                                                                list_dict_click.set(None);
+                                                                list_table.set(Some(tid_click.clone()));
+                                                                on_select(Some(tid_click.clone()));
+                                                            }
+                                                            on:dblclick=move |_| on_jump(tid_dbl.clone())
+                                                        >
+                                                            // fix-canvas-zoom-invite-comment-resize（core-01a §1.4.1，UT-PC-29）：
+                                                            // 表名下方追加注释行；无注释不渲染、不占位
+                                                            <span class="cdb-list-tree-node__main">
+                                                                <span>{t.name}</span>
+                                                                {(!t.comment.is_empty()).then(|| {
+                                                                    view! {
+                                                                        <small
+                                                                            class="cdb-list-tree-comment"
+                                                                            data-testid=format!("list-table-comment-{}", t.id)
+                                                                        >
+                                                                            {t.comment.clone()}
+                                                                        </small>
+                                                                    }
+                                                                })}
+                                                            </span>
+                                                            // feat-issue-50（issue #50）：关联标记——当前表存在关联时，
+                                                            // 关联表节点追加 list-tree-node-related，非关联节点 list-tree-node-unrelated
+                                                            {move || {
+                                                                let r = rel_mark();
+                                                                let cur_id = cur_mark();
+                                                                if r.is_empty() || cur_id == Some(tid_mark.clone()) {
+                                                                    view! { <></> }.into_view()
+                                                                } else if r.contains(&tid_mark) {
+                                                                    view! {
+                                                                        <span
+                                                                            class="cdb-list-tree-node__relmark"
+                                                                            data-testid="list-tree-node-related"
+                                                                        >
+                                                                            "⇄"
+                                                                        </span>
+                                                                    }.into_view()
+                                                                } else {
+                                                                    view! {
+                                                                        <span
+                                                                            class="cdb-list-tree-node__relmark"
+                                                                            data-testid="list-tree-node-unrelated"
+                                                                        ></span>
+                                                                    }.into_view()
+                                                                }
+                                                            }}
+                                                            <span class="cdb-list-tree-node__count">
+                                                                {format!("{} 字段", t.fields.len())}
+                                                            </span>
+                                                        </button>
+                                                    }
+                                                }
+                                            />
+                                        </div>
                                     }
                                 }
                             />
@@ -9617,6 +9881,127 @@ pub fn ListView(
                                     .unwrap_or_default()
                             }}
                         </div>
+                        // feat-issue-50-listview-grouping-and-relations（issue #50）：关联表摘要区——
+                        // 网格标题下方、字段行上方；按入边/出边分组显示关系类型；点击关联表名在左树
+                        // 定位（展开所在分组）并切换选中；无关联时隐藏不占位
+                        {move || {
+                            if list_dict.get().is_some() {
+                                return view! { <></> }.into_view();
+                            }
+                            let rels = rel_list_for_summary();
+                            if rels.is_empty() {
+                                return view! { <></> }.into_view();
+                            }
+                            let incoming: Vec<RelatedTable> = rels
+                                .iter()
+                                .filter(|r| r.direction == RelationDirection::Incoming)
+                                .cloned()
+                                .collect();
+                            let outgoing: Vec<RelatedTable> = rels
+                                .iter()
+                                .filter(|r| r.direction == RelationDirection::Outgoing)
+                                .cloned()
+                                .collect();
+                            let incoming_click = incoming.clone();
+                            let outgoing_click = outgoing.clone();
+                            view! {
+                                <div class="cdb-list-related" data-testid="list-related-tables">
+                                    {(!incoming.is_empty()).then(|| {
+                                        let items = incoming_click.clone();
+                                        let on_select = on_select_rel.clone();
+                                        view! {
+                                            <div class="cdb-list-related__group">
+                                                <span class="cdb-list-related__dir">"入边"</span>
+                                                {items.into_iter().map(move |r: RelatedTable| {
+                                                    let tid = r.table_id.clone();
+                                                    let tid_sel = r.table_id.clone();
+                                                    let label = format!("{}（{}）", r.table_name, r.cardinality);
+                                                    let store_g = store;
+                                                    let collapsed_g = collapsed_groups;
+                                                    let list_table_g = list_table;
+                                                    let list_sel_g = list_sel;
+                                                    let list_dict_g = list_dict;
+                                                    let on_select = on_select.clone();
+                                                    view! {
+                                                        <button
+                                                            class="cdb-list-related__chip"
+                                                            data-testid=format!("list-related-table-{}", r.table_name)
+                                                            title=label.clone()
+                                                            on:click=move |_| {
+                                                                // 定位：展开该表所在分组 + 切换树选中 + Inspector 同步
+                                                                let groups = group_tables_by_area(
+                                                                    &store_g.tables.get(),
+                                                                    &store_g.areas.get(),
+                                                                );
+                                                                if let Some(g) = groups
+                                                                    .iter()
+                                                                    .find(|g| g.2.iter().any(|t| t.id == tid))
+                                                                {
+                                                                    let aid = g.0.clone();
+                                                                    collapsed_g.update(|s| { s.remove(&aid); });
+                                                                }
+                                                                list_sel_g.set(None);
+                                                                list_dict_g.set(None);
+                                                                list_table_g.set(Some(tid_sel.clone()));
+                                                                on_select(Some(tid_sel.clone()));
+                                                            }
+                                                        >
+                                                            {label}
+                                                        </button>
+                                                    }
+                                                }).collect_view()}
+                                            </div>
+                                        }
+                                    })}
+                                    {(!outgoing.is_empty()).then(|| {
+                                        let items = outgoing_click.clone();
+                                        let on_select = on_select_rel.clone();
+                                        view! {
+                                            <div class="cdb-list-related__group">
+                                                <span class="cdb-list-related__dir">"出边"</span>
+                                                {items.into_iter().map(move |r: RelatedTable| {
+                                                    let tid = r.table_id.clone();
+                                                    let tid_sel = r.table_id.clone();
+                                                    let label = format!("{}（{}）", r.table_name, r.cardinality);
+                                                    let store_g = store;
+                                                    let collapsed_g = collapsed_groups;
+                                                    let list_table_g = list_table;
+                                                    let list_sel_g = list_sel;
+                                                    let list_dict_g = list_dict;
+                                                    let on_select = on_select.clone();
+                                                    view! {
+                                                        <button
+                                                            class="cdb-list-related__chip"
+                                                            data-testid=format!("list-related-table-{}", r.table_name)
+                                                            title=label.clone()
+                                                            on:click=move |_| {
+                                                                let groups = group_tables_by_area(
+                                                                    &store_g.tables.get(),
+                                                                    &store_g.areas.get(),
+                                                                );
+                                                                if let Some(g) = groups
+                                                                    .iter()
+                                                                    .find(|g| g.2.iter().any(|t| t.id == tid))
+                                                                {
+                                                                    let aid = g.0.clone();
+                                                                    collapsed_g.update(|s| { s.remove(&aid); });
+                                                                }
+                                                                list_sel_g.set(None);
+                                                                list_dict_g.set(None);
+                                                                list_table_g.set(Some(tid_sel.clone()));
+                                                                on_select(Some(tid_sel.clone()));
+                                                            }
+                                                        >
+                                                            {label}
+                                                        </button>
+                                                    }
+                                                }).collect_view()}
+                                            </div>
+                                        }
+                                    })}
+                                </div>
+                            }.into_view()
+                        }}
                         <table class="cdb-list-view-table" data-testid="list-view-table"
                             style:display=move || if list_dict.get().is_some() { "none" } else { "" }>
                             <thead>
@@ -19333,6 +19718,169 @@ mod tests_ut_mm_28 {
             Some("t_users".to_string()),
             "UT-MM-38: 搜索无命中不影响当前表解析"
         );
+    }
+
+    // ─── UT-SP-LIST-GROUP-01: 按 Area 分组纯函数（feat-issue-50-listview-grouping-and-relations / #50） ───
+
+    fn make_area_for_test(id: &str, name: &str, x: f64, y: f64, w: f64, h: f64) -> Area {
+        Area {
+            id: id.to_string(),
+            x,
+            y,
+            width: w,
+            height: h,
+            color: String::new(),
+            name: name.to_string(),
+            locked: false,
+        }
+    }
+
+    fn make_table_at(name: &str, x: f64, y: f64) -> Table {
+        let mut t = make_table_for_test(name, 1, "INT");
+        t.x = x;
+        t.y = y;
+        t
+    }
+
+    #[test]
+    fn test_group_tables_by_area_ut_sp_list_group_01() {
+        // 表卡中心 = (x + 115, y + 21.5)：table_1 (295, 166.5) / table_2 (350, 201.5) / table_3 (405, 236.5)
+        let tables = vec![
+            make_table_at("table_1", 180.0, 145.0),
+            make_table_at("table_2", 235.0, 180.0),
+            make_table_at("table_3", 290.0, 215.0),
+        ];
+        // Area 矩形 (100,100)～(420,230)：覆盖 table_1/table_2 中心，不含 table_3（y=236.5 超下界）
+        let areas = vec![make_area_for_test("area_1", "核心域", 100.0, 100.0, 320.0, 130.0)];
+
+        let groups = group_tables_by_area(&tables, &areas);
+        assert_eq!(groups.len(), 2, "UT-SP-LIST-GROUP-01: 命中 Area + 未分组两组");
+        assert_eq!(groups[0].0, "area_1", "分组头 testid 使用 area_id");
+        assert_eq!(groups[0].1, "核心域");
+        assert_eq!(
+            groups[0].2.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
+            vec!["table_1", "table_2"],
+            "中心落入 Area 矩形的表归该组"
+        );
+        assert_eq!(groups[1].0, "ungrouped", "未落入任何 Area 的表归「未分组」");
+        assert_eq!(groups[1].1, "未分组");
+        assert_eq!(groups[1].2.len(), 1);
+        assert_eq!(groups[1].2[0].name, "table_3");
+    }
+
+    #[test]
+    fn test_group_tables_by_area_edge_and_empty_ut_sp_list_group_01() {
+        // 1. 边界含等号：中心恰在 Area 右/下边界 → 命中（几何包含为闭区间）
+        let t = vec![make_table_at("t", 0.0, 0.0)]; // 中心 (115, 21.5)
+        let a = vec![make_area_for_test("a1", "A", 0.0, 0.0, 115.0, 21.5)];
+        let groups = group_tables_by_area(&t, &a);
+        assert_eq!(groups.len(), 1, "UT-SP-LIST-GROUP-01: 边界等号包含 → 命中");
+        assert_eq!(groups[0].0, "a1");
+
+        // 2. 空 Area（无表落入）不返回，避免渲染空分组头
+        let t2 = vec![make_table_at("t", 900.0, 900.0)];
+        let a2 = vec![make_area_for_test("a1", "空区域", 0.0, 0.0, 100.0, 100.0)];
+        let groups2 = group_tables_by_area(&t2, &a2);
+        assert_eq!(groups2.len(), 1, "UT-SP-LIST-GROUP-01: 空 Area 分组不返回");
+        assert_eq!(groups2[0].0, "ungrouped");
+
+        // 3. 无 Area → 全部「未分组」
+        let groups3 = group_tables_by_area(&t2, &[]);
+        assert_eq!(groups3.len(), 1);
+        assert_eq!(groups3[0].0, "ungrouped");
+
+        // 4. 分组顺序保持 areas 输入序、未分组殿后；表归入命中 Area（此处 A 为空组被移除）
+        let tables = vec![
+            make_table_at("t_in_b", 500.0, 500.0), // 中心 (615, 521.5) 落 B
+            make_table_at("t_out", 1000.0, 1000.0),
+        ];
+        let areas = vec![
+            make_area_for_test("b", "B", 500.0, 500.0, 200.0, 100.0),
+            make_area_for_test("a", "A", 0.0, 0.0, 100.0, 100.0),
+        ];
+        let groups4 = group_tables_by_area(&tables, &areas);
+        assert_eq!(
+            groups4.iter().map(|g| g.0.as_str()).collect::<Vec<_>>(),
+            vec!["b", "ungrouped"],
+            "UT-SP-LIST-GROUP-01: 顺序按 areas 输入序 + 末尾未分组；空组不返回"
+        );
+        assert_eq!(groups4[0].2[0].name, "t_in_b");
+    }
+
+    // ─── UT-SP-LIST-REL-01: 关联表集合纯函数（feat-issue-50-listview-grouping-and-relations / #50） ───
+
+    fn make_ref_for_test(id: &str, start: &str, end: &str, type_: &str) -> Reference {
+        Reference {
+            id: id.to_string(),
+            name: id.to_string(),
+            start_table_id: start.to_string(),
+            end_table_id: end.to_string(),
+            start_field_id: format!("{}_sf", id),
+            end_field_id: format!("{}_ef", id),
+            type_: type_.to_string(),
+            on_delete: String::new(),
+            on_update: String::new(),
+            color: String::new(),
+            line_type: String::new(),
+            stroke_style: String::new(),
+        }
+    }
+
+    #[test]
+    fn test_related_table_ids_ut_sp_list_rel_01() {
+        let refs = vec![
+            make_ref_for_test("r1", "t_users", "t_orders", "one_to_many"), // users 出边
+            make_ref_for_test("r2", "t_logs", "t_users", "many_to_many"),  // users 入边
+            make_ref_for_test("r3", "t_users", "t_users", "one_to_one"),   // 自环不计
+        ];
+        let ids = related_table_ids("t_users", &refs);
+        assert_eq!(ids.len(), 2, "UT-SP-LIST-REL-01: 入边 + 出边各一，自环排除");
+        assert!(ids.contains("t_orders"), "出边终点入集合");
+        assert!(ids.contains("t_logs"), "入边起点入集合");
+        assert!(
+            related_table_ids("t_alone", &refs).is_empty(),
+            "UT-SP-LIST-REL-01: 无关系表 → 空集合"
+        );
+    }
+
+    #[test]
+    fn test_related_tables_for_ut_sp_list_rel_01() {
+        let tables = vec![
+            make_table_for_test("users", 1, "INT"),
+            make_table_for_test("orders", 1, "INT"),
+            make_table_for_test("logs", 1, "INT"),
+        ];
+        let refs = vec![
+            make_ref_for_test("r1", "t_users", "t_orders", "one_to_many"),
+            make_ref_for_test("r2", "t_logs", "t_users", "many_to_many"),
+        ];
+        let rels = related_tables_for("t_users", &tables, &refs);
+        assert_eq!(rels.len(), 2, "UT-SP-LIST-REL-01: 清单含出边与入边各一条");
+        let out = rels
+            .iter()
+            .find(|r| r.direction == RelationDirection::Outgoing)
+            .expect("UT-SP-LIST-REL-01: 出边项存在");
+        assert_eq!(out.table_name, "orders");
+        assert_eq!(
+            out.cardinality, "1:N",
+            "UT-SP-LIST-REL-01: one_to_many 映射为显示标签 1:N（core-04 §10.5）"
+        );
+        let inc = rels
+            .iter()
+            .find(|r| r.direction == RelationDirection::Incoming)
+            .expect("UT-SP-LIST-REL-01: 入边项存在");
+        assert_eq!(inc.table_name, "logs");
+        assert_eq!(inc.cardinality, "N:M", "many_to_many 映射为 N:M");
+        assert!(
+            related_tables_for("t_alone", &tables, &refs).is_empty(),
+            "UT-SP-LIST-REL-01: 无关系表 → 空清单（摘要区隐藏不占位）"
+        );
+
+        // cardinality_label 映射表：存储值域全覆盖 + 已是显示值/未知值原样返回
+        assert_eq!(cardinality_label("one_to_one"), "1:1");
+        assert_eq!(cardinality_label("many_to_one"), "N:1");
+        assert_eq!(cardinality_label("1:N"), "1:N", "已是显示标签 → 原样");
+        assert_eq!(cardinality_label(""), "", "空值原样返回");
     }
 
     #[test]

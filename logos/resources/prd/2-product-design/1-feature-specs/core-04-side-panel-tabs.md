@@ -248,6 +248,7 @@ Table users {
   - 顶部搜索框 `[data-testid="list-tree-search"]`：按表名模糊匹配过滤（复用 Tables Tab 搜索口径 `filter_tables`），清空恢复全量
   - **树节点按 Area 分组渲染（fix-issue-50 / #50）**：
     - 分组头 `[data-testid="list-tree-group-{area_id}"]` 显示区域名 + 表数量；无 Area 的表归入「未分组」分组
+    - 分组依据为画布 Area 与表卡的几何包含关系：表卡中心落入某 Area 矩形内即归该组；未落入任何 Area 的表归入「未分组」
     - 分组支持折叠/展开：点击分组头切换该分组的展开态；搜索时含匹配表的分组自动展开，无匹配分组自动折叠
     - 分组头样式与现有暗色主题一致，与「数据字典」分组视觉同级
   - 树节点 `[data-testid="list-tree-node-<table_name>"]`：显示表名 + 字段数（`表名（N 字段）`）；当前选中态高亮

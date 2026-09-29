@@ -34,6 +34,8 @@
 //   ST-SP-LIST-01    列表视图全屏渲染（网格定位 + 层叠遮挡 + 树+单表 10 列编辑网格）
 //   ST-SP-LIST-02    列表视图行内编辑落账（名称/类型长度/勾选/增删移动/撤销）
 //   ST-SP-LIST-03    列表视图表树导航（搜索过滤 + 切表渲染 + 空态 + 删表回落）
+//   ST-SP-LIST-GROUP-01 列表视图按 Area 分组（几何包含 + 折叠/搜索自动展开，fix-issue-50）
+//   ST-SP-LIST-REL-01   列表视图关联表摘要 + 树节点关联高亮/非关联弱化（fix-issue-50）
 //   ST-DB-02         引擎创建后锁定（AppBar 禁用）；PG 基类型清单；UUID 无占位重复
 // fix-appbar-roomname-back-and-import-merge 新增：
 //   ST-PC-01         导入 DDL 本地合并进当前画布（2→4 表 + FK 落账 + Toast + 不跳页面不调 bridge）
@@ -2479,7 +2481,9 @@ try {
 
     // 2. 搜索 user → 只剩 users 节点；点击 → 网格切换为 users 字段明细
     await page.locator('[data-testid="list-tree-search"]').fill("user");
-    assert.equal(await page.locator('[data-testid^="list-tree-node-"]').count(), 1, "搜索 user 后树必须只剩 users 节点");
+    // feat-issue-50（issue #50）：追加 .cdb-list-tree-node 限定按钮节点——
+    // 关联标记 span（list-tree-node-related/-unrelated）也以 list-tree-node- 开头
+    assert.equal(await page.locator('[data-testid^="list-tree-node-"].cdb-list-tree-node').count(), 1, "搜索 user 后树必须只剩 users 节点");
     await page.locator('[data-testid="list-tree-node-users"]').click();
     await page.locator('[data-testid="list-tree-node-users"].is-active').waitFor();
     assert.match(await page.locator('[data-testid="list-view-title"]').textContent(), /users（1 字段）/, "点击 users 节点后网格必须切换");
@@ -2488,7 +2492,7 @@ try {
     await page.locator('tr[data-testid^="list-view-row-users-"]').first().click();
     assert.equal(await page.locator('[data-testid="list-del-field"]').isDisabled(), false, "选中行后删字段必须可用");
     await page.locator('[data-testid="list-tree-search"]').fill("");
-    assert.equal(await page.locator('[data-testid^="list-tree-node-"]').count(), 3, "清空搜索必须恢复 3 节点");
+    assert.equal(await page.locator('[data-testid^="list-tree-node-"].cdb-list-tree-node').count(), 3, "清空搜索必须恢复 3 节点");
     await page.locator('[data-testid="list-tree-node-table_2"]').click();
     assert.match(await page.locator('[data-testid="list-view-title"]').textContent(), /table_2（1 字段）/);
     assert.equal(await page.locator('[data-testid="list-del-field"]').isDisabled(), true, "切表后字段行选中态必须清空（删字段禁用）");
@@ -2497,7 +2501,7 @@ try {
     // 4. 无命中关键字 → 树内空态；右网格保持当前表
     await page.locator('[data-testid="list-tree-search"]').fill("zzz");
     await page.locator('[data-testid="list-tree-empty"]:visible').waitFor();
-    assert.equal(await page.locator('[data-testid^="list-tree-node-"]').count(), 0, "无命中时树节点必须为 0");
+    assert.equal(await page.locator('[data-testid^="list-tree-node-"].cdb-list-tree-node').count(), 0, "无命中时树节点必须为 0");
     assert.match(await page.locator('[data-testid="list-view-title"]').textContent(), /table_2/, "搜索无命中时右网格必须保持当前表");
     await page.locator('[data-testid="list-tree-search"]').fill("");
     await page.locator('[data-testid="list-tree-node-table_1"]:visible').waitFor();
@@ -2516,6 +2520,126 @@ try {
     await page.locator('[data-testid="tab-pane-list-view"]:visible').waitFor();
     assert.equal(await page.locator('[data-testid="list-tree-node-table_1"].is-active').count(), 1, "当前表被删后必须回落首张剩余表");
     assert.match(await page.locator('[data-testid="list-view-title"]').textContent(), /table_1（1 字段）/);
+  });
+
+  // ─── ST-SP-LIST-GROUP-01：列表视图按 Area 分组（几何包含 + 折叠/搜索自动展开，fix-issue-50 / #50）───
+  await run(["ST-SP-LIST-GROUP-01"], "列表视图按 Area 几何包含分组且可折叠/搜索自动展开", async page => {
+    const state = await installApi(page);
+    await login(page);
+    await createRoomAndEnter(page);
+    await createTwoTables(page);
+    await page.keyboard.press("t"); // 第三张表 table_3（不进区域）
+    await page.locator('[data-testid="save-state"][data-state="saved"]').waitFor({ timeout: 8_000 });
+
+    // 画一个覆盖 table_1/table_2 中心 (295,166.5)/(350,201.5)、不含 table_3 中心 (405,236.5) 的区域
+    // （表 i 落位 x=180+i*55, y=145+i*35；分组依据 = 表卡中心是否落入 Area 矩形）
+    await page.locator('[data-testid="tool-new-area"]').click();
+    const from = await canvasPoint(page, { x: 120, y: 120 });
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    const to = await canvasPoint(page, { x: 420, y: 225 });
+    await page.mouse.move(to.x, to.y, { steps: 5 });
+    await page.mouse.up();
+    await page.locator('[data-testid="save-state"][data-state="saved"]').waitFor({ timeout: 8_000 });
+    await page.keyboard.press("Escape");
+    assert.equal(state.lastPutBody?.diagram?.areas?.length, 1, "拖框建区域必须落账 1 个 Area");
+    const area = state.lastPutBody.diagram.areas[0];
+
+    await page.locator('[data-testid="btn-list-view"]').click();
+    await page.locator('[data-testid="tab-pane-list-view"]:visible').waitFor();
+
+    // 1. 分组头：Area 组（区域名 + 表数 2）+ 未分组（表数 1，table_3）
+    const areaHeader = page.locator(`[data-testid="list-tree-group-${area.id}"]`);
+    await areaHeader.waitFor();
+    assert.ok((await areaHeader.textContent()).includes(area.name), "分组头必须显示区域名");
+    assert.match(await areaHeader.textContent(), /2/, "Area 组必须显示表数 2");
+    const ugHeader = page.locator('[data-testid="list-tree-group-ungrouped"]');
+    await ugHeader.waitFor();
+    assert.match(await ugHeader.textContent(), /1/, "未分组必须显示表数 1");
+    await page.locator('[data-testid="list-tree-node-table_3"]:visible').waitFor();
+    assert.equal(await page.locator('[data-testid^="list-tree-node-"].cdb-list-tree-node').count(), 3, "分组后仍渲染全量 3 节点");
+
+    // 2. 折叠 Area 组 → 组内节点隐藏；再展开恢复
+    await areaHeader.click();
+    await page.locator('[data-testid="list-tree-node-table_1"]').waitFor({ state: "hidden" });
+    assert.ok(await page.locator('[data-testid="list-tree-node-table_1"]').isHidden(), "折叠后 Area 组内节点必须隐藏");
+    await areaHeader.click();
+    await page.locator('[data-testid="list-tree-node-table_1"]:visible').waitFor();
+
+    // 3. 折叠态下搜索 table_1 → 含匹配表的 Area 组自动展开；无匹配的未分组自动折叠（不再渲染）
+    await areaHeader.click();
+    await page.locator('[data-testid="list-tree-node-table_1"]').waitFor({ state: "hidden" });
+    await page.locator('[data-testid="list-tree-search"]').fill("table_1");
+    await page.locator('[data-testid="list-tree-node-table_1"]:visible').waitFor();
+    assert.equal(await page.locator('[data-testid^="list-tree-group-"]').count(), 1, "搜索时只渲染含匹配表的分组");
+    await page.locator('[data-testid="list-tree-search"]').fill("");
+    await page.locator('[data-testid="list-tree-node-table_3"]:visible').waitFor();
+    assert.equal(await page.locator('[data-testid^="list-tree-group-"]').count(), 2, "清空搜索恢复 Area + 未分组两组");
+
+    // 导航全程不改动落账数据（3 表 1 区域）
+    assert.equal(state.lastPutBody?.diagram?.tables?.length, 3, "分组导航不得改动落账表数");
+    assert.equal(state.lastPutBody?.diagram?.areas?.length, 1, "分组导航不得改动落账区域数");
+  });
+
+  // ─── ST-SP-LIST-REL-01：选中表时右侧展示关联表清单 + 树中关联表高亮/非关联弱化（fix-issue-50 / #50）───
+  await run(["ST-SP-LIST-REL-01"], "列表视图关联表摘要与树节点关联高亮", async page => {
+    const state = await installApi(page);
+    await login(page);
+    await createRoomAndEnter(page);
+    // 先建 table_1 → table_2 关系（ST-CR-02 验证过的稳定组合：2 表 + createVisibleRelation）
+    await createVisibleRelation(page);
+    // 再建第三张表 table_3：不参与关系（关系工具已由 helper 的 Escape 退出）
+    await page.keyboard.press("t");
+    await page.locator('[data-testid="save-state"][data-state="saved"]').waitFor({ timeout: 8_000 });
+    assert.equal(state.lastPutBody?.diagram?.tables?.length, 3, "setup 后必须恰 3 张表（无凭空表）");
+
+    await page.locator('[data-testid="btn-list-view"]').click();
+    await page.locator('[data-testid="tab-pane-list-view"]:visible').waitFor();
+
+    // 1. 默认选中首表 table_1 → 摘要区显示出边 table_2；芯片展示表名 + 映射后关系类型标签
+    //（core-04 §10.5：1:1 / 1:N / N:M；cardinality_label 把存储值 one_to_* / many_to_* 映射为标签）
+    const summary = page.locator('[data-testid="list-related-tables"]');
+    await summary.waitFor();
+    const summaryText = await summary.textContent();
+    assert.ok(summaryText.includes("出边"), "table_1 的关联 table_2 必须归入出边");
+    assert.match(summaryText, /table_2（(1:1|1:N|N:M)）/, `芯片必须展示表名与关系类型标签（actual=${summaryText}）`);
+
+    // 2. 树中关联标记：table_2（关联）⇄ 高亮、table_3（非关联）弱化标记、当前表 table_1 无标记
+    assert.equal(await page.locator('[data-testid="list-tree-node-related"]').count(), 1, "关联表节点必须追加 related 标记");
+    assert.equal(await page.locator('[data-testid="list-tree-node-unrelated"]').count(), 1, "非关联表节点必须追加 unrelated 标记");
+    assert.ok(
+      await page.locator('[data-testid="list-tree-node-table_2"].is-related').count() === 1,
+      "关联表节点必须高亮（is-related）"
+    );
+    assert.ok(
+      await page.locator('[data-testid="list-tree-node-table_3"].is-unrelated').count() === 1,
+      "非关联表节点必须弱化（is-unrelated）"
+    );
+    assert.ok(
+      await page.locator('[data-testid="list-tree-node-table_1"].is-related').count() === 0
+        && await page.locator('[data-testid="list-tree-node-table_1"].is-unrelated').count() === 0,
+      "当前表自身既不算关联也不算非关联"
+    );
+
+    // 3. 点击关联表芯片 → 左树定位并切换选中（table_2 高亮 + 右网格切到 table_2）
+    await page.locator('[data-testid="list-related-table-table_2"]').click();
+    await page.locator('[data-testid="list-tree-node-table_2"].is-active').waitFor();
+    assert.match(await page.locator('[data-testid="list-view-title"]').textContent(), /table_2（\d+ 字段）/, "点击芯片后右网格必须切到 table_2");
+    // 选中切换后标记随当前表重算：table_1（关联）⇄，table_3 仍弱化
+    assert.equal(await page.locator('[data-testid="list-tree-node-related"]').count(), 1, "切换后关联标记必须随当前表重算");
+    assert.ok(
+      await page.locator('[data-testid="list-tree-node-table_1"].is-related').count() === 1,
+      "切换到 table_2 后 table_1 必须成为关联高亮节点"
+    );
+
+    // 4. 选中无关联的 table_3 → 摘要区隐藏不占位，标记全部消失
+    await page.locator('[data-testid="list-tree-node-table_3"]').click();
+    assert.equal(await page.locator('[data-testid="list-related-tables"]').count(), 0, "无关联时摘要区必须隐藏不占位");
+    assert.equal(await page.locator('[data-testid="list-tree-node-related"]').count(), 0, "无关联时 related 标记必须消失");
+    assert.equal(await page.locator('[data-testid="list-tree-node-unrelated"]').count(), 0, "无关联时 unrelated 标记必须消失");
+
+    // 导航全程不改动落账数据（3 表；关系由 WS op 落账，前端 UI 关系来自本地 store 回放）
+    assert.equal(state.lastPutBody?.diagram?.tables?.length, 3, "关联导航不得改动落账表数");
   });
 
   // ─── ST-DB-02：引擎创建后锁定 + PG 清单内容（fix-pg-types-listview-zindex-lock-engine） ──

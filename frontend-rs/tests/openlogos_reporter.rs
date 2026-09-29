@@ -298,6 +298,9 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-PB-15",
     // fix-issue-49（issue #49 R-WIDTH-08 / R-LOD-08）：关系锚点随 comment_mode 对齐
     "UT-CR-ANCHOR-01",
+    // feat-issue-50（issue #50）：ListView 按 Area 分组 / 关联表集合纯函数
+    "UT-SP-LIST-GROUP-01",
+    "UT-SP-LIST-REL-01",
     // layout-after-import-command / #23（src/layout.rs + command_palette 单测）
     "UT-PB-16",
     "UT-CR-LAYOUT-01",
@@ -335,6 +338,9 @@ const ST_PASS_IDS: &[&str] = &[
     "ST-FE-S05-10",
     // fix-issue-48（issue #48 R-LOD-10）：表维度下长中文注释卡宽放宽 e2e
     "ST-CR-TOPO-WIDTH-01",
+    // feat-issue-50（issue #50）：ListView 按 Area 分组 / 关联表可视化 e2e
+    "ST-SP-LIST-GROUP-01",
+    "ST-SP-LIST-REL-01",
     // V2 全链路回归
     "ST-FE-V2-01",
     "ST-FE-V2-02",

@@ -873,3 +873,11 @@
 {"id":"ST-FE-PROTO-08","status":"skip","timestamp":"2026-09-29T12:18:21Z","error":"requires wasm-pack or Playwright e2e harness"}
 {"id":"ST-S07-03","status":"skip","timestamp":"2026-09-29T12:18:21Z","error":"requires wasm-pack or Playwright e2e harness"}
 {"id":"ST-PU-20","status":"pass","duration_ms":4,"timestamp":"2026-09-29T12:18:21.123Z"}
+{"id":"ST-SP-LIST-03","status":"pass","duration_ms":2957,"timestamp":"2026-09-29T15:45:54.151Z"}
+{"id":"ST-SP-LIST-GROUP-01","status":"pass","duration_ms":2640,"timestamp":"2026-09-29T15:45:56.844Z"}
+{"id":"ST-SP-LIST-REL-01","status":"fail","duration_ms":3075,"timestamp":"2026-09-29T15:45:59.944Z","error":"芯片必须展示表名与关系类型（期望含 table_2（1:N），actual=出边table_5（one_to_one））"}
+{"id":"ST-SP-LIST-REL-01","status":"fail","duration_ms":3307,"timestamp":"2026-09-29T15:53:27.964Z","error":"芯片必须展示表名与关系类型（期望含 table_2（1:N），actual=出边table_5（1:1））"}
+{"id":"ST-SP-LIST-REL-01","status":"pass","duration_ms":3001,"timestamp":"2026-09-29T15:55:41.795Z"}
+{"id":"ST-SP-LIST-03","status":"pass","duration_ms":2901,"timestamp":"2026-09-29T15:56:30.332Z"}
+{"id":"ST-SP-LIST-GROUP-01","status":"pass","duration_ms":2607,"timestamp":"2026-09-29T15:56:32.996Z"}
+{"id":"ST-SP-LIST-REL-01","status":"pass","duration_ms":2910,"timestamp":"2026-09-29T15:56:35.930Z"}
