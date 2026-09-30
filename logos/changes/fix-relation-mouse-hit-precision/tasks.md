@@ -9,3 +9,10 @@
 - [x] `frontend-rs/src/editor_render.rs`：新增 UT-PB-24 单元测试
 - [x] `frontend-rs/scripts/test-spec-parity-d.mjs`：新增 ST-PB-14 e2e
 - [x] `frontend-rs/tests/openlogos_reporter.rs`：注册 UT-PB-24 / ST-PB-14
+
+## [verify] 验收
+- [x] `openlogos verify` 通过（Gate 3.6 PASS，533/567 通过，34 skip）
+
+## [archive] 归档
+- [ ] 用户授权后执行 `openlogos archive fix-relation-mouse-hit-precision`
+- [ ] 用户确认后 `git push`
