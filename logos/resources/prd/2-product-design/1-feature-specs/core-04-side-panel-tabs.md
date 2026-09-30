@@ -323,6 +323,7 @@ Table users {
 | UT-SP-09 | 6 业务 Tab 切换（点击 Tab A→B→C，验证激活态 + 内容区切换）— B2 范围 |
 | UT-SP-10 | 全局搜索跨 Tab 过滤（spec §10，搜索框过滤 Tables/Areas/Enums 等多 Tab 列表）— B2 范围 |
 | UT-SP-11 | 字典面板开合（ToolRail `toolrail-dicts` + DictPanel 抽屉）+ 字典 CRUD/绑定/导出（详细用例见 `core-01e-data-dictionary.md` §8） |
+| UT-LV-FONT-01 | ListView 字号合同：主文字 14px，辅助文字 12px，分组头 11px（`frontend-rs/tests/listview_font_ut.rs`） |
 
 ## 12. V1 边界
 

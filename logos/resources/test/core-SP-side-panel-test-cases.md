@@ -218,3 +218,22 @@ Inspector 锚点与响应式抽屉。验收锚点：**`data-testid="inspector"`*
 | ST-SP-LIST-01 | 列表视图全屏渲染（网格定位 + 层叠遮挡 + 树+单表网格渲染回归） | `frontend-rs/src/styles.css` + `frontend-rs/src/editor_panels.rs` |
 | ST-SP-LIST-02 | 列表视图行内编辑落账（PDManer 式字段明细网格） | `frontend-rs/src/editor_panels.rs::ListView` |
 | ST-SP-LIST-03 | 列表视图表树导航（搜索过滤 + 切表渲染 + 空态） | `frontend-rs/src/editor_panels.rs::ListView` |
+
+### 附录 B：ux-canvas-listview-font-size 追加
+
+#### UT-LV-FONT-01 — ListView 字号合同
+
+- **位置**：`frontend-rs/tests/listview_font_ut.rs`
+- **前置**：`frontend-rs/src/styles.css` 存在 ListView 相关选择器
+- **步骤**：解析 CSS 中各选择器的 `font-size` 声明
+- **断言**：
+  - `.cdb-list-view-table` 为 `14px`
+  - `.cdb-list-tree-node` 为 `14px`
+  - `.cdb-list-view-table td .cdb-form-input` 为 `14px`
+  - `.cdb-list-tree-comment` 为 `12px`
+  - `.cdb-list-tree-node__count` 为 `12px`
+  - `.cdb-list-tree__group` 为 `11px`
+
+| ID | 标题 | 对齐实现 |
+|---|---|---|
+| UT-LV-FONT-01 | ListView 字号合同 | `frontend-rs/tests/listview_font_ut.rs` |
