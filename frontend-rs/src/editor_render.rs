@@ -398,6 +398,9 @@ impl Default for Transform {
 pub const ZOOM_MIN: f64 = 0.1;
 pub const ZOOM_MAX: f64 = 5.0;
 
+/// ux-canvas-experience-polish：滚轮单次缩放步长（放大因子），工具栏 zoom_in/out 同步使用。
+pub const CANVAS_WHEEL_ZOOM_FACTOR: f64 = 1.15;
+
 /// §3.3 锚定缩放纯函数（UT-CR-ZOOM-01）：缩放前后 anchor（canvas CSS 坐标系内的点）
 /// 下的世界点映射到屏幕的位置不变（锚定不变量）。
 ///   world   = (anchor − pan) / zoom
@@ -3079,7 +3082,7 @@ mod leptos_canvas {
                 let rect = canvas.get_bounding_client_rect();
                 let cur = current_transform();
                 let anchor = (mouse_x - rect.left(), mouse_y - rect.top());
-                let zoom_factor = if ev.delta_y() < 0.0 { 1.1 } else { 1.0 / 1.1 };
+                let zoom_factor = if ev.delta_y() < 0.0 { CANVAS_WHEEL_ZOOM_FACTOR } else { 1.0 / CANVAS_WHEEL_ZOOM_FACTOR };
                 let next = super::zoom_transform_at_anchor(&cur, anchor, zoom_factor);
                 *pending_transform.borrow_mut() = Some(next);
                 schedule_paint();
@@ -6023,11 +6026,11 @@ fn draw_relation(
     ctx.set_global_alpha(opacity);
 
     // fix-31 UT-PE-HL-01（§4.4 提亮）：相关态（非选中）强制选中色族——主色 palette.selected、
-    // 光晕 palette.selected_soft 8px 发光；选中关系自身 3.5px 主线 + 10px 光晕保持层级区分
+    // 光晕 palette.selected_soft 10px 发光；选中关系自身 3.5px 主线 + 12px 光晕保持层级区分
     let stroke_main = if selected || related { palette.selected } else { stroke };
     let halo = if selected || related { palette.selected_soft } else { palette.relation_halo };
-    let halo_w = if selected { 10.0 } else if related { 8.0 } else { 7.0 * hl_scale } * lod_scale;
-    let main_w = if selected { 3.5 } else { 2.0 * hl_scale } * lod_scale;
+    let halo_w = if selected { 12.0 } else if related { 10.0 } else { 8.0 * hl_scale } * lod_scale;
+    let main_w = if selected { 3.5 } else { 2.5 * hl_scale } * lod_scale;
 
     match line_type {
         "orthogonal" => {
@@ -8319,6 +8322,20 @@ mod tests {
         assert!((tf.zoom - ZOOM_MIN).abs() < 1e-9, "UT-CR-ZOOM-01: clamp 于 ZOOM_MIN=0.1");
     }
 
+    /// UT-CR-ZOOM-02 — 滚轮缩放因子合同（ux-canvas-experience-polish）
+    #[test]
+    fn canvas_wheel_zoom_factor_contract() {
+        assert!(
+            (CANVAS_WHEEL_ZOOM_FACTOR - 1.15).abs() < 1e-9,
+            "UT-CR-ZOOM-02: 滚轮缩放因子必须为 1.15（实际 {CANVAS_WHEEL_ZOOM_FACTOR}）"
+        );
+        // 放大/缩小互为倒数，保证往返一致
+        assert!(
+            (CANVAS_WHEEL_ZOOM_FACTOR * (1.0 / CANVAS_WHEEL_ZOOM_FACTOR) - 1.0).abs() < 1e-9,
+            "UT-CR-ZOOM-02: 放大/缩小因子必须互为倒数"
+        );
+    }
+
     #[test]
     fn test_aabb_intersects_ut_cr_cull_01() {
         // 相交 / 包含 / 相离 / 边界贴合 4 case
@@ -8668,8 +8685,12 @@ mod tests {
             "UT-PE-HL-01: 相关线光晕必须换用 palette.selected_soft 发光"
         );
         assert!(
-            dr_block.contains("} else if related { 8.0 } else { 7.0 * hl_scale }"),
-            "UT-PE-HL-01: 相关线光晕宽度必须固定 8px（选中关系 10px 保持层级）"
+            dr_block.contains("} else if related { 10.0 } else { 8.0 * hl_scale }"),
+            "UT-PE-HL-01: 相关线光晕宽度必须为 10px，默认光晕 8px（选中关系 12px 保持层级）"
+        );
+        assert!(
+            dr_block.contains("if selected { 3.5 } else { 2.5 * hl_scale }"),
+            "UT-PE-HL-01: 默认关系线主线宽度必须为 2.5px（相关态 1.5×，选中关系 3.5px）"
         );
         assert!(
             dr_block.contains("related: bool"),

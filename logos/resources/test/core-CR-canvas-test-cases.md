@@ -240,6 +240,15 @@
   - `t1.zoom == 1.1`，`t1.pan_x == anchor.x − world.x × 1.1`
 - **clamp 子用例**：`zoom = 5.0, factor = 1.1` → `new_zoom == 5.0`（ZOOM_MAX = 5.0，对齐现行实现与修订后 §4），且 `pan'` 按 clamp 后 zoom 计算、不变量仍成立（锚定优先，不退化为画布中心）
 
+### UT-CR-ZOOM-02 — 滚轮缩放因子合同
+
+- **位置**：`frontend-rs/src/editor_render.rs`
+- **前置**：`CANVAS_WHEEL_ZOOM_FACTOR` 常量存在
+- **步骤**：读取常量并验证放大/缩小互为倒数
+- **断言**：
+  - `CANVAS_WHEEL_ZOOM_FACTOR == 1.15`
+  - `CANVAS_WHEEL_ZOOM_FACTOR * (1.0 / CANVAS_WHEEL_ZOOM_FACTOR) == 1.0`
+
 ### UT-CR-CULL-01 — 视口 AABB 裁剪（视口外对象零绘制调用）
 
 - **位置**：`frontend-rs/src/editor_render.rs`（`aabb_intersects` / `visible_in_viewport` 纯函数；`draw_canvas` 裁剪分支）
@@ -345,6 +354,7 @@
 | ID | 标题 | 对齐实现 |
 |---|---|---|
 | UT-CR-ZOOM-01 | 滚轮缩放光标锚定（含 clamp 锚定） | `editor_render.rs` 锚定缩放纯函数（新增） |
+| UT-CR-ZOOM-02 | 滚轮缩放因子合同（1.15 / 互为倒数） | `editor_render.rs::CANVAS_WHEEL_ZOOM_FACTOR` |
 | UT-CR-CULL-01 | 视口 AABB 裁剪（视口外零绘制） | `editor_render.rs::aabb_intersects` / `draw_canvas` |
 | UT-CR-BATCH-01 | 网格点阵合批 O(1) | `editor_render.rs::draw_grid` |
 | UT-CR-FONTCACHE-01 | 字体家族 check 缓存有界 | `editor_render.rs::resolve_canvas_font_family` |

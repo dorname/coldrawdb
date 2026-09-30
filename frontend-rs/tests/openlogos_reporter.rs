@@ -42,6 +42,7 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-CR-07",
     // fix-canvas-zoom-perf：§3.3 锚定缩放 + §5.6 R-PERF-01~06（editor_render.rs 单测）
     "UT-CR-ZOOM-01",
+    "UT-CR-ZOOM-02",
     "UT-CR-CULL-01",
     "UT-CR-BATCH-01",
     "UT-CR-FONTCACHE-01",

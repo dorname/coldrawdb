@@ -78,11 +78,20 @@
   zoom'   = new_zoom
   ```
 
-  其中 `factor = 1.1`（滚上）/ `1/1.1`（滚下）；`ZOOM_MIN = 0.1`、`ZOOM_MAX = 5.0`（与现行实现 `on_wheel` / `zoom_in` / `zoom_out` 的 clamp 一致；主文档 §4 原 `0.25x ~ 4x` 为过期口径，本提案一并修订，见「## 4. 坐标系」）。
+  其中 `factor = 1.15`（滚上）/ `1/1.15`（滚下）；`ZOOM_MIN = 0.1`、`ZOOM_MAX = 5.0`（与现行实现 `on_wheel` / `zoom_in` / `zoom_out` 的 clamp 一致；主文档 §4 原 `0.25x ~ 4x` 为过期口径，本提案一并修订，见「## 4. 坐标系」）。
 - **clamp 保持锚定**：当 `zoom × factor` 触及边界被 clamp 时，`pan'` 仍按上述公式以 clamp 后的 `new_zoom` 计算，锚定优先；禁止 clamp 时退化为画布中心缩放。
 - **rect 基准**：`anchor` 必须减去 `get_bounding_client_rect()` 的 `left/top`（canvas 在视口内的偏移），否则缩放会累积偏移导致画布"漂"出视口（现行 `on_wheel` 已按此实现，固化为合同）。
 - **工具栏按钮缩放**（`zoom_in` / `zoom_out` / `zoom_reset`）：以**视口中心**为锚点，公式同上，`anchor = (canvas_css_width / 2, canvas_css_height / 2)`。
 - 缩放触发的重绘走 `schedule_paint`（rAF 合并，见 §5.6 R-PERF-05），禁止在 wheel 事件里同步全量重绘。
+
+### 3.4 关系线视觉层级（ux-canvas-experience-polish）
+
+为提升复杂画布中关系线的可辨识度：
+
+- 默认关系线主线宽度 `2.5px`，光晕 `8px`；
+- 相关态（选中表/关系的关联线）光晕 `10px`，仍叠加 `1.5×` 线宽倍率；
+- 选中关系自身主线 `3.5px`，光晕 `12px`，保持最高层级；
+- 光晕与线宽随 zoom 应用 LOD 补偿（§5.12 R-LOD-04）。
 
 ## 4. 坐标系
 

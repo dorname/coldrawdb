@@ -508,8 +508,8 @@ Design System：token / icon / 组件 / dark / motion，须与主原型壳层（
 
 - **位置**：`frontend-rs/src/editor_render.rs`（高亮态解析纯函数，如 `relation_render_width(base, related)` / `table_render_alpha(...)` + `draw_relation` 相关态分支源码锚点）
 - **断言**：
-  1. 选中一张表后：相关关系线线宽 = 默认 1.5×（`RELATED_RELATION_WIDTH_FACTOR`）且 alpha = 1；**主色强制 `palette.selected`、光晕 `palette.selected_soft`（8px，选中关系自身 10px）**；非相关关系线 alpha ≤ 0.25；非相关表 alpha ≤ 0.5；邻接表 alpha = 1
-  2. 选中一条关系后：该关系为选中态（3.5px 主线 + 10px 光晕），其两端表为相关态；共享端点表的其余关系按相关线渲染；其余按非相关处理
+  1. 选中一张表后：相关关系线线宽 = 默认 1.5×（`RELATED_RELATION_WIDTH_FACTOR`）且 alpha = 1；**主色强制 `palette.selected`、光晕 `palette.selected_soft`（10px，选中关系自身 12px）**；非相关关系线 alpha ≤ 0.25；非相关表 alpha ≤ 0.5；邻接表 alpha = 1
+  2. 选中一条关系后：该关系为选中态（3.5px 主线 + 12px 光晕），其两端表为相关态；共享端点表的其余关系按相关线渲染；其余按非相关处理
   3. 无选中：全部恢复默认线宽、关系解析色（§4.1/§4.2）与 alpha = 1
   4. 只读模式下同样的输入产生同样的视觉参数（只读不改变高亮反馈）
   5. crow's foot 端点记号与主线同色（选中/相关态不得回落基线色 `stroke`）——`draw_relation` 源码锚点
@@ -531,7 +531,7 @@ Design System：token / icon / 组件 / dark / motion，须与主原型壳层（
 
 | ID | 层级 | 说明 |
 |---|---|---|
-| UT-PE-HL-01 | UT | 选中高亮参数纯函数（相关线 1.5× + 选中色族 + 发光 halo / 非相关线 ≤0.25 / 非相关表 ≤0.5 / 端点同色） |
+| UT-PE-HL-01 | UT | 选中高亮参数纯函数（相关线 1.5× + 选中色族 + 发光 halo 10px/12px / 非相关线 ≤0.25 / 非相关表 ≤0.5 / 端点同色） |
 | ST-PE-10 | ST | 选中高亮与注释可读性 e2e 目视锚点（原 ST-PE-08 改号；fix-31 提亮：相关线选中色族探针断言） |
 
 ## 合并自 fix-issues-34-35-header-comment-lod-anchor（2026-09-28）
