@@ -6670,6 +6670,9 @@ pub fn dist_to_reference(
     tier: LodTier,
     comment_mode: CommentDisplay,
 ) -> Option<(f64, f64)> {
+    #[cfg(test)]
+    DIST_TO_REFERENCE_CALLS.with(|c| c.set(c.get() + 1));
+
     let from = tables.iter().find(|t| t.id == r.start_table_id)?;
     let to = tables.iter().find(|t| t.id == r.end_table_id)?;
 
@@ -6704,6 +6707,54 @@ pub fn dist_to_reference(
             Some((line_d, endpoint_dist(path.x1, path.y1, path.x2, path.y2)))
         }
     }
+}
+
+// R-HIT-07：测试探针，统计 dist_to_reference 被调用次数（线程局部，避免并行测试互相污染）。
+#[cfg(test)]
+thread_local! {
+    static DIST_TO_REFERENCE_CALLS: std::cell::Cell<usize> = std::cell::Cell::new(0);
+}
+
+/// R-HIT-07：关系线轴对齐包围盒（覆盖 bezier / orthogonal / straight 全部几何控制点）。
+/// 返回 `(x, y, w, h)` 世界坐标，None 表示表/字段缺失无法计算。
+pub fn reference_aabb(
+    tables: &[Table],
+    r: &Reference,
+    tier: LodTier,
+    comment_mode: CommentDisplay,
+) -> Option<(f64, f64, f64, f64)> {
+    let from = tables.iter().find(|t| t.id == r.start_table_id)?;
+    let to = tables.iter().find(|t| t.id == r.end_table_id)?;
+
+    let (min_x, min_y, max_x, max_y) = match effective_line_type(&r.line_type) {
+        "orthogonal" => {
+            let pts = calc_orthogonal_path_tier_with(from, &r.start_field_id, to, &r.end_field_id, tier, comment_mode, 1.0, 1.0);
+            let (mut min_x, mut min_y) = (f64::MAX, f64::MAX);
+            let (mut max_x, mut max_y) = (f64::MIN, f64::MIN);
+            for (px, py) in &pts {
+                min_x = min_x.min(*px);
+                min_y = min_y.min(*py);
+                max_x = max_x.max(*px);
+                max_y = max_y.max(*py);
+            }
+            (min_x, min_y, max_x, max_y)
+        }
+        "straight" => {
+            let (x1, y1, x2, y2) = calc_straight_path_tier_with(from, &r.start_field_id, to, &r.end_field_id, tier, comment_mode, 1.0, 1.0);
+            (x1.min(x2), y1.min(y2), x1.max(x2), y1.max(y2))
+        }
+        _ => {
+            // bezier 默认
+            let path = calc_path_tier_with(from, &r.start_field_id, to, &r.end_field_id, tier, comment_mode, 1.0, 1.0);
+            let min_x = path.x1.min(path.x2).min(path.cx1).min(path.cx2);
+            let min_y = path.y1.min(path.y2).min(path.cy1).min(path.cy2);
+            let max_x = path.x1.max(path.x2).max(path.cx1).max(path.cx2);
+            let max_y = path.y1.max(path.y2).max(path.cy1).max(path.cy2);
+            (min_x, min_y, max_x, max_y)
+        }
+    };
+
+    Some((min_x, min_y, max_x - min_x, max_y - min_y))
 }
 
 /// p0-fix 定点 3：纯函数 — (x, y) 命中哪条 reference 连线（UT-MM-33）
@@ -6758,7 +6809,15 @@ pub fn hit_test_reference_tier(
     zoom: f64,
 ) -> Option<String> {
     let mut best: Option<(f64, &str)> = None;
+    // R-HIT-07：AABB 外扩距离 = max(8px 主线带宽, 10px 端点热区) 按 zoom 转世界像素
+    let pad = REL_ENDPOINT_SIZE / zoom;
     for r in refs {
+        // AABB 预过滤：先剔除远离指针的关系，避免昂贵的 dist_to_reference 计算
+        let Some(aabb) = reference_aabb(tables, r, tier, comment_mode) else { continue };
+        let expanded = (aabb.0 - pad, aabb.1 - pad, aabb.2 + 2.0 * pad, aabb.3 + 2.0 * pad);
+        if !aabb_intersects((x, y, 0.0, 0.0), expanded) {
+            continue;
+        }
         if let Some((line_d, endpoint_d)) = dist_to_reference(tables, r, x, y, tier, comment_mode) {
             // fix-issue-47：主线命中带宽 8 屏幕像素；R-HIT-06：端点热区半径 REL_ENDPOINT_SIZE（10px）
             let line_ok = line_d * zoom <= 8.0;
@@ -7332,6 +7391,147 @@ mod tests {
                 "UT-PB-24: {lt} zoom=2.0 端点外侧 5.5px 不应命中（11 屏幕像素 > 10px 热区）"
             );
         }
+    }
+
+    /// UT-PB-25（perf-canvas-relation-hit-index / R-HIT-07）：200 条关系远距离点击 AABB 预过滤生效
+    #[test]
+    fn test_hit_test_reference_aabb_cull_ut_pb_25() {
+        let mk = |id: &str, x: f64, y: f64, fid: &str| Table {
+            id: id.into(),
+            name: id.into(),
+            x,
+            y,
+            color: "#000".into(),
+            comment: String::new(),
+            fields: vec![Field {
+                id: fid.into(),
+                name: fid.into(),
+                type_: "INT".into(),
+                default: String::new(),
+                check: String::new(),
+                primary: true,
+                unique: false,
+                not_null: false,
+                increment: false,
+                comment: String::new(),
+                tag: String::new(),
+                dict_code: String::new(),
+            }],
+            indices: Vec::new(),
+            width: None,
+            min_height: None,
+        };
+        let mut tables = Vec::new();
+        let mut refs = Vec::new();
+        for i in 0..200 {
+            let t1 = format!("t{i}a");
+            let t2 = format!("t{i}b");
+            tables.push(mk(&t1, i as f64 * 10.0, 0.0, "f1"));
+            tables.push(mk(&t2, i as f64 * 10.0 + 5.0, 0.0, "f2"));
+            refs.push(Reference {
+                id: format!("r{i}"),
+                name: String::new(),
+                start_table_id: t1,
+                end_table_id: t2,
+                start_field_id: "f1".into(),
+                end_field_id: "f2".into(),
+                type_: "one_to_many".into(),
+                on_delete: "RESTRICT".into(),
+                on_update: "RESTRICT".into(),
+                color: String::new(),
+                line_type: "bezier".into(),
+                stroke_style: "solid".into(),
+            });
+        }
+
+        DIST_TO_REFERENCE_CALLS.with(|c| c.set(0));
+        let hit = hit_test_reference(&tables, &refs, 5000.0, 5000.0, 1.0);
+        assert_eq!(hit, None, "UT-PB-25: 远距离点击应无命中");
+        assert_eq!(
+            DIST_TO_REFERENCE_CALLS.with(|c| c.get()),
+            0,
+            "UT-PB-25: AABB 预过滤应剔除全部 200 条关系，dist_to_reference 不得调用"
+        );
+    }
+
+    /// UT-PB-26（perf-canvas-relation-hit-index / R-HIT-07）：200 条关系近距离点击仍命中正确关系
+    #[test]
+    fn test_hit_test_reference_aabb_near_ut_pb_26() {
+        let mk = |id: &str, x: f64, y: f64, fid: &str| Table {
+            id: id.into(),
+            name: id.into(),
+            x,
+            y,
+            color: "#000".into(),
+            comment: String::new(),
+            fields: vec![Field {
+                id: fid.into(),
+                name: fid.into(),
+                type_: "INT".into(),
+                default: String::new(),
+                check: String::new(),
+                primary: true,
+                unique: false,
+                not_null: false,
+                increment: false,
+                comment: String::new(),
+                tag: String::new(),
+                dict_code: String::new(),
+            }],
+            indices: Vec::new(),
+            width: None,
+            min_height: None,
+        };
+        let mut tables = Vec::new();
+        let mut refs = Vec::new();
+        for i in 0..200 {
+            let t1 = format!("t{i}a");
+            let t2 = format!("t{i}b");
+            tables.push(mk(&t1, i as f64 * 10.0, 0.0, "f1"));
+            tables.push(mk(&t2, i as f64 * 10.0 + 5.0, 0.0, "f2"));
+            refs.push(Reference {
+                id: format!("r{i}"),
+                name: String::new(),
+                start_table_id: t1,
+                end_table_id: t2,
+                start_field_id: "f1".into(),
+                end_field_id: "f2".into(),
+                type_: "one_to_many".into(),
+                on_delete: "RESTRICT".into(),
+                on_update: "RESTRICT".into(),
+                color: String::new(),
+                line_type: "bezier".into(),
+                stroke_style: "solid".into(),
+            });
+        }
+
+        // 目标关系远离其它 200 条，但点击点落在其端点热区内
+        tables.push(mk("t_target_a", 5000.0, 5000.0, "f1"));
+        tables.push(mk("t_target_b", 5060.0, 5000.0, "f2"));
+        refs.push(Reference {
+            id: "r_target".into(),
+            name: String::new(),
+            start_table_id: "t_target_a".into(),
+            end_table_id: "t_target_b".into(),
+            start_field_id: "f1".into(),
+            end_field_id: "f2".into(),
+            type_: "one_to_many".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+            color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
+        });
+
+        let t_target_a = tables.iter().find(|t| t.id == "t_target_a").unwrap();
+        let t_target_b = tables.iter().find(|t| t.id == "t_target_b").unwrap();
+        let path = calc_path(t_target_a, "f1", t_target_b, "f2");
+        let hit = hit_test_reference(&tables, &refs, path.x2, path.y2 + 9.0, 1.0);
+        assert_eq!(
+            hit,
+            Some("r_target".to_string()),
+            "UT-PB-26: 近距离点击应命中目标关系 r_target"
+        );
     }
 
     /// UT-PB-20（fix-issues-42-44 / #43 R-HOV-02）：tooltip 文案纯函数

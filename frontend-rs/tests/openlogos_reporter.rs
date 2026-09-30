@@ -287,6 +287,9 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-PB-23",
     // fix-relation-mouse-hit-precision（R-HIT-06）：端点记号命中热区
     "UT-PB-24",
+    // perf-canvas-relation-hit-index（R-HIT-07）：关系线命中 AABB 预过滤
+    "UT-PB-25",
+    "UT-PB-26",
     // fix-issue-48（issue #48 R-LOD-10）：表维度卡宽上限放宽
     "UT-CR-TOPO-WIDTH-01",
     // fix-table-header-width-autofit（R-LOD-11）：表头行宽度需求不受 Tier 上限钳制
