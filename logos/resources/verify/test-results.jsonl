@@ -880,3 +880,5 @@
 {"id":"ST-FE-PROTO-08","status":"skip","timestamp":"2026-09-30T01:25:23Z","error":"requires wasm-pack or Playwright e2e harness"}
 {"id":"ST-S07-03","status":"skip","timestamp":"2026-09-30T01:25:23Z","error":"requires wasm-pack or Playwright e2e harness"}
 {"id":"ST-PU-20","status":"pass","duration_ms":10,"timestamp":"2026-09-30T01:25:23.472Z"}
+{"id":"ST-PB-11","status":"pass","duration_ms":1512,"timestamp":"2026-09-30T01:51:56.772Z"}
+{"id":"ST-PB-13","status":"pass","duration_ms":1505,"timestamp":"2026-09-30T01:51:58.340Z"}
