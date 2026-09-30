@@ -3223,10 +3223,13 @@ try {
   });
 
   // ─── ST-CR-TOPO-WIDTH-01：表维度下长中文注释卡宽放宽、可读性提升（fix-issue-48 / #48 R-LOD-10）───
+  // R-LOD-11 修订：Tier 上限仅约束字段行需求——本用例改由长字段行驱动宽度，
+  // 保证表维度（640）> 字段维度（480）的钳制结构可观测；表头需求驱动时两维度
+  // 均不受 Tier 上限钳制（ST-CR-HEADER-WIDTH-01 覆盖）。
   await run(["ST-CR-TOPO-WIDTH-01"], "表维度下长中文注释卡宽放宽且关系锚点同步", async page => {
     const mkT = (id, x, y, fid) => ({
-      id, name: "asset_object_registry_inventory_master", x, y, color: "", comment: "统一资产主表用于资产管理系统全局",
-      fields: [{ id: fid, name: fid, type_: "INT", default: "", check: "", primary: true, unique: false, not_null: true, increment: false, comment: "", tag: "", dict_code: "" }],
+      id, name: "asset_object_registry", x, y, color: "", comment: "统一资产主表",
+      fields: [{ id: fid, name: "very_long_field_name_for_layout_test_padding", type_: "VARCHAR_WITH_LONG_TYPE_NAME", default: "", check: "", primary: true, unique: false, not_null: true, increment: false, comment: "", tag: "", dict_code: "" }],
       indices: [],
     });
     const presetDiagram = {
@@ -3288,6 +3291,43 @@ try {
     const back = await relationEndpoints();
     assert.ok(Math.abs(back.x1 - detail.x1) < 2, "切回字段维度后 t1 右锚点应恢复");
     assert.ok(Math.abs(back.x2 - detail.x2) < 2, "切回字段维度后 t2 左锚点应恢复");
+  });
+
+  // ─── ST-CR-HEADER-WIDTH-01：字段维度下长中英文表头自适应加宽（fix-table-header-width-autofit / R-LOD-11）───
+  await run(["ST-CR-HEADER-WIDTH-01"], "字段维度下长中英文表头完整显示、auto 宽突破 480 不截断", async page => {
+    const mkF = (id, name, ty) => ({ id, name, type_: ty, default: "", check: "", primary: true, unique: false, not_null: true, increment: false, comment: "", tag: "", dict_code: "" });
+    // t1：auto 宽——表头需求（表名 18 ASCII + 注释 20 CJK + 6 ASCII + 计数/留白）≈515px > 480，
+    // R-LOD-11 下应突破 TABLE_WIDTH_MAX，注释不被 `…` 截断（draw 侧 truncate 与宽度同源）。
+    const longCmt = "资产类型字典；客户确认分类后由 seed 脚本初始化";
+    const mkT = (id, x, width) => ({
+      id, name: "asset_kind_catalog", x, y: 130, color: "", comment: longCmt,
+      fields: [mkF(`${id}-f1`, "id", "BIGINT")], indices: [],
+      ...(width !== undefined ? { width } : {}),
+    });
+    const presetDiagram = {
+      // t2 为显式宽 400 对照（width 语义回归由 UT-CR-HEADER-WIDTH-01 步骤 5 数值覆盖，
+      // e2e 侧以 t2 左缘锚点贴齐做烟雾级验证——左缘坐标与宽度解耦）。
+      tables: [mkT("t1", 100), mkT("t2", 1000, 400)],
+      references: [{ id: "r1", name: "", start_table_id: "t1", end_table_id: "t2", start_field_id: "t1-f1", end_field_id: "t2-f1",
+        type_: "one_to_many", on_delete: "RESTRICT", on_update: "RESTRICT", color: "", line_type: "", stroke_style: "" }],
+      areas: [], notes: [],
+    };
+    await installApi(page, { presetDiagram });
+    await login(page);
+    await createRoomAndEnter(page);
+
+    // 默认字段维度，直接读取首条关系线端点：起点右缘 = t1.x + 有效宽，终点左缘 = t2.x
+    const d = await page.locator('[data-testid="editor-canvas-container"] canvas').getAttribute("data-follow-path");
+    assert.ok(d && d.startsWith("M"), "关系线 data-follow-path 必须存在");
+    const nums = d.match(/-?\d+\.?\d*/g).map(Number);
+    const [x1, , , , , , x2] = nums;
+
+    const w1 = x1 - 100;
+    // THEN 1/2：auto 宽突破 480（表头行需求不被 Tier 上限钳制 → 注释完整可见不截断）
+    assert.ok(w1 > 480, `t1 auto 宽应突破 TABLE_WIDTH_MAX（w=${w1} > 480，表头注释不被钳制截断）`);
+    assert.ok(w1 <= 720, `t1 auto 宽应 ≤ TABLE_WIDTH_MAX_HEADER（w=${w1} ≤ 720）`);
+    // THEN 3：关系锚点随放宽后的宽度同源取缘——终点左缘贴齐 t2.x（不错位）
+    assert.ok(Math.abs(x2 - 1000) < 2, `t2 左锚点应贴齐 1000（x2=${x2}）`);
   });
 
   // ─── ST-S04-UI-17：房间卡片重命名（fix-issue-45-room-rename，issue #45，core-S04 §2.4） ──

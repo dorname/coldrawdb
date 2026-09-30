@@ -287,6 +287,8 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-PB-23",
     // fix-issue-48（issue #48 R-LOD-10）：表维度卡宽上限放宽
     "UT-CR-TOPO-WIDTH-01",
+    // fix-table-header-width-autofit（R-LOD-11）：表头行宽度需求不受 Tier 上限钳制
+    "UT-CR-HEADER-WIDTH-01",
     "UT-CR-WIDTH-01",
     "UT-CR-WIDTH-02",
     "UT-CR-WIDTH-03",
@@ -338,6 +340,8 @@ const ST_PASS_IDS: &[&str] = &[
     "ST-FE-S05-10",
     // fix-issue-48（issue #48 R-LOD-10）：表维度下长中文注释卡宽放宽 e2e
     "ST-CR-TOPO-WIDTH-01",
+    // fix-table-header-width-autofit（R-LOD-11）：字段维度长中英文表头完整显示 e2e
+    "ST-CR-HEADER-WIDTH-01",
     // feat-issue-50（issue #50）：ListView 按 Area 分组 / 关联表可视化 e2e
     "ST-SP-LIST-GROUP-01",
     "ST-SP-LIST-REL-01",

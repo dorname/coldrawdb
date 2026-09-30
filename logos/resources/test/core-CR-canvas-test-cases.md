@@ -621,10 +621,9 @@
 - **步骤**：
   1. 调用 `resolve_table_width_for(table, NameComment, 1.0, 1.0, LodTier::Detail)`
   2. 调用 `resolve_table_width_for(table, NameComment, 1.0, 1.0, LodTier::Topology)`
-- **断言**：
-  - 字段维度宽度 ≤ `TABLE_WIDTH_MAX`（480）
-  - 表维度宽度 > 字段维度宽度（上限放宽后长文本可撑宽）
-  - 表维度宽度 ≤ `TABLE_WIDTH_MAX_TOPOLOGY`（640）
+- **断言**（R-LOD-11 修订：Tier 上限仅约束字段行需求）：
+  - 长字段行驱动（长字段名 + 长类型行）时：字段维度宽度 = `TABLE_WIDTH_MAX`（480）、表维度宽度 = `TABLE_WIDTH_MAX_TOPOLOGY`（640）> 480——字段行钳制结构保持
+  - 表头需求驱动（长表名+长注释）时：两维度宽度均 ∈ (480, `TABLE_WIDTH_MAX_HEADER`（720)]——表头行不受 Tier 上限钳制
   - 空表/短名表在两种维度下均回落至 `TABLE_WIDTH`（230），宽度一致
 
 ### ST-CR-TOPO-WIDTH-01 — 表维度下长中文注释表卡完整可读
@@ -660,7 +659,8 @@
 - **断言**：
   - 步骤 1 宽度 > `TABLE_WIDTH_MAX`（480）——表头需求突破 Tier 上限
   - 步骤 1 宽度 ≤ `TABLE_WIDTH_MAX_HEADER`（720）
-  - 步骤 2 宽度 ≥ 步骤 1 宽度（Topology 下同口径，不小于 Detail 结果）且 > `TABLE_WIDTH_MAX_TOPOLOGY`（640）当表头需求落在 (640, 720]
+  - 步骤 2 宽度 ≤ `TABLE_WIDTH_MAX_HEADER`（720）——Topology 下表头行同样仅受绝对上限钳制（zoom=1.0 时表维度 effective 字号更低，估算值可小于 Detail，不做跨维度大小比较）
+  - 步骤 2b 构造长注释表使 Topology 表头需求 ∈ (640, 720]：宽度 > `TABLE_WIDTH_MAX_TOPOLOGY`（640）且 ≤ `TABLE_WIDTH_MAX_HEADER`；同表 Detail 表头需求超 720 钳到 `TABLE_WIDTH_MAX_HEADER`
   - 步骤 3 宽度 = `TABLE_WIDTH`（230）——短表头行为不变（R-LOD-10 既有口径不回退）
   - 步骤 4 宽度 = `TABLE_WIDTH_MAX_HEADER`（720）——绝对上限钳制
   - 步骤 5 宽度 = 400——显式宽度语义不变（不做内容自适应）
@@ -675,7 +675,7 @@
   1. 表卡渲染宽度 > 480（canvas 探针 / `data-follow-path` 端点几何或 PUT payload 宽度口径读取）
   2. 表头注释文本无 `…` 截断：canvas 文本探针断言注释完整可见（或可见长度 ≥ 注释全长的 95%）
   3. 表名与注释并排不重叠，字段计数仍右对齐可见
-  4. 显式拉宽到 400 的对照表宽度保持 400（用户固定宽不受自适应影响）
+  4. 显式宽 400 对照表：`table.width > 0` 不参与内容自适应（数值断言由 UT-CR-HEADER-WIDTH-01 步骤 5 覆盖；e2e 以对照表左缘锚点贴齐做烟雾级验证）
 - **reporter**：`ST-CR-HEADER-WIDTH-01` 写入 `logos/resources/verify/test-results.jsonl`
 
 ### 附录 A 追加

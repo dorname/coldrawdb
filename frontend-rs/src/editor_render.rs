@@ -25,6 +25,9 @@ pub const TABLE_WIDTH_MAX: f64 = 480.0;
 /// 表维度自适应表宽上限（fix-issue-48-topology-card-readability / #48）：
 /// 表维度下字号经 LOD 补偿变大，中英并排长文本更易截断，故单独放宽上限。
 pub const TABLE_WIDTH_MAX_TOPOLOGY: f64 = 640.0;
+/// 表头行宽度需求绝对上限（fix-table-header-width-autofit / R-LOD-11）：
+/// 表头行（表名+注释并排）的宽度需求不受 Tier 上限钳制，仅受此绝对上限约束（防御超长注释）。
+pub const TABLE_WIDTH_MAX_HEADER: f64 = 720.0;
 const TABLE_HEADER_HEIGHT: f64 = 43.0;
 const FIELD_ROW_HEIGHT: f64 = 35.0;
 /// 便签渲染 / 命中尺寸（与 draw_note 一致）
@@ -3402,8 +3405,16 @@ pub fn resolve_table_width_for(
     };
     match table.width {
         Some(w) if w > 0 => w as f64,
-        _ => estimate_content_width_for(table, comment_mode, zoom, label_scale, tier)
-            .clamp(TABLE_WIDTH, max_w),
+        _ => {
+            // R-LOD-11：字段行需求沿用 Tier 上限钳制（R-LOD-10 不回退）；表头行需求
+            // 单独参与取最大，仅受绝对上限 TABLE_WIDTH_MAX_HEADER 钳制——中英并排
+            // 长表头（表名+注释）突破 480px 仍完整显示，不因 Tier 上限被 `…` 截断。
+            let (header_need, fields_need) =
+                estimate_content_width_parts_for(table, comment_mode, zoom, label_scale, tier);
+            fields_need
+                .clamp(TABLE_WIDTH, max_w)
+                .max(header_need.min(TABLE_WIDTH_MAX_HEADER))
+        }
     }
 }
 
@@ -3422,6 +3433,23 @@ pub fn estimate_content_width_for(
     label_scale: f64,
     tier: LodTier,
 ) -> f64 {
+    // R-LOD-11：等价于表头行需求与字段行需求的较大者（保持既有语义）。
+    let (header_need, fields_need) =
+        estimate_content_width_parts_for(table, comment_mode, zoom, label_scale, tier);
+    header_need.max(fields_need)
+}
+
+/// R-LOD-11：拆分「表头行需求」（表名 + 注释 + 字段计数占位 + 留白）与
+/// 「字段行需求」（各字段行宽度最大值）的 effective 字号内容宽度估算。
+/// 返回 `(header_need, fields_need)`；`resolve_table_width_for` 对两者
+/// 分别施加不同的钳制结构（字段行受 Tier 上限，表头行仅受绝对上限）。
+pub fn estimate_content_width_parts_for(
+    table: &Table,
+    comment_mode: CommentDisplay,
+    zoom: f64,
+    label_scale: f64,
+    tier: LodTier,
+) -> (f64, f64) {
     // 与 draw_table_body 布局常量对齐
     const LEFT_PAD: f64 = 11.0;
     const RIGHT_PAD: f64 = 11.0;
@@ -3450,10 +3478,12 @@ pub fn estimate_content_width_for(
         }
     };
 
+    // 表头行需求：表名 + 注释并排累加 + 字段计数占位 + 留白
     let table_label = comment_mode.primary(&table.name, &table.comment);
-    let mut max_w = LEFT_PAD + measure_text_approx(table_label) * scale_factor + HEADER_COUNT_RESERVE + RIGHT_PAD;
+    let mut header_need =
+        LEFT_PAD + measure_text_approx(table_label) * scale_factor + HEADER_COUNT_RESERVE + RIGHT_PAD;
     if let Some(cmt) = comment_mode.secondary(&table.comment) {
-        max_w = LEFT_PAD
+        header_need = LEFT_PAD
             + measure_text_approx(table_label) * scale_factor
             + HEADER_NAME_CMT_GAP
             + measure_text_approx(cmt) * scale_factor
@@ -3461,6 +3491,8 @@ pub fn estimate_content_width_for(
             + RIGHT_PAD;
     }
 
+    // 字段行需求：各字段行宽度最大值（无字段时为 0，宽度下限由 TABLE_WIDTH 兜底）
+    let mut fields_need: f64 = 0.0;
     for field in &table.fields {
         let label = comment_mode.primary(&field.name, &field.comment);
         // #33：徽章占位与 draw_field_badges 同源（field_badges_width）。
@@ -3482,9 +3514,9 @@ pub fn estimate_content_width_for(
         } else {
             LEFT_PAD + badges_extra + label_w + FIELD_GAP + type_w + RIGHT_PAD
         };
-        max_w = max_w.max(row);
+        fields_need = fields_need.max(row);
     }
-    max_w
+    (header_need, fields_need)
 }
 
 /// ASCII≈8 / CJK≈14 的近似测宽（#20 UT 可测）。
@@ -8611,27 +8643,51 @@ mod tests {
         };
 
         // 使用 zoom=0.5：表维度字号补偿生效，且表维度上限 640 高于字段维度 480。
-        // 长表头文本在两种维度下估算均超过各自上限，字段维度夹紧到 480，表维度夹紧到 640。
+        // R-LOD-11 后 Tier 上限仅约束字段行需求：改用长字段行驱动宽度，
+        // 验证 Topology（640）> Detail（480）的字段行钳制结构仍然成立。
+        table.name = "t1".into();
+        table.comment = String::new();
+        table.fields[0].name = "very_long_field_name_for_layout_test_padding".into();
+        table.fields[0].type_ = "VARCHAR_WITH_LONG_TYPE_NAME".into();
         let w_detail = resolve_table_width_for(
             &table, CommentDisplay::NameComment, 0.5, 1.0, LodTier::Detail);
         let w_topology = resolve_table_width_for(
             &table, CommentDisplay::NameComment, 0.5, 1.0, LodTier::Topology);
 
         assert!(
-            w_detail <= TABLE_WIDTH_MAX,
-            "UT-CR-TOPO-WIDTH-01: 字段维度宽度应 ≤ TABLE_WIDTH_MAX（{w_detail} ≤ {TABLE_WIDTH_MAX})"
+            (w_detail - TABLE_WIDTH_MAX).abs() < 1e-9,
+            "UT-CR-TOPO-WIDTH-01: 长字段行在字段维度应钳到 TABLE_WIDTH_MAX（{w_detail} == {TABLE_WIDTH_MAX})"
         );
         assert!(
-            w_topology <= TABLE_WIDTH_MAX_TOPOLOGY,
-            "UT-CR-TOPO-WIDTH-01: 表维度宽度应 ≤ TABLE_WIDTH_MAX_TOPOLOGY（{w_topology} ≤ {TABLE_WIDTH_MAX_TOPOLOGY})"
+            (w_topology - TABLE_WIDTH_MAX_TOPOLOGY).abs() < 1e-9,
+            "UT-CR-TOPO-WIDTH-01: 长字段行在表维度应钳到 TABLE_WIDTH_MAX_TOPOLOGY（{w_topology} == {TABLE_WIDTH_MAX_TOPOLOGY})"
         );
         assert!(
             w_topology > w_detail,
-            "UT-CR-TOPO-WIDTH-01: 表维度上限放宽后长文本应撑宽（{w_topology} > {w_detail})"
+            "UT-CR-TOPO-WIDTH-01: 表维度上限放宽后长字段行应撑宽（{w_topology} > {w_detail})"
         );
         assert!(
             w_topology > TABLE_WIDTH_MAX,
             "UT-CR-TOPO-WIDTH-01: 表维度应能突破字段维度上限（{w_topology} > {TABLE_WIDTH_MAX})"
+        );
+
+        // R-LOD-11：表头需求驱动时（长表名+长注释）不再受 Tier 上限钳制，
+        // 两维度宽度均突破 480、仅受绝对上限 720 钳制。
+        table.name = "asset_object_registry_for_inventory".into();
+        table.comment = "统一资产主表用于资产管理系统全局".into();
+        table.fields[0].name = "id".into();
+        table.fields[0].type_ = "INT".into();
+        let w_detail_hdr = resolve_table_width_for(
+            &table, CommentDisplay::NameComment, 0.5, 1.0, LodTier::Detail);
+        let w_topology_hdr = resolve_table_width_for(
+            &table, CommentDisplay::NameComment, 0.5, 1.0, LodTier::Topology);
+        assert!(
+            w_detail_hdr > TABLE_WIDTH_MAX && w_detail_hdr <= TABLE_WIDTH_MAX_HEADER,
+            "UT-CR-TOPO-WIDTH-01: 表头需求驱动时 Detail 应 ∈ (480, 720]（实际 {w_detail_hdr}）"
+        );
+        assert!(
+            w_topology_hdr > TABLE_WIDTH_MAX && w_topology_hdr <= TABLE_WIDTH_MAX_HEADER,
+            "UT-CR-TOPO-WIDTH-01: 表头需求驱动时 Topology 应 ∈ (480, 720]（实际 {w_topology_hdr}）"
         );
 
         // 短名/空注释时两者均回落至 TABLE_WIDTH
@@ -8648,6 +8704,147 @@ mod tests {
         assert!(
             (w_detail_short - TABLE_WIDTH).abs() < 1e-9,
             "UT-CR-TOPO-WIDTH-01: 短文本应回落至 TABLE_WIDTH（{w_detail_short})"
+        );
+    }
+
+    /// UT-CR-HEADER-WIDTH-01 — 表头行宽度需求不受 Tier 上限钳制
+    /// （fix-table-header-width-autofit / R-LOD-11）
+    #[test]
+    fn ut_cr_header_width_01_header_need_breaks_tier_cap() {
+        use crate::editor_core::types::{Field, Table};
+        use crate::editor_core::CommentDisplay;
+
+        let mk_field = |name: &str, ty: &str| Field {
+            id: "fa".into(),
+            name: name.into(),
+            type_: ty.into(),
+            default: String::new(),
+            check: String::new(),
+            primary: true,
+            unique: false,
+            not_null: true,
+            increment: false,
+            comment: String::new(),
+            tag: String::new(),
+            dict_code: String::new(),
+        };
+        let mk_table = |name: &str, comment: &str, fields: Vec<Field>| Table {
+            id: "ta".into(),
+            name: name.into(),
+            x: 0.0,
+            y: 0.0,
+            color: String::new(),
+            comment: comment.into(),
+            fields,
+            indices: Vec::new(),
+            width: None,
+            min_height: None,
+        };
+
+        // 步骤 1/2：表名 18 ASCII（144px）+ 注释 20 CJK + 5 ASCII（320px），
+        // 表头行需求 ≈507px > TABLE_WIDTH_MAX（480），字段行短。
+        let mut table = mk_table(
+            "asset_kind_catalog",
+            "资产类型字典；客户确认分类后由 seed 脚本初始化",
+            vec![mk_field("id", "BIGINT")],
+        );
+        let w_detail = resolve_table_width_for(
+            &table, CommentDisplay::NameComment, 1.0, 1.0, LodTier::Detail);
+        let w_topology = resolve_table_width_for(
+            &table, CommentDisplay::NameComment, 1.0, 1.0, LodTier::Topology);
+
+        // 断言 1：表头需求突破 Tier 上限（480）——字段维度不再被钳到 480
+        assert!(
+            w_detail > TABLE_WIDTH_MAX,
+            "UT-CR-HEADER-WIDTH-01: Detail 宽度应突破 TABLE_WIDTH_MAX（{w_detail} > {TABLE_WIDTH_MAX}）"
+        );
+        // 断言 2：仍受绝对上限 TABLE_WIDTH_MAX_HEADER（720）钳制
+        assert!(
+            w_detail <= TABLE_WIDTH_MAX_HEADER,
+            "UT-CR-HEADER-WIDTH-01: Detail 宽度应 ≤ TABLE_WIDTH_MAX_HEADER（{w_detail} ≤ {TABLE_WIDTH_MAX_HEADER}）"
+        );
+        // 断言 3：Topology 下表头行同样仅受绝对上限钳制（不受 640 Tier 上限钳制）。
+        // 注：zoom=1.0 时 Topology effective 字号（表名 11 / 注释 10）低于 Detail 表名 13，
+        // 估算值可小于 Detail——宽度按各自维度字号估算，不做跨维度大小比较。
+        assert!(
+            w_topology <= TABLE_WIDTH_MAX_HEADER,
+            "UT-CR-HEADER-WIDTH-01: Topology 宽度应 ≤ TABLE_WIDTH_MAX_HEADER（{w_topology} ≤ {TABLE_WIDTH_MAX_HEADER}）"
+        );
+        // 断言 3b：Topology 表头需求（未钳前）落在 (640, 720] 时宽度应突破 640——
+        // 40 CJK 注释使 Topology 表头需求落在该区间，同时 Detail 侧需求超 720 钳到上限。
+        let mid = mk_table(
+            "asset_kind_catalog",
+            "资产类型字典；客户确认分类后由 seed 脚本初始化并持续扩展维护更多业务类别与层级",
+            vec![mk_field("id", "BIGINT")],
+        );
+        let w_mid_detail = resolve_table_width_for(
+            &mid, CommentDisplay::NameComment, 1.0, 1.0, LodTier::Detail);
+        let w_mid_topology = resolve_table_width_for(
+            &mid, CommentDisplay::NameComment, 1.0, 1.0, LodTier::Topology);
+        let (hdr_mid_topology, _) = estimate_content_width_parts_for(
+            &mid, CommentDisplay::NameComment, 1.0, 1.0, LodTier::Topology);
+        assert!(
+            hdr_mid_topology > TABLE_WIDTH_MAX_TOPOLOGY && hdr_mid_topology <= TABLE_WIDTH_MAX_HEADER,
+            "UT-CR-HEADER-WIDTH-01: 前置——Topology 表头需求应 ∈ (640, 720]（实际 {hdr_mid_topology}）"
+        );
+        assert!(
+            w_mid_topology > TABLE_WIDTH_MAX_TOPOLOGY,
+            "UT-CR-HEADER-WIDTH-01: Topology 表头需求 {hdr_mid_topology} ∈ (640, 720] 时宽度应 > 640（实际 {w_mid_topology}）"
+        );
+        assert!(
+            w_mid_topology <= TABLE_WIDTH_MAX_HEADER,
+            "UT-CR-HEADER-WIDTH-01: Topology 宽度应 ≤ 720（{w_mid_topology}）"
+        );
+        assert!(
+            (w_mid_detail - TABLE_WIDTH_MAX_HEADER).abs() < 1e-9,
+            "UT-CR-HEADER-WIDTH-01: 同表 Detail 表头需求超 720 应钳到上限（{w_mid_detail}）"
+        );
+
+        // 步骤 3：短表头（1 ASCII、无注释、短字段）回落 TABLE_WIDTH——既有口径不回退
+        let short = mk_table("t", "", vec![mk_field("id", "INT")]);
+        let w_short = resolve_table_width_for(
+            &short, CommentDisplay::NameComment, 1.0, 1.0, LodTier::Detail);
+        assert!(
+            (w_short - TABLE_WIDTH).abs() < 1e-9,
+            "UT-CR-HEADER-WIDTH-01: 短表头应回落至 TABLE_WIDTH（{w_short} == {TABLE_WIDTH}）"
+        );
+
+        // 步骤 4：超长注释（8×8 CJK ≈ 896px，表头需求 > 720）钳到绝对上限
+        let long = mk_table(
+            "asset_kind_catalog",
+            "资产类型字典；客户确认分类后由 seed 脚本初始化，后续将扩展更多类别与层级说明文字",
+            vec![mk_field("id", "BIGINT")],
+        );
+        let w_long = resolve_table_width_for(
+            &long, CommentDisplay::NameComment, 1.0, 1.0, LodTier::Detail);
+        assert!(
+            (w_long - TABLE_WIDTH_MAX_HEADER).abs() < 1e-9,
+            "UT-CR-HEADER-WIDTH-01: 超长表头应钳到 TABLE_WIDTH_MAX_HEADER（{w_long} == {TABLE_WIDTH_MAX_HEADER}）"
+        );
+
+        // 步骤 5：显式宽度语义不变——不做内容自适应
+        table.width = Some(400);
+        let w_fixed = resolve_table_width_for(
+            &table, CommentDisplay::NameComment, 1.0, 1.0, LodTier::Detail);
+        assert!(
+            (w_fixed - 400.0).abs() < 1e-9,
+            "UT-CR-HEADER-WIDTH-01: 显式宽度应原样返回（{w_fixed} == 400）"
+        );
+
+        // 断言 7：字段行需求超上限（长字段名 + 长类型）仍钳在 Tier 上限——字段行钳制结构不变
+        let wide_fields = mk_table(
+            "t2",
+            "",
+            vec![mk_field(
+                "very_long_field_name_for_layout_test_padding",
+                "VARCHAR_WITH_LONG_TYPE_NAME",
+            )],
+        );
+        let w_fields_detail = resolve_table_width_for(
+            &wide_fields, CommentDisplay::NameComment, 1.0, 1.0, LodTier::Detail);
+        assert!(
+            (w_fields_detail - TABLE_WIDTH_MAX).abs() < 1e-9,
+            "UT-CR-HEADER-WIDTH-01: 字段行超上限仍应钳到 TABLE_WIDTH_MAX（{w_fields_detail} == {TABLE_WIDTH_MAX}）"
         );
     }
 
