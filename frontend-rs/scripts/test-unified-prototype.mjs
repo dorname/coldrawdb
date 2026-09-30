@@ -129,7 +129,7 @@ await withPage("ST-PU-05", "编辑表字段与拖拽", async page => {
 await withPage("ST-PU-06", "创建字段关系", async page => {
   await enterEditor(page);
   const before = await snapshot(page);
-  await page.locator('[data-testid="tool-relationship"]').click();
+  await page.locator('[data-testid="tool-relationship-create"]').click();
   await page.locator('[data-action="field-click"][data-field="users-email"]').click();
   await page.locator('[data-action="field-click"][data-field="posts-title"]').click();
   const after = await snapshot(page);
@@ -139,7 +139,7 @@ await withPage("ST-PU-06", "创建字段关系", async page => {
 await withPage("ST-PU-20", "拖字段出线创建关系", async page => {
   await enterEditor(page);
   const before = await snapshot(page);
-  await page.locator('[data-testid="tool-relationship"]').click();
+  await page.locator('[data-testid="tool-relationship-create"]').click();
   await page.evaluate(() => {
     const app = document.querySelector("#app");
     window.__appIdentity = app;

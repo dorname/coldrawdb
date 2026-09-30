@@ -459,7 +459,7 @@ try {
 
     // 写操作禁用：新建表 / 关系 / 邀请
     assert.equal(await page.locator('[data-testid="tool-add-table"]').isDisabled(), true);
-    assert.equal(await page.locator('[data-testid="tool-relationship"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-testid="tool-relationship-create"]').isDisabled(), true);
     assert.equal(await page.locator('[data-testid="btn-invite"]').isDisabled(), true);
     // 只读提示：状态栏角色标识 viewer
     await page.locator('[data-testid="status-role"]').getByText("viewer").waitFor();

@@ -33,6 +33,7 @@ use crate::icons::{
     IconAdd, IconAddArea, IconAddNote, IconAddTable, IconArrowLeft, IconBox, IconChevronLeft, IconChevronRight,
     IconClose, IconDelete, IconEdit, IconEnum, IconExport, IconImport, IconKey, IconMinus, IconMoon, IconMore,
     IconActivity, IconEye, IconEyeOff, IconLogo, IconPan, IconRedo, IconRefresh, IconRelationship,
+    IconRelationshipCreate, IconRelationshipSelect,
     IconSelect,
     IconSearch, IconSettings, IconShare, IconSun, IconType, IconUndo, IconUsers, IconWarning,
 };
@@ -181,17 +182,19 @@ fn shortcut_event_is_text_target(ke: &web_sys::KeyboardEvent) -> bool {
 pub enum ToolShortcut {
     CreateTable,
     Relationship,
+    RelationshipSelect,
     /// #36：表/字段维度切换（纯视图操作，只读下也可用）
     ViewDimension,
 }
 
 /// 判定 keydown 是否映射到工具快捷键；带 Ctrl/Meta/Alt 修饰时不拦截（如 Ctrl+R 刷新）。
-pub fn tool_shortcut_for_key(key: &str, ctrl: bool, meta: bool, alt: bool) -> Option<ToolShortcut> {
+pub fn tool_shortcut_for_key(key: &str, ctrl: bool, meta: bool, alt: bool, shift: bool) -> Option<ToolShortcut> {
     if ctrl || meta || alt {
         return None;
     }
     match key.to_ascii_lowercase().as_str() {
         "t" => Some(ToolShortcut::CreateTable),
+        "r" if shift => Some(ToolShortcut::RelationshipSelect),
         "r" => Some(ToolShortcut::Relationship),
         "v" => Some(ToolShortcut::ViewDimension),
         _ => None,
@@ -269,7 +272,7 @@ pub fn setup_editor_tool_shortcuts(
         }
         // #36 R-VIEW-DIM-02：V 切换维度——纯视图操作，先于只读门控（只读/Viewer 可用）
         if matches!(
-            tool_shortcut_for_key(&ke.key(), ke.ctrl_key(), ke.meta_key(), ke.alt_key()),
+            tool_shortcut_for_key(&ke.key(), ke.ctrl_key(), ke.meta_key(), ke.alt_key(), ke.shift_key()),
             Some(ToolShortcut::ViewDimension)
         ) {
             on_toggle_view_dimension();
@@ -342,7 +345,7 @@ pub fn setup_editor_tool_shortcuts(
             return;
         }
         let Some(shortcut) =
-            tool_shortcut_for_key(&ke.key(), ke.ctrl_key(), ke.meta_key(), ke.alt_key())
+            tool_shortcut_for_key(&ke.key(), ke.ctrl_key(), ke.meta_key(), ke.alt_key(), ke.shift_key())
         else {
             return;
         };
@@ -351,6 +354,10 @@ pub fn setup_editor_tool_shortcuts(
             ToolShortcut::Relationship => {
                 active_tool.set(ActiveTool::Relationship);
                 rel_tool_state.set(RelToolState::PickSource);
+            }
+            ToolShortcut::RelationshipSelect => {
+                active_tool.set(ActiveTool::RelationshipSelect);
+                rel_tool_state.set(RelToolState::Idle);
             }
             // #36：ViewDimension 已在只读门控之前处理并 return，此处不可达
             ToolShortcut::ViewDimension => {}
@@ -419,6 +426,7 @@ pub fn setup_escape_layer_handler(
         if matches!(
             active_tool.get_untracked(),
             ActiveTool::Relationship
+                | ActiveTool::RelationshipSelect
                 | ActiveTool::Marquee
                 | ActiveTool::NewArea
                 | ActiveTool::NewNote
@@ -597,6 +605,8 @@ pub enum ActiveTool {
     /// 框选多表（空白拖框；点击表累加），对齐 GitHub #5
     Marquee,
     Relationship,
+    /// 选中关系工具：点击关系线即可选中，不触发创建关系手势
+    RelationshipSelect,
     Pan,
     /// p0-fix 定点 2：区域 / 便签创建工具
     NewArea,
@@ -5682,7 +5692,7 @@ pub fn ToolRail(
             <button
                 class="cdb-tool-btn"
                 class:cdb-is-active=move || active_tool.get() == ActiveTool::Relationship
-                data-testid="tool-relationship"
+                data-testid="tool-relationship-create"
                 disabled=rel_disabled
                 on:click=move |_| {
                     if rel_disabled() {
@@ -5692,8 +5702,24 @@ pub fn ToolRail(
                     rel_tool_state.set(RelToolState::PickSource);
                 }
             >
-                <IconBox size="md"><IconRelationship /></IconBox>
+                <IconBox size="md"><IconRelationshipCreate /></IconBox>
                 <span class="cdb-tool-tip">"创建关系 "<kbd>"R"</kbd></span>
+            </button>
+            <button
+                class="cdb-tool-btn"
+                class:cdb-is-active=move || active_tool.get() == ActiveTool::RelationshipSelect
+                data-testid="tool-relationship-select"
+                disabled=rel_disabled
+                on:click=move |_| {
+                    if rel_disabled() {
+                        return;
+                    }
+                    active_tool.set(ActiveTool::RelationshipSelect);
+                    rel_tool_state.set(RelToolState::Idle);
+                }
+            >
+                <IconBox size="md"><IconRelationshipSelect /></IconBox>
+                <span class="cdb-tool-tip">"选中关系 "<kbd>"Shift+R"</kbd></span>
             </button>
             <button
                 class="cdb-tool-btn"
@@ -11200,6 +11226,12 @@ pub fn AppRoot(
         marquee_active.set(active_tool.get() == ActiveTool::Marquee);
     });
 
+    // ux-canvas-relation-tool-split：选中关系工具信号
+    let relationship_select_active: RwSignal<bool> = create_rw_signal(false);
+    create_effect(move |_| {
+        relationship_select_active.set(active_tool.get() == ActiveTool::RelationshipSelect);
+    });
+
     // p0-fix 定点 2：创建工具信号 — 画布十字光标 + 拖框建区域 / 点击放便签
     let create_tool: RwSignal<Option<crate::editor_render::CreateToolKind>> =
         create_rw_signal(None);
@@ -13853,6 +13885,7 @@ pub fn AppRoot(
                         on_deselect=on_canvas_deselect
                         on_dblclick_blank=on_dblclick_blank
                         rel_tool_active=rel_tool_active
+                        relationship_select_active=relationship_select_active
                         on_field_pick=on_field_pick
                         on_relation_drag_start=on_relation_drag_start
                         on_relation_drop=on_relation_drop
@@ -15607,6 +15640,47 @@ mod tests {
     use super::*;
     use crate::editor_core::types::{Area, Field, Note, Reference, Table};
     use crate::editor_core::CollabPendingOp;
+
+    /// UT-PB-27（ux-canvas-relation-tool-split）：关系工具拆分为创建/选中两个入口
+    #[test]
+    fn test_relationship_tool_split_ut_pb_27() {
+        // 快捷键口径：R = 创建关系，Shift+R = 选中关系
+        assert_eq!(
+            tool_shortcut_for_key("r", false, false, false, false),
+            Some(ToolShortcut::Relationship),
+            "UT-PB-27: 单独 R 应进入创建关系工具"
+        );
+        assert_eq!(
+            tool_shortcut_for_key("R", false, false, false, true),
+            Some(ToolShortcut::RelationshipSelect),
+            "UT-PB-27: Shift+R 应进入选中关系工具"
+        );
+        // 大写不带 Shift 不应命中（与 shift 语义区分）
+        assert_eq!(
+            tool_shortcut_for_key("R", false, false, false, false),
+            Some(ToolShortcut::Relationship),
+            "UT-PB-27: 大写 R 无 shift 仍映射到创建关系"
+        );
+
+        // 源码锚点：两个独立按钮存在
+        let src = include_str!("editor_panels.rs");
+        assert!(
+            src.contains(r#"data-testid=\"tool-relationship-create\""#),
+            "UT-PB-27: ToolRail 必须提供 tool-relationship-create 按钮"
+        );
+        assert!(
+            src.contains(r#"data-testid=\"tool-relationship-select\""#),
+            "UT-PB-27: ToolRail 必须提供 tool-relationship-select 按钮"
+        );
+        assert!(
+            src.contains("ActiveTool::RelationshipSelect"),
+            "UT-PB-27: ActiveTool 必须含 RelationshipSelect 变体"
+        );
+        assert!(
+            src.contains("relationship_select_active"),
+            "UT-PB-27: Canvas 必须接收 relationship_select_active 信号"
+        );
+    }
 
     fn make_table(id: &str, name: &str) -> Table {
         Table {

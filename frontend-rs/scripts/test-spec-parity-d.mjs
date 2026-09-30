@@ -514,7 +514,7 @@ try {
     await page.keyboard.press("Escape");
     await page.locator('[data-testid="rel-tool-hint"]').waitFor({ state: "hidden" });
     assert.equal(
-      await page.locator('[data-testid="tool-relationship"].cdb-is-active').count(), 0,
+      await page.locator('[data-testid="tool-relationship-create"].cdb-is-active').count(), 0,
       "Esc 必须退出关系工具",
     );
     await page.locator('[data-testid="room-editor-page"]:visible').waitFor();
@@ -590,7 +590,7 @@ try {
     await createRoomAndEnter(page);
 
     await page.keyboard.press("r");
-    await page.locator('[data-testid="tool-relationship"].cdb-is-active').waitFor();
+    await page.locator('[data-testid="tool-relationship-create"].cdb-is-active').waitFor();
     await page.locator('[data-testid="rel-tool-hint"]:visible').waitFor();
   });
 
@@ -612,7 +612,7 @@ try {
     assert.equal(state.putCalls, 0, "Viewer 按 T 不得触发保存");
     assert.equal(await page.locator('[data-testid="inspector-table-name"]').count(), 0, "Viewer 按 T 不得建表");
     assert.equal(
-      await page.locator('[data-testid="tool-relationship"].cdb-is-active').count(), 0,
+      await page.locator('[data-testid="tool-relationship-create"].cdb-is-active').count(), 0,
       "Viewer 按 R 不得进入关系工具",
     );
     assert.equal(await page.locator('[data-testid="rel-tool-hint"]').count(), 0);
@@ -1257,7 +1257,7 @@ try {
     // Inspector 可关闭；关键操作仍可达（在视口内）
     await page.locator('[data-testid="btn-inspector-close"]').click();
     await page.locator('[data-testid="inspector"]').waitFor({ state: "hidden" });
-    for (const testid of ["btn-more-menu", "tool-add-table", "tool-relationship"]) {
+    for (const testid of ["btn-more-menu", "tool-add-table", "tool-relationship-create"]) {
       const box = await page.locator(`[data-testid="${testid}"]`).boundingBox();
       assert.ok(box && box.x >= 0 && box.x + box.width <= 720, `${testid} 必须在 720px 视口内可达`);
     }
@@ -1340,7 +1340,7 @@ try {
     await waitSaved(page);
     await waitForCanvasStable(page);
 
-    // 不按 R、不点 tool-relationship
+    // 不按 R、不点 tool-relationship-create
     assert.equal(await page.locator('[data-testid="rel-tool-hint"]').count(), 0, "Idle 下不得出现关系工具提示");
     const from = await canvasPoint(page, TABLE1_PORT_END);
     const to = await canvasPoint(page, TABLE2_FIELD_AFTER_NUDGE);

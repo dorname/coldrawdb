@@ -106,7 +106,7 @@ try {
   await page.locator('[data-testid="tool-add-table"]').click();
   const addTable = await assertSingleRender(page, addRevision, "新增表");
 
-  await page.locator('[data-testid="tool-relationship"]').click();
+  await page.locator('[data-testid="tool-relationship-create"]').click();
   await page.locator('[data-action="field-click"][data-table="users"][data-field="users-email"]').click();
   await page.waitForTimeout(0);
   const relationRevision = revisionFrom(await page.locator('[data-testid="revision-display"]').textContent());

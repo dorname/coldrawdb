@@ -861,6 +861,8 @@ mod leptos_canvas {
         on_relation_drag_start: Option<Box<dyn Fn(String, String) + 'static>>,
         on_relation_drop: Option<Box<dyn Fn(String, String, String, String) + 'static>>,
         on_relation_drag_cancel: Option<Box<dyn Fn() + 'static>>,
+        /// ux-canvas-relation-tool-split：选中关系工具激活（仅命中关系线，不触发创建）
+        relationship_select_active: RwSignal<bool>,
         /// 表拖动松手（吸附写回 store 后）通知调用方持久化（D 批：dirty + schedule_save）
         on_table_drop: Option<Box<dyn Fn() + 'static>>,
         /// fix-remote-github-issues / #5：多表选中集合（Shift 框选写入；拖动其中一张时整组平移）
@@ -1384,6 +1386,7 @@ mod leptos_canvas {
             let on_area_pick = on_area_pick.clone();
             let schedule_paint = schedule_paint.clone();
             let current_transform = current_transform.clone();
+            let relationship_select_active = relationship_select_active.clone();
             move |ev: PointerEvent| {
                 // R-PERF-05：先把 rAF 待落账的 wheel/pan 意图落账，hit test 基于已提交的 transform
                 let t_now = current_transform();
@@ -1425,6 +1428,42 @@ mod leptos_canvas {
                         }
                         return;
                     }
+                }
+                // ux-canvas-relation-tool-split：选中关系工具下仅命中关系线，命中则选中，否则清选
+                if relationship_select_active.get_untracked() {
+                    if let Some(ref_id) = super::hit_test_reference_tier(
+                        &tables,
+                        &refs,
+                        dx,
+                        dy,
+                        super::tier_for_dimension(store.view_dimension.get_untracked()),
+                        comment_mode,
+                        t_now.zoom,
+                    ) {
+                        selected_id.set(None);
+                        selected_ref_id.set(Some(ref_id.clone()));
+                        selected_area_id.set(None);
+                        selected_note_id.set(None);
+                        selected_table_ids.set(Vec::new());
+                        selected_note_ids.set(Vec::new());
+                        selected_area_ids.set(Vec::new());
+                        if let Some(cb) = on_reference_pick.as_ref() {
+                            cb(ref_id);
+                        }
+                    } else {
+                        selected_id.set(None);
+                        selected_ref_id.set(None);
+                        selected_area_id.set(None);
+                        selected_note_id.set(None);
+                        selected_table_ids.set(Vec::new());
+                        selected_note_ids.set(Vec::new());
+                        selected_area_ids.set(Vec::new());
+                        if let Some(cb) = on_deselect.as_ref() {
+                            cb();
+                        }
+                    }
+                    schedule_paint();
+                    return;
                 }
                 if rel_tool_active.get_untracked() {
                     // #3 reopen：仅左右连接点起拖连；字段行点击仍走 on_field_pick（两点选取）

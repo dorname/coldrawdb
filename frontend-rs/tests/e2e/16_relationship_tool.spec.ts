@@ -33,7 +33,7 @@ test.describe("Phase B Relationship Tool E2E", () => {
     await page.click('[data-testid="btn-confirm"]');
 
     // Step 3: 选中关系工具（ToolRail）
-    await page.click('[data-testid="tool-relationship"]');
+    await page.click('[data-testid="tool-relationship-create"]');
 
     // Step 4: 双击第一个表的字段 → 双击第二个表的字段
     const firstField = page.locator('[data-testid^="field-"]').first();
@@ -67,7 +67,7 @@ test.describe("Phase B Relationship Tool E2E", () => {
     await page.fill('[data-testid="table-name-input"]', "orders");
     await page.click('[data-testid="btn-confirm"]');
 
-    await page.click('[data-testid="tool-relationship"]');
+    await page.click('[data-testid="tool-relationship-create"]');
     const canvas = page.locator('[data-testid="editor-canvas"]');
     const box = await canvas.boundingBox();
     if (!box) {
@@ -102,7 +102,7 @@ test.describe("Phase B Relationship Tool E2E", () => {
     await page.fill('[data-testid="table-name-input"]', "b");
     await page.click('[data-testid="btn-confirm"]');
 
-    await page.click('[data-testid="tool-relationship"]');
+    await page.click('[data-testid="tool-relationship-create"]');
     await page.locator('[data-testid^="field-"]').first().dblclick();
     await page.locator('[data-testid^="field-"]').last().dblclick();
 

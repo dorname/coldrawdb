@@ -318,7 +318,7 @@ try {
     await page.locator('[data-testid="share-readonly"]').waitFor();
     assert.equal(await page.locator('[data-testid="auth-gate"]:visible').count(), 0);
     assert.equal(await page.locator('[data-testid="tool-add-table"]').isDisabled(), true);
-    assert.equal(await page.locator('[data-testid="tool-relationship"]').isDisabled(), true);
+    assert.equal(await page.locator('[data-testid="tool-relationship-create"]').isDisabled(), true);
     assert.equal(await page.locator('[data-testid="diagram-title"]').isEditable(), false);
     assert.equal(state.requests.some(item => /POST|PUT|PATCH|DELETE/.test(item) && item.includes("/diagrams")), false);
   });

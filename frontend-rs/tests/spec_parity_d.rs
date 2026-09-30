@@ -18,17 +18,17 @@ use frontend_rs::editor_render::GRID_SIZE;
 #[test]
 fn tool_shortcut_key_mapping_matrix() {
     assert_eq!(
-        tool_shortcut_for_key("t", false, false, false),
+        tool_shortcut_for_key("t", false, false, false, false),
         Some(ToolShortcut::CreateTable),
         "ST-KB-T-01: 无修饰 t 必须映射建表"
     );
     assert_eq!(
-        tool_shortcut_for_key("T", false, false, false),
+        tool_shortcut_for_key("T", false, false, false, false),
         Some(ToolShortcut::CreateTable),
         "ST-KB-T-01: 大写 T（Shift）同样映射建表"
     );
     assert_eq!(
-        tool_shortcut_for_key("r", false, false, false),
+        tool_shortcut_for_key("r", false, false, false, false),
         Some(ToolShortcut::Relationship),
         "ST-KB-R-01: 无修饰 r 必须映射关系工具"
     );
@@ -40,13 +40,13 @@ fn tool_shortcut_key_mapping_matrix() {
         ("r", false, false, true),
     ] {
         assert_eq!(
-            tool_shortcut_for_key(key, ctrl, meta, alt),
+            tool_shortcut_for_key(key, ctrl, meta, alt, false),
             None,
             "带修饰键不得触发工具快捷键"
         );
     }
-    assert_eq!(tool_shortcut_for_key("k", false, false, false), None);
-    assert_eq!(tool_shortcut_for_key("Escape", false, false, false), None);
+    assert_eq!(tool_shortcut_for_key("k", false, false, false, false), None);
+    assert_eq!(tool_shortcut_for_key("Escape", false, false, false, false), None);
 }
 
 /// core-KB §1 既有合同支撑：输入框焦点时快捷键不抢焦点

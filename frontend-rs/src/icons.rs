@@ -175,6 +175,14 @@ pub fn IconRelationship() -> impl IntoView {
     view! { <Icon path="M4 7 L22 7 M4 13 L22 13 M4 19 L22 19 M2 7 L4 7 L4 9 M22 13 L24 13 L24 15 M2 19 L4 19 L4 21" /> }
 }
 #[component]
+pub fn IconRelationshipCreate() -> impl IntoView {
+    view! { <Icon path="M4 7 L22 7 M4 13 L22 13 M4 19 L22 19 M2 7 L4 7 L4 9 M22 13 L24 13 L24 15 M2 19 L4 19 L4 21 M18 3 L24 3 L24 9" /> }
+}
+#[component]
+pub fn IconRelationshipSelect() -> impl IntoView {
+    view! { <Icon path="M4 7 L22 7 M4 13 L22 13 M4 19 L22 19 M2 7 L4 7 L4 9 M22 13 L24 13 L24 15 M2 19 L4 19 L4 21 M20 3 L26 9 M20 9 L26 3" /> }
+}
+#[component]
 pub fn IconPan() -> impl IntoView {
     view! { <Icon path="M9 11 L9 5 A1.5 1.5 0 0 1 12 5 L12 11 M12 11 L12 4 A1.5 1.5 0 0 1 15 4 L15 11 M15 11 L15 6 A1.5 1.5 0 0 1 18 6 L18 13 M18 13 L18 9 A1.5 1.5 0 0 1 21 9 L21 16 A6 6 0 0 1 15 22 L11 22 A4 4 0 0 1 7 18 L7 13" /> }
 }
