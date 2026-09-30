@@ -290,6 +290,14 @@ Table users {
 - 选中行高亮（`state.listSel` 语义：{table_id, field_id}）；**切换树选中表时清空字段行选中态**；双击字段行 → 切回画布并选中该表（保留 ST-SP-LIST-01 既有语义）
 - 无表 → 整体空态提示，不布局塌陷；当前选中表被删除（如画布侧操作）→ 回落选中首张剩余表
 
+**字体层级（ux-canvas-listview-font-size）**：
+
+- 字段网格主文字（`.cdb-list-view-table`）为 `14px`。
+- 表树节点主文字（`.cdb-list-tree-node`）为 `14px`。
+- 字段网格内输入框/下拉框（`.cdb-list-view-table td .cdb-form-input/select`）为 `14px`。
+- 表树节点注释（`.cdb-list-tree-comment`）、节点计数（`.cdb-list-tree-node__count`）为 `12px`。
+- 分组头（`.cdb-list-tree__group`、`.cdb-list-tree-group`）保持 `11px` 以维持层级。
+
 **V1 边界**（明确不做）：
 
 - ❌ 主题域树 / 多表 Tab 条 / 逻辑实体 / 多表透视（PDManer 左树体系——本变更的表树仅为表级扁平列表，不含主题域分组层级）

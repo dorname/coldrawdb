@@ -314,7 +314,8 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-SP-LIST-REL-01",
     // layout-after-import-command / #23（src/layout.rs + command_palette 单测）
     "UT-PB-16",
-    "UT-CR-LAYOUT-01",
+    // ux-canvas-listview-font-size：ListView 主文字 14px 字号合同
+    "UT-LV-FONT-01",
 ];
 
 // change-20260826-1330-complete-skipped-e2e：21 个 V2 主链路 ST-FE-* 由 skip 提升为 pass
