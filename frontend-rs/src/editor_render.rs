@@ -6661,6 +6661,7 @@ pub fn point_near_bezier(path: &RelationPath, x: f64, y: f64, tol: f64) -> bool 
 /// fix-issues-42-44（#44 R-HIT-02/03，R-HIT-04）：纯函数 — 点到关系线的最小距离
 /// （线型同源：bezier 走 calc_path_tier 贝塞尔近似；orthogonal 走 calc_orthogonal_path_tier
 /// 折线顶点——与 draw 的几何严格同口径）。端点表缺失返回 None。
+/// 返回 (主线距离, 端点距离)。None 表示表/字段缺失无法计算。
 pub fn dist_to_reference(
     tables: &[Table],
     r: &Reference,
@@ -6668,9 +6669,18 @@ pub fn dist_to_reference(
     y: f64,
     tier: LodTier,
     comment_mode: CommentDisplay,
-) -> Option<f64> {
+) -> Option<(f64, f64)> {
     let from = tables.iter().find(|t| t.id == r.start_table_id)?;
     let to = tables.iter().find(|t| t.id == r.end_table_id)?;
+
+    // R-HIT-06：端点记号命中热区——关系线两端 crow's foot / single bar 也是
+    // 可点击区域，端点距离按 REL_ENDPOINT_SIZE 独立阈值判定。
+    let endpoint_dist = |x1: f64, y1: f64, x2: f64, y2: f64| {
+        let d1 = ((x - x1).powi(2) + (y - y1).powi(2)).sqrt();
+        let d2 = ((x - x2).powi(2) + (y - y2).powi(2)).sqrt();
+        d1.min(d2)
+    };
+
     match effective_line_type(&r.line_type) {
         "orthogonal" => {
             let pts = calc_orthogonal_path_tier_with(from, &r.start_field_id, to, &r.end_field_id, tier, comment_mode, 1.0, 1.0);
@@ -6678,11 +6688,20 @@ pub fn dist_to_reference(
             for w in pts.windows(2) {
                 best = best.min(dist_point_segment(x, y, w[0].0, w[0].1, w[1].0, w[1].1));
             }
-            Some(best)
+            let (x1, y1) = pts.first()?;
+            let (x2, y2) = pts.last()?;
+            Some((best, endpoint_dist(*x1, *y1, *x2, *y2)))
+        }
+        "straight" => {
+            let (x1, y1, x2, y2) = calc_straight_path_tier_with(from, &r.start_field_id, to, &r.end_field_id, tier, comment_mode, 1.0, 1.0);
+            let line_d = dist_point_segment(x, y, x1, y1, x2, y2);
+            Some((line_d, endpoint_dist(x1, y1, x2, y2)))
         }
         _ => {
+            // bezier 默认
             let path = calc_path_tier_with(from, &r.start_field_id, to, &r.end_field_id, tier, comment_mode, 1.0, 1.0);
-            Some(dist_point_bezier(&path, x, y))
+            let line_d = dist_point_bezier(&path, x, y);
+            Some((line_d, endpoint_dist(path.x1, path.y1, path.x2, path.y2)))
         }
     }
 }
@@ -6740,10 +6759,12 @@ pub fn hit_test_reference_tier(
 ) -> Option<String> {
     let mut best: Option<(f64, &str)> = None;
     for r in refs {
-        if let Some(d) = dist_to_reference(tables, r, x, y, tier, comment_mode) {
-            // fix-issue-47：命中带宽 8 屏幕像素等价（世界距离 * zoom）
-            if d * zoom <= 8.0 && best.map_or(true, |(bd, _)| d < bd) {
-                best = Some((d, r.id.as_str()));
+        if let Some((line_d, endpoint_d)) = dist_to_reference(tables, r, x, y, tier, comment_mode) {
+            // fix-issue-47：主线命中带宽 8 屏幕像素；R-HIT-06：端点热区半径 REL_ENDPOINT_SIZE（10px）
+            let line_ok = line_d * zoom <= 8.0;
+            let endpoint_ok = endpoint_d * zoom <= REL_ENDPOINT_SIZE;
+            if (line_ok || endpoint_ok) && best.map_or(true, |(bd, _)| line_d.min(endpoint_d) < bd) {
+                best = Some((line_d.min(endpoint_d), r.id.as_str()));
             }
         }
     }
@@ -7211,6 +7232,106 @@ mod tests {
             None,
             "UT-PB-22: zoom=2.0 时 5 世界像素应不命中"
         );
+    }
+
+    /// UT-PB-24（fix-relation-mouse-hit-precision / R-HIT-06）：端点记号命中热区
+    #[test]
+    fn test_hit_test_reference_endpoint_hotzone_ut_pb_24() {
+        use crate::editor_core::types::Field;
+        let mk = |id: &str, x: f64, y: f64, fid: &str| Table {
+            id: id.into(),
+            name: id.into(),
+            x,
+            y,
+            color: "#000".into(),
+            comment: String::new(),
+            fields: vec![Field {
+                id: fid.into(),
+                name: fid.into(),
+                type_: "INT".into(),
+                default: String::new(),
+                check: String::new(),
+                primary: true,
+                unique: false,
+                not_null: false,
+                increment: false,
+                comment: String::new(),
+                tag: String::new(),
+                dict_code: String::new(),
+            }],
+            indices: Vec::new(),
+            width: None,
+            min_height: None,
+        };
+        let mkref = |lt: &str| Reference {
+            id: "r1".into(),
+            name: String::new(),
+            start_table_id: "t1".into(),
+            end_table_id: "t2".into(),
+            start_field_id: "f1".into(),
+            end_field_id: "f2".into(),
+            type_: "one_to_many".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+            color: String::new(),
+            line_type: lt.into(),
+            stroke_style: "solid".into(),
+        };
+        let tables = vec![mk("t1", 100.0, 130.0, "f1"), mk("t2", 600.0, 130.0, "f2")];
+
+        for lt in ["bezier", "orthogonal", "straight"] {
+            let refs = vec![mkref(lt)];
+            let (x2, y2) = match lt {
+                "orthogonal" => {
+                    let pts = calc_orthogonal_path_tier(
+                        &tables[0], "f1", &tables[1], "f2", LodTier::Detail,
+                    );
+                    let (x2, y2) = pts.last().copied().unwrap();
+                    (x2, y2)
+                }
+                "straight" => {
+                    let (_x1, _y1, x2, y2) = calc_straight_path(
+                        &tables[0], "f1", &tables[1], "f2",
+                    );
+                    (x2, y2)
+                }
+                _ => {
+                    let path = calc_path(&tables[0], "f1", &tables[1], "f2",
+                    );
+                    (path.x2, path.y2)
+                }
+            };
+
+            // 端点中心外侧 9px：距端点中心 9px（在 10px 热区内），距主线 9px（超 8px 主线带宽）
+            assert_eq!(
+                hit_test_reference(&tables, &refs, x2, y2 + 9.0, 1.0
+                ),
+                Some("r1".to_string()),
+                "UT-PB-24: {lt} 端点外侧 9px 应命中（端点热区生效）"
+            );
+
+            // 端点中心外侧 11px：超出 REL_ENDPOINT_SIZE=10px 热区，不应命中
+            assert_eq!(
+                hit_test_reference(&tables, &refs, x2, y2 + 11.0, 1.0
+                ),
+                None,
+                "UT-PB-24: {lt} 端点外侧 11px 不应命中（超出端点热区）"
+            );
+
+            // zoom=2.0：端点热区半径等效 10 屏幕像素，4.5 世界像素（9 屏幕像素）命中
+            assert_eq!(
+                hit_test_reference(&tables, &refs, x2, y2 + 4.5, 2.0),
+                Some("r1".to_string()),
+                "UT-PB-24: {lt} zoom=2.0 端点外侧 4.5px 应命中（9 屏幕像素 <= 10px 热区）"
+            );
+
+            // zoom=2.0：5.5 世界像素 = 11 屏幕像素，超出 10px 热区
+            assert_eq!(
+                hit_test_reference(&tables, &refs, x2, y2 + 5.5, 2.0),
+                None,
+                "UT-PB-24: {lt} zoom=2.0 端点外侧 5.5px 不应命中（11 屏幕像素 > 10px 热区）"
+            );
+        }
     }
 
     /// UT-PB-20（fix-issues-42-44 / #43 R-HOV-02）：tooltip 文案纯函数

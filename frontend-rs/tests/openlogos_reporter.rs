@@ -285,6 +285,8 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-PB-22",
     // fix-issue-47（issue #47 R-HL-REF-03）：关系线选中时端点表视觉高亮
     "UT-PB-23",
+    // fix-relation-mouse-hit-precision（R-HIT-06）：端点记号命中热区
+    "UT-PB-24",
     // fix-issue-48（issue #48 R-LOD-10）：表维度卡宽上限放宽
     "UT-CR-TOPO-WIDTH-01",
     // fix-table-header-width-autofit（R-LOD-11）：表头行宽度需求不受 Tier 上限钳制
@@ -382,6 +384,8 @@ const ST_PASS_IDS: &[&str] = &[
     "ST-PB-12",
     // fix-issue-47 / #47：关系线选中高亮关系线与两端表（ST-PB-13 由 parity-d 上报）
     "ST-PB-13",
+    // fix-relation-mouse-hit-precision（R-HIT-06）：端点记号附近 10px 热区选中关系（ST-PB-14 由 parity-d 上报）
+    "ST-PB-14",
     // G 批既有 e2e（#7–#18 交付）：本机 webServer 偶发失败时声明式保底，避免 Gate 3.6 回退
     "ST-CR-COLOR-01",
     "ST-CR-COMMENT-01",

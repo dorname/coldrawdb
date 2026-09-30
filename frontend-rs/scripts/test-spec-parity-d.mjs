@@ -21,6 +21,7 @@
 //   ST-PB-11         点击关系线选中后 hl 探针暴露 sel_ref_id（fix-issues-42-44 / #44）
 // fix-issue-47-relation-hit-precision-and-highlight 新增：
 //   ST-PB-13         点击关系线高亮关系线与两端表（R-HL-REF-01~03）
+//   ST-PB-14         点击端点记号附近 10px 热区选中关系（fix-relation-mouse-hit-precision / R-HIT-06）
 // p0-fix 定点 3 新增：
 //   ST-PB-03         点击连线选中 + Inspector 详情/删除（不弹详情模态）
 //   ST-PB-04         选中连线 Delete / Backspace 双键删除落账 0 条
@@ -3108,6 +3109,42 @@ try {
     const p = await probe();
     assert.ok(Array.isArray(p.rel_endpoint_ids), "rel_endpoint_ids 必须为数组");
     assert.deepEqual(new Set(p.rel_endpoint_ids), new Set(["t1", "t2"]), "选中关系线的两端表必须为 t1 与 t2");
+
+    // 点击空白清除高亮
+    const blank = await canvasPoint(page, { x: 465, y: 400 });
+    await page.mouse.click(blank.x, blank.y);
+    await page.waitForFunction(
+      () => {
+        const p2 = JSON.parse(window.__cdb_hl_probe);
+        return p2 && p2.sel_ref === false && p2.sel_ref_id === null;
+      }, null, { timeout: 4_000, polling: 100 },
+    );
+  });
+
+  // ─── ST-PB-14：点击端点记号附近 10px 热区选中关系（fix-relation-mouse-hit-precision / R-HIT-06）──
+  await run(["ST-PB-14"], "点击端点记号附近 10px 热区选中关系", async page => {
+    const mkT = (id, x, y, fid) => ({
+      id, name: id, x, y, color: "", comment: "",
+      fields: [{ id: fid, name: fid, type_: "INT", default: "", check: "", primary: true, unique: false, not_null: true, increment: false, comment: "", tag: "", dict_code: "" }],
+      indices: [],
+    });
+    const presetDiagram = {
+      tables: [mkT("t1", 100, 130, "f1"), mkT("t2", 600, 130, "f2")],
+      references: [{ id: "r1", name: "", start_table_id: "t1", end_table_id: "t2", start_field_id: "f1", end_field_id: "f2",
+        type_: "one_to_many", on_delete: "RESTRICT", on_update: "RESTRICT", color: "", line_type: "", stroke_style: "" }],
+      areas: [], notes: [],
+    };
+    await installApi(page, { presetDiagram });
+    await login(page);
+    await createRoomAndEnter(page);
+    await page.waitForFunction(() => !!window.__cdb_hl_probe, null, { timeout: 8_000 });
+
+    // R-HIT-06：点击右端端点中心垂直向下 9px 处（距主线 9px > 8px 主线带宽；距端点中心 9px <= 10px 热区）
+    const endpoint = await canvasPoint(page, { x: 600, y: 199.5 });
+    await page.mouse.click(endpoint.x, endpoint.y);
+    await page.waitForFunction(
+      () => JSON.parse(window.__cdb_hl_probe)?.sel_ref_id === "r1", null, { timeout: 4_000, polling: 100 },
+    );
 
     // 点击空白清除高亮
     const blank = await canvasPoint(page, { x: 465, y: 400 });
