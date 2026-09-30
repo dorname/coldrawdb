@@ -109,26 +109,24 @@ view! {
 | `IconSave` | 保存 | `IconSaveStroked` |
 | `IconShare` | 分享 | `IconShareStroked` |
 
-### 4.4 画布对象（5 个，main 自建）
+### 4.4 画布对象（ToolRail 主图标）
 
-| 图标 | 用途 | 替换原 emoji | 接线位置 |
+| 图标 | 用途 | 视觉描述 | 接线位置 |
 |---|---|---|---|
-| `IconSelect` | 选择工具 | `↖` | ToolRail `tool-select` |
-| `IconAdd` | 新建菜单 | `⊕` | ToolRail `tool-new-menu` |
-| `IconRelationship` | 关系工具 | `🔗` | ToolRail `tool-relationship` |
-| `IconPan` | 平移工具 | `✋` | ToolRail `tool-pan` |
-| `IconAddTable` | 新建表（菜单项，可选） | — | tool-new-menu dropdown |
+| `IconPan` | 平移画布 | 手形轮廓 | ToolRail `tool-pan` |
+| `IconMarquee` | 框选多表 | 虚线矩形 | ToolRail `tool-marquee` |
+| `IconAddTable` | 新建表 | 表格网格 + 加号 | ToolRail `tool-add-table` |
+| `IconAddArea` | 添加区域 | 矩形 + 四角支架 | ToolRail `tool-new-area` |
+| `IconAddNote` | 添加便签 | 折角便签 + 横线 | ToolRail `tool-new-note` |
+| `IconRelationshipCreate` | 创建关系 | 两方块 + 连线 + 加号 | ToolRail `tool-relationship-create` |
+| `IconRelationshipSelect` | 选中关系 | 两方块 + 连线 + 对勾 | ToolRail `tool-relationship-select` |
+| `IconDictionary` | 数据字典 | 两页书本/字典 | ToolRail `toolrail-dicts` |
+| `IconSearch` | 搜索与命令 | 放大镜 | ToolRail `tool-search` |
+| `IconActivity` | 协作动态 | 心跳折线 | ToolRail `tool-activity` |
+| `IconSettings` | 画布设置 | 齿轮 | ToolRail `tool-settings` |
 
+> `IconSelect` 保留为备用选择指针；ToolRail 框选入口改用 `IconMarquee`。
 > **R1 验收**：`editor_panels.rs` 中 ToolRail / AppBar / StatusBar / IO Drawer 不得再使用 Emoji/Unicode 作为图标占位；Logo 字母 `C` 保留为品牌字标。
-
-### 4.4a 关系工具拆分图标（ux-canvas-relation-tool-split）
-
-| 图标 ID | 用途 | 占位符 | 使用位置 |
-|---|---|---|---|
-| `IconRelationshipCreate` | 创建关系工具 | `🔗` | ToolRail `cdb-tool-rail-relationship-create` |
-| `IconRelationshipSelect` | 选中关系工具 | `↖`（或指针箭头） | ToolRail `cdb-tool-rail-relationship-select` |
-
-> V1 可用现有 `IconRelationship` 加区分样式（如创建态带“+”、选中态为纯链接）作为占位；后续 `ux-toolrail-icon-refresh` 提案再统一替换为最终 SVG。
 
 ### 4.5 字段类型徽章（12 个，Phase 1a spec §3）
 

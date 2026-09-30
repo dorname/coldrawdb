@@ -394,14 +394,19 @@ V1 的 280px 左栏 7 Tab 已在 **Phase A** 中废弃（`redesign-phase-a-layou
 
 | 按钮 | 图标（E2） | 提示 | data-testid |
 |---|---|---|---|
-| 新建表 | `<IconAddTable />` | "新建表 (T)" | `cdb-tool-rail-add-table` |
-| 新建区域 | `<IconAddArea />` | "新建区域" | `cdb-tool-rail-add-area` |
-| 新建便签 | `<IconAddNote />` | "新建便签" | `cdb-tool-rail-add-note` |
-| 创建关系 | `<IconRelationshipCreate />` | "创建关系 (R)" | `cdb-tool-rail-relationship-create` |
-| 选中关系 | `<IconRelationshipSelect />` | "选中关系 (Shift+R)" | `cdb-tool-rail-relationship-select` |
-| 平移 | `<IconPan />` | "平移画布" | `cdb-tool-rail-pan` |
+| 平移 | `<IconPan />` | "平移画布" | `tool-pan` |
+| 框选 | `<IconMarquee />` | "框选多表" | `tool-marquee` |
+| 创建关系 | `<IconRelationshipCreate />` | "创建关系 (R)" | `tool-relationship-create` |
+| 选中关系 | `<IconRelationshipSelect />` | "选中关系 (Shift+R)" | `tool-relationship-select` |
+| 新建表 | `<IconAddTable />` | "新建表 (T)" | `tool-add-table` |
+| 添加区域 | `<IconAddArea />` | "添加区域" | `tool-new-area` |
+| 添加便签 | `<IconAddNote />` | "添加便签" | `tool-new-note` |
+| 数据字典 | `<IconDictionary />` | "数据字典" | `toolrail-dicts` |
+| 搜索与命令 | `<IconSearch />` | "搜索与命令 (⌘K)" | `tool-search` |
+| 协作动态 | `<IconActivity />` | "协作动态" | `tool-activity` |
+| 画布设置 | `<IconSettings />` | "画布设置" | `tool-settings` |
 
-> 原 `cdb-tool-rail-relationship` 按钮拆分为 `cdb-tool-rail-relationship-create` 与 `cdb-tool-rail-relationship-select` 两个独立入口。
+> 原 `tool-relationship` 按钮拆分为 `tool-relationship-create` 与 `tool-relationship-select` 两个独立入口；框选入口由 `IconSelect` 改为独立 `IconMarquee`，字典入口由 `IconEnum` 改为 `IconDictionary`。
 
 **Issues 折叠面板**（E3 Collapse 组件）：
 

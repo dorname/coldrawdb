@@ -31,10 +31,9 @@ use crate::editor_render::{zoom_in, zoom_out, zoom_reset, Transform};
 use crate::splitter::{Splitter, SplitterKind};
 use crate::icons::{
     IconAdd, IconAddArea, IconAddNote, IconAddTable, IconArrowLeft, IconBox, IconChevronLeft, IconChevronRight,
-    IconClose, IconDelete, IconEdit, IconEnum, IconExport, IconImport, IconKey, IconMinus, IconMoon, IconMore,
+    IconClose, IconDelete, IconDictionary, IconEdit, IconEnum, IconExport, IconImport, IconKey, IconMarquee, IconMinus, IconMoon, IconMore,
     IconActivity, IconEye, IconEyeOff, IconLogo, IconPan, IconRedo, IconRefresh, IconRelationship,
     IconRelationshipCreate, IconRelationshipSelect,
-    IconSelect,
     IconSearch, IconSettings, IconShare, IconSun, IconType, IconUndo, IconUsers, IconWarning,
 };
 use leptos::*;
@@ -5686,7 +5685,7 @@ pub fn ToolRail(
                     }
                 }
             >
-                <IconBox size="md"><IconSelect /></IconBox>
+                <IconBox size="md"><IconMarquee /></IconBox>
                 <span class="cdb-tool-tip">"框选多表"</span>
             </button>
             <button
@@ -5779,7 +5778,7 @@ pub fn ToolRail(
                 data-testid="toolrail-dicts"
                 on:click=move |_| on_toggle_dicts()
             >
-                <IconBox size="md"><IconEnum /></IconBox>
+                <IconBox size="md"><IconDictionary /></IconBox>
                 <span class="cdb-tool-tip">"数据字典"</span>
             </button>
             <button

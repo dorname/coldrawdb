@@ -160,35 +160,43 @@ pub fn IconRefresh() -> impl IntoView {
 // ============================================================
 #[component]
 pub fn IconAddTable() -> impl IntoView {
-    view! { <Icon path="M4 2 L20 2 A4 4 0 0 1 22 4 L22 14 M14 22 L4 22 A4 4 0 0 1 1 18 L1 4 A4 4 0 0 1 5 2 M22 17 L22 25 M18 21 L26 21 M1 8 L22 8" /> }
+    view! { <Icon path="M4 4 L22 4 L22 22 L4 22 Z M4 10 L22 10 M4 16 L22 16 M10 4 L10 22 M18 18 L23 18 M20.5 15.5 L20.5 20.5" /> }
 }
 #[component]
 pub fn IconAddArea() -> impl IntoView {
-    view! { <Icon path="M3 5 L23 5 L23 21 L3 21 Z M7 3 L9 3 L9 7 L7 7 Z M19 19 L21 19 L21 23 L19 23 Z" /> }
+    view! { <Icon path="M6 6 L20 6 L20 20 L6 20 Z M3 3 L8 3 M3 3 L3 8 M23 23 L18 23 M23 23 L23 18" /> }
 }
 #[component]
 pub fn IconAddNote() -> impl IntoView {
-    view! { <Icon path="M4 4 L20 4 L20 20 L4 20 Z M4 9 L20 9 M4 14 L20 14 M9 4 L9 20 M14 4 L14 20" /> }
+    view! { <Icon path="M6 4 L20 4 L20 18 L14 18 L6 24 L6 4 Z M9 10 L17 10 M9 14 L15 14" /> }
 }
 #[component]
 pub fn IconRelationship() -> impl IntoView {
-    view! { <Icon path="M4 7 L22 7 M4 13 L22 13 M4 19 L22 19 M2 7 L4 7 L4 9 M22 13 L24 13 L24 15 M2 19 L4 19 L4 21" /> }
+    view! { <Icon path="M5 6 L11 6 L11 12 L5 12 Z M15 14 L21 14 L21 20 L15 20 Z M11 9 L15 17" /> }
 }
 #[component]
 pub fn IconRelationshipCreate() -> impl IntoView {
-    view! { <Icon path="M4 7 L22 7 M4 13 L22 13 M4 19 L22 19 M2 7 L4 7 L4 9 M22 13 L24 13 L24 15 M2 19 L4 19 L4 21 M18 3 L24 3 L24 9" /> }
+    view! { <Icon path="M5 6 L11 6 L11 12 L5 12 Z M15 14 L21 14 L21 20 L15 20 Z M11 9 L15 17 M18 16 L23 16 M20.5 13.5 L20.5 18.5" /> }
 }
 #[component]
 pub fn IconRelationshipSelect() -> impl IntoView {
-    view! { <Icon path="M4 7 L22 7 M4 13 L22 13 M4 19 L22 19 M2 7 L4 7 L4 9 M22 13 L24 13 L24 15 M2 19 L4 19 L4 21 M20 3 L26 9 M20 9 L26 3" /> }
+    view! { <Icon path="M5 6 L11 6 L11 12 L5 12 Z M15 14 L21 14 L21 20 L15 20 Z M11 9 L15 17 M17 18 L20 21 L25 14" /> }
 }
 #[component]
 pub fn IconPan() -> impl IntoView {
-    view! { <Icon path="M9 11 L9 5 A1.5 1.5 0 0 1 12 5 L12 11 M12 11 L12 4 A1.5 1.5 0 0 1 15 4 L15 11 M15 11 L15 6 A1.5 1.5 0 0 1 18 6 L18 13 M18 13 L18 9 A1.5 1.5 0 0 1 21 9 L21 16 A6 6 0 0 1 15 22 L11 22 A4 4 0 0 1 7 18 L7 13" /> }
+    view! { <Icon path="M13 4 C15 4 16 6 16 8 L16 13 L18 13 C20 13 21 15 20 17 L17 22 C16 22 15 23 13 23 C10 23 8 21 8 18 L8 8 C8 6 10 4 13 4 Z" /> }
 }
 #[component]
 pub fn IconSelect() -> impl IntoView {
-    view! { <Icon path="M4 4 L4 11 L11 11 M4 4 L20 20 M20 20 L20 13 L13 13" /> }
+    view! { <Icon path="M5 5 L10 5 M13 5 L21 5 M21 5 L21 10 M21 13 L21 21 M21 21 L16 21 M13 21 L5 21 M5 21 L5 16 M5 13 L5 5" /> }
+}
+#[component]
+pub fn IconMarquee() -> impl IntoView {
+    view! { <Icon path="M5 5 L10 5 M13 5 L21 5 M21 5 L21 10 M21 13 L21 21 M21 21 L16 21 M13 21 L5 21 M5 21 L5 16 M5 13 L5 5" /> }
+}
+#[component]
+pub fn IconDictionary() -> impl IntoView {
+    view! { <Icon path="M5 4 L11 4 L11 22 L5 22 C3 22 3 20 3 18 L3 8 C3 6 3 4 5 4 Z M13 4 L19 4 C21 4 21 6 21 8 L21 18 C21 20 21 22 19 22 L13 22 Z M6 9 L9 9 M6 13 L9 13 M6 17 L9 17 M15 9 L18 9 M15 13 L18 13 M15 17 L18 17" /> }
 }
 #[component]
 pub fn IconSidebar() -> impl IntoView {
