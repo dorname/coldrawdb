@@ -51,6 +51,12 @@ pub const BADGE_SIZE: f64 = 12.0;
 pub const BADGE_STROKE: f64 = 1.5;
 /// 关系端点 crow's foot 记号统一外接尺寸（一/多端同一几何族）。
 pub const REL_ENDPOINT_SIZE: f64 = 10.0;
+/// 关系主线命中带宽（屏幕像素）。#51 / R-HIT-02：由 8 加宽至 12，降低密集/缩放场景对准成本。
+pub const REL_LINE_HIT_PX: f64 = 12.0;
+/// 默认选择工具下，表 AABB 与关系同时命中时：关系屏幕距离 ≤ 此值则优先选关系（#51 / R-HIT-05）。
+/// 与 `REL_LINE_HIT_PX` 对齐——只要关系进入命中带宽且同时落在表 AABB 内，即优先关系；
+/// 深点表体（距线 > 命中带宽）关系本就不会命中，仍选表。
+pub const REL_OVER_TABLE_PREFER_PX: f64 = REL_LINE_HIT_PX;
 /// 表卡圆角统一值（原 14/16 多值并存收敛为 8；选中环 = 本值 + 2.5 外扩）。
 pub const TABLE_CORNER_RADIUS: f64 = 8.0;
 /// 徽章间距 / 徽章组与字段名间距（draw_field_badges 与 estimate_content_width 同源）。
@@ -1424,13 +1430,65 @@ mod leptos_canvas {
                 let hit_tier = super::tier_for_dimension(store.view_dimension.get_untracked());
                 let hit_label_scale = store.label_font_scale.get_untracked().factor();
                 if read_only {
+                    // #51：只读分享也需近线优先——否则表 AABB 仍会吞掉关系选中（无法看 Inspector）
+                    let prefer_ref_ro = super::hit_test_with(
+                        &tables,
+                        dx,
+                        dy,
+                        comment_mode,
+                        t_now.zoom,
+                        hit_label_scale,
+                        hit_tier,
+                    )
+                    .and_then(|_| {
+                        super::hit_test_reference_tier_dist(
+                            &tables,
+                            &refs,
+                            dx,
+                            dy,
+                            hit_tier,
+                            comment_mode,
+                            t_now.zoom,
+                        )
+                        .filter(|(_, d)| super::should_prefer_reference_over_table(*d, t_now.zoom))
+                    });
+                    if let Some((ref_id, _)) = prefer_ref_ro {
+                        selected_id.set(None);
+                        selected_ref_id.set(Some(ref_id.clone()));
+                        selected_table_ids.set(Vec::new());
+                        if let Some(cb) = on_reference_pick.as_ref() {
+                            cb(ref_id);
+                        }
+                        schedule_paint();
+                        return;
+                    }
                     if let Some(id) = super::hit_test_with(&tables, dx, dy, comment_mode, t_now.zoom, hit_label_scale, hit_tier) {
                         selected_id.set(Some(id.clone()));
+                        selected_ref_id.set(None);
                         if let Some(cb) = on_select.as_ref() {
                             cb(id);
                         }
                         return;
                     }
+                    if let Some(ref_id) = super::hit_test_reference_tier(
+                        &tables,
+                        &refs,
+                        dx,
+                        dy,
+                        hit_tier,
+                        comment_mode,
+                        t_now.zoom,
+                    ) {
+                        selected_id.set(None);
+                        selected_ref_id.set(Some(ref_id.clone()));
+                        selected_table_ids.set(Vec::new());
+                        if let Some(cb) = on_reference_pick.as_ref() {
+                            cb(ref_id);
+                        }
+                        schedule_paint();
+                        return;
+                    }
+                    return;
                 }
                 // ux-canvas-relation-tool-split：选中关系工具下仅命中关系线，命中则选中，否则清选
                 if relationship_select_active.get_untracked() {
@@ -1904,7 +1962,43 @@ mod leptos_canvas {
                         return;
                     }
                 }
-                if let Some(id) = super::hit_test_with(&tables, dx, dy, comment_mode, t_now.zoom, hit_label_scale, hit_tier) {
+                // #51 R-HIT-05：仅当表 AABB ∩ 关系同时命中，且近线（≤ REL_OVER_TABLE_PREFER_PX）时优先关系
+                let hit_tier_dim = super::tier_for_dimension(store.view_dimension.get_untracked());
+                let table_hit_id = super::hit_test_with(
+                    &tables,
+                    dx,
+                    dy,
+                    comment_mode,
+                    t_now.zoom,
+                    hit_label_scale,
+                    hit_tier,
+                );
+                let prefer_ref = table_hit_id.as_ref().and_then(|_| {
+                    super::hit_test_reference_tier_dist(
+                        &tables,
+                        &refs,
+                        dx,
+                        dy,
+                        hit_tier_dim,
+                        comment_mode,
+                        t_now.zoom,
+                    )
+                    .filter(|(_, d)| super::should_prefer_reference_over_table(*d, t_now.zoom))
+                });
+
+                if let Some((ref_id, _)) = prefer_ref {
+                    selected_id.set(None);
+                    selected_ref_id.set(Some(ref_id.clone()));
+                    selected_area_id.set(None);
+                    selected_note_id.set(None);
+                    selected_table_ids.set(Vec::new());
+                    selected_note_ids.set(Vec::new());
+                    selected_area_ids.set(Vec::new());
+                    if let Some(cb) = on_reference_pick.as_ref() {
+                        cb(ref_id);
+                    }
+                    schedule_paint();
+                } else if let Some(id) = table_hit_id {
                     let table_x = tables.iter().find(|t| t.id == id).map(|t| t.x).unwrap_or(0.0);
                     let table_y = tables.iter().find(|t| t.id == id).map(|t| t.y).unwrap_or(0.0);
                     selected_id.set(Some(id.clone()));
@@ -1982,12 +2076,12 @@ mod leptos_canvas {
                     dx,
                     dy,
                     // #35 R-LOD-08 / #36 R-VIEW-DIM-01：与 draw_canvas 同一维度口径（显式维度驱动）
-                    super::tier_for_dimension(store.view_dimension.get_untracked()),
+                    hit_tier_dim,
                     comment_mode,
                     t_now.zoom,
                 ) {
                     // relation-inspector-and-ddl-io：点击连线（表未命中时）→ 选中高亮 + Inspector 展示（不再弹详情模态）
-                    // 命中顺序在表之后：连线被表遮住时点击应选中表而非不可见的线
+                    // #51：近线优先已在上方 prefer_ref 分支处理；此处覆盖「未点中表、仅点中关系」
                     selected_id.set(None);
                     selected_ref_id.set(Some(ref_id.clone()));
                     selected_area_id.set(None);
@@ -6839,8 +6933,14 @@ pub fn relation_tooltip_text(
     }
 }
 
-/// fix-issues-42-44（#44 R-HIT-01/02/03）：线型同源 + 最近距离优先——
-/// 8px 带宽内取点到线距离最小者；全超阈值返回 None（空白不误选远处关系）。
+/// #51 / R-HIT-05：默认选择工具下，表与关系同时命中时是否优先关系。
+/// `ref_world_dist` 为 `hit_test_reference_tier_dist` 返回的世界距离。
+pub fn should_prefer_reference_over_table(ref_world_dist: f64, zoom: f64) -> bool {
+    ref_world_dist * zoom <= REL_OVER_TABLE_PREFER_PX
+}
+
+/// fix-issues-42-44（#44 R-HIT-01/02/03）+ #51：线型同源 + 最近距离优先——
+/// `REL_LINE_HIT_PX` 带宽内取点到线距离最小者；全超阈值返回 None（空白不误选远处关系）。
 pub fn hit_test_reference_tier(
     tables: &[Table],
     refs: &[Reference],
@@ -6850,9 +6950,22 @@ pub fn hit_test_reference_tier(
     comment_mode: CommentDisplay,
     zoom: f64,
 ) -> Option<String> {
+    hit_test_reference_tier_dist(tables, refs, x, y, tier, comment_mode, zoom).map(|(id, _)| id)
+}
+
+/// 与 `hit_test_reference_tier` 同口径，额外返回命中关系的世界距离（供 R-HIT-05 近线优先）。
+pub fn hit_test_reference_tier_dist(
+    tables: &[Table],
+    refs: &[Reference],
+    x: f64,
+    y: f64,
+    tier: LodTier,
+    comment_mode: CommentDisplay,
+    zoom: f64,
+) -> Option<(String, f64)> {
     let mut best: Option<(f64, &str)> = None;
-    // R-HIT-07：AABB 外扩距离 = max(8px 主线带宽, 10px 端点热区) 按 zoom 转世界像素
-    let pad = REL_ENDPOINT_SIZE / zoom;
+    // R-HIT-07（#51）：AABB 外扩 = max(主线带宽, 端点热区) / zoom
+    let pad = REL_LINE_HIT_PX.max(REL_ENDPOINT_SIZE) / zoom;
     for r in refs {
         // AABB 预过滤：先剔除远离指针的关系，避免昂贵的 dist_to_reference 计算
         let Some(aabb) = reference_aabb(tables, r, tier, comment_mode) else { continue };
@@ -6861,15 +6974,15 @@ pub fn hit_test_reference_tier(
             continue;
         }
         if let Some((line_d, endpoint_d)) = dist_to_reference(tables, r, x, y, tier, comment_mode) {
-            // fix-issue-47：主线命中带宽 8 屏幕像素；R-HIT-06：端点热区半径 REL_ENDPOINT_SIZE（10px）
-            let line_ok = line_d * zoom <= 8.0;
+            // #51 R-HIT-02：主线带宽 REL_LINE_HIT_PX；R-HIT-06：端点热区 REL_ENDPOINT_SIZE
+            let line_ok = line_d * zoom <= REL_LINE_HIT_PX;
             let endpoint_ok = endpoint_d * zoom <= REL_ENDPOINT_SIZE;
             if (line_ok || endpoint_ok) && best.map_or(true, |(bd, _)| line_d.min(endpoint_d) < bd) {
                 best = Some((line_d.min(endpoint_d), r.id.as_str()));
             }
         }
     }
-    best.map(|(_, id)| id.to_string())
+    best.map(|(d, id)| (id.to_string(), d))
 }
 
 // ─── Pure function: update reference endpoint (B3) ──────────────────────────
@@ -7169,16 +7282,23 @@ mod tests {
         ];
         let y1 = 130.0 + TABLE_HEADER_HEIGHT + FIELD_ROW_HEIGHT / 2.0;
         let mid_x = (100.0 + TABLE_WIDTH + 600.0) / 2.0;
-        // 距 r1 线 6px、距 r2 线 4px——两条都在 8px 带宽内，必须选距离最小的 r2
+        // 距 r1 线 6px、距 r2 线 4px——两条都在 12px 带宽内，必须选距离最小的 r2
         assert_eq!(
             hit_test_reference(&tables, &refs, mid_x, y1 + 6.0, 1.0),
             Some("r2".to_string()),
             "UT-PB-18: 多线同带宽内必须返回距离最小者（R-HIT-02）"
         );
-        // 紧贴 r1 线（1px），r2 相距 9px 超阈值 → r1
+        // 紧贴 r1 线（1px）；r2 相距 9px 仍在 12px 带宽内，但仍选更近的 r1
         assert_eq!(
             hit_test_reference(&tables, &refs, mid_x, y1 + 1.0, 1.0),
-            Some("r1".to_string())
+            Some("r1".to_string()),
+            "UT-PB-18: 双线均在 12px 带宽内时仍取最近"
+        );
+        // #51 密集加宽：距 r1=11、距 r2=1——旧 8px 带宽会漏掉 r1；12px 下两者皆入，仍取 r2
+        assert_eq!(
+            hit_test_reference(&tables, &refs, mid_x, y1 + 11.0, 1.0),
+            Some("r2".to_string()),
+            "UT-PB-18/#51: 11px 仍入 12px 带宽，最近者 r2"
         );
         // 全部超阈值 → None（空白不误选远处关系，R-HIT-03）
         assert_eq!(
@@ -7252,7 +7372,7 @@ mod tests {
         );
     }
 
-    /// UT-PB-22（fix-issue-47 / #47 R-HIT-02 修订）：命中阈值 8 屏幕像素等价（zoom 感知）
+    /// UT-PB-22（#51 R-HIT-02）：命中阈值 12 屏幕像素等价（zoom 感知）
     #[test]
     fn test_hit_test_reference_zoom_screen_pixels_ut_pb_22() {
         use crate::editor_core::types::Field;
@@ -7300,38 +7420,38 @@ mod tests {
         let path = calc_path(&t1, "f1", &t2, "f1");
         let (mid_x, y_line) = bezier_point(&path, 0.5);
 
-        // zoom=1.0：8 世界像素命中，9 不命中
+        // zoom=1.0：12 世界像素命中，13 不命中
         assert_eq!(
-            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 8.0, 1.0),
+            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 12.0, 1.0),
             Some("r1".to_string()),
-            "UT-PB-22: zoom=1.0 时 8 世界像素应命中"
+            "UT-PB-22: zoom=1.0 时 12 世界像素应命中"
         );
         assert_eq!(
-            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 9.0, 1.0),
+            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 13.0, 1.0),
             None,
-            "UT-PB-22: zoom=1.0 时 9 世界像素应不命中"
+            "UT-PB-22: zoom=1.0 时 13 世界像素应不命中"
         );
-        // zoom=0.5：16 世界像素命中（16*0.5=8 屏幕像素），17 不命中
+        // zoom=0.5：24 世界像素命中（24*0.5=12 屏幕像素），25 不命中
         assert_eq!(
-            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 16.0, 0.5),
+            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 24.0, 0.5),
             Some("r1".to_string()),
-            "UT-PB-22: zoom=0.5 时 16 世界像素等价 8 屏幕像素应命中"
+            "UT-PB-22: zoom=0.5 时 24 世界像素等价 12 屏幕像素应命中"
         );
         assert_eq!(
-            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 17.0, 0.5),
+            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 25.0, 0.5),
             None,
-            "UT-PB-22: zoom=0.5 时 17 世界像素应不命中"
+            "UT-PB-22: zoom=0.5 时 25 世界像素应不命中"
         );
-        // zoom=2.0：4 世界像素命中，5 不命中
+        // zoom=2.0：6 世界像素命中，7 不命中
         assert_eq!(
-            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 4.0, 2.0),
+            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 6.0, 2.0),
             Some("r1".to_string()),
-            "UT-PB-22: zoom=2.0 时 4 世界像素等价 8 屏幕像素应命中"
+            "UT-PB-22: zoom=2.0 时 6 世界像素等价 12 屏幕像素应命中"
         );
         assert_eq!(
-            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 5.0, 2.0),
+            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 7.0, 2.0),
             None,
-            "UT-PB-22: zoom=2.0 时 5 世界像素应不命中"
+            "UT-PB-22: zoom=2.0 时 7 世界像素应不命中"
         );
     }
 
@@ -7403,7 +7523,7 @@ mod tests {
                 }
             };
 
-            // 端点中心外侧 9px：距端点中心 9px（在 10px 热区内），距主线 9px（超 8px 主线带宽）
+            // 端点中心外侧 9px：距端点中心 9px（在 10px 热区内）
             assert_eq!(
                 hit_test_reference(&tables, &refs, x2, y2 + 9.0, 1.0
                 ),
@@ -7411,12 +7531,12 @@ mod tests {
                 "UT-PB-24: {lt} 端点外侧 9px 应命中（端点热区生效）"
             );
 
-            // 端点中心外侧 11px：超出 REL_ENDPOINT_SIZE=10px 热区，不应命中
+            // #51：主线带宽 12px 后，端点外侧「不应命中」需 > max(12,10)=12
             assert_eq!(
-                hit_test_reference(&tables, &refs, x2, y2 + 11.0, 1.0
+                hit_test_reference(&tables, &refs, x2, y2 + 13.0, 1.0
                 ),
                 None,
-                "UT-PB-24: {lt} 端点外侧 11px 不应命中（超出端点热区）"
+                "UT-PB-24: {lt} 端点外侧 13px 不应命中（超出端点热区与主线带宽）"
             );
 
             // zoom=2.0：端点热区半径等效 10 屏幕像素，4.5 世界像素（9 屏幕像素）命中
@@ -7426,13 +7546,183 @@ mod tests {
                 "UT-PB-24: {lt} zoom=2.0 端点外侧 4.5px 应命中（9 屏幕像素 <= 10px 热区）"
             );
 
-            // zoom=2.0：5.5 世界像素 = 11 屏幕像素，超出 10px 热区
+            // #51：zoom=2.0 时「不应命中」需 > max(12,10)=12 屏幕像素 → 6.5 世界像素
             assert_eq!(
-                hit_test_reference(&tables, &refs, x2, y2 + 5.5, 2.0),
+                hit_test_reference(&tables, &refs, x2, y2 + 6.5, 2.0),
                 None,
-                "UT-PB-24: {lt} zoom=2.0 端点外侧 5.5px 不应命中（11 屏幕像素 > 10px 热区）"
+                "UT-PB-24: {lt} zoom=2.0 端点外侧 6.5px 不应命中（13 屏幕像素 > 12px 并集）"
             );
         }
+    }
+
+    /// UT-PB-28（#51 R-HIT-05）：表∩关系时近线优先关系（阈值 = REL_LINE_HIT_PX）
+    #[test]
+    fn test_should_prefer_reference_over_table_ut_pb_28() {
+        assert!(
+            should_prefer_reference_over_table(5.0, 1.0),
+            "UT-PB-28: zoom=1 世界距离 5px → 屏幕 5 ≤ 12 应优先关系"
+        );
+        assert!(
+            should_prefer_reference_over_table(12.0, 1.0),
+            "UT-PB-28: zoom=1 世界距离 12px → 屏幕 12 ≤ 12 应优先关系"
+        );
+        assert!(
+            !should_prefer_reference_over_table(13.0, 1.0),
+            "UT-PB-28: zoom=1 世界距离 13px → 屏幕 13 > 12 应优先表"
+        );
+        assert!(
+            should_prefer_reference_over_table(6.0, 2.0),
+            "UT-PB-28: zoom=2 世界距离 6 → 屏幕 12 ≤ 12 应优先关系"
+        );
+        assert!(
+            !should_prefer_reference_over_table(6.5, 2.0),
+            "UT-PB-28: zoom=2 世界距离 6.5 → 屏幕 13 > 12 应优先表"
+        );
+        assert_eq!(
+            REL_OVER_TABLE_PREFER_PX, REL_LINE_HIT_PX,
+            "UT-PB-28: 近线优先阈值与主线带宽对齐"
+        );
+        assert_eq!(REL_LINE_HIT_PX, 12.0, "UT-PB-28: 主线带宽常量口径");
+
+        // 几何回归：表内近端口点（旧 6px 阈值会误选表）必须近线优先
+        use crate::editor_core::types::Field;
+        let mk = |id: &str, x: f64, y: f64, fields: Vec<(&str, bool)>| Table {
+            id: id.into(),
+            name: id.into(),
+            x,
+            y,
+            color: "#000".into(),
+            comment: String::new(),
+            fields: fields
+                .into_iter()
+                .map(|(fid, pk)| Field {
+                    id: fid.into(),
+                    name: fid.into(),
+                    type_: "BIGINT".into(),
+                    default: String::new(),
+                    check: String::new(),
+                    primary: pk,
+                    unique: false,
+                    not_null: true,
+                    increment: pk,
+                    comment: String::new(),
+                    tag: String::new(),
+                    dict_code: String::new(),
+                })
+                .collect(),
+            indices: Vec::new(),
+            width: None,
+            min_height: None,
+        };
+        let tables = vec![
+            mk("t_a", 120.0, 120.0, vec![("f_a1", true), ("f_a2", false)]),
+            mk("t_b", 520.0, 120.0, vec![("f_b1", true)]),
+        ];
+        let refs = vec![Reference {
+            id: "r1".into(),
+            name: "fk_orders_user".into(),
+            start_table_id: "t_a".into(),
+            end_table_id: "t_b".into(),
+            start_field_id: "f_a2".into(),
+            end_field_id: "f_b1".into(),
+            type_: "many_to_one".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+            color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
+        }];
+        let x = 340.0;
+        let y = 215.0;
+        assert_eq!(hit_test(&tables, x, y), Some("t_a".into()), "UT-PB-28: 点应在表 AABB 内");
+        let dist = hit_test_reference_tier_dist(
+            &tables,
+            &refs,
+            x,
+            y,
+            LodTier::Detail,
+            CommentDisplay::NameComment,
+            1.0,
+        );
+        assert!(dist.is_some(), "UT-PB-28: 点应命中关系，实际 {dist:?}");
+        let (rid, d) = dist.unwrap();
+        assert_eq!(rid, "r1");
+        assert!(
+            should_prefer_reference_over_table(d, 1.0),
+            "UT-PB-28: 表内近端口点 dist={d} 应优先关系"
+        );
+    }
+
+    /// UT-PB-29（#51 R-HIT-02）：主线 12px 带宽边界（与 UT-PB-22 zoom=1 口径对齐）
+    #[test]
+    fn test_hit_test_reference_line_bandwidth_12px_ut_pb_29() {
+        use crate::editor_core::types::Field;
+        let mk = |id: &str, x: f64, y: f64| Table {
+            id: id.into(),
+            name: id.into(),
+            x,
+            y,
+            color: "#000".into(),
+            comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(),
+                name: "f1".into(),
+                type_: "INT".into(),
+                default: String::new(),
+                check: String::new(),
+                primary: true,
+                unique: false,
+                not_null: false,
+                increment: false,
+                comment: String::new(),
+                tag: String::new(),
+                dict_code: String::new(),
+            }],
+            indices: Vec::new(),
+            width: None,
+            min_height: None,
+        };
+        let t1 = mk("t1", 100.0, 130.0);
+        let t2 = mk("t2", 600.0, 130.0);
+        let refs = vec![Reference {
+            id: "r1".into(),
+            name: String::new(),
+            start_table_id: "t1".into(),
+            end_table_id: "t2".into(),
+            start_field_id: "f1".into(),
+            end_field_id: "f1".into(),
+            type_: "one_to_many".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+            color: String::new(),
+            line_type: "bezier".into(),
+            stroke_style: "solid".into(),
+        }];
+        let path = calc_path(&t1, "f1", &t2, "f1");
+        let (mid_x, y_line) = bezier_point(&path, 0.5);
+        assert_eq!(
+            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 12.0, 1.0),
+            Some("r1".to_string()),
+            "UT-PB-29: 12px 应命中"
+        );
+        assert_eq!(
+            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 13.0, 1.0),
+            None,
+            "UT-PB-29: 13px 应不命中"
+        );
+        let dist_hit = hit_test_reference_tier_dist(
+            &[t1.clone(), t2.clone()],
+            &refs,
+            mid_x,
+            y_line + 5.0,
+            LodTier::Detail,
+            CommentDisplay::NameComment,
+            1.0,
+        );
+        assert!(
+            dist_hit.as_ref().is_some_and(|(id, d)| id == "r1" && (*d - 5.0).abs() < 0.5),
+            "UT-PB-29: tier_dist 应返回距离≈5，实际 {dist_hit:?}"
+        );
     }
 
     /// UT-PB-25（perf-canvas-relation-hit-index / R-HIT-07）：200 条关系远距离点击 AABB 预过滤生效
