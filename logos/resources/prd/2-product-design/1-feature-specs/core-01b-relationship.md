@@ -409,14 +409,22 @@ Viewer 与 share-readonly：**不得**启用字段直连手势（同既有关系
 合同条款：
 
 - **R-HIT-01 线型同源**：命中检测几何必须与绘制几何同口径——`line_type=bezier` 用 `calc_path_tier` 贝塞尔（24 段折线近似）；`line_type=orthogonal` 用 `calc_orthogonal_path_tier` 折线顶点序列；`line_type=straight` 用 `calc_straight_path_tier` 端点连线；tier（详情/拓扑）锚定策略一致（沿用 #35 R-LOD-08）。
-- **R-HIT-02 最近距离优先（fix-issue-47 修订）**：命中带宽为 **8 屏幕像素**（实现上在世界坐标计算距离 `d`，按当前 `zoom` 换算：`d * zoom <= 8.0`）。带宽内若有多条关系命中，必须返回**点到线距离最小**的那条；禁止「数组序先命中即返回」。低 zoom 时不得“隔空命中”。
+- **R-HIT-02 最近距离优先（#51 修订）**：命中带宽为 **12 屏幕像素**（实现常量 `REL_LINE_HIT_PX`；世界距离 `d` 满足 `d * zoom <= REL_LINE_HIT_PX`）。带宽内若有多条关系命中，必须返回**点到线距离最小**的那条；禁止「数组序先命中即返回」。低 zoom 时不得“隔空命中”。
 - **R-HIT-03 阈值外不命中**：所有关系距离均超阈值时必须返回 None——点击空白不得误选远处关系（与 §5.15 空白点击清选语义衔接）。
 - **R-HIT-04 悬停/点击同口径**：点击选中与悬浮检测（§4.8）共用同一命中函数，保证「所见即所选」。
-- **R-HIT-05 命中优先级不变**：关系线命中仍排在表命中之后（连线被表遮住时点击选中表）；便签/区域/字段端口优先级不变。
-- **R-HIT-06 端点记号命中热区（fix-relation-mouse-hit-precision）**：关系线两端 crow's foot / single bar 端点记号必须纳入命中检测。`dist_to_reference` 对三种 `line_type` 返回 `(主线距离, 端点距离)`，其中端点距离为指针到两端端点中心 `(x1,y1)` / `(x2,y2)` 的欧氏距离；`hit_test_reference_tier` 对主线距离沿用 **8 屏幕像素**阈值，对端点距离独立使用 **`REL_ENDPOINT_SIZE`（10px，与绘制端点记号外接尺寸同源）** 屏幕像素阈值；任一阈值命中即视为该关系命中，最近距离优先比较取 `min(主线距离, 端点距离)`。保证用户点击可见端点符号即可选中关系；多线端点重叠处仍按 R-HIT-02 返回距离最小者。
-- **R-HIT-07 关系线命中 AABB 预过滤（perf-canvas-relation-hit-index）**：为降低大图谱下的命中检测开销，`hit_test_reference_tier` 在逐条调用 `dist_to_reference` 前，必须先对每条关系计算轴对齐包围盒（AABB），并按当前 `zoom` 将 AABB 外扩 `max(8.0, REL_ENDPOINT_SIZE) / zoom` 世界像素（即同时覆盖 8px 主线命中带宽与 10px 端点热区）。若指针世界坐标落在外扩 AABB 之外，则跳过该关系的精确距离计算。任何可能命中的点必然落在外扩 AABB 内，因此预过滤不得改变 R-HIT-02 最近距离优先结果，也不得漏掉 R-HIT-06 端点热区内的命中。
+- **R-HIT-05 表与关系同时命中时的优先级（#51 修订）**：
+  - 默认选择工具：若指针同时命中表 AABB 与关系线，当关系最近距离（屏幕像素）≤ **`REL_OVER_TABLE_PREFER_PX`（= `REL_LINE_HIT_PX` = 12.0）** 时**优先选中关系**。即：只要关系进入命中带宽且落在表 AABB 内，选关系；深点表体（距线超出命中带宽、关系未命中）仍选表。
+  - 只读分享（`read_only`）路径与默认可编辑路径使用同一近线优先口径（避免表命中后提前 return 吞掉关系选中）。
+  - 「选中关系」工具：仍仅走关系命中（不命中表）。
+  - 便签 / 区域 / 字段端口优先级不变。
+- **R-HIT-06 端点记号命中热区（fix-relation-mouse-hit-precision / #51）**：关系线两端 crow's foot / single bar 端点记号必须纳入命中检测。`dist_to_reference` 对三种 `line_type` 返回 `(主线距离, 端点距离)`；`hit_test_reference_tier` 对主线距离沿用 **`REL_LINE_HIT_PX`（12 屏幕像素）**，对端点距离独立使用 **`REL_ENDPOINT_SIZE`（10px）**；任一阈值命中即视为该关系命中，最近距离优先比较取 `min(主线距离, 端点距离)`。
+- **R-HIT-07 关系线命中 AABB 预过滤（perf-canvas-relation-hit-index / #51）**：`hit_test_reference_tier` 在逐条调用 `dist_to_reference` 前，必须先对每条关系计算 AABB，并按当前 `zoom` 将 AABB 外扩 `max(REL_LINE_HIT_PX, REL_ENDPOINT_SIZE) / zoom` 世界像素（即同时覆盖 12px 主线命中带宽与 10px 端点热区）。若指针世界坐标落在外扩 AABB 之外，则跳过该关系的精确距离计算。预过滤不得改变 R-HIT-02 最近距离优先结果，也不得漏掉 R-HIT-06 端点热区内的命中。
 
-验收：UT-PB-18 / UT-PB-19 / UT-PB-22 / **UT-PB-24** / **UT-PB-25** / **UT-PB-26**；e2e ST-PB-11 / **ST-PB-14**。
+验收：UT-PB-18/19/22（带宽口径随 R-HIT-02：8→12）/ UT-PB-24 / **UT-PB-28** / **UT-PB-29** / UT-PB-25 / UT-PB-26；e2e ST-PB-11 / **ST-PB-14**。
+
+## 合并自 fix-issue-51-relation-select-hit（2026-10-01）
+
+> #51：加宽主线命中至 12px；表∩关系时近线优先（阈值对齐主线带宽）；只读分享路径同步。
 
 ## ADDED — §4.8 悬浮关系线摘要 tooltip（fix-issues-42-44-mcp-and-relation-hit / #43）
 
