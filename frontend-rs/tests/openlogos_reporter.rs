@@ -297,6 +297,9 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-PB-28",
     // fix-issue-51（#51 R-HIT-02）：主线命中带宽 12 屏幕像素
     "UT-PB-29",
+    // fix-dense-lowzoom-relation-hit：低缩放自适应命中带宽
+    "UT-PB-30",
+    "UT-PB-31",
     // ST-PB-16 e2e 由 scripts/test-spec-parity-d.mjs 真实运行，reporter 声明式兜底
     "ST-PB-16",
     // fix-issue-48（issue #48 R-LOD-10）：表维度卡宽上限放宽

@@ -51,12 +51,31 @@ pub const BADGE_SIZE: f64 = 12.0;
 pub const BADGE_STROKE: f64 = 1.5;
 /// 关系端点 crow's foot 记号统一外接尺寸（一/多端同一几何族）。
 pub const REL_ENDPOINT_SIZE: f64 = 10.0;
-/// 关系主线命中带宽（屏幕像素）。#51 / R-HIT-02：由 8 加宽至 12，降低密集/缩放场景对准成本。
+/// 关系主线命中带宽基线（屏幕像素，zoom ≥ `REL_HIT_ZOOM_HIGH`）。#51：8→12。
 pub const REL_LINE_HIT_PX: f64 = 12.0;
-/// 默认选择工具下，表 AABB 与关系同时命中时：关系屏幕距离 ≤ 此值则优先选关系（#51 / R-HIT-05）。
-/// 与 `REL_LINE_HIT_PX` 对齐——只要关系进入命中带宽且同时落在表 AABB 内，即优先关系；
-/// 深点表体（距线 > 命中带宽）关系本就不会命中，仍选表。
+/// 低缩放（zoom ≤ `REL_HIT_ZOOM_LOW`）主线命中带宽（屏幕像素）。
+/// fix-dense-lowzoom-relation-hit：全景细线对准放宽至 20。
+pub const REL_LINE_HIT_PX_LOW: f64 = 20.0;
+/// 自适应命中：≤ 此 zoom 使用 `REL_LINE_HIT_PX_LOW`。
+pub const REL_HIT_ZOOM_LOW: f64 = 0.25;
+/// 自适应命中：≥ 此 zoom 使用 `REL_LINE_HIT_PX`。
+pub const REL_HIT_ZOOM_HIGH: f64 = 1.0;
+/// 高缩放近线优先基线（= `REL_LINE_HIT_PX`）；运行时阈值见 `rel_line_hit_px(zoom)`。
 pub const REL_OVER_TABLE_PREFER_PX: f64 = REL_LINE_HIT_PX;
+
+/// R-HIT-02 / R-HIT-05：随 zoom 自适应的主线命中屏幕像素带宽。
+/// zoom≤0.25 → 20；zoom≥1 → 12；中间线性插值。
+pub fn rel_line_hit_px(zoom: f64) -> f64 {
+    let z = zoom.max(1e-6);
+    if z <= REL_HIT_ZOOM_LOW {
+        REL_LINE_HIT_PX_LOW
+    } else if z >= REL_HIT_ZOOM_HIGH {
+        REL_LINE_HIT_PX
+    } else {
+        let t = (z - REL_HIT_ZOOM_LOW) / (REL_HIT_ZOOM_HIGH - REL_HIT_ZOOM_LOW);
+        REL_LINE_HIT_PX_LOW + t * (REL_LINE_HIT_PX - REL_LINE_HIT_PX_LOW)
+    }
+}
 /// 表卡圆角统一值（原 14/16 多值并存收敛为 8；选中环 = 本值 + 2.5 外扩）。
 pub const TABLE_CORNER_RADIUS: f64 = 8.0;
 /// 徽章间距 / 徽章组与字段名间距（draw_field_badges 与 estimate_content_width 同源）。
@@ -6934,13 +6953,13 @@ pub fn relation_tooltip_text(
 }
 
 /// #51 / R-HIT-05：默认选择工具下，表与关系同时命中时是否优先关系。
-/// `ref_world_dist` 为 `hit_test_reference_tier_dist` 返回的世界距离。
+/// 阈值 = 当前 zoom 的自适应主线带宽（`rel_line_hit_px`）。
 pub fn should_prefer_reference_over_table(ref_world_dist: f64, zoom: f64) -> bool {
-    ref_world_dist * zoom <= REL_OVER_TABLE_PREFER_PX
+    ref_world_dist * zoom <= rel_line_hit_px(zoom)
 }
 
-/// fix-issues-42-44（#44 R-HIT-01/02/03）+ #51：线型同源 + 最近距离优先——
-/// `REL_LINE_HIT_PX` 带宽内取点到线距离最小者；全超阈值返回 None（空白不误选远处关系）。
+/// fix-issues-42-44（#44）+ #51 + fix-dense-lowzoom-relation-hit：
+/// 线型同源 + 最近距离优先；带宽 = `rel_line_hit_px(zoom)`。
 pub fn hit_test_reference_tier(
     tables: &[Table],
     refs: &[Reference],
@@ -6964,8 +6983,9 @@ pub fn hit_test_reference_tier_dist(
     zoom: f64,
 ) -> Option<(String, f64)> {
     let mut best: Option<(f64, &str)> = None;
-    // R-HIT-07（#51）：AABB 外扩 = max(主线带宽, 端点热区) / zoom
-    let pad = REL_LINE_HIT_PX.max(REL_ENDPOINT_SIZE) / zoom;
+    let hit_px = rel_line_hit_px(zoom);
+    // R-HIT-07：AABB 外扩 = max(自适应主线带宽, 端点热区) / zoom
+    let pad = hit_px.max(REL_ENDPOINT_SIZE) / zoom;
     for r in refs {
         // AABB 预过滤：先剔除远离指针的关系，避免昂贵的 dist_to_reference 计算
         let Some(aabb) = reference_aabb(tables, r, tier, comment_mode) else { continue };
@@ -6974,8 +6994,8 @@ pub fn hit_test_reference_tier_dist(
             continue;
         }
         if let Some((line_d, endpoint_d)) = dist_to_reference(tables, r, x, y, tier, comment_mode) {
-            // #51 R-HIT-02：主线带宽 REL_LINE_HIT_PX；R-HIT-06：端点热区 REL_ENDPOINT_SIZE
-            let line_ok = line_d * zoom <= REL_LINE_HIT_PX;
+            // R-HIT-02：自适应主线带宽；R-HIT-06：端点热区 REL_ENDPOINT_SIZE
+            let line_ok = line_d * zoom <= hit_px;
             let endpoint_ok = endpoint_d * zoom <= REL_ENDPOINT_SIZE;
             if (line_ok || endpoint_ok) && best.map_or(true, |(bd, _)| line_d.min(endpoint_d) < bd) {
                 best = Some((line_d.min(endpoint_d), r.id.as_str()));
@@ -7431,16 +7451,19 @@ mod tests {
             None,
             "UT-PB-22: zoom=1.0 时 13 世界像素应不命中"
         );
-        // zoom=0.5：24 世界像素命中（24*0.5=12 屏幕像素），25 不命中
+        // zoom=0.5：自适应带宽 rel_line_hit_px(0.5)≈17.33 屏幕像素
+        let hit05 = rel_line_hit_px(0.5);
+        let world_ok = hit05 / 0.5;
+        let world_miss = (hit05 + 1.0) / 0.5;
         assert_eq!(
-            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 24.0, 0.5),
+            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + world_ok, 0.5),
             Some("r1".to_string()),
-            "UT-PB-22: zoom=0.5 时 24 世界像素等价 12 屏幕像素应命中"
+            "UT-PB-22: zoom=0.5 边界命中失败 world_ok={world_ok} hit_px={hit05}"
         );
         assert_eq!(
-            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 25.0, 0.5),
+            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + world_miss, 0.5),
             None,
-            "UT-PB-22: zoom=0.5 时 25 世界像素应不命中"
+            "UT-PB-22: zoom=0.5 边界不命中失败 world_miss={world_miss} hit_px={hit05}"
         );
         // zoom=2.0：6 世界像素命中，7 不命中
         assert_eq!(
@@ -7722,6 +7745,108 @@ mod tests {
         assert!(
             dist_hit.as_ref().is_some_and(|(id, d)| id == "r1" && (*d - 5.0).abs() < 0.5),
             "UT-PB-29: tier_dist 应返回距离≈5，实际 {dist_hit:?}"
+        );
+    }
+
+    /// UT-PB-30（fix-dense-lowzoom-relation-hit / R-HIT-02）：自适应主线命中带宽
+    #[test]
+    fn test_rel_line_hit_px_adaptive_ut_pb_30() {
+        use crate::editor_core::types::Field;
+        assert_eq!(rel_line_hit_px(1.0), 12.0, "UT-PB-30: zoom=1 → 12");
+        assert_eq!(rel_line_hit_px(2.0), 12.0, "UT-PB-30: zoom>1 → 12");
+        assert_eq!(rel_line_hit_px(0.25), 20.0, "UT-PB-30: zoom=0.25 → 20");
+        assert_eq!(rel_line_hit_px(0.1), 20.0, "UT-PB-30: zoom=0.1 → 20");
+        let mid = rel_line_hit_px(0.625);
+        assert!(
+            (mid - 16.0).abs() < 1e-9,
+            "UT-PB-30: zoom=0.625 应插值到 16，实际 {mid}"
+        );
+
+        let mk = |id: &str, x: f64, y: f64| Table {
+            id: id.into(),
+            name: id.into(),
+            x,
+            y,
+            color: "#000".into(),
+            comment: String::new(),
+            fields: vec![Field {
+                id: "f1".into(),
+                name: "f1".into(),
+                type_: "INT".into(),
+                default: String::new(),
+                check: String::new(),
+                primary: true,
+                unique: false,
+                not_null: false,
+                increment: false,
+                comment: String::new(),
+                tag: String::new(),
+                dict_code: String::new(),
+            }],
+            indices: Vec::new(),
+            width: None,
+            min_height: None,
+        };
+        let t1 = mk("t1", 100.0, 130.0);
+        let t2 = mk("t2", 600.0, 130.0);
+        let refs = vec![Reference {
+            id: "r1".into(),
+            name: String::new(),
+            start_table_id: "t1".into(),
+            end_table_id: "t2".into(),
+            start_field_id: "f1".into(),
+            end_field_id: "f1".into(),
+            type_: "one_to_many".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+            color: String::new(),
+            line_type: "straight".into(),
+            stroke_style: "solid".into(),
+        }];
+        let path = calc_path(&t1, "f1", &t2, "f1");
+        let (mid_x, y_line) = bezier_point(&path, 0.5);
+        // zoom=1：12 命中 / 13 不命中
+        assert_eq!(
+            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 12.0, 1.0),
+            Some("r1".to_string()),
+            "UT-PB-30: zoom=1 12px 应命中"
+        );
+        assert_eq!(
+            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 13.0, 1.0),
+            None,
+            "UT-PB-30: zoom=1 13px 应不命中"
+        );
+        // zoom=0.25：世界 80 → 屏幕 20 命中；世界 84 → 屏幕 21 不命中
+        assert_eq!(
+            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 80.0, 0.25),
+            Some("r1".to_string()),
+            "UT-PB-30: zoom=0.25 世界80（屏20）应命中"
+        );
+        assert_eq!(
+            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 84.0, 0.25),
+            None,
+            "UT-PB-30: zoom=0.25 世界84（屏21）应不命中"
+        );
+    }
+
+    /// UT-PB-31（fix-dense-lowzoom-relation-hit / R-HIT-05）：低缩放近线优先对齐自适应带宽
+    #[test]
+    fn test_should_prefer_reference_adaptive_ut_pb_31() {
+        assert!(
+            should_prefer_reference_over_table(80.0, 0.25),
+            "UT-PB-31: zoom=0.25 世界80 → 屏20 ≤ 20 应优先关系"
+        );
+        assert!(
+            !should_prefer_reference_over_table(84.0, 0.25),
+            "UT-PB-31: zoom=0.25 世界84 → 屏21 > 20 应不优先"
+        );
+        assert!(
+            should_prefer_reference_over_table(12.0, 1.0),
+            "UT-PB-31: zoom=1 世界12 仍优先（与 UT-PB-28 一致）"
+        );
+        assert!(
+            !should_prefer_reference_over_table(13.0, 1.0),
+            "UT-PB-31: zoom=1 世界13 仍不优先"
         );
     }
 
