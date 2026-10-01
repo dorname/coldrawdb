@@ -409,18 +409,22 @@ Viewer 与 share-readonly：**不得**启用字段直连手势（同既有关系
 合同条款：
 
 - **R-HIT-01 线型同源**：命中检测几何必须与绘制几何同口径——`line_type=bezier` 用 `calc_path_tier` 贝塞尔（24 段折线近似）；`line_type=orthogonal` 用 `calc_orthogonal_path_tier` 折线顶点序列；`line_type=straight` 用 `calc_straight_path_tier` 端点连线；tier（详情/拓扑）锚定策略一致（沿用 #35 R-LOD-08）。
-- **R-HIT-02 最近距离优先（#51 修订）**：命中带宽为 **12 屏幕像素**（实现常量 `REL_LINE_HIT_PX`；世界距离 `d` 满足 `d * zoom <= REL_LINE_HIT_PX`）。带宽内若有多条关系命中，必须返回**点到线距离最小**的那条；禁止「数组序先命中即返回」。低 zoom 时不得“隔空命中”。
+- **R-HIT-02 最近距离优先（fix-dense-lowzoom-relation-hit 修订）**：命中带宽为 **随 zoom 自适应的屏幕像素**，由 `rel_line_hit_px(zoom)` 给出：`zoom >= 1.0` → **12**（`REL_LINE_HIT_PX`）；`zoom <= 0.25` → **20**（`REL_LINE_HIT_PX_LOW`）；中间线性插值。世界距离 `d` 满足 `d * zoom <= rel_line_hit_px(zoom)`。带宽内若有多条关系命中，必须返回**点到线距离最小**的那条；禁止「数组序先命中即返回」。
 - **R-HIT-03 阈值外不命中**：所有关系距离均超阈值时必须返回 None——点击空白不得误选远处关系（与 §5.15 空白点击清选语义衔接）。
 - **R-HIT-04 悬停/点击同口径**：点击选中与悬浮检测（§4.8）共用同一命中函数，保证「所见即所选」。
-- **R-HIT-05 表与关系同时命中时的优先级（#51 修订）**：
-  - 默认选择工具：若指针同时命中表 AABB 与关系线，当关系最近距离（屏幕像素）≤ **`REL_OVER_TABLE_PREFER_PX`（= `REL_LINE_HIT_PX` = 12.0）** 时**优先选中关系**。即：只要关系进入命中带宽且落在表 AABB 内，选关系；深点表体（距线超出命中带宽、关系未命中）仍选表。
-  - 只读分享（`read_only`）路径与默认可编辑路径使用同一近线优先口径（避免表命中后提前 return 吞掉关系选中）。
+- **R-HIT-05 表与关系同时命中时的优先级（#51 / 自适应修订）**：
+  - 默认选择工具：若指针同时命中表 AABB 与关系线，当关系最近距离（屏幕像素）≤ **`rel_line_hit_px(zoom)`** 时**优先选中关系**（与当前 zoom 主线带宽对齐）。深点表体（距线超出命中带宽）仍选表。
+  - 只读分享（`read_only`）路径与默认可编辑路径使用同一近线优先口径。
   - 「选中关系」工具：仍仅走关系命中（不命中表）。
   - 便签 / 区域 / 字段端口优先级不变。
-- **R-HIT-06 端点记号命中热区（fix-relation-mouse-hit-precision / #51）**：关系线两端 crow's foot / single bar 端点记号必须纳入命中检测。`dist_to_reference` 对三种 `line_type` 返回 `(主线距离, 端点距离)`；`hit_test_reference_tier` 对主线距离沿用 **`REL_LINE_HIT_PX`（12 屏幕像素）**，对端点距离独立使用 **`REL_ENDPOINT_SIZE`（10px）**；任一阈值命中即视为该关系命中，最近距离优先比较取 `min(主线距离, 端点距离)`。
-- **R-HIT-07 关系线命中 AABB 预过滤（perf-canvas-relation-hit-index / #51）**：`hit_test_reference_tier` 在逐条调用 `dist_to_reference` 前，必须先对每条关系计算 AABB，并按当前 `zoom` 将 AABB 外扩 `max(REL_LINE_HIT_PX, REL_ENDPOINT_SIZE) / zoom` 世界像素（即同时覆盖 12px 主线命中带宽与 10px 端点热区）。若指针世界坐标落在外扩 AABB 之外，则跳过该关系的精确距离计算。预过滤不得改变 R-HIT-02 最近距离优先结果，也不得漏掉 R-HIT-06 端点热区内的命中。
+- **R-HIT-06 端点记号命中热区**：`hit_test_reference_tier` 对主线距离使用 **`rel_line_hit_px(zoom)`**，对端点距离独立使用 **`REL_ENDPOINT_SIZE`（10px）**；任一阈值命中即视为该关系命中，最近距离优先比较取 `min(主线距离, 端点距离)`。
+- **R-HIT-07 关系线命中 AABB 预过滤**：AABB 外扩 `max(rel_line_hit_px(zoom), REL_ENDPOINT_SIZE) / zoom` 世界像素。预过滤不得改变 R-HIT-02 最近距离优先结果，也不得漏掉 R-HIT-06 端点热区内的命中。
 
-验收：UT-PB-18/19/22（带宽口径随 R-HIT-02：8→12）/ UT-PB-24 / **UT-PB-28** / **UT-PB-29** / UT-PB-25 / UT-PB-26；e2e ST-PB-11 / **ST-PB-14**。
+验收：UT-PB-18/19/22 / UT-PB-24 / UT-PB-28 / UT-PB-29 / **UT-PB-30** / **UT-PB-31** / UT-PB-25 / UT-PB-26；e2e ST-PB-11 / ST-PB-14。
+
+## 合并自 fix-dense-lowzoom-relation-hit（2026-10-01）
+
+> DSPM 全景低缩放：自适应放宽主线命中带宽（高缩放 12，低缩放最高 20），近线优先与 AABB 同步。
 
 ## 合并自 fix-issue-51-relation-select-hit（2026-10-01）
 
