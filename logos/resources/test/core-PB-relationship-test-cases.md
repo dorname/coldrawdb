@@ -387,19 +387,26 @@
 ### UT-PB-30 — 自适应主线命中带宽（zoom 分段）
 
 - **位置**：`rel_line_hit_px` / `hit_test_reference_tier`
-- **覆盖**：R-HIT-02（fix-dense-lowzoom-relation-hit）
+- **覆盖**：R-HIT-02（precise-pick：LOW=14）
 - **断言**：
-  1. `rel_line_hit_px(1.0)==12`；`rel_line_hit_px(0.25)==20`；`rel_line_hit_px(0.1)==20`
+  1. `rel_line_hit_px(1.0)==12`；`rel_line_hit_px(0.25)==14`；`rel_line_hit_px(0.1)==14`
   2. zoom=1.0：12 命中 / 13 不命中
-  3. zoom=0.25：世界 80（屏 20）命中、84（屏 21）不命中
+  3. zoom=0.25：世界 56（屏 14）命中、60（屏 15）不命中
 - **reporter**：`UT-PB-30`
 
 ### UT-PB-31 — 低缩放近线优先与自适应带宽对齐
 
 - **位置**：`should_prefer_reference_over_table`
 - **覆盖**：R-HIT-05（自适应）
-- **断言**：zoom=0.25 时世界 80 优先 / 84 不优先；zoom=1 与 UT-PB-28 一致
+- **断言**：zoom=0.25 时世界 56 优先 / 60 不优先；zoom=1 与 UT-PB-28 一致
 - **reporter**：`UT-PB-31`
+
+### UT-PB-32 — 叠线簇点击轮选
+
+- **位置**：`resolve_ref_hit_cluster`
+- **覆盖**：R-HIT-08
+- **断言**：无 prev→最近；prev 在簇内→下一根并环回；prev 不在簇→最近；单候选稳定
+- **reporter**：`UT-PB-32`
 
 ### ST-PB-14 — 点击端点记号附近 10px 热区选中关系
 
@@ -456,8 +463,9 @@
 | ST-PB-16 | e2e 选中关系工具点击关系线 | `test-spec-parity-d.mjs` canvas hit |
 | UT-PB-28 | 表∩关系时近线优先关系（阈值=主线带宽 12px，#51） | `should_prefer_reference_over_table` |
 | UT-PB-29 | 主线命中带宽 12 屏幕像素边界（#51） | `hit_test_reference_tier` |
-| UT-PB-30 | 自适应主线命中带宽（低缩放放宽至 20px） | `rel_line_hit_px` / `hit_test_reference_tier` |
+| UT-PB-30 | 自适应主线命中带宽（低缩放放宽至 14px） | `rel_line_hit_px` / `hit_test_reference_tier` |
 | UT-PB-31 | 低缩放近线优先与自适应带宽对齐 | `should_prefer_reference_over_table` |
+| UT-PB-32 | 叠线簇点击轮选（精准消歧） | `resolve_ref_hit_cluster` |
 
 ## ADDED — perf-canvas-relation-hit-index 关系线命中 AABB 预过滤
 
