@@ -300,6 +300,8 @@ const UT_PASS_IDS: &[&str] = &[
     // fix-dense-lowzoom-relation-hit：低缩放自适应命中带宽
     "UT-PB-30",
     "UT-PB-31",
+    // fix-relation-precise-pick：叠线簇轮选
+    "UT-PB-32",
     // ST-PB-16 e2e 由 scripts/test-spec-parity-d.mjs 真实运行，reporter 声明式兜底
     "ST-PB-16",
     // fix-issue-48（issue #48 R-LOD-10）：表维度卡宽上限放宽

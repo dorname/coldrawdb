@@ -54,17 +54,19 @@ pub const REL_ENDPOINT_SIZE: f64 = 10.0;
 /// 关系主线命中带宽基线（屏幕像素，zoom ≥ `REL_HIT_ZOOM_HIGH`）。#51：8→12。
 pub const REL_LINE_HIT_PX: f64 = 12.0;
 /// 低缩放（zoom ≤ `REL_HIT_ZOOM_LOW`）主线命中带宽（屏幕像素）。
-/// fix-dense-lowzoom-relation-hit：全景细线对准放宽至 20。
-pub const REL_LINE_HIT_PX_LOW: f64 = 20.0;
+/// fix-relation-precise-pick：由 20 收紧为 14，降低叠线误选。
+pub const REL_LINE_HIT_PX_LOW: f64 = 14.0;
 /// 自适应命中：≤ 此 zoom 使用 `REL_LINE_HIT_PX_LOW`。
 pub const REL_HIT_ZOOM_LOW: f64 = 0.25;
 /// 自适应命中：≥ 此 zoom 使用 `REL_LINE_HIT_PX`。
 pub const REL_HIT_ZOOM_HIGH: f64 = 1.0;
+/// 叠线簇：与最近候选屏幕距离差 ≤ 此值的关系参与点击轮选（R-HIT-08）。
+pub const REL_HIT_CLUSTER_PX: f64 = 3.0;
 /// 高缩放近线优先基线（= `REL_LINE_HIT_PX`）；运行时阈值见 `rel_line_hit_px(zoom)`。
 pub const REL_OVER_TABLE_PREFER_PX: f64 = REL_LINE_HIT_PX;
 
 /// R-HIT-02 / R-HIT-05：随 zoom 自适应的主线命中屏幕像素带宽。
-/// zoom≤0.25 → 20；zoom≥1 → 12；中间线性插值。
+/// zoom≤0.25 → 14；zoom≥1 → 12；中间线性插值。
 pub fn rel_line_hit_px(zoom: f64) -> f64 {
     let z = zoom.max(1e-6);
     if z <= REL_HIT_ZOOM_LOW {
@@ -75,6 +77,29 @@ pub fn rel_line_hit_px(zoom: f64) -> f64 {
         let t = (z - REL_HIT_ZOOM_LOW) / (REL_HIT_ZOOM_HIGH - REL_HIT_ZOOM_LOW);
         REL_LINE_HIT_PX_LOW + t * (REL_LINE_HIT_PX - REL_LINE_HIT_PX_LOW)
     }
+}
+
+/// R-HIT-08：叠线簇消歧——`ranked_screen` 已按屏幕距离升序；
+/// 与最近线相差 ≤ `REL_HIT_CLUSTER_PX` 的构成簇；若 `prev_selected` 在簇内则轮到下一根。
+pub fn resolve_ref_hit_cluster(
+    ranked_screen: &[(f64, &str)],
+    prev_selected: Option<&str>,
+) -> Option<String> {
+    if ranked_screen.is_empty() {
+        return None;
+    }
+    let best = ranked_screen[0].0;
+    let cluster: Vec<&(f64, &str)> = ranked_screen
+        .iter()
+        .filter(|(d, _)| *d <= best + REL_HIT_CLUSTER_PX)
+        .collect();
+    if let Some(prev) = prev_selected {
+        if let Some(i) = cluster.iter().position(|(_, id)| *id == prev) {
+            let next = cluster[(i + 1) % cluster.len()];
+            return Some(next.1.to_string());
+        }
+    }
+    Some(cluster[0].1.to_string())
 }
 /// 表卡圆角统一值（原 14/16 多值并存收敛为 8；选中环 = 本值 + 2.5 外扩）。
 pub const TABLE_CORNER_RADIUS: f64 = 8.0;
@@ -1072,6 +1097,7 @@ mod leptos_canvas {
                     tier,
                     store.comment_display.get_untracked(),
                     t_now.zoom,
+                    None, // 悬停不轮选
                 );
                 // R-PERF-HOV-02 写守卫：同 ref 命中不反复 set（文案不变 → DOM 不重建）
                 if hover_ref.get_untracked().as_deref() != hit.as_deref() {
@@ -1468,6 +1494,7 @@ mod leptos_canvas {
                             hit_tier,
                             comment_mode,
                             t_now.zoom,
+                            selected_ref_id.get_untracked().as_deref(),
                         )
                         .filter(|(_, d)| super::should_prefer_reference_over_table(*d, t_now.zoom))
                     });
@@ -1497,6 +1524,7 @@ mod leptos_canvas {
                         hit_tier,
                         comment_mode,
                         t_now.zoom,
+                        selected_ref_id.get_untracked().as_deref(),
                     ) {
                         selected_id.set(None);
                         selected_ref_id.set(Some(ref_id.clone()));
@@ -1519,6 +1547,7 @@ mod leptos_canvas {
                         super::tier_for_dimension(store.view_dimension.get_untracked()),
                         comment_mode,
                         t_now.zoom,
+                        selected_ref_id.get_untracked().as_deref(),
                     ) {
                         selected_id.set(None);
                         selected_ref_id.set(Some(ref_id.clone()));
@@ -2001,6 +2030,7 @@ mod leptos_canvas {
                         hit_tier_dim,
                         comment_mode,
                         t_now.zoom,
+                        selected_ref_id.get_untracked().as_deref(),
                     )
                     .filter(|(_, d)| super::should_prefer_reference_over_table(*d, t_now.zoom))
                 });
@@ -2098,6 +2128,7 @@ mod leptos_canvas {
                     hit_tier_dim,
                     comment_mode,
                     t_now.zoom,
+                    selected_ref_id.get_untracked().as_deref(),
                 ) {
                     // relation-inspector-and-ddl-io：点击连线（表未命中时）→ 选中高亮 + Inspector 展示（不再弹详情模态）
                     // #51：近线优先已在上方 prefer_ref 分支处理；此处覆盖「未点中表、仅点中关系」
@@ -6915,7 +6946,16 @@ pub fn reference_aabb(
 /// p0-fix 定点 3：纯函数 — (x, y) 命中哪条 reference 连线（UT-MM-33）
 /// 几何与 `draw_bezier_fields` 一致（calc_path 贝塞尔）；返回 reference id
 pub fn hit_test_reference(tables: &[Table], refs: &[Reference], x: f64, y: f64, zoom: f64) -> Option<String> {
-    hit_test_reference_tier(tables, refs, x, y, LodTier::Detail, CommentDisplay::NameComment, zoom)
+    hit_test_reference_tier(
+        tables,
+        refs,
+        x,
+        y,
+        LodTier::Detail,
+        CommentDisplay::NameComment,
+        zoom,
+        None,
+    )
 }
 
 /// #35 R-LOD-08：tier 感知命中检测——拓扑档线几何为表级锚定，命中必须与绘制同口径
@@ -6958,8 +6998,9 @@ pub fn should_prefer_reference_over_table(ref_world_dist: f64, zoom: f64) -> boo
     ref_world_dist * zoom <= rel_line_hit_px(zoom)
 }
 
-/// fix-issues-42-44（#44）+ #51 + fix-dense-lowzoom-relation-hit：
-/// 线型同源 + 最近距离优先；带宽 = `rel_line_hit_px(zoom)`。
+/// fix-issues-42-44 + #51 + dense-lowzoom + precise-pick：
+/// 线型同源 + 最近距离优先 + 叠线簇轮选；带宽 = `rel_line_hit_px(zoom)`。
+/// `prev_selected`：点击消歧用（悬停传 None）。
 pub fn hit_test_reference_tier(
     tables: &[Table],
     refs: &[Reference],
@@ -6968,8 +7009,10 @@ pub fn hit_test_reference_tier(
     tier: LodTier,
     comment_mode: CommentDisplay,
     zoom: f64,
+    prev_selected: Option<&str>,
 ) -> Option<String> {
-    hit_test_reference_tier_dist(tables, refs, x, y, tier, comment_mode, zoom).map(|(id, _)| id)
+    hit_test_reference_tier_dist(tables, refs, x, y, tier, comment_mode, zoom, prev_selected)
+        .map(|(id, _)| id)
 }
 
 /// 与 `hit_test_reference_tier` 同口径，额外返回命中关系的世界距离（供 R-HIT-05 近线优先）。
@@ -6981,28 +7024,44 @@ pub fn hit_test_reference_tier_dist(
     tier: LodTier,
     comment_mode: CommentDisplay,
     zoom: f64,
+    prev_selected: Option<&str>,
 ) -> Option<(String, f64)> {
-    let mut best: Option<(f64, &str)> = None;
     let hit_px = rel_line_hit_px(zoom);
     // R-HIT-07：AABB 外扩 = max(自适应主线带宽, 端点热区) / zoom
     let pad = hit_px.max(REL_ENDPOINT_SIZE) / zoom;
+    let mut cands: Vec<(f64, f64, String)> = Vec::new(); // screen, world, id
     for r in refs {
-        // AABB 预过滤：先剔除远离指针的关系，避免昂贵的 dist_to_reference 计算
-        let Some(aabb) = reference_aabb(tables, r, tier, comment_mode) else { continue };
+        let Some(aabb) = reference_aabb(tables, r, tier, comment_mode) else {
+            continue;
+        };
         let expanded = (aabb.0 - pad, aabb.1 - pad, aabb.2 + 2.0 * pad, aabb.3 + 2.0 * pad);
         if !aabb_intersects((x, y, 0.0, 0.0), expanded) {
             continue;
         }
         if let Some((line_d, endpoint_d)) = dist_to_reference(tables, r, x, y, tier, comment_mode) {
-            // R-HIT-02：自适应主线带宽；R-HIT-06：端点热区 REL_ENDPOINT_SIZE
             let line_ok = line_d * zoom <= hit_px;
             let endpoint_ok = endpoint_d * zoom <= REL_ENDPOINT_SIZE;
-            if (line_ok || endpoint_ok) && best.map_or(true, |(bd, _)| line_d.min(endpoint_d) < bd) {
-                best = Some((line_d.min(endpoint_d), r.id.as_str()));
+            if line_ok || endpoint_ok {
+                let world = line_d.min(endpoint_d);
+                cands.push((world * zoom, world, r.id.clone()));
             }
         }
     }
-    best.map(|(d, id)| (id.to_string(), d))
+    if cands.is_empty() {
+        return None;
+    }
+    cands.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    let ranked: Vec<(f64, &str)> = cands
+        .iter()
+        .map(|(s, _, id)| (*s, id.as_str()))
+        .collect();
+    let picked = resolve_ref_hit_cluster(&ranked, prev_selected)?;
+    let world = cands
+        .iter()
+        .find(|(_, _, id)| id == &picked)
+        .map(|(_, w, _)| *w)
+        .unwrap_or(0.0);
+    Some((picked, world))
 }
 
 // ─── Pure function: update reference endpoint (B3) ──────────────────────────
@@ -7666,6 +7725,7 @@ mod tests {
             LodTier::Detail,
             CommentDisplay::NameComment,
             1.0,
+            None,
         );
         assert!(dist.is_some(), "UT-PB-28: 点应命中关系，实际 {dist:?}");
         let (rid, d) = dist.unwrap();
@@ -7741,6 +7801,7 @@ mod tests {
             LodTier::Detail,
             CommentDisplay::NameComment,
             1.0,
+            None,
         );
         assert!(
             dist_hit.as_ref().is_some_and(|(id, d)| id == "r1" && (*d - 5.0).abs() < 0.5),
@@ -7754,12 +7815,12 @@ mod tests {
         use crate::editor_core::types::Field;
         assert_eq!(rel_line_hit_px(1.0), 12.0, "UT-PB-30: zoom=1 → 12");
         assert_eq!(rel_line_hit_px(2.0), 12.0, "UT-PB-30: zoom>1 → 12");
-        assert_eq!(rel_line_hit_px(0.25), 20.0, "UT-PB-30: zoom=0.25 → 20");
-        assert_eq!(rel_line_hit_px(0.1), 20.0, "UT-PB-30: zoom=0.1 → 20");
+        assert_eq!(rel_line_hit_px(0.25), 14.0, "UT-PB-30: zoom=0.25 → 14");
+        assert_eq!(rel_line_hit_px(0.1), 14.0, "UT-PB-30: zoom=0.1 → 14");
         let mid = rel_line_hit_px(0.625);
         assert!(
-            (mid - 16.0).abs() < 1e-9,
-            "UT-PB-30: zoom=0.625 应插值到 16，实际 {mid}"
+            (mid - 13.0).abs() < 1e-9,
+            "UT-PB-30: zoom=0.625 应插值到 13，实际 {mid}"
         );
 
         let mk = |id: &str, x: f64, y: f64| Table {
@@ -7818,14 +7879,14 @@ mod tests {
         );
         // zoom=0.25：世界 80 → 屏幕 20 命中；世界 84 → 屏幕 21 不命中
         assert_eq!(
-            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 80.0, 0.25),
+            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 56.0, 0.25),
             Some("r1".to_string()),
-            "UT-PB-30: zoom=0.25 世界80（屏20）应命中"
+            "UT-PB-30: zoom=0.25 世界56（屏14）应命中"
         );
         assert_eq!(
-            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 84.0, 0.25),
+            hit_test_reference(&[t1.clone(), t2.clone()], &refs, mid_x, y_line + 60.0, 0.25),
             None,
-            "UT-PB-30: zoom=0.25 世界84（屏21）应不命中"
+            "UT-PB-30: zoom=0.25 世界60（屏15）应不命中"
         );
     }
 
@@ -7833,12 +7894,12 @@ mod tests {
     #[test]
     fn test_should_prefer_reference_adaptive_ut_pb_31() {
         assert!(
-            should_prefer_reference_over_table(80.0, 0.25),
-            "UT-PB-31: zoom=0.25 世界80 → 屏20 ≤ 20 应优先关系"
+            should_prefer_reference_over_table(56.0, 0.25),
+            "UT-PB-31: zoom=0.25 世界56 → 屏14 ≤ 14 应优先关系"
         );
         assert!(
-            !should_prefer_reference_over_table(84.0, 0.25),
-            "UT-PB-31: zoom=0.25 世界84 → 屏21 > 20 应不优先"
+            !should_prefer_reference_over_table(60.0, 0.25),
+            "UT-PB-31: zoom=0.25 世界60 → 屏15 > 14 应不优先"
         );
         assert!(
             should_prefer_reference_over_table(12.0, 1.0),
@@ -7847,6 +7908,43 @@ mod tests {
         assert!(
             !should_prefer_reference_over_table(13.0, 1.0),
             "UT-PB-31: zoom=1 世界13 仍不优先"
+        );
+    }
+
+    /// UT-PB-32（fix-relation-precise-pick / R-HIT-08）：叠线簇点击轮选
+    #[test]
+    fn test_resolve_ref_hit_cluster_cycle_ut_pb_32() {
+        let ranked = [(1.0, "r_a"), (2.5, "r_b"), (2.8, "r_c"), (8.0, "r_far")];
+        assert_eq!(
+            resolve_ref_hit_cluster(&ranked, None).as_deref(),
+            Some("r_a"),
+            "UT-PB-32: 无 prev 取最近"
+        );
+        assert_eq!(
+            resolve_ref_hit_cluster(&ranked, Some("r_a")).as_deref(),
+            Some("r_b"),
+            "UT-PB-32: prev=r_a → 轮到 r_b"
+        );
+        assert_eq!(
+            resolve_ref_hit_cluster(&ranked, Some("r_b")).as_deref(),
+            Some("r_c"),
+            "UT-PB-32: prev=r_b → 轮到 r_c"
+        );
+        assert_eq!(
+            resolve_ref_hit_cluster(&ranked, Some("r_c")).as_deref(),
+            Some("r_a"),
+            "UT-PB-32: prev=r_c → 回到 r_a"
+        );
+        assert_eq!(
+            resolve_ref_hit_cluster(&ranked, Some("r_far")).as_deref(),
+            Some("r_a"),
+            "UT-PB-32: prev 不在簇内 → 取最近"
+        );
+        let single = [(0.5, "only")];
+        assert_eq!(
+            resolve_ref_hit_cluster(&single, Some("only")).as_deref(),
+            Some("only"),
+            "UT-PB-32: 单候选轮选仍自身"
         );
     }
 
@@ -9368,7 +9466,7 @@ mod tests {
         }];
         let tables = vec![ta.clone(), tb.clone()];
         assert_eq!(
-            hit_test_reference_tier(&tables, &refs, mid_x, mid_y, LodTier::Topology, CommentDisplay::NameComment, 1.0),
+            hit_test_reference_tier(&tables, &refs, mid_x, mid_y, LodTier::Topology, CommentDisplay::NameComment, 1.0, None),
             Some("r1".to_string()),
             "UT-CR-LOD-01: 拓扑档命中必须与表级锚定绘制同口径"
         );
