@@ -133,8 +133,9 @@ paths:
       summary: "导入 drawdb JSON object（创建独立新图，实体 ID 重映射并回填关系端点）"
       description: |
         保留逐实体容错和 warnings；为保留的 table/field/reference/area/note 生成新的全局唯一 ID，
-        并回填 references 端点。嵌套 DTO 反序列化失败返回 400 且 details 指明数组与原因，
-        不得静默退化为空图成功。
+        并回填 references 端点。references 的四个端点同时接受 camelCase 与 snake_case，
+        fields 的非空约束同时接受 notNull 与 not_null；统一规范化后两种写法不得产生关系或约束差异。
+        嵌套 DTO 反序列化失败返回 400 且 details 指明数组与原因，不得静默退化为空图成功。
       requestBody:
         required: true
         content:

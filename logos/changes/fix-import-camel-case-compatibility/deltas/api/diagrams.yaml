@@ -1,0 +1,5 @@
+## MODIFIED — /api/v1/diagrams/import POST description
+
+在现有导入说明中补充：
+
+`payload.references[]` 的四个端点同时接受 camelCase（`startTableId`、`endTableId`、`startFieldId`、`endFieldId`）与 snake_case；`payload.tables[].fields[]` 的非空约束同时接受 `notNull` 与 `not_null`。服务端统一规范化后再做关系完整性检查、ID 重映射和持久化，两种写法不得产生关系丢失或约束差异。

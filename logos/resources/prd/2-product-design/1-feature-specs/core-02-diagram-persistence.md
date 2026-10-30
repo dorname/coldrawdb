@@ -91,6 +91,9 @@ V1 不实现实时协作；同一 diagram 同时被多个浏览器编辑会触�
 4. ID 隔离在共享 `persist_import_payload` 层实现，因此 diagram import 与 bridge import/retry 均避免跨图全局唯一冲突，不要求调用方先查询数据库或提交额外 remap 选项。
 5. tables / references / areas / notes / dictionaries 任一整组 DTO 反序列化失败时返回 400，`details.kind=payload` 且 `details.message` 包含失败数组和 Serde 原因；不得退化为空数组并返回 `imported_tables=0` 的假成功。
 6. 其他持久化失败保留既有空图回收，服务端 warning 日志记录 diagram_id 和错误但不记录 token/payload；500 响应 `details.kind=database`（或其他持久化类型）且 `details.message` 非空，不再吞掉底层错误。
+7. 关系完整性检查前，将 `startTableId` / `endTableId` / `startFieldId` / `endFieldId` 分别补写到 `start_table_id` / `end_table_id` / `start_field_id` / `end_field_id`。snake_case 已有非空字符串时优先；其缺失、为空或类型无效时才采用 camelCase 值。补写后再执行现有缺端点丢弃与 ID 重映射。
+8. `FieldDto.not_null` 同时接受 `notNull` 和 `not_null`；`ReferenceDto` 四个端点也声明对应 camelCase serde alias，保证直接 DTO 构造与规范化路径一致。
+9. 两种命名风格导入后的关系数量、端点和字段 `not_null` 完全一致；两种键都缺失时保持既有 warnings 逐实体丢弃行为，不把无法解析的关系静默当作成功。
 
 ### 5.2 字段映射
 
@@ -101,6 +104,8 @@ V1 不实现实时协作；同一 diagram 同时被多个浏览器编辑会触�
 | `tables[].indices` | ❌ | V1 导入时丢弃 |
 | `tables[].enums` | ❌ | V1 导入时丢弃 |
 | `references[]` | ✅ | 1:1 映射 |
+| `references[].startTableId / endTableId / startFieldId / endFieldId` | ✅ | 分别规范化为四个 snake_case 端点键；与既有 snake_case 等价 |
+| `tables[].fields[].notNull / not_null` | ✅ | 统一反序列化为 `FieldDto.not_null` 并持久化 |
 | `subject_areas` → `areas` | ✅ | 字段名转换 |
 
 ### 5.3 导入日志

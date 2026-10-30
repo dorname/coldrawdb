@@ -338,6 +338,23 @@ pub fn make_diagram() -> DiagramCreateRequest {
   - 持久化异常返回 500，`details.kind=database` 且 `details.message` 非空；不会留下可读取的半成品图。
 - **reporter**：分别登记 UT-S01-14、UT-S01-15、ST-S01-06 到 `logos/resources/verify/test-results.jsonl`。
 
+## 导入命名兼容用例
+
+### UT-S01-17 — camelCase 端点与 notNull 规范化
+
+- **位置**：`backend/src/diagram_persistence.rs`。
+- **输入**：table/field 使用固定 ID，reference 仅提供 `startTableId/endTableId/startFieldId/endFieldId`，字段提供 `notNull:true`。
+- **操作**：执行 `normalize_import_payload` 和导入 DTO 构造。
+- **断言**：关系未被丢弃；四个 snake_case 端点已补写并等于重映射后的 table/field ID；DTO `not_null=true`；snake_case 优先规则不被别名覆盖。
+- **reporter**：登记 `UT-S01-17` 到 `logos/resources/verify/test-results.jsonl`。
+
+### ST-S01-07 — 两种命名风格导入后关系与约束一致
+
+- **位置**：`backend/src/diagrams_v1.rs::tests`，独立临时 SQLite。
+- **步骤**：分别用 camelCase 与 snake_case 导入同一组五表、五字段、四关系的 CMS payload，字段显式使用对应风格的非空约束；GET 两张图。
+- **断言**：两次均 200 且实际持久化 5 表、5 字段、4 关系；关系端点均指向各自新图；目标字段 `not_null=true`；camelCase 响应无 `missing endpoint id` warnings；snake_case 不再 500。
+- **reporter**：登记 `ST-S01-07` 到 `logos/resources/verify/test-results.jsonl`。
+
 ## 附录 A：用例 ID 清单（OpenLogos verify 解析用）
 
 | ID | 标题 | 对齐实现 |
@@ -358,6 +375,7 @@ pub fn make_diagram() -> DiagramCreateRequest {
 | UT-S01-14 | 导入实体 ID 重映射与端点回填 | `backend/src/diagram_persistence.rs` |
 | UT-S01-15 | 嵌套 DTO 类型错误不得静默变空图 | `backend/src/diagram_persistence.rs` |
 | UT-S01-16 | 同 ID 软删除 reference 可在全量保存中重建 | `backend/src/diagram_persistence.rs` |
+| UT-S01-17 | camelCase 端点与 notNull 规范化 | `backend/src/diagram_persistence.rs` |
 | UT-ID-GLOBAL-01 | 前端实体 id 全局唯一(1000 个 id 互不重复) | `frontend-rs/tests/entity_id_uniqueness.rs` |
 | UT-ID-GLOBAL-02 | 新格式 id 绕过 max+1 解析(兼容存量加载) | `frontend-rs/src/editor_panels.rs` |
 | UT-S01-AUTH-01 | flag=on：无 token POST/PUT/DELETE/import → 401 | `backend/src/diagrams_v1.rs` |
@@ -370,5 +388,6 @@ pub fn make_diagram() -> DiagramCreateRequest {
 | ST-S01-04 | 导入缺 id/name payload 兜底补全 | `backend/src/diagrams_v1.rs::tests` |
 | ST-S01-05 | 导入坏表丢弃 + warnings 明细 | `backend/src/diagrams_v1.rs::tests` |
 | ST-S01-06 | 重复导入、400/500 诊断与跨图隔离 | `backend/src/diagrams_v1.rs::tests` |
+| ST-S01-07 | 两种命名风格导入后关系与约束一致 | `backend/src/diagrams_v1.rs::tests` |
 | ST-S01-03 | 浏览器 wasm 渲染 | `frontend-rs/tests/wasm/` |
 | ST-S01-AUTH-01 | 登录态编辑保存全链路（编排 core-S01 v1.1.0：匿名 401 → 登录 CRUD → 409 → 删除） | `backend/src/diagrams_v1.rs::tests` |
