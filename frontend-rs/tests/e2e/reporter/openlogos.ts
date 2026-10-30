@@ -35,6 +35,7 @@ const PREFIX_MAP: Record<string, string> = {
   "s04-rooms.spec.ts": "ST-FE-S04-",
   "s05-collab.spec.ts": "ST-FE-S05-",
   "v2-regression.spec.ts": "ST-FE-V2-",
+  "listview-persistence.spec.ts": "ST-",
   // fix-remote-github-issues-7-18（issue #7/#8）：ST-PC-09 拖入 .ddl → 摘要 → 导入画布
   "pc-ddl-drop.spec.ts": "ST-PC-",
   // fix-remote-github-issues-7-18（issue #9/#11）：ST-PB-05 连线换侧 / ST-RP-04 分隔条清晰
