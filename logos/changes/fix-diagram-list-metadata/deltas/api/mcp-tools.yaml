@@ -1,0 +1,3 @@
+## MODIFIED — DiagramSummary
+
+`DiagramSummary.required` 从 `[id, name]` 调整为 `[id, name, revision, updated_at]`。`revision` 为非负整数；`updated_at` 保持 `[string, "null"]`，允许旧数据无时间值，但键必须存在。`list_diagrams` 不得把上游已有的真实 revision/updated_at 回退为常量 `0/null`。

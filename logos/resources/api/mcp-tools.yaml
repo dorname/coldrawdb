@@ -607,7 +607,7 @@ schemas:
         minLength: 1
   DiagramSummary:
     type: object
-    required: [id, name]
+    required: [id, name, revision, updated_at]
     properties:
       id:
         type: string

@@ -19,7 +19,7 @@
 | ID | 需求 | 验收 |
 |---|---|---|
 | FR-S06-01 | 提供 MCP stdio 服务并完成 initialize、initialized、tools/list | 四客户端配置可启动服务；tools/list 返回七个稳定工具 |
-| FR-S06-02 | 提供 `list_diagrams`、`get_diagram` | 返回结构化摘要或完整 diagram；不存在时返回可诊断错误 |
+| FR-S06-02 | 提供 `list_diagrams`、`get_diagram` | 返回结构化摘要或完整 diagram；列表摘要必须返回上游真实 `revision` 与 `updated_at`，不得因遗留 VO 缺列退化为 `0/null`；不存在时返回可诊断错误 |
 | FR-S06-03 | 提供 `create_diagram`、`update_diagram`、`delete_diagram`，以及画布写工具 | 非房间图 update 走 `PUT /api/v1/diagrams/{id}` 且必须携带 `expected_revision`；房间绑定图在 PUT 返回 `USE_OP_CHANNEL` 后改经 `/ws/rooms/{roomId}` 提交 op，成功响应仍为 `{id, revision}` |
 | FR-S06-04 | 提供 `import_schema` | MVP 接受 drawdb JSON；SQL/DBML 文本导入仅在解析能力落地后开放对应枚举值 |
 | FR-S06-05 | 提供 `export_schema` | 从完整 diagram 在 adapter 内确定性生成 JSON、DBML 或七类 SQL；SQL/DBML 保留单/复合主键、NOT NULL、UNIQUE、DEFAULT、有效 FK 及级联动作和注释，复合主键不得生成多个列级 `PRIMARY KEY` |
