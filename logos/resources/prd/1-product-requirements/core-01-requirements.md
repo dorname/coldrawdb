@@ -46,7 +46,7 @@
 | FR-09 | SQL 导出（7 引擎：MySQL / PostgreSQL / SQLite / MariaDB / MSSQL / OracleSQL / Generic） | 选择引擎 → 一键生成 SQL | CAP-BRIDGE-01 |
 | FR-10 | SQL 导入（7 引擎） | 选择 SQL 文件 → 解析 → 渲染到画布 | CAP-BRIDGE-02 |
 | FR-11 | DBML 导入/导出 | 双向支持 | CAP-BRIDGE-03 |
-| FR-12 | JSON 导入/导出 | 通过 `POST /api/v1/diagrams/import` | CAP-BRIDGE-04 / CAP-PERSIST-04 |
+| FR-12 | JSON 导入/导出 | 通过 `POST /api/v1/diagrams/import`；同一 payload 重复导入创建实体 ID 隔离的独立新图并保留关系端点；嵌套类型错误返回可诊断 400，持久化失败返回非空 details，不得静默变成空图成功 | CAP-BRIDGE-04 / CAP-PERSIST-04 |
 | FR-13 | 分享链接加载 | URL `?share=xxx` → 加载图 | CAP-PERSIST-03 |
 | FR-14 | 校验 Issues | 重复表名 / 空字段名 / 字段类型合法 | CAP-EDIT-04 |
 | FR-15 | 11 张表的数据模型 | diagrams / tables / fields / references / indices / areas / notes 等 | init.sql / database_design.json |

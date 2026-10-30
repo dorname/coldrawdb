@@ -1,0 +1,42 @@
+# Delta — diagrams.yaml（修改）
+
+> 模块：core | 提案：fix-import-id-remapping-and-errors
+> 关联缺陷：Issue #62 重复导入全局实体 ID 冲突与错误诊断缺失
+
+## MODIFIED — paths./api/v1/diagrams/import.post
+
+```yaml
+  /api/v1/diagrams/import:
+    post:
+      operationId: importDiagram
+      summary: "导入 drawdb JSON object（创建独立新图，实体 ID 重映射并回填关系端点）"
+      description: |
+        保留逐实体容错和 warnings；为保留的 table/field/reference/area/note 生成新的全局唯一 ID，
+        并回填 references 端点。嵌套 DTO 反序列化失败返回 400 且 details 指明数组与原因，
+        不得静默退化为空图成功。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportRequest'
+      responses:
+        '200':
+          description: "导入成功；数量为实际持久化结果，返回的新图内实体 ID 与其他图隔离"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          description: "持久化失败；回收空图，details.kind/details.message 提供非空诊断信息"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+```
+
+请求 Schema、成功响应字段和错误 envelope 不变，仅细化导入 ID 与错误语义。
