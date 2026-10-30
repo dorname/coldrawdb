@@ -9,9 +9,9 @@
 | Defined cases | 578 |
 | Manual cases (excluded) | 0 |
 | Executed cases | 578 |
-| Passed | 542 |
+| Passed | 544 |
 | Failed | 0 |
-| Skipped | 36 |
+| Skipped | 34 |
 | Uncovered | 0 |
 | Coverage | 100% |
 | Pass rate | 94% |
@@ -19,8 +19,6 @@
 
 ## Skipped Cases
 
-- UT-PC-13
-- UT-PC-24
 - ST-S01-03
 - ST-S02-01
 - ST-S02-02
