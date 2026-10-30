@@ -1,0 +1,43 @@
+## MODIFIED — 2. UT 用例
+
+| ID | 输入/操作 | 断言 |
+|---|---|---|
+| UT-MCP-01 | 缺失或非法 `COLDRAWDB_BASE_URL` | 启动失败，错误 `CONFIG_INVALID`，退出码 2 |
+| UT-MCP-02 | initialize | 返回 serverInfo、tools capability、instructions；协议版本协商正确 |
+| UT-MCP-03 | tools/list | 恰好七个工具；名称、inputSchema、outputSchema 稳定 |
+| UT-MCP-04 | list 响应规范化 + query/limit | 过滤、排序、截断正确，不泄漏上游 envelope |
+| UT-MCP-05 | get diagram 响应 | 保留完整模型和 revision，structuredContent 符合 schema |
+| UT-MCP-06 | 完整 fixture：`users` 为单主键；`membership(tenant_id,user_id)` 为复合主键；字段含 NOT NULL、UNIQUE、DEFAULT；表/字段注释含单引号；`membership.user_id → users.id` 含 `on_delete=CASCADE`、`on_update=SET_NULL`；另含一条悬空关系。导出 JSON/DBML/七类 SQL | PostgreSQL 单主键保持列内、复合主键仅一个表级声明，NOT NULL/UNIQUE/DEFAULT/FK/ON DELETE/ON UPDATE/COMMENT ON 齐全且注释正确转义；DBML 含复合主键 indexes、字段 settings、表/字段 note、有效 Ref 及级联；MySQL/MariaDB 使用方言 COMMENT，SQLite/MSSQL 无 COMMENT ON；七类 SQL 的复合表均无列级 PRIMARY KEY；悬空关系跳过且无 `?`；相同输入输出字节一致，JSON/envelope 不变，无数据库或网络副作用 |
+| UT-MCP-07 | create 请求 | 只发送 name/database；解析 `{code,data,request_id}` |
+| UT-MCP-08 | update 请求 | 显式发送 expected_revision 和完整 diagram；成功 revision +1 |
+| UT-MCP-09 | delete confirm=false/缺失 | 本地拒绝；不发送 HTTP；confirm=true 才允许 |
+| UT-MCP-10 | import payload | 非 object 本地拒绝；drawdb_json object 正确映射 |
+| UT-MCP-11 | 四客户端配置 fixture | Claude/Cursor JSON、Codex TOML、OpenCode JSON 可解析且命令/环境一致 |
+| UT-MCP-12 | 上游 409 | 映射 `REVISION_CONFLICT`，保留 current_revision，retryable=false |
+| UT-MCP-13 | 400/401/403/404/422/5xx | 映射表一致；只暴露白名单 details/request_id |
+| UT-MCP-14 | 连接失败/超时 | 分别映射 unavailable/timeout；写操作不自动重试 |
+| UT-MCP-15 | Token 和 stdout | stdout 只有协议帧；stderr、错误、Debug、reporter 无 Token 明文 |
+| UT-MCP-16 | update_table 参数校验 | 缺少 table_id → `VALIDATION_ERROR`；name 超长 → `VALIDATION_ERROR`；x/y 非 number → `VALIDATION_ERROR` |
+| UT-MCP-17 | update_field 参数校验 | 缺少 field_id → `VALIDATION_ERROR`；name 超长 → `VALIDATION_ERROR`；type 非法 → `VALIDATION_ERROR` |
+| UT-MCP-18 | update_reference 参数校验 | action=create 但缺少 start/end_table_id/field_id → `VALIDATION_ERROR`；action=update/delete 但缺少 ref_id → `VALIDATION_ERROR`；cardinality 非法值 → `VALIDATION_ERROR` |
+| UT-MCP-19 | layout_diagram 力导向算法 | 3 表 2 边输入 → 输出不重叠（最小间距约束满足）；相同输入两次运行 → 输出完全一致（确定性）；孤立表（无边）→ 位置不变 |
+| UT-MCP-20 | tools/list 工具总数 | 恰好 11 个工具；新增 4 个工具 name/title/description/inputSchema/outputSchema 稳定 |
+| UT-MCP-21 | update_table 端到端（mock HTTP） | GET → 修改 name/comment → PUT；PUT body 中仅该表属性变更，其他表不变 |
+| UT-MCP-22 | update_reference create/delete（mock HTTP） | create：references 数组新增一条边；delete：指定 ref_id 从 references 中移除；revision 均 +1 |
+
+## MODIFIED — 3. ST 用例
+
+| ID | 前置与步骤 | 预期 |
+|---|---|---|
+| ST-MCP-01 | 启动 stdio → initialize → initialized → tools/list | 握手成功，七工具可见，annotations 正确 |
+| ST-MCP-02 | mock 上游返回 UT-MCP-06 的完整 diagram；list → get → 分别 export JSON/DBML/PostgreSQL 及其余六类 SQL → 对相同输入重复导出 | 所有响应 id/revision 一致；get 保留完整模型；PostgreSQL/DBML 逐项满足复合主键、字段约束、默认值、注释、FK、级联和悬空关系跳过断言；其余 SQL 无重复列级主键且方言注释正确；重复导出内容字节一致，envelope/MIME 不变 |
+| ST-MCP-03 | create → get → update → import → delete | 主链全部成功；revision 从 0 变 1；删除需 confirm |
+| ST-MCP-04 | 两次使用同一 expected_revision 更新 | 第一次成功，第二次 `REVISION_CONFLICT`，数据未覆盖 |
+| ST-MCP-05 | mock 401/403/404/422/500/timeout + 注入测试 Token | 错误码稳定；所有输出完成脱敏 |
+| ST-MCP-06 | Claude `.mcp.json` 启动并 tools/list | 配置解析和 stdio 握手通过 |
+| ST-MCP-07 | Codex `config.toml` 启动并 tools/list | `default_tools_approval_mode="writes"` 生效或配置结构校验通过 |
+| ST-MCP-08 | Cursor `.cursor/mcp.json` 启动并 tools/list | 配置解析和 stdio 握手通过 |
+| ST-MCP-09 | OpenCode `opencode.json` 启动并 tools/list | local command/environment 解析和 stdio 握手通过 |
+| ST-MCP-10 | 启动 stdio → get_diagram → update_table(name/comment) → update_field(name/type) → get_diagram 验证 | 表名/表注释/字段名/字段类型已更新；revision 递增；其他表和字段未被修改 |
+| ST-MCP-11 | 启动 stdio → get_diagram → update_reference(create) → update_reference(update cardinality) → update_reference(delete) → get_diagram 验证 | 连线创建/更新/删除均生效；revision 递增；references 数组最终为空或符合预期 |
+| ST-MCP-12 | 启动 stdio → get_diagram → layout_diagram(mode=force) → get_diagram 验证 → layout_diagram(mode=force) 再次执行 | 两次 layout_diagram 输出表位置完全一致（确定性）；表间无重叠；revision 递增 |

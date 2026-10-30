@@ -15,7 +15,7 @@ MCP 测试分三层：纯函数/配置 UT、mock HTTP 的 MCP stdio ST、与真�
 | UT-MCP-03 | tools/list | 恰好七个工具；名称、inputSchema、outputSchema 稳定 |
 | UT-MCP-04 | list 响应规范化 + query/limit | 过滤、排序、截断正确，不泄漏上游 envelope |
 | UT-MCP-05 | get diagram 响应 | 保留完整模型和 revision，structuredContent 符合 schema |
-| UT-MCP-06 | JSON/DBML/七类 SQL 导出 | 相同 diagram 输出确定；无数据库或网络副作用 |
+| UT-MCP-06 | 完整 fixture：`users` 为单主键；`membership(tenant_id,user_id)` 为复合主键；字段含 NOT NULL、UNIQUE、DEFAULT；表/字段注释含单引号；`membership.user_id → users.id` 含 `on_delete=CASCADE`、`on_update=SET_NULL`；另含一条悬空关系。导出 JSON/DBML/七类 SQL | PostgreSQL 单主键保持列内、复合主键仅一个表级声明，NOT NULL/UNIQUE/DEFAULT/FK/ON DELETE/ON UPDATE/COMMENT ON 齐全且注释正确转义；DBML 含复合主键 indexes、字段 settings、表/字段 note、有效 Ref 及级联；MySQL/MariaDB 使用方言 COMMENT，SQLite/MSSQL 无 COMMENT ON；七类 SQL 的复合表均无列级 PRIMARY KEY；悬空关系跳过且无 `?`；相同输入输出字节一致，JSON/envelope 不变，无数据库或网络副作用 |
 | UT-MCP-07 | create 请求 | 只发送 name/database；解析 `{code,data,request_id}` |
 | UT-MCP-08 | update 请求 | 显式发送 expected_revision 和完整 diagram；成功 revision +1 |
 | UT-MCP-09 | delete confirm=false/缺失 | 本地拒绝；不发送 HTTP；confirm=true 才允许 |
@@ -38,7 +38,7 @@ MCP 测试分三层：纯函数/配置 UT、mock HTTP 的 MCP stdio ST、与真�
 | ID | 前置与步骤 | 预期 |
 |---|---|---|
 | ST-MCP-01 | 启动 stdio → initialize → initialized → tools/list | 握手成功，七工具可见，annotations 正确 |
-| ST-MCP-02 | list → get → export JSON/DBML/SQL | id/revision 一致，导出内容非空且可重复 |
+| ST-MCP-02 | mock 上游返回 UT-MCP-06 的完整 diagram；list → get → 分别 export JSON/DBML/PostgreSQL 及其余六类 SQL → 对相同输入重复导出 | 所有响应 id/revision 一致；get 保留完整模型；PostgreSQL/DBML 逐项满足复合主键、字段约束、默认值、注释、FK、级联和悬空关系跳过断言；其余 SQL 无重复列级主键且方言注释正确；重复导出内容字节一致，envelope/MIME 不变 |
 | ST-MCP-03 | create → get → update → import → delete | 主链全部成功；revision 从 0 变 1；删除需 confirm |
 | ST-MCP-04 | 两次使用同一 expected_revision 更新 | 第一次成功，第二次 `REVISION_CONFLICT`，数据未覆盖 |
 | ST-MCP-05 | mock 401/403/404/422/500/timeout + 注入测试 Token | 错误码稳定；所有输出完成脱敏 |
