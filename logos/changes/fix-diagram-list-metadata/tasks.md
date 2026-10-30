@@ -10,6 +10,6 @@
 
 ## [code] 代码实现
 
-- [ ] 修改 `backend/src/diagrams/mod.rs` 与 `backend/src/entity/vo/diagram_vo.rs`，读取并序列化真实 revision/updated_at
-- [ ] 交付 UT-S04-20、UT-MCP-40 与 OpenLogos reporter，保持 lastModified 回退及列表过滤排序兼容
-- [ ] 运行后端与 MCP 定向测试和全量测试，确认软删除过滤与 MCP 读链路无回归
+- [x] 修改 `backend/src/diagrams/mod.rs` 与 `backend/src/entity/vo/diagram_vo.rs`，读取并序列化真实 revision/updated_at
+- [x] 交付 UT-S04-20、UT-MCP-40 与 OpenLogos reporter，保持 lastModified 回退及列表过滤排序兼容
+- [x] 运行后端与 MCP 定向测试和全量测试，确认软删除过滤与 MCP 读链路无回归

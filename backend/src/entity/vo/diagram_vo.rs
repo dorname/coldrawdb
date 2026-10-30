@@ -27,6 +27,9 @@ pub struct DiagramVo{
     // tasks 
     pub tasks: Option<Vec<TaskVo>>,
     pub pan: Option<String>,
+    #[serde(default)]
+    pub revision: i64,
+    pub updated_at: Option<String>,
     #[serde(rename = "lastModified")]
     pub last_modified: Option<String>
 }
@@ -57,6 +60,8 @@ impl DiagramVo {
             notes: None,
             tasks:None,
             pan: diagram.pan.clone(),
+            revision: 0,
+            updated_at: diagram.last_modified.clone(),
             last_modified: diagram.last_modified.clone()
         }
     }

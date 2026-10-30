@@ -136,6 +136,28 @@ fn ut_mcp_04_list_normalization() {
     record(&["UT-MCP-04"], started);
 }
 
+#[test]
+fn ut_mcp_40_list_preserves_real_metadata() {
+    let started = Instant::now();
+    let value = normalize_list(
+        &json!({"code":200,"data":[
+            {"id":"legacy","name":"legacy","lastModified":"2020-01-01T00:00:00Z"},
+            {"id":"current","name":"current","revision":8,
+             "updated_at":"2026-10-29T12:34:56Z","lastModified":"2020-01-01T00:00:00Z"}
+        ]}),
+        None,
+        10,
+    )
+    .unwrap();
+    assert_eq!(value["count"], 2);
+    assert_eq!(value["items"][0]["id"], "current");
+    assert_eq!(value["items"][0]["revision"], 8);
+    assert_eq!(value["items"][0]["updated_at"], "2026-10-29T12:34:56Z");
+    assert_eq!(value["items"][1]["revision"], 0);
+    assert_eq!(value["items"][1]["updated_at"], "2020-01-01T00:00:00Z");
+    record(&["UT-MCP-40"], started);
+}
+
 fn sql_table_body<'a>(sql: &'a str, quoted_table: &str) -> &'a str {
     let marker = format!("CREATE TABLE {quoted_table} (");
     let (_, body) = sql.split_once(&marker).unwrap();

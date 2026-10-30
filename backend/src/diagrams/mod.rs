@@ -1,7 +1,7 @@
 use actix_web::{delete, post};
 use actix_web::{get, web};
-use sea_orm::{ActiveModelTrait, DatabaseConnection, TransactionTrait};
-use sea_orm::{EntityTrait, QueryFilter};
+use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, TransactionTrait};
+use sea_orm::EntityTrait;
 use crate::common::ResponseCode;
 use crate::common::ResponseMessage;
 use crate::entity::diagram::{self, ActiveModel};
@@ -38,11 +38,37 @@ async fn query_all_diagrams(
 
 /// 查询全部未删除图表（UT-S04-15 直接锚定本函数）
 async fn list_active_diagrams(conn: &DatabaseConnection) -> Result<Vec<DiagramVo>, DrawDBError> {
-    let diagrams = Diagram::find()
-        .filter(sea_orm::sea_query::Expr::col(sea_orm::sea_query::Alias::new("is_deleted")).eq(0))
-        .all(conn)
-        .await?;
-    Ok(diagrams.iter().map(DiagramVo::from).collect())
+    // 旧 diagram::Model 不含迁移后的 revision/updated_at；列表直接读取真实列，
+    // 避免 MCP 与创建房间候选把已有元数据回退成 0/null。
+    let rows = conn.query_all(sea_orm::Statement::from_sql_and_values(
+        sea_orm::DbBackend::Sqlite,
+        "SELECT id, zoom, name, database, last_modified, pan, revision, updated_at FROM diagram WHERE is_deleted=0",
+        vec![],
+    )).await?;
+    let mut diagrams = Vec::with_capacity(rows.len());
+    for row in rows {
+        let last_modified = row.try_get::<Option<String>>("", "last_modified")?;
+        let updated_at = row
+            .try_get::<Option<String>>("", "updated_at")?
+            .or_else(|| last_modified.clone());
+        diagrams.push(DiagramVo {
+            id: row.try_get("", "id")?,
+            zoom: row.try_get("", "zoom")?,
+            database: row.try_get("", "database")?,
+            name: row.try_get("", "name")?,
+            tables: None,
+            areas: None,
+            references: None,
+            indices: None,
+            notes: None,
+            tasks: None,
+            pan: row.try_get("", "pan")?,
+            revision: row.try_get("", "revision")?,
+            updated_at,
+            last_modified,
+        });
+    }
+    Ok(diagrams)
 }
 
 /// 查询图表
@@ -232,5 +258,54 @@ mod tests {
         db.close().await.unwrap();
         std::fs::remove_file(&db_path).unwrap();
         crate::verify_reporter::report_pass("UT-S04-15", 0);
+    }
+
+    /// UT-S04-20：queryAll 返回真实 revision/updated_at，并保留 lastModified 与软删过滤。
+    #[actix_web::test]
+    async fn ut_s04_20_query_all_returns_real_metadata() {
+        let db_path = std::env::temp_dir().join(format!(
+            "coldrawdb_query_all_metadata_{}.sqlite",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::File::create(&db_path).unwrap();
+        let db = Database::connect(format!("sqlite://{}?", db_path.display()))
+            .await
+            .unwrap();
+        crate::init::init_table("init.sql", &db).await.unwrap();
+        crate::init::apply_migrations("migrations", &db).await.unwrap();
+
+        for (id, deleted) in [("d-current", 0), ("d-deleted", 1)] {
+            sea_orm::ConnectionTrait::execute(
+                &db,
+                sea_orm::Statement::from_sql_and_values(
+                    sea_orm::DbBackend::Sqlite,
+                    "INSERT INTO diagram(id, name, last_modified, revision, updated_at, is_deleted) VALUES(?, ?, ?, ?, ?, ?)",
+                    vec![
+                        id.into(),
+                        "同名图".into(),
+                        "2020-01-01T00:00:00Z".into(),
+                        8.into(),
+                        "2026-10-29T12:34:56Z".into(),
+                        deleted.into(),
+                    ],
+                ),
+            )
+            .await
+            .unwrap();
+        }
+
+        let vos = list_active_diagrams(&db).await.unwrap();
+        assert_eq!(vos.len(), 1);
+        assert_eq!(vos[0].id, "d-current");
+        assert_eq!(vos[0].revision, 8);
+        assert_eq!(vos[0].updated_at.as_deref(), Some("2026-10-29T12:34:56Z"));
+        assert_eq!(vos[0].last_modified.as_deref(), Some("2020-01-01T00:00:00Z"));
+        let serialized = serde_json::to_value(&vos[0]).unwrap();
+        assert_eq!(serialized["lastModified"], "2020-01-01T00:00:00Z");
+        assert_eq!(serialized["updated_at"], "2026-10-29T12:34:56Z");
+
+        db.close().await.unwrap();
+        std::fs::remove_file(&db_path).unwrap();
+        crate::verify_reporter::report_pass("UT-S04-20", 0);
     }
 }
