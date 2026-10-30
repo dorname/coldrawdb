@@ -178,15 +178,24 @@ Inspector 锚点与响应式抽屉。验收锚点：**`data-testid="inspector"`*
 - 前置：房间编辑器内已有 ≥3 张表（table_1 / table_2 / users，字段数各不相同），引擎 = PostgreSQL
 - 步骤：
   1. 切列表视图 → 左树展示 3 个节点，首张表（table_1）默认选中，右网格仅含 table_1 字段行
-  2. 树搜索框输入 `user` → 树只剩 users 节点；点击该节点 → 右网格切换为 users 字段明细，节点高亮，Inspector 同步选中 users
-  3. 清空搜索框 → 3 个节点恢复；点击 table_2 → 右网格切换且字段行选中态清空（`list_sel` 重置）
-  4. 搜索框输入不存在的关键字（如 `zzz`）→ 树内空态提示；右网格保持当前表不变
+  2. 树搜索框输入 `user` → 树只剩 users 节点；右网格无需额外点击即切换为 users；点击该节点 → 节点高亮，Inspector 同步选中 users
+  3. 清空搜索框 → 3 个节点和原选中表恢复；点击 table_2 → 右网格切换且字段行选中态清空（`list_sel` 重置）
+  4. 搜索框输入不存在的关键字（如 `zzz`）→ 树内空态提示；右网格显示 `list-view-search-empty`，不得保留 table_2 标题或字段网格；清空后恢复 table_2
   5. 画布侧删除当前选中表后再切列表视图 → 树选中回落首张剩余表，不白屏
 - 预期：
-  1. 搜索过滤为表名大小写不敏感包含匹配（复用 `filter_tables` 口径）；过滤不影响右网格当前表
-  2. 切表后 PUT 快照无变化（导航不落账）；字段行选中态确实清空（删/移按钮禁用）
+  1. 搜索过滤为表名、字段名和首字段类型的大小写不敏感包含匹配（复用 `filter_tables` 口径）；当前表仍在结果中则保持，不在结果中则回落首个匹配，无匹配则为 None
+  2. 切表与搜索后 PUT 快照无变化（导航不落账）；字段行选中态确实清空（删/移按钮禁用）
   3. 双击 users 节点 → 切回画布并选中 users
 - 对齐实现：`frontend-rs/src/editor_panels.rs::ListView`（表树子组件 + `filter_tables` 复用）
+
+### ST-SP-LIST-04 — 列表搜索字段命中提示与网格空态
+
+- **位置**：`frontend-rs/scripts/test-spec-parity-d.mjs`。
+- **前置**：预置 users、posts、comments 三表，comments 含字段 `post_id`，表名不含 post。
+- **步骤**：进入列表视图，在搜索框输入 `post`，随后输入无命中关键字。
+- **断言**：placeholder 明确表名/字段名/类型口径；posts 与 comments 均出现，右网格自动跟随首个匹配 posts；comments 节点显示「字段 post_id 命中」；无命中时 `list-view-search-empty` 可见，旧表标题和字段表格隐藏；清空后恢复原表，全程无新增落账。
+- **reporter**：登记 `ST-SP-LIST-03`、`ST-SP-LIST-04` 到 `logos/resources/verify/test-results.jsonl`。
+- **对齐实现**：`frontend-rs/src/editor_panels.rs::ListView`；`frontend-rs/scripts/test-spec-parity-d.mjs`。
 
 ## 与 IO / 成员抽屉互斥
 
@@ -218,6 +227,7 @@ Inspector 锚点与响应式抽屉。验收锚点：**`data-testid="inspector"`*
 | ST-SP-LIST-01 | 列表视图全屏渲染（网格定位 + 层叠遮挡 + 树+单表网格渲染回归） | `frontend-rs/src/styles.css` + `frontend-rs/src/editor_panels.rs` |
 | ST-SP-LIST-02 | 列表视图行内编辑落账（PDManer 式字段明细网格） | `frontend-rs/src/editor_panels.rs::ListView` |
 | ST-SP-LIST-03 | 列表视图表树导航（搜索过滤 + 切表渲染 + 空态） | `frontend-rs/src/editor_panels.rs::ListView` |
+| ST-SP-LIST-04 | 列表搜索字段命中提示与网格空态 | `frontend-rs/scripts/test-spec-parity-d.mjs` |
 
 ### 附录 B：ux-canvas-listview-font-size 追加
 

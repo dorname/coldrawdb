@@ -120,9 +120,16 @@
 
 - **位置**：`frontend-rs/src/editor_panels.rs`（`filter_tables` 复用口径 + 当前表解析纯函数 `resolve_list_current_table`）
 - **步骤与预期**：
-  1. `filter_tables(tables, "user")` → 仅表名含 user（大小写不敏感）的表；空关键字 → 全量；无命中 → 空数组
+  1. `filter_tables(tables, "user")` → 表名、字段名或首字段类型含 user（大小写不敏感）的表；空关键字 → 全量；无命中 → 空数组
   2. `resolve_list_current_table(tables, list_table_id)`：`list_table_id` 命中 → 该表；为 None 或 id 已不存在（被删）→ 首张表；空表数组 → None
-  3. 过滤不影响当前表解析：搜索无命中时当前表仍按规则 2 解析（导航与过滤解耦）
+  3. ListView 先将搜索后的数组传给 resolver；原选中不在结果中时回落首个匹配，无匹配数组返回 None；清空搜索后传回全量数组，恢复原选中表
+
+### UT-MM-39 — 列表搜索命中原因纯函数
+
+- **位置**：`frontend-rs/src/editor_panels.rs`。
+- **操作**：对表名命中、字段名命中、首字段类型命中、无命中及空关键字分别调用搜索命中原因 helper。
+- **断言**：表名命中不显示冗余提示；字段命中返回包含具体字段名的提示；类型命中返回具体类型；无命中和空关键字返回 None；大小写口径与 `filter_tables` 一致。
+- **reporter**：登记 `UT-MM-38`、`UT-MM-39` 到 `logos/resources/verify/test-results.jsonl`。
 
 ## 与主原型关系
 
@@ -173,5 +180,6 @@
 | ST-LV-01 | ListView 表树+单表网格 e2e（左树出全部表节点且首表默认选中；点树节点切换右网格为对应表字段行并 Inspector 同步；字段行内嵌编辑控件；双击树节点/字段行跳画布选中该表；组头行锚点 `list-view-group-*` 移除，树节点锚点 `list-tree-node-*` 生效） | `frontend-rs/scripts/test-spec-parity-d.mjs` |
 | UT-MM-36 | 按引擎字段类型清单纯函数测试（types_for_database 返回**基类型**清单：Generic 6 项含 UUID/VARCHAR；MySQL 含 DATETIME/DECIMAL 无 SERIAL；PostgreSQL 含 UUID/BOOLEAN/SERIAL/TIMESTAMP/NUMERIC 无 DATETIME；Sqlite/Mssql/Oracle 回落 Generic；清单均为裸基类型，不含 `VARCHAR(255)` 等参数化整串） | `editor_core.rs::types::types_for_database` |
 | UT-MM-37 | 参数化类型解析/合成纯函数测试（parse/compose：VARCHAR 长度、DECIMAL/NUMERIC 精度小数位、缺省值、老整串兼容、往返一致） | `editor_core.rs::parse_field_type` + `compose_field_type` |
-| UT-MM-38 | 表树过滤与当前表解析纯函数测试（filter_tables 大小写不敏感包含/空关键字全量/无命中空数组；resolve_list_current_table 命中/回落首表/空数组 None/过滤与导航解耦） | `editor_panels.rs::filter_tables` + `resolve_list_current_table` |
+| UT-MM-38 | 表树过滤与当前表解析纯函数测试（filter_tables 大小写不敏感包含/空关键字全量/无命中空数组；resolve_list_current_table 命中/回落首表/空数组 None；ListView 基于过滤后集合解析当前表） | `editor_panels.rs::filter_tables` + `resolve_list_current_table` |
+| UT-MM-39 | 列表搜索字段/类型命中原因 | `editor_panels.rs::list_tree_search_match` |
 | ST-DB-02 | 引擎创建后锁定 + PG 基类型清单（AppBar 下拉禁用；PG 含 UUID/BOOLEAN/SERIAL 无 DATETIME、清单为裸基类型；当前类型无占位重复） | `frontend-rs/scripts/test-spec-parity-d.mjs` |
