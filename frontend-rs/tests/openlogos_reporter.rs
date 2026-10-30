@@ -133,7 +133,8 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-MM-35", // list-view-table-structure: group_tables ByTable 按表分桶（桶键=表名 / 桶序保持 / 空表出桶 / 空输入 0 桶）
     "UT-MM-36", // diagram-database-dialect: types_for_database 三组清单（Generic 对齐既有 5 项 / MySQL 含 DATETIME 无 SERIAL / PostgreSQL 含 SERIAL 无 DATETIME / 未暴露引擎回落 Generic）
     "UT-MM-37", // redesign-listview-type-length-canvas-fix: parse_field_type/compose_field_type 参数化类型纯函数（VARCHAR 长度 / DECIMAL、NUMERIC 精度小数位 / 缺省值 / 老整串兼容 / 往返一致）
-    "UT-MM-38", // listview-tree-master-detail: 表树过滤与当前表解析纯函数（filter_tables 口径 + resolve_list_current_table 命中/回落首表/空数组/过滤导航解耦）
+    "UT-MM-38", // fix-list-search-master-detail: 基于搜索后可见集合解析当前表（保持/回落首项/无命中 None）
+    "UT-MM-39", // fix-list-search-master-detail: 字段名/首字段类型命中原因纯函数
     // core-PB-relationship
     "UT-PB-01",
     "UT-PB-02",
