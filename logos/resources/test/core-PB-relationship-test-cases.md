@@ -261,7 +261,7 @@
 |---|---|---|
 | UT-PB-18 | 构造两条近平行贝塞尔关系，点击点同时落在两条线的 12px 带宽内 → `hit_test_reference_tier` | 返回**距离最小**的关系 id（而非数组序靠前者）；点击点距所有线 > 12px 时返回 None（R-HIT-02/03；#51 带宽 8→12） |
 | UT-PB-19 | `line_type=orthogonal` 关系：点击点落在折线拐角附近（贝塞尔几何不经过、折线几何经过处） | 命中该 orthogonal 关系（R-HIT-01 线型同源）；反之贝塞尔曲线上一点不误命中 orthogonal 线 |
-| UT-PB-20 | tooltip 文案纯函数：详情档 → `源表.源字段 → 目标表.目标字段`；拓扑档 → 至少含 `源表 → 目标表` | 文案构成正确（R-HOV-02） |
+| UT-PB-20 | tooltip 文案纯函数：详情档 → `源表.源字段 → 目标表.目标字段`；拓扑档 → 至少含 `源表 → 目标表`；两种档位均追加叠线轮选提示 | 文案构成正确（R-HOV-02） |
 
 ## ADDED — ST 用例（#43/#44）
 
@@ -408,6 +408,22 @@
 - **断言**：无 prev→最近；prev 在簇内→下一根并环回；prev 不在簇→最近；单候选稳定
 - **reporter**：`UT-PB-32`
 
+### UT-PB-33 — 完全重合路径逐条轮选
+
+- **位置**：`frontend-rs/src/editor_render.rs`。
+- **前置**：两个表、三条使用相同端点和线型的关系，路径完全重合。
+- **操作**：在详情和拓扑档位下，对同一路径中点连续调用 `hit_test_reference_tier`，将上次选中 id 作为 `prev_selected`。
+- **断言**：首次选中首条；后续按 refs 顺序选中第二、第三条并环回首条；两种档位覆盖一致，不修改命中算法。
+- **reporter**：登记 `UT-PB-33` 到 `logos/resources/verify/test-results.jsonl`。
+
+### ST-PB-17 — 大图完全重合关系提示与点击可达性
+
+- **位置**：`frontend-rs/scripts/test-spec-parity-d.mjs`。
+- **前置**：预置 16 表 / 19 关系，其中四条关系共享同一对表和字段端点，几何完全重合。
+- **步骤**：悬浮重合线中点，随后在同一屏幕坐标重复点击四次，等待每次选中探针更新。
+- **断言**：tooltip 包含「若线条重叠，重复点击可切换关系」；四次点击依次选中四条关系且可继续环回；选中关系工具与默认选择工具至少一条路径覆盖；全程无新增 PUT/op 落账。
+- **reporter**：登记 `ST-PB-17` 到 `logos/resources/verify/test-results.jsonl`。
+
 ### ST-PB-14 — 点击端点记号附近 10px 热区选中关系
 
 - **位置**：`frontend-rs/scripts/test-spec-parity-d.mjs`
@@ -466,6 +482,8 @@
 | UT-PB-30 | 自适应主线命中带宽（低缩放放宽至 14px） | `rel_line_hit_px` / `hit_test_reference_tier` |
 | UT-PB-31 | 低缩放近线优先与自适应带宽对齐 | `should_prefer_reference_over_table` |
 | UT-PB-32 | 叠线簇点击轮选（精准消歧） | `resolve_ref_hit_cluster` |
+| UT-PB-33 | 详情/拓扑完全重合路径逐条轮选（#60） | `hit_test_reference_tier` |
+| ST-PB-17 | 16 表 / 19 关系叠线提示与点击可达性（#60） | `frontend-rs/scripts/test-spec-parity-d.mjs` |
 
 ## ADDED — perf-canvas-relation-hit-index 关系线命中 AABB 预过滤
 

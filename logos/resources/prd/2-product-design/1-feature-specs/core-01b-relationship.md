@@ -419,9 +419,9 @@ Viewer 与 share-readonly：**不得**启用字段直连手势（同既有关系
   - 便签 / 区域 / 字段端口优先级不变。
 - **R-HIT-06 端点记号命中热区**：`hit_test_reference_tier` 对主线距离使用 **`rel_line_hit_px(zoom)`**，对端点距离独立使用 **`REL_ENDPOINT_SIZE`（10px）**；任一阈值命中即视为该关系命中。
 - **R-HIT-07 关系线命中 AABB 预过滤**：AABB 外扩 `max(rel_line_hit_px(zoom), REL_ENDPOINT_SIZE) / zoom` 世界像素。
-- **R-HIT-08 叠线簇点击轮选（fix-relation-precise-pick）**：带宽内候选按屏幕距离升序；与最近线相差 ≤ **`REL_HIT_CLUSTER_PX`（3px）** 的构成叠线簇。若当前已选中簇内某关系，再次在同簇区域点击则**轮到下一根**；否则取最近。默认选择、「选中关系」、近线优先共用；悬停传 `prev=None` 不轮选。
+- **R-HIT-08 叠线簇点击轮选（fix-relation-precise-pick）**：带宽内候选按屏幕距离升序；与最近线相差 ≤ **`REL_HIT_CLUSTER_PX`（3px）** 的构成叠线簇。若当前已选中簇内某关系，再次在同簇区域点击则**轮到下一根**；否则取最近。默认选择、「选中关系」、近线优先共用；悬停传 `prev=None` 不轮选。完全重合路径必须能通过在同一位置重复点击逐条选中，不得要求用户先选中不可见的几何分支。
 
-验收：UT-PB-18/19/22 / UT-PB-24 / UT-PB-28 / UT-PB-29 / UT-PB-30 / UT-PB-31 / **UT-PB-32** / UT-PB-25 / UT-PB-26；e2e ST-PB-11 / ST-PB-14。
+验收：UT-PB-18/19/22 / UT-PB-24 / UT-PB-28 / UT-PB-29 / UT-PB-30 / UT-PB-31 / **UT-PB-32** / **UT-PB-33** / UT-PB-25 / UT-PB-26；e2e ST-PB-11 / ST-PB-14 / **ST-PB-17**。
 
 ## 合并自 fix-relation-precise-pick（2026-10-02）
 
@@ -442,7 +442,7 @@ Viewer 与 share-readonly：**不得**启用字段直连手势（同既有关系
 交互规格：
 
 - **R-HOV-01 触发**：pointermove 且未处于任何拖拽态（表/关系/便签/区域/框选/pan/端点拖拽）时，对指针世界坐标执行 §4.7 命中；命中关系线即显示 tooltip。
-- **R-HOV-02 内容**：单行摘要 `源表名.源字段名 → 目标表名.目标字段名`；表维度（拓扑档）下至少 `源表名 → 目标表名`（字段锚定仍存在时同样展示字段）。
+- **R-HOV-02 内容**：单行摘要 `源表名.源字段名 → 目标表名.目标字段名`；表维度（拓扑档）下至少 `源表名 → 目标表名`（字段锚定仍存在时同样展示字段）。摘要后追加固定提示「若线条重叠，重复点击可切换关系」，用于发现 R-HIT-08 轮选交互；不增加候选弹窗，不改变 hover 信号结构，也不触发画布重绘或保存。
 - **R-HOV-03 位置（fix-issue-46 修订为 B1 固定角落摘要区）**：tooltip 为画布容器（`.cdb-canvas-stack`）内**左下角固定摘要区**（`position:absolute; left:12px; bottom:12px`），不跟随光标、不绑定任何指针坐标；不遮挡 Inspector；纯 DOM 浮层，不进画布绘制层。
   - 选型理由（issue #46 作者认可）：密集关系场景下固定角落稳定可预期、不挡线、不依赖线旁几何；坐标不来自指针事件，从根上消除「视口 client 坐标当容器局部坐标」的错位 bug 类。
   - 演进路径：待密集场景选中可靠性与线旁展示遮挡问题解决后，可评估 B2（线旁跟随）或 B3（混合降级）；本版锁定 B1。
@@ -461,7 +461,7 @@ Viewer 与 share-readonly：**不得**启用字段直连手势（同既有关系
 - **R-PERF-HOV-03 命中节流**（#46）：hover 命中检测按 rAF 合并（每帧至多一次 `hit_test_reference_tier`），密集关系大图下避免每事件全量遍历 refs；拖拽/点击路径不节流（交互正确性优先）。
 - **R-PERF-HOV-04 绘制解耦**（#46）：tooltip 为纯 DOM 节点，任何 hover 路径不得触发 `schedule_paint` / canvas 重绘；空闲（无悬停、无拖拽）时画布完全静止。
 
-验收：UT-PB-20（文案纯函数）；e2e ST-PB-12（悬浮出 tooltip、选中态不变）。
+验收：UT-PB-20（文案纯函数）；e2e ST-PB-12（悬浮出 tooltip、选中态不变）与 ST-PB-17（叠线轮选提示）。
 
 ## MODIFIED — 8. 测试用例 ID 索引
 
