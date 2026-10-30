@@ -1,8 +1,10 @@
 //! 完整 diagram 实体持久化（tables / fields / references / areas / notes）
 //! 供 `diagrams_v1` GET/PUT 使用。
 
+use std::collections::HashMap;
+
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement, TransactionTrait};
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::error::DrawDBError;
@@ -697,32 +699,29 @@ pub async fn save_diagram<C: ConnectionTrait + TransactionTrait>(
 }
 
 /// 从 bridge / import API 的 JSON payload 构建完整 diagram（用于首次 persist）。
-pub fn diagram_from_import_payload(diagram_id: &str, payload: &Value) -> DiagramFull {
+pub fn diagram_from_import_payload(
+    diagram_id: &str,
+    payload: &Value,
+) -> Result<DiagramFull, SaveDiagramError> {
+    fn deserialize_entities<T: DeserializeOwned>(
+        payload: &Value,
+        key: &str,
+    ) -> Result<Vec<T>, SaveDiagramError> {
+        payload
+            .get(key)
+            .map(|value| {
+                serde_json::from_value(value.clone()).map_err(|error| {
+                    SaveDiagramError::BadRequest(format!("invalid {key}: {error}"))
+                })
+            })
+            .unwrap_or_else(|| Ok(Vec::new()))
+    }
+
     let name = payload
         .get("name")
         .and_then(|v| v.as_str())
         .map(String::from);
-    let tables: Vec<TableDto> = payload
-        .get("tables")
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or_default();
-    let references: Vec<ReferenceDto> = payload
-        .get("references")
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or_default();
-    let areas: Vec<AreaDto> = payload
-        .get("areas")
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or_default();
-    let notes: Vec<NoteDto> = payload
-        .get("notes")
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or_default();
-    let dictionaries: Vec<DictionaryDto> = payload
-        .get("dictionaries")
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or_default();
-    DiagramFull {
+    Ok(DiagramFull {
         id: diagram_id.to_string(),
         name,
         database: payload
@@ -732,34 +731,33 @@ pub fn diagram_from_import_payload(diagram_id: &str, payload: &Value) -> Diagram
         pan: None,
         zoom: None,
         revision: 0,
-        tables,
-        references,
-        areas,
-        notes,
-        dictionaries,
-    }
+        tables: deserialize_entities(payload, "tables")?,
+        references: deserialize_entities(payload, "references")?,
+        areas: deserialize_entities(payload, "areas")?,
+        notes: deserialize_entities(payload, "notes")?,
+        dictionaries: deserialize_entities(payload, "dictionaries")?,
+    })
 }
 
-/// 导入实体缺 id 时生成的本地唯一 id（auto- 前缀，与前端 drawdb 风格一致）。
+/// 导入实体生成的全局唯一 id（auto- 前缀，与前端 drawdb 风格一致）。
 fn auto_entity_id() -> String {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    format!("auto-{:x}", nanos)
+    format!("auto-{}", uuid::Uuid::new_v4())
 }
 
-/// fix-diagram-import-persistence：导入 payload 规范化（逐实体容错）。
+/// 替换实体 id，返回旧 id 与新 id 的映射。
+fn replace_entity_id(item: &mut Value) -> Option<(String, String)> {
+    let old_id = item.get("id")?.as_str()?.to_string();
+    let new_id = auto_entity_id();
+    item["id"] = serde_json::json!(new_id.clone());
+    Some((old_id, new_id))
+}
+
+/// fix-diagram-import-persistence：导入 payload 规范化（逐实体容错 + 全局 ID 隔离）。
 ///
-/// 背景：`TableDto` / `FieldDto` / `ReferenceDto` / `AreaDto` / `NoteDto` 的 `id`
-/// 均为必填且无默认值，payload 中任一实体缺 id 会导致**整组**反序列化失败并被
-/// `.ok()` 静默吞成空数组（假成功真丢数据）。AI 手工构造的 drawdb JSON 恰好常缺 id。
-///
-/// 规则：
-/// - 图 name 缺省补 `"imported_diagram"`（与 import handler 的 INSERT 默认一致）；
-/// - 表/字段/关系/区域/便签缺 id 时自动生成 `auto-` 前缀 id；
-/// - 表缺 name、字段缺 name、关系缺端点 id 的实体被**单独丢弃**（而不是拖垮整组），
-///   丢弃与补全明细写入 warnings 随响应返回。
+/// 表/字段/关系/区域/便签缺 id 时先自动补全；表缺 name、字段缺 name、关系缺端点 id
+/// 的实体单独丢弃并记录 warnings。规范化后统一替换所有保留实体的 id，避免与既有图
+/// 的全局 ID 冲突，并用 table/field 旧新映射回填关系端点。嵌套 DTO 的其他类型错误
+/// 由后续反序列化显式返回，不再静默吞成空数组。
 ///
 /// 返回 warnings 列表；调用方应先执行本规范化再做 DTO 反序列化。
 pub fn normalize_import_payload(payload: &mut Value) -> Vec<String> {
@@ -820,6 +818,52 @@ pub fn normalize_import_payload(payload: &mut Value) -> Vec<String> {
                 kept.push(item);
             }
             payload[key] = serde_json::json!(kept);
+        }
+    }
+
+    let mut table_ids = HashMap::new();
+    let mut field_ids = HashMap::new();
+    if let Some(tables) = payload.get_mut("tables").and_then(Value::as_array_mut) {
+        for table in tables {
+            if let Some((old_id, new_id)) = replace_entity_id(table) {
+                table_ids.insert(old_id, new_id);
+            }
+            if let Some(fields) = table.get_mut("fields").and_then(Value::as_array_mut) {
+                for field in fields {
+                    if let Some((old_id, new_id)) = replace_entity_id(field) {
+                        field_ids.insert(old_id, new_id);
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(references) = payload.get_mut("references").and_then(Value::as_array_mut) {
+        for reference in references {
+            replace_entity_id(reference);
+            for (key, id_map) in [
+                ("start_table_id", &table_ids),
+                ("end_table_id", &table_ids),
+                ("start_field_id", &field_ids),
+                ("end_field_id", &field_ids),
+            ] {
+                if let Some(new_id) = reference
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .and_then(|old_id| id_map.get(old_id))
+                    .cloned()
+                {
+                    reference[key] = serde_json::json!(new_id);
+                }
+            }
+        }
+    }
+
+    for key in ["areas", "notes"] {
+        if let Some(items) = payload.get_mut(key).and_then(Value::as_array_mut) {
+            for item in items {
+                replace_entity_id(item);
+            }
         }
     }
 
@@ -890,7 +934,7 @@ pub async fn persist_import_payload<C: ConnectionTrait + TransactionTrait>(
 ) -> Result<ImportPersistStats, SaveDiagramError> {
     let mut payload = payload.clone();
     let warnings = normalize_import_payload(&mut payload);
-    let diagram = diagram_from_import_payload(diagram_id, &payload);
+    let diagram = diagram_from_import_payload(diagram_id, &payload)?;
     let stats = ImportPersistStats {
         tables: diagram.tables.len() as i64,
         fields: diagram
@@ -957,7 +1001,8 @@ mod tests {
             .await
             .unwrap();
 
-        let mut diagram = diagram_from_import_payload(&id, &serde_json::json!({"tables": []}));
+        let mut diagram =
+            diagram_from_import_payload(&id, &serde_json::json!({"tables": []})).unwrap();
         diagram.name = None; // 模拟 payload 未带 name 的旧路径
         save_diagram(&db, &id, 0, &diagram).await.unwrap();
 
@@ -997,6 +1042,67 @@ mod tests {
             warnings.iter().any(|w| w.contains("dropped")),
             "warnings 必须包含丢弃明细: {warnings:?}"
         );
+    }
+
+    /// UT-S01-14：导入统一生成新 ID，并用 table/field 映射回填关系端点。
+    #[test]
+    fn ut_s01_14_remaps_entity_ids_and_reference_endpoints() {
+        let mut payload = serde_json::json!({
+            "tables": [{
+                "id": "t1",
+                "name": "users",
+                "fields": [{"id": "f1", "name": "id", "type": "INT"}]
+            }],
+            "references": [{
+                "id": "r1",
+                "start_table_id": "t1",
+                "end_table_id": "t1",
+                "start_field_id": "f1",
+                "end_field_id": "f1"
+            }],
+            "areas": [{"id": "a1", "name": "core"}],
+            "notes": [{"id": "n1", "content": "note"}]
+        });
+        normalize_import_payload(&mut payload);
+
+        let table_id = payload["tables"][0]["id"].as_str().unwrap();
+        let field_id = payload["tables"][0]["fields"][0]["id"].as_str().unwrap();
+        let reference_id = payload["references"][0]["id"].as_str().unwrap();
+        let area_id = payload["areas"][0]["id"].as_str().unwrap();
+        let note_id = payload["notes"][0]["id"].as_str().unwrap();
+        let ids = [table_id, field_id, reference_id, area_id, note_id];
+        assert!(ids.iter().all(|id| id.starts_with("auto-")));
+        assert!(ids.iter().all(|id| !["t1", "f1", "r1", "a1", "n1"].contains(id)));
+        let unique: std::collections::HashSet<_> = ids.into_iter().collect();
+        assert_eq!(unique.len(), 5);
+
+        let reference = &payload["references"][0];
+        assert_eq!(reference["start_table_id"], table_id);
+        assert_eq!(reference["end_table_id"], table_id);
+        assert_eq!(reference["start_field_id"], field_id);
+        assert_eq!(reference["end_field_id"], field_id);
+        assert_eq!(payload["tables"][0]["name"], "users");
+        assert_eq!(payload["tables"][0]["fields"][0]["name"], "id");
+        crate::verify_reporter::report_pass("UT-S01-14", 0);
+    }
+
+    /// UT-S01-15：嵌套 DTO 类型错误必须显式失败，不能静默变成空图。
+    #[test]
+    fn ut_s01_15_rejects_nested_dto_type_errors() {
+        let payload = serde_json::json!({
+            "tables": [{
+                "id": "t1",
+                "name": "users",
+                "fields": [{"id": "f1", "name": "id", "primary": 1}]
+            }]
+        });
+        let error = diagram_from_import_payload("d1", &payload).unwrap_err();
+        let SaveDiagramError::BadRequest(message) = error else {
+            panic!("嵌套 DTO 类型错误必须映射为 BadRequest");
+        };
+        assert!(message.contains("tables"), "错误需包含数组名: {message}");
+        assert!(message.contains("boolean"), "错误需包含 Serde 原因: {message}");
+        crate::verify_reporter::report_pass("UT-S01-15", 0);
     }
 
     #[tokio::test]

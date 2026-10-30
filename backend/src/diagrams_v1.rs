@@ -358,8 +358,9 @@ async fn import_diagram_v1(db: web::Data<DatabaseConnection>, http: HttpRequest,
                 request_id,
             }))
         }
-        Err(_) => {
-            // 不留下半成品图：持久化失败时回收刚插入的空图行，并如实返回 5xx。
+        Err(error) => {
+            tracing::warn!("diagram import failed: diagram_id={} error={:?}", id, error);
+            // 不留下半成品图：反序列化或持久化失败时回收刚插入的空图行。
             let _ = db
                 .execute(Statement::from_sql_and_values(
                     DatabaseBackend::Sqlite,
@@ -367,12 +368,38 @@ async fn import_diagram_v1(db: web::Data<DatabaseConnection>, http: HttpRequest,
                     vec![],
                 ))
                 .await;
-            Ok(HttpResponse::InternalServerError().json(ApiErr {
-                code: 500,
-                message: "import persistence failed".into(),
-                request_id,
-                details: None,
-            }))
+            match error {
+                SaveDiagramError::BadRequest(message) => {
+                    Ok(HttpResponse::BadRequest().json(ApiErr {
+                        code: 400,
+                        message: "invalid import payload".into(),
+                        request_id,
+                        details: Some(serde_json::json!({
+                            "kind": "payload",
+                            "message": message,
+                        })),
+                    }))
+                }
+                persistence_error => {
+                    let message = match persistence_error {
+                        SaveDiagramError::Db(error) => error.to_string(),
+                        SaveDiagramError::NotFound => "diagram not found during import".into(),
+                        SaveDiagramError::Conflict { .. } => {
+                            "diagram revision conflict during import".into()
+                        }
+                        SaveDiagramError::BadRequest(_) => unreachable!(),
+                    };
+                    Ok(HttpResponse::InternalServerError().json(ApiErr {
+                        code: 500,
+                        message: "import persistence failed".into(),
+                        request_id,
+                        details: Some(serde_json::json!({
+                            "kind": "database",
+                            "message": message,
+                        })),
+                    }))
+                }
+            }
         }
     }
 }
@@ -554,6 +581,124 @@ mod tests {
         let loaded: Value = test::call_and_read_body_json(&app, req).await;
         assert_eq!(loaded["data"]["tables"].as_array().map(Vec::len), Some(1));
         assert_eq!(loaded["data"]["tables"][0]["name"], "good");
+    }
+
+    /// ST-S01-06：同一 payload 可重复导入，实体 ID 跨图隔离且关系端点正确；
+    /// 嵌套 DTO 错误和持久化异常均返回可诊断响应。
+    #[actix_web::test]
+    async fn st_s01_06_repeated_import_id_isolation_and_error_details() {
+        use std::collections::HashSet;
+
+        let db = build_db().await;
+        let app = test::init_service(
+            App::new().app_data(web::Data::new(db.clone())).service(web::scope("/api/v1").configure(diagrams_v1_routes))
+        ).await;
+        let payload = serde_json::json!({
+            "name": "repeat-import",
+            "tables": [
+                {"id":"t1","name":"users","fields":[{"id":"f1","name":"id","type":"INT"}]},
+                {"id":"t2","name":"teams","fields":[{"id":"f2","name":"id","type":"INT"}]},
+                {"id":"t3","name":"projects","fields":[{"id":"f3","name":"id","type":"INT"}]},
+                {"id":"t4","name":"tasks","fields":[{"id":"f4","name":"id","type":"INT"}]}
+            ],
+            "references": [
+                {"id":"r1","start_table_id":"t1","end_table_id":"t2","start_field_id":"f1","end_field_id":"f2"},
+                {"id":"r2","start_table_id":"t2","end_table_id":"t3","start_field_id":"f2","end_field_id":"f3"},
+                {"id":"r3","start_table_id":"t3","end_table_id":"t4","start_field_id":"f3","end_field_id":"f4"}
+            ]
+        });
+
+        let mut diagram_ids = Vec::new();
+        for _ in 0..2 {
+            let req = test::TestRequest::post().uri("/api/v1/diagrams/import")
+                .set_json(serde_json::json!({"payload": payload.clone()}))
+                .to_request();
+            let response = test::call_service(&app, req).await;
+            assert_eq!(response.status(), 200);
+            let body: Value = test::read_body_json(response).await;
+            assert_eq!(body["data"]["imported_tables"], 4);
+            assert_eq!(body["data"]["imported_fields"], 4);
+            diagram_ids.push(body["data"]["diagram_id"].as_str().unwrap().to_string());
+        }
+        assert_ne!(diagram_ids[0], diagram_ids[1]);
+
+        fn entity_ids(diagram: &Value) -> (HashSet<String>, HashSet<String>, HashSet<String>) {
+            let tables = diagram["tables"].as_array().unwrap();
+            let table_ids = tables.iter()
+                .map(|table| table["id"].as_str().unwrap().to_string())
+                .collect();
+            let field_ids = tables.iter()
+                .flat_map(|table| table["fields"].as_array().unwrap())
+                .map(|field| field["id"].as_str().unwrap().to_string())
+                .collect();
+            let reference_ids = diagram["references"].as_array().unwrap().iter()
+                .map(|reference| reference["id"].as_str().unwrap().to_string())
+                .collect();
+            (table_ids, field_ids, reference_ids)
+        }
+
+        let mut entities = Vec::new();
+        for diagram_id in &diagram_ids {
+            let req = test::TestRequest::get()
+                .uri(&format!("/api/v1/diagrams/{diagram_id}"))
+                .to_request();
+            let document: Value = test::call_and_read_body_json(&app, req).await;
+            let diagram = &document["data"];
+            assert_eq!(diagram["tables"].as_array().map(Vec::len), Some(4));
+            assert_eq!(diagram["references"].as_array().map(Vec::len), Some(3));
+            let (table_ids, field_ids, _) = entity_ids(diagram);
+            assert_eq!(table_ids.len(), 4);
+            assert_eq!(field_ids.len(), 4);
+            for reference in diagram["references"].as_array().unwrap() {
+                assert!(table_ids.contains(reference["start_table_id"].as_str().unwrap()));
+                assert!(table_ids.contains(reference["end_table_id"].as_str().unwrap()));
+                assert!(field_ids.contains(reference["start_field_id"].as_str().unwrap()));
+                assert!(field_ids.contains(reference["end_field_id"].as_str().unwrap()));
+            }
+            entities.push(entity_ids(diagram));
+        }
+        for index in 0..3 {
+            let first = [&entities[0].0, &entities[0].1, &entities[0].2][index];
+            let second = [&entities[1].0, &entities[1].1, &entities[1].2][index];
+            assert!(first.is_disjoint(second), "第 {index} 组实体 ID 跨图重复");
+        }
+        assert!(["t1", "t2", "t3", "t4"].iter().all(|id| !entities[0].0.contains(*id)));
+        assert!(["f1", "f2", "f3", "f4"].iter().all(|id| !entities[0].1.contains(*id)));
+
+        let req = test::TestRequest::post().uri("/api/v1/diagrams/import")
+            .set_json(serde_json::json!({"payload": {
+                "tables": [{"id":"bad-t","name":"bad","fields":[
+                    {"id":"bad-f","name":"id","primary":1}
+                ]}]
+            }}))
+            .to_request();
+        let response = test::call_service(&app, req).await;
+        assert_eq!(response.status(), 400);
+        let body: Value = test::read_body_json(response).await;
+        assert_eq!(body["details"]["kind"], "payload");
+        let message = body["details"]["message"].as_str().unwrap();
+        assert!(message.contains("tables") && message.contains("boolean"), "错误诊断不足: {message}");
+
+        db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "DROP TABLE reference",
+            vec![],
+        )).await.unwrap();
+        let req = test::TestRequest::post().uri("/api/v1/diagrams/import")
+            .set_json(serde_json::json!({"payload": payload}))
+            .to_request();
+        let response = test::call_service(&app, req).await;
+        assert_eq!(response.status(), 500);
+        let body: Value = test::read_body_json(response).await;
+        assert_eq!(body["details"]["kind"], "database");
+        assert!(!body["details"]["message"].as_str().unwrap_or("").is_empty());
+        let active = db.query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "SELECT COUNT(*) AS count FROM diagram WHERE is_deleted=0",
+            vec![],
+        )).await.unwrap().unwrap();
+        assert_eq!(active.try_get::<i64>("", "count").unwrap(), 2, "失败导入不得留下可读取图");
+        mark_pass("ST-S01-06");
     }
 
     #[actix_web::test]
