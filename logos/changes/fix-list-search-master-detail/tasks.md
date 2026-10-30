@@ -9,6 +9,6 @@
 
 ## [code] 代码实现
 
-- [ ] 修改 `frontend-rs/src/editor_panels.rs`，让当前表跟随可见结果、无命中显示网格空态并展示命中原因
-- [ ] 更新 `frontend-rs/scripts/test-spec-parity-d.mjs`，交付 ST-SP-LIST-03/04 与 OpenLogos reporter
-- [ ] 交付 UT-MM-38/39，运行前端定向测试、相关 Playwright 与全量测试
+- [x] 修改 `frontend-rs/src/editor_panels.rs`，让当前表跟随可见结果、无命中显示网格空态并展示命中原因
+- [x] 更新 `frontend-rs/scripts/test-spec-parity-d.mjs`，交付 ST-SP-LIST-03/04 与 OpenLogos reporter
+- [x] 交付 UT-MM-38/39，运行前端定向测试、相关 Playwright 与全量测试

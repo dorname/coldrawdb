@@ -35,6 +35,7 @@
 //   ST-SP-LIST-01    列表视图全屏渲染（网格定位 + 层叠遮挡 + 树+单表 10 列编辑网格）
 //   ST-SP-LIST-02    列表视图行内编辑落账（名称/类型长度/勾选/增删移动/撤销）
 //   ST-SP-LIST-03    列表视图表树导航（搜索过滤 + 切表渲染 + 空态 + 删表回落）
+//   ST-SP-LIST-04    列表搜索字段命中提示与网格空态
 //   ST-SP-LIST-GROUP-01 列表视图按 Area 分组（几何包含 + 折叠/搜索自动展开，fix-issue-50）
 //   ST-SP-LIST-REL-01   列表视图关联表摘要 + 树节点关联高亮/非关联弱化（fix-issue-50）
 //   ST-DB-02         引擎创建后锁定（AppBar 禁用）；PG 基类型清单；UUID 无占位重复
@@ -2480,11 +2481,12 @@ try {
     assert.match(await page.locator('[data-testid="list-view-title"]').textContent(), /table_1（1 字段）/);
     assert.equal(await page.locator('tr[data-testid^="list-view-row-"]').count(), 1, "右网格只渲染当前表字段行");
 
-    // 2. 搜索 user → 只剩 users 节点；点击 → 网格切换为 users 字段明细
+    // 2. 搜索 user → 只剩 users 节点；网格无需点击即切换，点击后 Inspector 同步
     await page.locator('[data-testid="list-tree-search"]').fill("user");
     // feat-issue-50（issue #50）：追加 .cdb-list-tree-node 限定按钮节点——
     // 关联标记 span（list-tree-node-related/-unrelated）也以 list-tree-node- 开头
     assert.equal(await page.locator('[data-testid^="list-tree-node-"].cdb-list-tree-node').count(), 1, "搜索 user 后树必须只剩 users 节点");
+    assert.match(await page.locator('[data-testid="list-view-title"]').textContent(), /users（1 字段）/, "搜索后网格必须自动跟随首个匹配表");
     await page.locator('[data-testid="list-tree-node-users"]').click();
     await page.locator('[data-testid="list-tree-node-users"].is-active').waitFor();
     assert.match(await page.locator('[data-testid="list-view-title"]').textContent(), /users（1 字段）/, "点击 users 节点后网格必须切换");
@@ -2499,13 +2501,16 @@ try {
     assert.equal(await page.locator('[data-testid="list-del-field"]').isDisabled(), true, "切表后字段行选中态必须清空（删字段禁用）");
     assert.equal(await page.locator('[data-testid="list-move-up"]').isDisabled(), true, "切表后上移必须禁用");
 
-    // 4. 无命中关键字 → 树内空态；右网格保持当前表
+    // 4. 无命中关键字 → 树与右网格均显示空态；清空后恢复原表
     await page.locator('[data-testid="list-tree-search"]').fill("zzz");
     await page.locator('[data-testid="list-tree-empty"]:visible').waitFor();
+    await page.locator('[data-testid="list-view-search-empty"]:visible').waitFor();
     assert.equal(await page.locator('[data-testid^="list-tree-node-"].cdb-list-tree-node').count(), 0, "无命中时树节点必须为 0");
-    assert.match(await page.locator('[data-testid="list-view-title"]').textContent(), /table_2/, "搜索无命中时右网格必须保持当前表");
+    assert.equal(await page.locator('[data-testid="list-view-title"]').isVisible(), false, "无命中时不得保留旧表标题");
+    assert.equal(await page.locator('[data-testid="list-view-table"]').isVisible(), false, "无命中时不得保留旧字段网格");
     await page.locator('[data-testid="list-tree-search"]').fill("");
     await page.locator('[data-testid="list-tree-node-table_1"]:visible').waitFor();
+    assert.match(await page.locator('[data-testid="list-view-title"]').textContent(), /table_2（1 字段）/, "清空搜索必须恢复原选中表");
 
     // 导航全程不落账（最后一次 PUT 仍是改名 users 的 3 表快照）
     assert.equal(state.lastPutBody?.diagram?.tables?.length, 3, `树导航不得改动落账数据（actual=${state.lastPutBody?.diagram?.tables?.length}, tables=${JSON.stringify(state.lastPutBody?.diagram?.tables?.map(t => t.name))}, ops=${JSON.stringify(state.sentOps?.map(o => o?.type))}`);
@@ -2521,6 +2526,55 @@ try {
     await page.locator('[data-testid="tab-pane-list-view"]:visible').waitFor();
     assert.equal(await page.locator('[data-testid="list-tree-node-table_1"].is-active').count(), 1, "当前表被删后必须回落首张剩余表");
     assert.match(await page.locator('[data-testid="list-view-title"]').textContent(), /table_1（1 字段）/);
+  });
+
+  // ─── ST-SP-LIST-04：列表搜索字段命中提示与网格空态 ──
+  await run(["ST-SP-LIST-04"], "列表搜索字段命中提示与网格空态", async page => {
+    const field = (id, name) => ({
+      id, name, type_: "INT", default: "", check: "", primary: false, unique: false,
+      not_null: false, increment: false, comment: "", tag: "", dict_code: "",
+    });
+    const table = (id, name, fieldId, fieldName) => ({
+      id, name, x: 80, y: 80, color: "", comment: "", fields: [field(fieldId, fieldName)], indices: [],
+    });
+    const state = await installApi(page, {
+      presetDiagram: {
+        tables: [
+          table("t_users", "users", "f_users_id", "id"),
+          table("t_posts", "posts", "f_posts_id", "id"),
+          table("t_comments", "comments", "f_comments_post", "post_id"),
+        ],
+        references: [], areas: [], notes: [],
+      },
+    });
+    await login(page);
+    await createRoomAndEnter(page);
+    await page.locator('[data-testid="btn-list-view"]').click();
+    await page.locator('[data-testid="tab-pane-list-view"]:visible').waitFor();
+    const search = page.locator('[data-testid="list-tree-search"]');
+    assert.equal(await search.getAttribute("placeholder"), "按表名/字段名/类型搜索…");
+    assert.match(await page.locator('[data-testid="list-view-title"]').textContent(), /users（1 字段）/);
+    const initialPuts = state.putCalls;
+
+    await search.fill("post");
+    await page.locator('[data-testid="list-tree-node-posts"]:visible').waitFor();
+    await page.locator('[data-testid="list-tree-node-comments"]:visible').waitFor();
+    assert.equal(await page.locator('[data-testid="list-tree-node-users"]').count(), 0, "未命中的 users 必须隐藏");
+    assert.match(await page.locator('[data-testid="list-view-title"]').textContent(), /posts（1 字段）/, "原表未命中时必须自动回落首个匹配 posts");
+    assert.match(
+      await page.locator('[data-testid="list-tree-node-comments"] [data-testid="list-tree-search-match"]').textContent(),
+      /字段 post_id 命中/,
+      "字段命中的表必须显示具体原因"
+    );
+    assert.equal(await page.locator('[data-testid="list-tree-node-posts"] [data-testid="list-tree-search-match"]').count(), 0, "表名已命中时不追加冗余提示");
+
+    await search.fill("no_such_table");
+    await page.locator('[data-testid="list-view-search-empty"]:visible').waitFor();
+    assert.equal(await page.locator('[data-testid="list-view-title"]').isVisible(), false);
+    assert.equal(await page.locator('[data-testid="list-view-table"]').isVisible(), false);
+    await search.fill("");
+    assert.match(await page.locator('[data-testid="list-view-title"]').textContent(), /users（1 字段）/, "清空搜索必须恢复原表 users");
+    assert.equal(state.putCalls, initialPuts, "搜索与清空不得新增落账");
   });
 
   // ─── ST-SP-LIST-GROUP-01：列表视图按 Area 分组（几何包含 + 折叠/搜索自动展开，fix-issue-50 / #50）───

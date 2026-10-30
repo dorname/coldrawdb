@@ -8569,7 +8569,7 @@ pub fn filter_tables(
 
 /// listview-tree-master-detail：列表视图当前表解析纯函数（UT-MM-38）
 /// list_table_id 命中 → 该表 id；None 或 id 已不存在（如画布侧删表）→ 首张表；空表数组 → None
-/// 与树搜索过滤解耦——过滤只影响树节点展示，不影响当前表解析
+/// 调用方传入搜索后的可见集合，保证 master-detail 使用同一数据源。
 pub fn resolve_list_current_table(tables: &[Table], list_table_id: &Option<String>) -> Option<String> {
     if let Some(id) = list_table_id {
         if tables.iter().any(|t| &t.id == id) {
@@ -8577,6 +8577,23 @@ pub fn resolve_list_current_table(tables: &[Table], list_table_id: &Option<Strin
         }
     }
     tables.first().map(|t| t.id.clone())
+}
+
+/// 列表搜索的非表名命中原因（UT-MM-39），与 filter_tables 的字段/首字段类型口径一致。
+pub fn list_tree_search_match(table: &Table, filter_query: &str) -> Option<String> {
+    if filter_query.is_empty() {
+        return None;
+    }
+    let query = filter_query.to_lowercase();
+    if table.name.to_lowercase().contains(&query) {
+        return None;
+    }
+    if let Some(field) = table.fields.iter().find(|f| f.name.to_lowercase().contains(&query)) {
+        return Some(format!("字段 {} 命中", field.name));
+    }
+    table.fields.first().and_then(|field| {
+        field.type_.to_lowercase().contains(&query).then(|| format!("类型 {} 命中", field.type_))
+    })
 }
 
 /// feat-issue-50-listview-grouping-and-relations（issue #50）：按画布 Area 对表分组。
@@ -9395,10 +9412,14 @@ pub fn ListView(
     let collapsed_groups: RwSignal<std::collections::HashSet<String>> =
         create_rw_signal(std::collections::HashSet::new());
 
-    // 当前表解析（UT-MM-38 纯函数）：list_table 命中 || 首表 || None；与树过滤解耦
+    // 当前表解析（UT-MM-38）：与左树共用搜索后的可见集合，无命中时返回 None。
     let current_table_id: Rc<dyn Fn() -> Option<String>> = {
         let store = store.clone();
-        Rc::new(move || resolve_list_current_table(&store.tables.get(), &list_table.get()))
+        Rc::new(move || {
+            let tables = store.tables.get();
+            let visible = filter_tables(&tables, &tree_search.get(), "", None);
+            resolve_list_current_table(&visible, &list_table.get())
+        })
     };
 
     // feat-issue-50（issue #50）：当前表关联表清单（入边/出边 + cardinality）与关联表 id 集合
@@ -9627,7 +9648,10 @@ pub fn ListView(
                     let read_only_grid = read_only.clone();
                     let cur_for_tree = current_table_id.clone();
                     let cur_for_title = current_table_id.clone();
+                    let cur_for_title_visible = current_table_id.clone();
                     let cur_for_grid = current_table_id.clone();
+                    let cur_for_table_visible = current_table_id.clone();
+                    let cur_for_empty = current_table_id.clone();
                     // feat-issue-50（issue #50）：树关联标记 + 右侧关联表摘要区句柄
                     let rel_ids_for_tree = related_ids.clone();
                     let rel_list_for_summary = related_list.clone();
@@ -9642,9 +9666,12 @@ pub fn ListView(
                             <input
                                 class="cdb-form-input"
                                 data-testid="list-tree-search"
-                                placeholder="搜索表…"
+                                placeholder="按表名/字段名/类型搜索…"
                                 prop:value=move || tree_search.get()
-                                on:input=move |ev| tree_search.set(event_target_value(&ev))
+                                on:input=move |ev| {
+                                    tree_search.set(event_target_value(&ev));
+                                    list_sel.set(None);
+                                }
                             />
                         </div>
                         <div class="cdb-list-tree__nodes">
@@ -9746,6 +9773,7 @@ pub fn ListView(
                                                     let rel_mark = rel_ids_for_tree.clone();
                                                     let list_dict_active = list_dict.clone();
                                                     let list_dict_click = list_dict.clone();
+                                                    let table_match = t.clone();
                                                     view! {
                                                         <button
                                                             class="cdb-list-tree-node"
@@ -9789,6 +9817,11 @@ pub fn ListView(
                                                                             {t.comment.clone()}
                                                                         </small>
                                                                     }
+                                                                })}
+                                                                {move || list_tree_search_match(&table_match, &tree_search.get()).map(|reason| view! {
+                                                                    <small class="cdb-list-tree-comment" data-testid="list-tree-search-match">
+                                                                        {reason}
+                                                                    </small>
                                                                 })}
                                                             </span>
                                                             // feat-issue-50（issue #50）：关联标记——当前表存在关联时，
@@ -9896,7 +9929,7 @@ pub fn ListView(
                     <Splitter kind=SplitterKind::ListTree />
                     <div class="cdb-list-view-grid">
                         <div class="cdb-list-view-title" data-testid="list-view-title"
-                            style:display=move || if list_dict.get().is_some() { "none" } else { "" }>
+                            style:display=move || if list_dict.get().is_some() || cur_for_title_visible().is_none() { "none" } else { "" }>
                             {move || {
                                 let tables = store.tables.get();
                                 cur_for_title()
@@ -10028,7 +10061,7 @@ pub fn ListView(
                             }.into_view()
                         }}
                         <table class="cdb-list-view-table" data-testid="list-view-table"
-                            style:display=move || if list_dict.get().is_some() { "none" } else { "" }>
+                            style:display=move || if list_dict.get().is_some() || cur_for_table_visible().is_none() { "none" } else { "" }>
                             <thead>
                                 <tr>
                                     <th>"字段代码"</th>
@@ -10077,6 +10110,14 @@ pub fn ListView(
                                 />
                             </tbody>
                         </table>
+                        <div
+                            class="cdb-empty-hint"
+                            data-testid="list-view-search-empty"
+                            style:display=move || if list_dict.get().is_none() && cur_for_empty().is_none() { "" } else { "none" }
+                        >
+                            <strong>"无匹配表"</strong>
+                            <p>"换个关键字试试。"</p>
+                        </div>
                         // fix-dict-save-and-layout（core-01e §3.1）：字典选中时详情区只读明细——
                         // 与字段网格 display 互斥（不重建字段行 DOM，保 ST-SP-LIST-01 双击修复口径）
                         <div
@@ -19784,13 +19825,47 @@ mod tests_ut_mm_28 {
         let empty: Vec<Table> = vec![];
         assert_eq!(resolve_list_current_table(&empty, &None), None, "UT-MM-38: 空表数组 → None");
 
-        // 3. 过滤与导航解耦：搜索无命中时当前表仍按规则 2 解析
-        assert!(filter_tables(&tables, "zzz", "", None).is_empty());
+        // 3. ListView 将过滤后的可见集合传给 resolver，无命中返回 None，清空后恢复原表
+        let no_hit = filter_tables(&tables, "zzz", "", None);
+        assert_eq!(
+            resolve_list_current_table(&no_hit, &Some("t_users".into())),
+            None,
+            "UT-MM-38: 搜索无命中 → 当前表 None"
+        );
+        let user_hit = filter_tables(&tables, "USER", "", None);
+        assert_eq!(
+            resolve_list_current_table(&user_hit, &Some("t_table_1".into())),
+            Some("t_users".to_string()),
+            "UT-MM-38: 原表未命中 → 回落首个匹配表"
+        );
         assert_eq!(
             resolve_list_current_table(&tables, &Some("t_users".into())),
             Some("t_users".to_string()),
-            "UT-MM-38: 搜索无命中不影响当前表解析"
+            "UT-MM-38: 清空搜索 → 恢复原选中表"
         );
+    }
+
+    // ─── UT-MM-39: 列表搜索字段/类型命中原因纯函数 ───
+
+    #[test]
+    fn test_list_tree_search_match_ut_mm_39() {
+        let mut table = make_table_for_test("posts", 2, "UUID");
+        table.fields[0].name = "post_id".into();
+        table.fields[1].name = "title".into();
+
+        assert_eq!(list_tree_search_match(&table, "POSTS"), None, "UT-MM-39: 表名命中不追加提示");
+        assert_eq!(
+            list_tree_search_match(&table, "POST_ID"),
+            Some("字段 post_id 命中".into()),
+            "UT-MM-39: 字段名命中返回具体字段"
+        );
+        assert_eq!(
+            list_tree_search_match(&table, "uuid"),
+            Some("类型 UUID 命中".into()),
+            "UT-MM-39: 首字段类型命中返回具体类型"
+        );
+        assert_eq!(list_tree_search_match(&table, "zzz"), None, "UT-MM-39: 无命中返回 None");
+        assert_eq!(list_tree_search_match(&table, ""), None, "UT-MM-39: 空关键字返回 None");
     }
 
     // ─── UT-SP-LIST-GROUP-01: 按 Area 分组纯函数（feat-issue-50-listview-grouping-and-relations / #50） ───
