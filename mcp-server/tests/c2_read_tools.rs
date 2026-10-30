@@ -136,21 +136,83 @@ fn ut_mcp_04_list_normalization() {
     record(&["UT-MCP-04"], started);
 }
 
+fn sql_table_body<'a>(sql: &'a str, quoted_table: &str) -> &'a str {
+    let marker = format!("CREATE TABLE {quoted_table} (");
+    let (_, body) = sql.split_once(&marker).unwrap();
+    body.split("\n)").next().unwrap()
+}
+
 #[tokio::test]
 async fn ut_mcp_05_and_st_mcp_02_get_and_export() {
     let started = Instant::now();
     let diagram = json!({
         "id":"d1","name":"示例","revision":4,
-        "tables":[{"id":"t1","name":"users","fields":[{"id":"f1","name":"id","type_":"UUID","primary":true}]}],
-        "references":[],"areas":[],"notes":[]
+        "tables":[
+            {
+                "id":"t1","name":"users","comment":"用户's 主表",
+                "fields":[
+                    {"id":"f1","name":"id","type_":"UUID","primary":true,"not_null":true,"comment":"用户's 标识"},
+                    {"id":"f2","name":"email","type_":"VARCHAR(255)","not_null":true,"unique":true,"default":"'unknown@example.com'","comment":"登录's 邮箱"}
+                ]
+            },
+            {
+                "id":"t2","name":"membership","comment":"成员's 关系",
+                "fields":[
+                    {"id":"f3","name":"tenant_id","type_":"UUID","primary":true,"not_null":true},
+                    {"id":"f4","name":"user_id","type_":"UUID","primary":true,"not_null":true,"comment":"成员's 用户"},
+                    {"id":"f5","name":"status","type_":"VARCHAR(16)","not_null":true,"unique":true,"default":"'active'","comment":"状态's 说明"}
+                ]
+            }
+        ],
+        "references":[
+            {"id":"r1","start_table_id":"t2","start_field_id":"f4","end_table_id":"t1","end_field_id":"f1","on_delete":"CASCADE","on_update":"SET_NULL"},
+            {"id":"r2","start_table_id":"t2","start_field_id":"f5","end_table_id":"missing","end_field_id":"missing"}
+        ],
+        "areas":[],"notes":[]
     });
-    let base = mock_response("200 OK", json!({"code":0,"data":diagram,"request_id":"r1"})).await;
+    let base = mock_response(
+        "200 OK",
+        json!({"code":0,"data":diagram.clone(),"request_id":"r1"}),
+    )
+    .await;
     let api = ApiClient::new(config(base)).unwrap();
     let result = api.get("d1").await.unwrap();
     assert_eq!(result.pointer("/diagram/revision"), Some(&json!(4)));
+    assert_eq!(result["diagram"], diagram);
+
+    let json_export = export_diagram(&result["diagram"], "json").unwrap();
+    assert_eq!(json_export["diagram_id"], "d1");
+    assert_eq!(json_export["mime_type"], "application/json");
+    assert_eq!(
+        json_export["content"].as_str().unwrap(),
+        serde_json::to_string_pretty(&diagram).unwrap()
+    );
+    assert_eq!(
+        json_export,
+        export_diagram(&result["diagram"], "json").unwrap()
+    );
+
+    let dbml = export_diagram(&result["diagram"], "dbml").unwrap();
+    assert_eq!(dbml["diagram_id"], "d1");
+    assert_eq!(dbml["revision"], 4);
+    assert_eq!(dbml["format"], "dbml");
+    assert_eq!(dbml["mime_type"], "text/plain");
+    assert_eq!(dbml, export_diagram(&result["diagram"], "dbml").unwrap());
+    let dbml_content = dbml["content"].as_str().unwrap();
+    assert!(dbml_content.contains("  id UUID [pk, not null, note: '用户\\'s 标识']"));
+    assert!(dbml_content.contains("  tenant_id UUID [not null]"));
+    assert!(dbml_content.contains("  user_id UUID [not null, note: '成员\\'s 用户']"));
+    assert!(dbml_content.contains(
+        "  status VARCHAR(16) [not null, unique, default: `'active'`, note: '状态\\'s 说明']"
+    ));
+    assert!(dbml_content.contains("  indexes {\n    (tenant_id, user_id) [pk]\n  }"));
+    assert!(dbml_content.contains("  Note: '成员\\'s 关系'"));
+    assert!(dbml_content
+        .contains("Ref: membership.user_id > users.id [delete: cascade, update: set null]"));
+    assert_eq!(dbml_content.matches("Ref:").count(), 1);
+    assert!(!dbml_content.contains('?'));
+
     for format in [
-        "json",
-        "dbml",
         "mysql",
         "postgresql",
         "sqlite",
@@ -160,13 +222,63 @@ async fn ut_mcp_05_and_st_mcp_02_get_and_export() {
         "generic",
     ] {
         let exported = export_diagram(&result["diagram"], format).unwrap();
+        assert_eq!(exported["diagram_id"], "d1");
         assert_eq!(exported["revision"], 4);
-        assert!(!exported["content"].as_str().unwrap().is_empty());
+        assert_eq!(exported["format"], format);
+        assert_eq!(exported["mime_type"], "text/sql");
         assert_eq!(
             exported,
             export_diagram(&result["diagram"], format).unwrap()
         );
+        let content = exported["content"].as_str().unwrap();
+        let quoted_membership = match format {
+            "mysql" | "mariadb" => "`membership`",
+            "mssql" => "[membership]",
+            _ => "\"membership\"",
+        };
+        let membership = sql_table_body(content, quoted_membership);
+        let primary_lines: Vec<&str> = membership
+            .lines()
+            .filter(|line| line.contains("PRIMARY KEY"))
+            .collect();
+        assert_eq!(
+            primary_lines.len(),
+            1,
+            "unexpected {format} DDL:\n{content}"
+        );
+        assert!(primary_lines[0].trim_start().starts_with("PRIMARY KEY ("));
+        assert!(membership.contains("NOT NULL"));
+        assert!(membership.contains("UNIQUE"));
+        assert!(membership.contains("DEFAULT 'active'"));
+        assert!(membership.contains("FOREIGN KEY"));
+        assert_eq!(content.matches("FOREIGN KEY").count(), 1);
+        assert!(membership.contains("ON DELETE CASCADE"));
+        assert!(membership.contains("ON UPDATE SET NULL"));
+        assert!(!content.contains('?'));
+        match format {
+            "mysql" | "mariadb" => {
+                assert!(content.contains("COMMENT '状态''s 说明'"));
+                assert!(content.contains(") COMMENT='成员''s 关系';"));
+                assert!(!content.contains("COMMENT ON"));
+            }
+            "sqlite" | "mssql" => assert!(!content.contains("COMMENT")),
+            _ => {
+                assert!(content.contains("COMMENT ON TABLE \"membership\" IS '成员''s 关系';"));
+                assert!(content
+                    .contains("COMMENT ON COLUMN \"membership\".\"status\" IS '状态''s 说明';"));
+            }
+        }
     }
+
+    let postgresql = export_diagram(&result["diagram"], "postgresql").unwrap();
+    let postgresql = postgresql["content"].as_str().unwrap();
+    let users = sql_table_body(postgresql, "\"users\"");
+    assert!(users.contains("  \"id\" UUID PRIMARY KEY NOT NULL"));
+    let membership = sql_table_body(postgresql, "\"membership\"");
+    assert!(membership.contains("  PRIMARY KEY (\"tenant_id\", \"user_id\")"));
+    assert!(membership.contains(
+        "  FOREIGN KEY (\"user_id\") REFERENCES \"users\" (\"id\") ON DELETE CASCADE ON UPDATE SET NULL"
+    ));
     record(&["UT-MCP-05", "UT-MCP-06", "ST-MCP-02"], started);
 }
 

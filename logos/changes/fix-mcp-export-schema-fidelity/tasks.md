@@ -8,6 +8,6 @@
 
 ## [code] 代码实现
 
-- [ ] 修改 `mcp-server/src/export.rs`，实现 SQL / DBML 保真导出且不改变现有 envelope 和确定性
-- [ ] 强化 `mcp-server/tests/c2_read_tools.rs` 的 UT-MCP-06 / ST-MCP-02，覆盖 PostgreSQL、DBML、七类 SQL 与 OpenLogos reporter
-- [ ] 运行 MCP 相关 UT / ST 与格式检查，保留导出样例和测试结果
+- [x] 修改 `mcp-server/src/export.rs`，实现 SQL / DBML 保真导出且不改变现有 envelope 和确定性
+- [x] 强化 `mcp-server/tests/c2_read_tools.rs` 的 UT-MCP-06 / ST-MCP-02，覆盖 PostgreSQL、DBML、七类 SQL 与 OpenLogos reporter
+- [x] 运行 MCP 相关 UT / ST 与格式检查，保留导出样例和测试结果
