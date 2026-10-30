@@ -701,6 +701,117 @@ mod tests {
         mark_pass("ST-S01-06");
     }
 
+    /// ST-S01-07：camelCase 与 snake_case 的 CMS 导入保留相同关系和 NOT NULL 约束。
+    #[actix_web::test]
+    async fn st_s01_07_import_naming_styles_preserve_relationships_and_not_null() {
+        use std::collections::{HashMap, HashSet};
+
+        fn cms_payload(camel_case: bool) -> Value {
+            let tables = (1..=5)
+                .map(|index| {
+                    let mut field = serde_json::json!({
+                        "id": format!("f{index}"), "name": "id", "type": "INT"
+                    });
+                    if camel_case {
+                        field["notNull"] = serde_json::json!(true);
+                    } else {
+                        field["not_null"] = serde_json::json!(true);
+                    }
+                    serde_json::json!({
+                        "id": format!("t{index}"),
+                        "name": format!("cms_table_{index}"),
+                        "fields": [field]
+                    })
+                })
+                .collect::<Vec<_>>();
+            let references = (1..=4)
+                .map(|index| {
+                    let mut reference = serde_json::json!({"id": format!("r{index}")});
+                    let keys = if camel_case {
+                        ("startTableId", "endTableId", "startFieldId", "endFieldId")
+                    } else {
+                        ("start_table_id", "end_table_id", "start_field_id", "end_field_id")
+                    };
+                    reference[keys.0] = serde_json::json!(format!("t{index}"));
+                    reference[keys.1] = serde_json::json!(format!("t{}", index + 1));
+                    reference[keys.2] = serde_json::json!(format!("f{index}"));
+                    reference[keys.3] = serde_json::json!(format!("f{}", index + 1));
+                    reference
+                })
+                .collect::<Vec<_>>();
+            serde_json::json!({"name":"cms-import", "tables":tables, "references":references})
+        }
+
+        let db = build_db().await;
+        let app = test::init_service(
+            App::new().app_data(web::Data::new(db)).service(web::scope("/api/v1").configure(diagrams_v1_routes))
+        ).await;
+        let mut relationship_signatures = Vec::new();
+
+        for camel_case in [true, false] {
+            let req = test::TestRequest::post().uri("/api/v1/diagrams/import")
+                .set_json(serde_json::json!({"payload":cms_payload(camel_case)}))
+                .to_request();
+            let response = test::call_service(&app, req).await;
+            assert_eq!(response.status(), 200, "camel_case={camel_case}");
+            let body: Value = test::read_body_json(response).await;
+            assert_eq!(body["data"]["imported_tables"], 5);
+            assert_eq!(body["data"]["imported_fields"], 5);
+            let warnings = body["data"]["warnings"].as_array().cloned().unwrap_or_default();
+            assert!(!warnings.iter().any(|warning| {
+                warning.as_str().map(|text| text.contains("missing endpoint id")).unwrap_or(false)
+            }), "camel_case={camel_case}, warnings={warnings:?}");
+            let diagram_id = body["data"]["diagram_id"].as_str().unwrap();
+
+            let req = test::TestRequest::get()
+                .uri(&format!("/api/v1/diagrams/{diagram_id}"))
+                .to_request();
+            let document: Value = test::call_and_read_body_json(&app, req).await;
+            let diagram = &document["data"];
+            let tables = diagram["tables"].as_array().unwrap();
+            let references = diagram["references"].as_array().unwrap();
+            assert_eq!(tables.len(), 5);
+            assert_eq!(references.len(), 4);
+            assert_eq!(tables.iter().flat_map(|table| table["fields"].as_array().unwrap()).count(), 5);
+            assert!(tables.iter().flat_map(|table| table["fields"].as_array().unwrap())
+                .all(|field| field["not_null"] == true));
+
+            let table_ids = tables.iter()
+                .map(|table| table["id"].as_str().unwrap().to_string())
+                .collect::<HashSet<_>>();
+            let field_ids = tables.iter()
+                .flat_map(|table| table["fields"].as_array().unwrap())
+                .map(|field| field["id"].as_str().unwrap().to_string())
+                .collect::<HashSet<_>>();
+            for reference in references {
+                assert!(table_ids.contains(reference["start_table_id"].as_str().unwrap()));
+                assert!(table_ids.contains(reference["end_table_id"].as_str().unwrap()));
+                assert!(field_ids.contains(reference["start_field_id"].as_str().unwrap()));
+                assert!(field_ids.contains(reference["end_field_id"].as_str().unwrap()));
+            }
+
+            let table_names = tables.iter().map(|table| (
+                table["id"].as_str().unwrap(), table["name"].as_str().unwrap()
+            )).collect::<HashMap<_, _>>();
+            let field_names = tables.iter()
+                .flat_map(|table| table["fields"].as_array().unwrap())
+                .map(|field| (field["id"].as_str().unwrap(), field["name"].as_str().unwrap()))
+                .collect::<HashMap<_, _>>();
+            let mut signatures = references.iter().map(|reference| {
+                let start_table = reference["start_table_id"].as_str().unwrap();
+                let end_table = reference["end_table_id"].as_str().unwrap();
+                let start_field = reference["start_field_id"].as_str().unwrap();
+                let end_field = reference["end_field_id"].as_str().unwrap();
+                format!("{}.{}->{}.{}", table_names[start_table], field_names[start_field],
+                    table_names[end_table], field_names[end_field])
+            }).collect::<Vec<_>>();
+            signatures.sort();
+            relationship_signatures.push(signatures);
+        }
+        assert_eq!(relationship_signatures[0], relationship_signatures[1]);
+        mark_pass("ST-S01-07");
+    }
+
     #[actix_web::test]
     async fn ut_s01_01_create_empty_diagram() {
         mark_pass("UT-S01-01");

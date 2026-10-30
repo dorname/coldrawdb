@@ -70,7 +70,7 @@ pub struct FieldDto {
     pub primary: bool,
     #[serde(default)]
     pub unique: bool,
-    #[serde(default)]
+    #[serde(default, alias = "notNull")]
     pub not_null: bool,
     #[serde(default)]
     pub increment: bool,
@@ -130,9 +130,13 @@ pub struct ReferenceDto {
     pub id: String,
     #[serde(default)]
     pub name: String,
+    #[serde(alias = "startTableId")]
     pub start_table_id: String,
+    #[serde(alias = "endTableId")]
     pub end_table_id: String,
+    #[serde(alias = "startFieldId")]
     pub start_field_id: String,
+    #[serde(alias = "endFieldId")]
     pub end_field_id: String,
     #[serde(default, alias = "type")]
     pub type_: String,
@@ -882,6 +886,37 @@ pub fn normalize_import_payload(payload: &mut Value) -> Vec<String> {
     warnings
 }
 
+/// 将 drawdb 的 camelCase 关系端点统一为内部 snake_case。
+/// snake_case 的非空字符串优先；移除别名以避免 Serde 将两个键判为重复字段。
+fn normalize_reference_endpoints(item: &mut Value) {
+    let Some(object) = item.as_object_mut() else {
+        return;
+    };
+    for (snake_case, camel_case) in [
+        ("start_table_id", "startTableId"),
+        ("end_table_id", "endTableId"),
+        ("start_field_id", "startFieldId"),
+        ("end_field_id", "endFieldId"),
+    ] {
+        let snake_case_valid = object
+            .get(snake_case)
+            .and_then(Value::as_str)
+            .map(|value| !value.is_empty())
+            .unwrap_or(false);
+        if !snake_case_valid {
+            if let Some(value) = object
+                .get(camel_case)
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+            {
+                object.insert(snake_case.to_string(), Value::String(value));
+            }
+        }
+        object.remove(camel_case);
+    }
+}
+
 /// 规范化单个实体；返回 true 表示应丢弃。`require_name` 为 true 时缺 name 丢弃
 /// （table / field）；reference 额外要求 start/end_table_id/field_id 齐全。
 fn normalize_entity(
@@ -916,6 +951,7 @@ fn normalize_entity(
         }
     }
     if kind == "reference" {
+        normalize_reference_endpoints(item);
         let endpoints = ["start_table_id", "end_table_id", "start_field_id", "end_field_id"];
         let complete = endpoints.iter().all(|k| {
             item.get(k)
@@ -1096,6 +1132,49 @@ mod tests {
         assert_eq!(payload["tables"][0]["name"], "users");
         assert_eq!(payload["tables"][0]["fields"][0]["name"], "id");
         crate::verify_reporter::report_pass("UT-S01-14", 0);
+    }
+
+    /// UT-S01-17：camelCase 关系端点和 notNull 与 snake_case 等价，snake_case 优先。
+    #[test]
+    fn ut_s01_17_normalizes_camel_case_endpoints_and_not_null() {
+        let mut payload = serde_json::json!({
+            "name": "camel-case-import",
+            "tables": [
+                {"id":"t1","name":"users","fields":[{"id":"f1","name":"id","notNull":true}]},
+                {"id":"t2","name":"teams","fields":[{"id":"f2","name":"id","not_null":false}]}
+            ],
+            "references": [
+                {"id":"r1","startTableId":"t1","endTableId":"t2","startFieldId":"f1","endFieldId":"f2"},
+                {"id":"r2","start_table_id":"t1","end_table_id":"t1","start_field_id":"f1","end_field_id":"f1",
+                 "startTableId":"t2","endTableId":"t2","startFieldId":"f2","endFieldId":"f2"}
+            ]
+        });
+        let warnings = normalize_import_payload(&mut payload);
+        assert!(!warnings.iter().any(|warning| warning.contains("missing endpoint id")));
+
+        let table_id = payload["tables"][0]["id"].as_str().unwrap();
+        let field_id = payload["tables"][0]["fields"][0]["id"].as_str().unwrap();
+        let other_table_id = payload["tables"][1]["id"].as_str().unwrap();
+        let other_field_id = payload["tables"][1]["fields"][0]["id"].as_str().unwrap();
+        assert_eq!(payload["references"][0]["start_table_id"], table_id);
+        assert_eq!(payload["references"][0]["end_table_id"], other_table_id);
+        assert_eq!(payload["references"][0]["start_field_id"], field_id);
+        assert_eq!(payload["references"][0]["end_field_id"], other_field_id);
+        assert_eq!(payload["references"][1]["start_table_id"], table_id);
+        assert_eq!(payload["references"][1]["end_table_id"], table_id);
+        assert_eq!(payload["references"][1]["start_field_id"], field_id);
+        assert_eq!(payload["references"][1]["end_field_id"], field_id);
+        assert!(payload["references"][0].get("startTableId").is_none());
+
+        let diagram = diagram_from_import_payload("d1", &payload).unwrap();
+        assert!(diagram.tables[0].fields[0].not_null);
+        assert_eq!(diagram.references.len(), 2);
+        let direct: ReferenceDto = serde_json::from_value(serde_json::json!({
+            "id":"direct","startTableId":"t1","endTableId":"t2","startFieldId":"f1","endFieldId":"f2"
+        })).unwrap();
+        assert_eq!(direct.start_table_id, "t1");
+        assert_eq!(direct.end_field_id, "f2");
+        crate::verify_reporter::report_pass("UT-S01-17", 0);
     }
 
     /// UT-S01-15：嵌套 DTO 类型错误必须显式失败，不能静默变成空图。

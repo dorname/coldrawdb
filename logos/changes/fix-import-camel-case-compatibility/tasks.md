@@ -9,6 +9,6 @@
 
 ## [code] 代码实现
 
-- [ ] 修改 `backend/src/diagram_persistence.rs`，实现四个关系端点别名规范化和 DTO serde alias
-- [ ] 交付 UT-S01-17、ST-S01-07 与 OpenLogos reporter，验证两种命名风格的关系和 NOT NULL 持久化
-- [ ] 运行后端导入定向测试与全量测试，确认 #62 错误诊断和 ID 隔离无回归
+- [x] 修改 `backend/src/diagram_persistence.rs`，实现四个关系端点别名规范化和 DTO serde alias
+- [x] 交付 UT-S01-17、ST-S01-07 与 OpenLogos reporter，验证两种命名风格的关系和 NOT NULL 持久化
+- [x] 运行后端导入定向测试与全量测试，确认 #62 错误诊断和 ID 隔离无回归
