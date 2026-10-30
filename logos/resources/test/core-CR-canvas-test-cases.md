@@ -739,36 +739,52 @@
 
 ## 合并自 fix-issues-36-37-view-dimension-select-all（2026-09-28）
 
-## MODIFIED — UT-CR-LOD-01 — 维度模式与可读性补偿纯函数（fix-issues-36-37 / #36 显式维度化改写）
+## MODIFIED — UT-CR-LOD-01 — 维度模式与可读性补偿纯函数（fix-auto-lod-overview / #59 三态化改写）
 
-- **位置**：`frontend-rs/src/editor_core.rs`（`ViewDimension` / 存储键 / `from_stored` / `next`）+ `frontend-rs/src/editor_render.rs`（维度→档位映射 / `lod_table_font_size` / `lod_line_width` / 表级锚点 / 注释感知宽度）
+- **位置**：`frontend-rs/src/editor_core.rs`（`ViewDimension` / 存储键 / `from_stored` / `next`）+ `frontend-rs/src/editor_render.rs`（维度+zoom→档位映射 / `lod_table_font_size` / `lod_line_width` / 表级锚点 / 注释感知宽度）
 - **步骤与预期**：
-  1. **存储合同（R-VIEW-DIM-04）**：`from_stored(None)` / `from_stored(非法值)` → Field；`"table"` → Table、`"field"` → Field；`as_str` 往返一致；`next` 双态互换；缺省维度 = Field
-  2. **维度→档位映射（R-LOD-01 修订）**：Table → 拓扑渲染档、Field → 详情渲染档，与 zoom 无关（同一维度在 zoom 0.35 / 1.0 / 2.0 下档位相同）；断言 `lod_tier(zoom, …)` 阈值判定不再被渲染主循环消费（源码锚点）
+  1. **存储合同（R-VIEW-DIM-04）**：`from_stored(None)` / `from_stored(非法值)` / `"auto"` → Auto；旧 `"table"` → Table、`"field"` → Field 原样保留；`as_str` 往返一致；`next` 按 Auto → Table → Field → Auto 环回；缺省维度 = Auto；自动标签 =「自动」
+  2. **显式维度→档位映射（R-LOD-01 / R-VIEW-DIM-01）**：Table → 拓扑渲染档、Field → 详情渲染档，在 zoom 0.1 / 0.35 / 1.0 / 2.0 下均不变；Auto 的阈值边界由 UT-CR-LOD-02 独立覆盖
   3. **维度内补偿（R-LOD-03/04）**：表维度 `lod_table_font_size(0.5)` → 屏幕字号 ≥ 11px（22px@0.5）、`lod_line_width(0.5, base)` ≥ 3px 世界宽且夹紧 ≤ 4×；字段维度任意 zoom 返回默认字号/线宽
-  4. **精灵指纹（R-LOD-05 / R-VIEW-DIM-05）**：同表跨维度指纹不同、同维度内指纹相同（拖动不触发重光栅）
+  4. **精灵指纹（R-LOD-05 / R-VIEW-DIM-05）**：同表跨渲染档位指纹不同、同档位内指纹相同（拖动不触发重光栅）
   5. **表级锚点（R-LOD-08，#35 沿用）**：表维度锚点纵坐标 = `table.y + TABLE_HEADER_HEIGHT / 2`，横坐标 = 卡体左/右缘；字段维度同输入保持字段锚点（`field_anchor_for_side`）不变；bezier / orthogonal / straight 三路径同口径
   6. **表维度注释（R-LOD-02，#35 沿用）**：NameComment 模式且表注释非空 → 表维度卡宽度估算覆盖「表名 + 注释」；空注释/非 NameComment 模式不增宽、不渲染
 
-## MODIFIED — ST-CR-LOD-01 — 显式维度切换 e2e（fix-issues-36-37 / #36 改写）
+## MODIFIED — ST-CR-LOD-01 — 显式维度切换 e2e（fix-auto-lod-overview / #59 三态化改写）
 
 - **位置**：`frontend-rs` e2e（`scripts/test-spec-parity-d.mjs`）
-- **GIVEN**：导入 fixture 图（≥20 表、≥20 关系，含 ≥5 对已知 FK 表对；≥2 张表含中文注释）；注释显示模式 = 英文名+注释；默认字段维度
-- **WHEN**：字段维度下缩放至 35% 观察；快捷键 `V` 切表维度，35% / 100% / 200% 各观察一次；ToolRail 维度按钮切回字段维度；画布右键菜单再切表维度；刷新页面
+- **GIVEN**：导入 fixture 图（≥20 表、≥20 关系，含 ≥5 对已知 FK 表对；≥2 张表含中文注释）；注释显示模式 = 英文名+注释；默认 Auto
+- **WHEN**：先显式切到 Field，在 35% / 100% / 200% 各观察一次；再切到 Table 跨相同缩放观察；分别通过快捷键 `V`、ToolRail 维度按钮、画布右键菜单完成 Auto → Table → Field → Auto 循环；在显式模式刷新页面
 - **THEN**：
-  1. **维度不随缩放串档（R-VIEW-DIM-01）**：字段维度 35% 下字段行仍展开（探针 `anchor_mode == "field"`）；表维度 35% / 100% / 200% 下始终仅表头（`anchor_mode == "table"`、字段行不渲染）
-  2. **表维度补偿（R-LOD-03/04）**：表维度 35% 下表名屏幕字号 ≥ 11px、关系线宽 ≥ 补偿下限（探针断言）；`topo_comments > 0`（中文注释可见，#35 沿用）
-  3. **三入口一致（R-VIEW-DIM-02/03）**：快捷键 / ToolRail / 右键菜单每次切换后 FloatingControls 指示文案（「维度：表」/「维度：字段」）与探针档位一致；ToolRail 按钮 `cdb-is-active` 态与维度一致
-  4. **持久化（R-VIEW-DIM-04）**：刷新后仍为表维度（localStorage `cdb.view-dimension`）
-  5. **缩放不触发切换**：任一维度内滚轮缩放跨越 50% 旧阈值，维度不变
+  1. **显式维度不随缩放串档（R-VIEW-DIM-01）**：Field 在 35% / 100% / 200% 下字段行始终展开（探针 `anchor_mode == "field"`）；Table 在相同缩放下始终仅表头（`anchor_mode == "table"`、字段行不渲染）
+  2. **表维度补偿（R-LOD-03/04）**：Table 在 35% 下表名屏幕字号 ≥ 11px、关系线宽 ≥ 补偿下限（探针断言）；`topo_comments > 0`（中文注释可见，#35 沿用）
+  3. **三入口一致（R-VIEW-DIM-02/03）**：快捷键 / ToolRail / 右键菜单每次按 Auto → Table → Field → Auto 环回后，FloatingControls 指示文案（「维度：自动」/「维度：表」/「维度：字段」）与探针档位一致；ToolRail 按钮 `cdb-is-active` 态与维度一致
+  4. **持久化（R-VIEW-DIM-04）**：刷新后仍为刷新前的显式模式（localStorage `cdb.view-dimension`）
+  5. **显式缩放不触发切换**：Table / Field 内滚轮缩放跨越 50% 阈值，维度不变
 - **reporter**：`ST-CR-LOD-01` 写入 `logos/resources/verify/test-results.jsonl`
+
+## ADDED — UT-CR-LOD-02 — 自动 LOD 阈值与显式覆盖纯函数（fix-auto-lod-overview / #59）
+
+- **位置**：`frontend-rs/src/editor_render.rs`（`tier_for_dimension`）
+- **断言**：Auto 在 zoom = 0.5 / 0.1 时为 Topology，在 zoom = 0.5001 / 1.0 时为 Detail；非法/防御性 zoom 不 panic；显式 Table / Field 在阈值两侧分别保持 Topology / Detail
+- **reporter**：`UT-CR-LOD-02` 写入 `logos/resources/verify/test-results.jsonl`
+
+## ADDED — ST-CR-LOD-02 — 全景自动拓扑与显式覆盖 e2e（fix-auto-lod-overview / #59）
+
+- **位置**：`frontend-rs/scripts/test-spec-parity-d.mjs`
+- **GIVEN**：默认 Auto，预置 16 表 / 19 关系
+- **WHEN**：缩放到 zoom≈0.1 后恢复 zoom=1；依次切换 Table、Field、Auto 并跨阈值缩放；刷新验证偏好
+- **THEN**：Auto 全景时 `tier=topology`、`anchor_mode=table`，放大后恢复 `detail` / `field`；Field 在 zoom≈0.1 仍保持字段详情，Table 在高 zoom 仍保持拓扑；回到 Auto 后重新按 zoom 判档；localStorage 与「维度：…」指示一致
+- **reporter**：`ST-CR-LOD-02` 写入 `logos/resources/verify/test-results.jsonl`
 
 ## MODIFIED — 附录 A（更新行）
 
 | ID | 标题 | 对齐实现 |
 |---|---|---|
-| UT-CR-LOD-01 | 维度模式与可读性补偿纯函数 | `editor_core.rs::ViewDimension` + `editor_render.rs` 维度映射 |
-| ST-CR-LOD-01 | 显式维度切换 e2e（三入口 + 不随缩放串档） | e2e canvas view-dimension |
+| UT-CR-LOD-01 | 三态维度模式与可读性补偿纯函数 | `editor_core.rs::ViewDimension` + `editor_render.rs` 维度映射 |
+| ST-CR-LOD-01 | 三态显式维度切换 e2e（三入口 + 显式模式不随缩放串档） | e2e canvas view-dimension |
+| UT-CR-LOD-02 | 自动 LOD 阈值与显式覆盖纯函数 | `editor_render.rs::tier_for_dimension` |
+| ST-CR-LOD-02 | 全景自动拓扑与显式覆盖 e2e | `frontend-rs/scripts/test-spec-parity-d.mjs` |
 
 ---
 

@@ -462,11 +462,11 @@ SVG 内部 `width/height` 由容器 100% 撑满，`stroke="currentColor"` 继承
 | `canvas.highlight.related-line-halo` | selected_soft 8px | selected_soft 8px | 相关关系线光晕 = `palette.selected_soft`，宽 8px（选中关系自身 10px，保持层级区分） |
 | `canvas.highlight.unrelated-line-alpha` | 0.25 | 0.25 | 非相关关系线不透明度上限 |
 | `canvas.highlight.unrelated-table-alpha` | 0.5 | 0.5 | 非相关表不透明度建议值 |
-| ~~`canvas.lod.tier1-max-zoom`~~ | ~~0.5~~ 废止 | ~~0.5~~ 废止 | （fix-issues-36-37 / #36：维度改为显式切换 R-VIEW-DIM-01，zoom 不再触发档位切换，阈值与 ±0.03 滞回一并退役；保留本行作废止存证） |
+| `canvas.lod.tier1-max-zoom` | 0.5 | 0.5 | （fix-auto-lod-overview / #59 恢复）仅用于 Auto 维度：zoom ≤ 0.5 进入拓扑，高于阈值进入详情；显式 Table/Field 不消费该 token；不恢复 ±0.03 滞回 |
 | `canvas.lod.min-screen-font-px` | 11 | 11 | 表维度表名屏幕最小字号（R-LOD-03，维度内 zoom 可读性补偿） |
 | `canvas.lod.line-min-screen-px` | 1.5 | 1.5 | 表维度关系线屏幕最小线宽（R-LOD-04，维度内 zoom 可读性补偿） |
 
 - 亮/暗主题同值时仍分别登记，便于后续按主题微调；
 - 既有 `palette.selected` / `text_strong` / `text_muted` 语义不变，本节只新增可读性参数；
 - `related-line-color` / `related-line-halo` 为语义引用（取值跟随 `palette.selected` / `palette.selected_soft`），不复制色值散值；
-- （#36 追加）维度模式持久化键 `cdb.view-dimension` 为视图偏好存储约定（值 `table` / `field`），非渲染 token，登记于 §5.12 R-VIEW-DIM-04。
+- （fix-auto-lod-overview / #59 修订）维度模式持久化键 `cdb.view-dimension` 为视图偏好存储约定（值 `auto` / `table` / `field`，缺省/非法值回落 Auto），非渲染 token，登记于 §5.12 R-VIEW-DIM-04。

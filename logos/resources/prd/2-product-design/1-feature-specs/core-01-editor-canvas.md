@@ -664,7 +664,7 @@ focus_transform(table_aabb, viewport_css, current_transform) -> Transform
 
 | ID | 约束 |
 |---|---|
-| R-LOD-01 | （#36 修订）**zoom 阈值触发废止**：渲染档位不再由 `lod_tier(zoom)` 判定；档位 = 显式维度模式（R-VIEW-DIM-01：Table → 表维度渲染，Field → 字段维度渲染）。`LOD_TIER1_MAX` 阈值与 ±0.03 滞回退役（token 勘误见 §15.4） |
+| R-LOD-01 | （fix-auto-lod-overview / #59 修订）恢复 `zoom <= 0.5` 的自动拓扑判档，但仅作用于 `ViewDimension::Auto`；高于阈值使用详情档。显式 Table/Field 不随 zoom 改档。自动判档为当前 zoom 的纯函数，不恢复已退役的 ±0.03 滞回（token 见 §15.4） |
 | R-LOD-02 | 表维度表卡渲染：隐藏字段行，仅渲染表头（表名 + 可选注释一行，对齐当前注释显示模式）；表头块高度可压缩（去掉字段区），卡体配色/圆角/选中态与字段维度一致。（#35 注记：注释副文本——字号 = 表维度表名字号 × 0.8、字重 ≥ 500，前景按 R-CMT-CONTRAST 双端点判据决策，宽度沿用注释感知估算，超长截断） |
 | R-LOD-03 | 表维度表名字号补偿：zoom 仅作**维度内可读性补偿**——按世界字号提升使屏幕有效字号 ≥ 11px（`世界字号 = max(默认字号, 11 / zoom)`，夹紧上限避免过度放大）；字重 ≥ 500；字段维度任意 zoom 不补偿（默认字号）。补偿不触发维度切换 |
 | R-LOD-04 | 表维度关系线线宽补偿：按 `max(默认线宽, LOD_LINE_MIN_SCREEN_PX / zoom)`（`LOD_LINE_MIN_SCREEN_PX` 默认 1.5，夹紧 ≤ 4× 默认线宽）；字段维度任意 zoom 不补偿；选中高亮倍率（§4.4）与补偿叠乘 |
@@ -675,13 +675,14 @@ focus_transform(table_aabb, viewport_css, current_transform) -> Transform
 | R-LOD-09 | **表维度表头高随表名字号补偿自适应**（#48）：拓扑档表头高 = `max(TABLE_HEADER_HEIGHT, scaled_label_font_world(lod_table_font_size(zoom, tier), zoom, label_scale).0 + 2 × 留白)`，与 R-WIDTH-07 同源，确保表维度下放大表名后不被截断。 |
 | R-LOD-10 | **表维度卡宽上限单独放宽**（fix-issue-48-topology-card-readability / #48）：`resolve_table_width_for` 在 `LodTier::Topology` 下使用 `TABLE_WIDTH_MAX_TOPOLOGY`（默认 640px），字段维度维持 `TABLE_WIDTH_MAX`（480px）。表维度下单行表名+注释的估算宽度放宽到该上限后再截断，减少中英文并排长文本被 `…` 截断；关系锚点随放宽后的宽度同源取缘（R-WIDTH-08 / #49），不得错位。 |
 | R-LOD-11 | **表头行宽度需求不受 Tier 上限钳制**（fix-table-header-width-autofit）：`estimate_content_width_for` 拆分「表头行需求」（表名 + 注释 + 字段计数占位 + 左右留白，随 effective 字号缩放）与「字段行需求」（各字段行宽度最大值）。auto 宽（`table.width` 为 None/0）时 `宽度 = max(clamp(字段行需求, TABLE_WIDTH, Tier 上限), min(表头行需求, TABLE_WIDTH_MAX_HEADER))`；`TABLE_WIDTH_MAX_HEADER` 默认 **720px**（两维度同口径，防御超长注释）。字段行需求的钳制结构不变（R-LOD-10 不回退）；显式 `table.width > 0` 仍为用户固定宽、不做内容自适应；关系锚点（R-WIDTH-08）随新宽度同源取缘，不得错位。 |
-| R-VIEW-DIM-01 | 显式维度模式 `ViewDimension { Table, Field }`：Table = 表维度（仅表头，R-LOD-02 渲染），Field = 字段维度（字段展开，原详情档渲染）；**默认 Field**；任何 zoom 下维度保持不变——缩放控件只负责缩放 |
-| R-VIEW-DIM-02 | 三入口切换（状态一致）：① 画布/表**右键菜单**「切换为表维度 / 切换为字段维度」项；② **ToolRail 维度按钮**（`cdb-is-active` 激活态可见，只读/Viewer 下仍可用——纯视图切换）；③ **快捷键 `V`**（无修饰键，沿用工具快捷键门控链：编辑器页 / 非文本输入目标 / 无浮层；只读下可用） |
-| R-VIEW-DIM-03 | 状态指示：FloatingControls 常驻「维度：表 / 维度：字段」按钮（对齐「注释：…」先例），点击同样切换；三入口与指示同一信号驱动，状态永远一致 |
-| R-VIEW-DIM-04 | 持久化：localStorage 键 `cdb.view-dimension`（值 `table` / `field`），非法/缺省回落 Field；视图偏好**不落库** diagram snapshot、不参与保存链路（同 R-CMT-04 口径） |
+| R-VIEW-DIM-01 | （fix-auto-lod-overview / #59 修订）维度模式 `ViewDimension { Auto, Table, Field }`，**默认 Auto**，切换顺序为 Auto → Table → Field → Auto。Auto 按当前 zoom 自动选择详情/拓扑（R-LOD-01）；Table = 固定表维度（仅表头，R-LOD-02 渲染）；Field = 固定字段维度（字段展开，原详情档渲染）。显式 Table/Field 在任何 zoom 下保持不变，缩放控件只负责缩放 |
+| R-VIEW-DIM-02 | 三入口切换（状态一致）：① 画布/表**右键菜单**维度切换项；② **ToolRail 维度按钮**（`cdb-is-active` 激活态可见，只读/Viewer 下仍可用——纯视图切换）；③ **快捷键 `V`**（无修饰键，沿用工具快捷键门控链：编辑器页 / 非文本输入目标 / 无浮层；只读下可用）。三入口均按 Auto → Table → Field → Auto 环回 |
+| R-VIEW-DIM-03 | 状态指示：FloatingControls 常驻「维度：自动 / 维度：表 / 维度：字段」按钮（对齐「注释：…」先例），点击同样环回切换；三入口与指示同一信号驱动，状态永远一致 |
+| R-VIEW-DIM-04 | 持久化：localStorage 键 `cdb.view-dimension`（值 `auto` / `table` / `field`），旧 `table` / `field` 值保持有效，非法/缺省回落 Auto；视图偏好**不落库** diagram snapshot、不参与保存链路（同 R-CMT-04 口径） |
 | R-VIEW-DIM-05 | 切换即重绘：维度经 R-LOD-05 纳入精灵指纹；维度为纯视图状态，不进 CommandStack（undo/redo 不改变维度） |
+| R-VIEW-DIM-06 | （fix-auto-lod-overview / #59 新增）渲染、表/字段/关系命中与悬停摘要必须调用同一带 zoom 的判档函数；禁止只改绘制而保留旧命中档位，确保 Auto 跨阈值后显示几何与交互几何一致 |
 
-**验收口径**：表维度下缩放 35%～200% 始终保持仅表头（字段行不出现）；字段维度下任意缩放始终保持字段展开；滚轮缩放永不触发维度切换；右键菜单 / ToolRail / 快捷键 `V` 三入口切换后 FloatingControls 指示与渲染一致；刷新页面后维度保持；表维度小缩放下字号/线宽补偿、中文注释可见与表级锚定（#35 合同）保持有效；表维度下典型中英文表卡（英文名 10+ ASCII、注释 8+ CJK）在 100% zoom 下完整可读或仅极长文本尾部截断；（fix-table-header-width-autofit）字段维度 auto 宽下，表头行中英文并排文本（英文名 18 ASCII + 注释 20 CJK 量级，表头需求 ≤ 720px）完整显示、不因 `TABLE_WIDTH_MAX = 480` 截断；超过 720px 的极长表头仍尾部截断。
+**验收口径**：缺省 Auto 下 zoom ≤ 50% 自动仅显示表头，zoom > 50% 自动恢复字段详情；显式表维度下缩放 35%～200% 始终保持仅表头（字段行不出现），显式字段维度下任意缩放始终保持字段展开；显式维度内滚轮缩放跨越 50% 阈值不改档；右键菜单 / ToolRail / 快捷键 `V` 三入口按 Auto → Table → Field → Auto 切换后 FloatingControls 指示与渲染一致；刷新页面后维度保持，旧 `table` / `field` 偏好兼容；Auto 跨阈值后渲染、表/字段/关系命中与悬停摘要使用同一档位；表维度小缩放下字号/线宽补偿、中文注释可见与表级锚定（#35 合同）保持有效；表维度下典型中英文表卡（英文名 10+ ASCII、注释 8+ CJK）在 100% zoom 下完整可读或仅极长文本尾部截断；（fix-table-header-width-autofit）字段维度 auto 宽下，表头行中英文并排文本（英文名 18 ASCII + 注释 20 CJK 量级，表头需求 ≤ 720px）完整显示、不因 `TABLE_WIDTH_MAX = 480` 截断；超过 720px 的极长表头仍尾部截断。
 
 ## ADDED — §5.13 画布键盘全选与删除（fix-issues-36-37 / #37）
 
