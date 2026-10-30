@@ -6962,6 +6962,7 @@ pub fn hit_test_reference(tables: &[Table], refs: &[Reference], x: f64, y: f64, 
 /// （否则拓扑档点击可见连线不命中）。
 /// fix-issues-42-44（#43 R-HOV-02）：悬浮摘要文案纯函数——
 /// 详情档 `源表.源字段 → 目标表.目标字段`；拓扑档 `源表 → 目标表`。
+/// #60：追加固定叠线轮选提示，不改变 hover 信号与命中状态。
 /// ref/端点表缺失返回 None（tooltip 不渲染）。
 pub fn relation_tooltip_text(
     tables: &[Table],
@@ -6972,8 +6973,8 @@ pub fn relation_tooltip_text(
     let r = refs.iter().find(|r| r.id == ref_id)?;
     let from = tables.iter().find(|t| t.id == r.start_table_id)?;
     let to = tables.iter().find(|t| t.id == r.end_table_id)?;
-    match tier {
-        LodTier::Topology => Some(format!("{} → {}", from.name, to.name)),
+    let summary = match tier {
+        LodTier::Topology => format!("{} → {}", from.name, to.name),
         LodTier::Detail => {
             let sf = from
                 .fields
@@ -6987,9 +6988,10 @@ pub fn relation_tooltip_text(
                 .find(|f| f.id == r.end_field_id)
                 .map(|f| f.name.as_str())
                 .unwrap_or("");
-            Some(format!("{}.{} → {}.{}", from.name, sf, to.name, tf))
+            format!("{}.{} → {}.{}", from.name, sf, to.name, tf)
         }
-    }
+    };
+    Some(format!("{} · 若线条重叠，重复点击可切换关系", summary))
 }
 
 /// #51 / R-HIT-05：默认选择工具下，表与关系同时命中时是否优先关系。
@@ -7948,6 +7950,44 @@ mod tests {
         );
     }
 
+    /// UT-PB-33（#60）：详情/拓扑完全重合路径均可逐条轮选并环回
+    #[test]
+    fn test_identical_reference_paths_cycle_ut_pb_33() {
+        let (tables, base_refs) = ut_mm_33_fixture();
+        let mut refs = base_refs;
+        let mut r2 = refs[0].clone();
+        r2.id = "r2".into();
+        let mut r3 = refs[0].clone();
+        r3.id = "r3".into();
+        refs.extend([r2, r3]);
+
+        for tier in [LodTier::Detail, LodTier::Topology] {
+            let path = calc_path_tier(
+                &tables[0],
+                &refs[0].start_field_id,
+                &tables[1],
+                &refs[0].end_field_id,
+                tier,
+            );
+            let (x, y) = bezier_point(&path, 0.5);
+            let mut prev = None;
+            for expected in ["r1", "r2", "r3", "r1"] {
+                let hit = hit_test_reference_tier(
+                    &tables,
+                    &refs,
+                    x,
+                    y,
+                    tier,
+                    CommentDisplay::NameComment,
+                    1.0,
+                    prev.as_deref(),
+                );
+                assert_eq!(hit.as_deref(), Some(expected), "UT-PB-33: 完全重合路径必须逐条环回");
+                prev = hit;
+            }
+        }
+    }
+
     /// UT-PB-25（perf-canvas-relation-hit-index / R-HIT-07）：200 条关系远距离点击 AABB 预过滤生效
     #[test]
     fn test_hit_test_reference_aabb_cull_ut_pb_25() {
@@ -8096,13 +8136,13 @@ mod tests {
         // 详情档：源表.源字段 → 目标表.目标字段
         assert_eq!(
             relation_tooltip_text(&tables, &refs, "r1", LodTier::Detail),
-            Some("t1.f1 → t2.f2".to_string()),
+            Some("t1.f1 → t2.f2 · 若线条重叠，重复点击可切换关系".to_string()),
             "UT-PB-20: 详情档文案必须为 源表.源字段 → 目标表.目标字段"
         );
         // 拓扑档：至少 源表 → 目标表
         assert_eq!(
             relation_tooltip_text(&tables, &refs, "r1", LodTier::Topology),
-            Some("t1 → t2".to_string()),
+            Some("t1 → t2 · 若线条重叠，重复点击可切换关系".to_string()),
             "UT-PB-20: 拓扑档文案必须为 源表 → 目标表"
         );
         // 未知 ref → None（不渲染）

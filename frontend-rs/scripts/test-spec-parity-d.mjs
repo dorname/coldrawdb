@@ -22,6 +22,7 @@
 // fix-issue-47-relation-hit-precision-and-highlight 新增：
 //   ST-PB-13         点击关系线高亮关系线与两端表（R-HL-REF-01~03）
 //   ST-PB-14         点击端点记号附近 10px 热区选中关系（fix-relation-mouse-hit-precision / R-HIT-06）
+//   ST-PB-17         16 表 / 19 关系完全重合路径提示与重复点击可达性（#60）
 // p0-fix 定点 3 新增：
 //   ST-PB-03         点击连线选中 + Inspector 详情/删除（不弹详情模态）
 //   ST-PB-04         选中连线 Delete / Backspace 双键删除落账 0 条
@@ -3130,6 +3131,60 @@ try {
         return p && p.sel_ref === false && p.sel_ref_id === null;
       }, null, { timeout: 4_000, polling: 100 },
     );
+  });
+
+  // ─── ST-PB-17：16 表 / 19 关系中完全重合路径提示与重复点击可达性（#60）───
+  await run(["ST-PB-17"], "大图完全重合关系提示与点击可达性", async page => {
+    const mkT = (id, x, y) => ({
+      id, name: id, x, y, color: "", comment: "",
+      fields: [{ id: `f_${id}`, name: "id", type_: "INT", default: "", check: "", primary: true, unique: false, not_null: true, increment: false, comment: "", tag: "", dict_code: "" }],
+      indices: [],
+    });
+    const mkR = (id, st, et) => ({
+      id, name: "", start_table_id: st, end_table_id: et,
+      start_field_id: `f_${st}`, end_field_id: `f_${et}`,
+      type_: "one_to_many", on_delete: "RESTRICT", on_update: "RESTRICT", color: "", line_type: "", stroke_style: "",
+    });
+    const tables = Array.from({ length: 16 }, (_, i) =>
+      mkT(`t${i}`, i < 2 ? [100, 600][i] : 1000 + (i - 2) * 300, i < 2 ? 130 : 700));
+    const duplicateIds = ["r_dup_a", "r_dup_b", "r_dup_c", "r_dup_d"];
+    const references = duplicateIds.map(id => mkR(id, "t0", "t1"));
+    for (let i = 1; i <= 14; i += 1) references.push(mkR(`r_chain_${i}`, `t${i}`, `t${i + 1}`));
+    references.push(mkR("r_self", "t15", "t15"));
+    assert.equal(tables.length, 16);
+    assert.equal(references.length, 19);
+
+    const state = await installApi(page, { presetDiagram: { tables, references, areas: [], notes: [] } });
+    await login(page);
+    await createRoomAndEnter(page);
+    await page.waitForFunction(() => !!window.__cdb_hl_probe, null, { timeout: 8_000 });
+    const initialPuts = state.putCalls;
+    const initialOps = state.sentOps?.length ?? 0;
+    const pt = await canvasPoint(page, { x: 465, y: 190.5 });
+    await page.mouse.move(pt.x, pt.y);
+    await page.locator('[data-testid="rel-hover-tooltip"]:visible').waitFor();
+    assert.match(
+      await page.locator('[data-testid="rel-hover-tooltip"]').textContent(),
+      /若线条重叠，重复点击可切换关系/,
+      "悬停摘要必须说明叠线轮选方式"
+    );
+
+    for (const expected of duplicateIds) {
+      await page.mouse.click(pt.x, pt.y);
+      await page.waitForFunction(
+        id => JSON.parse(window.__cdb_hl_probe)?.sel_ref_id === id,
+        expected,
+        { timeout: 4_000, polling: 100 },
+      );
+    }
+    // 既有「选中关系」工具也走同一轮选；第四次后继续环回首条。
+    await page.locator('[data-testid="tool-relationship-select"]').click();
+    await page.mouse.click(pt.x, pt.y);
+    await page.waitForFunction(
+      () => JSON.parse(window.__cdb_hl_probe)?.sel_ref_id === "r_dup_a", null, { timeout: 4_000, polling: 100 },
+    );
+    assert.equal(state.putCalls, initialPuts, "叠线轮选不得新增 PUT");
+    assert.equal(state.sentOps?.length ?? 0, initialOps, "叠线轮选不得新增协作 op");
   });
 
   // ─── ST-PB-13：点击关系线高亮关系线与两端表（fix-issue-47 / #47 R-HL-REF-01~03） ──

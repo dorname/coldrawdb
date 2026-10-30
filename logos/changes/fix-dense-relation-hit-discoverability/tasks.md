@@ -7,6 +7,6 @@
 
 ## [code] 代码实现
 
-- [ ] 修改 `frontend-rs/src/editor_render.rs`，在关系悬停摘要中增加轮选提示并交付 UT-PB-33
-- [ ] 更新 `frontend-rs/scripts/test-spec-parity-d.mjs`，交付 16 表 / 19 关系的 ST-PB-17 与 reporter
-- [ ] 更新 `frontend-rs/tests/openlogos_reporter.rs`，登记 UT-PB-33，运行定向与全量测试
+- [x] 修改 `frontend-rs/src/editor_render.rs`，在关系悬停摘要中增加轮选提示并交付 UT-PB-33
+- [x] 更新 `frontend-rs/scripts/test-spec-parity-d.mjs`，交付 16 表 / 19 关系的 ST-PB-17 与 reporter
+- [x] 更新 `frontend-rs/tests/openlogos_reporter.rs`，登记 UT-PB-33，运行定向与全量测试
