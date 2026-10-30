@@ -300,13 +300,12 @@ async fn ut_mcp_14_connection_failure() {
     let api = ApiClient::new(config("http://127.0.0.1:9".into())).unwrap();
     let error = api.get("d1").await.unwrap_err();
     // 黑洞端口(127.0.0.1:9)的 reqwest 行为在宿主间不稳定:
-    //   - 立即 connection refused → transport() else 分支 → UPSTREAM_UNAVAILABLE
-    //   - connect timeout          → transport() is_timeout() 分支 → UPSTREAM_TIMEOUT
-    //   - 被识别为 HTTP 5xx 响应   → upstream() 分支 → UPSTREAM_ERROR(retryable=true)
-    // 本测试的本意是验证上游不可达时被标记 retryable,不强锁字面值。
+    //   - 立即 connection refused → UPSTREAM_UNREACHABLE
+    //   - connect timeout         → UPSTREAM_TIMEOUT
+    // 本测试的本意是验证上游不可达时被标记 retryable,不强锁具体传输分类。
     let code = error.code.as_str();
     assert!(
-        code == "UPSTREAM_UNAVAILABLE" || code == "UPSTREAM_TIMEOUT" || code == "UPSTREAM_ERROR",
+        code == "UPSTREAM_UNREACHABLE" || code == "UPSTREAM_TIMEOUT",
         "expected unreachable-upstream error code, got {}",
         code
     );

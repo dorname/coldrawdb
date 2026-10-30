@@ -64,7 +64,17 @@ pub async fn handle(service: &McpService, request: Value) -> Option<Value> {
 }
 
 fn tool_result(value: Value, is_error: bool) -> Value {
-    json!({"content":[{"type":"text","text":serde_json::to_string(&value).unwrap_or_default()}],"structuredContent":value,"isError":is_error})
+    let text = serde_json::to_string(&value).unwrap_or_default();
+    let mut result = json!({
+        "content": [{"type":"text","text":text}],
+        "isError": is_error,
+    });
+    // outputSchema 只约束成功结果；错误若携带 structuredContent，客户端会用
+    // 成功 schema 校验并掩盖真实错误（#57）。
+    if !is_error {
+        result["structuredContent"] = value;
+    }
+    result
 }
 
 fn protocol_error(id: Option<Value>, error: ToolError) -> Value {

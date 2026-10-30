@@ -1,6 +1,7 @@
 use reqwest::StatusCode;
 use serde::Serialize;
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
+use url::Url;
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct ToolError {
@@ -38,7 +39,9 @@ impl ToolError {
             401 => ("UNAUTHENTICATED", false),
             403 => ("PERMISSION_DENIED", false),
             404 => ("NOT_FOUND", false),
-            409 if body.pointer("/details/code").and_then(Value::as_str) == Some("USE_OP_CHANNEL") => {
+            409 if body.pointer("/details/code").and_then(Value::as_str)
+                == Some("USE_OP_CHANNEL") =>
+            {
                 ("USE_OP_CHANNEL", false)
             }
             409 => ("REVISION_CONFLICT", false),
@@ -74,11 +77,19 @@ impl ToolError {
         }
     }
 
-    pub fn transport(error: &reqwest::Error) -> Self {
-        if error.is_timeout() {
-            Self::new("UPSTREAM_TIMEOUT", "上游请求超时", true)
+    pub fn transport(error: &reqwest::Error, base_url: &Url) -> Self {
+        let origin = base_url.origin().ascii_serialization();
+        let (code, action) = if error.is_timeout() {
+            ("UPSTREAM_TIMEOUT", "上游请求超时")
         } else {
-            Self::new("UPSTREAM_UNAVAILABLE", "无法连接上游服务", true)
-        }
+            ("UPSTREAM_UNREACHABLE", "无法连接上游服务")
+        };
+        let mut result = Self::new(
+            code,
+            format!("{action}（COLDRAWDB_BASE_URL={origin}）"),
+            true,
+        );
+        result.details = Some(json!({"base_url": origin}));
+        result
     }
 }

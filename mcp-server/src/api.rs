@@ -46,7 +46,7 @@ impl ApiClient {
         let response = request
             .send()
             .await
-            .map_err(|error| ToolError::transport(&error))?;
+            .map_err(|error| ToolError::transport(&error, &self.config.base_url))?;
         let status = response.status();
         // fix-issues-42-44（#42 R-MCPERR-01）：先取原文再解析——非 JSON 响应（网关
         // 502/504 HTML 页、代理拦截页等）必须保留 status/Content-Type/body 摘要供诊断，
@@ -139,7 +139,8 @@ impl ApiClient {
                 .cloned()
                 .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "上游响应缺少 data", false)),
             Err(error) if error.code == "USE_OP_CHANNEL" => {
-                self.write_room_diagram(id, expected_revision, diagram).await
+                self.write_room_diagram(id, expected_revision, diagram)
+                    .await
             }
             Err(error) => Err(error),
         }
@@ -156,12 +157,14 @@ impl ApiClient {
         let current = self
             .request(Method::GET, &format!("/api/v1/diagrams/{id}"), None)
             .await?;
-        let base = current.get("data").cloned().ok_or_else(|| {
-            ToolError::new("UPSTREAM_ERROR", "上游响应缺少 data", false)
-        })?;
-        let base_revision = base.get("revision").and_then(Value::as_i64).ok_or_else(|| {
-            ToolError::new("UPSTREAM_ERROR", "物化文档缺少 revision", false)
-        })?;
+        let base = current
+            .get("data")
+            .cloned()
+            .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "上游响应缺少 data", false))?;
+        let base_revision = base
+            .get("revision")
+            .and_then(Value::as_i64)
+            .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "物化文档缺少 revision", false))?;
         if base_revision != expected_revision {
             let mut error = ToolError::new("REVISION_CONFLICT", "revision 与服务端不一致", false);
             error.details = Some(json!({"current_revision": base_revision}));

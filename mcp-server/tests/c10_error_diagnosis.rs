@@ -12,7 +12,7 @@ use std::time::Instant;
 use coldrawdb_mcp::api::ApiClient;
 use coldrawdb_mcp::reporter;
 use coldrawdb_mcp::{Config, McpService};
-use serde_json::json;
+use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
@@ -86,7 +86,11 @@ async fn ut_mcp_36_non_json_409_use_op_channel_falls_back_to_op_channel() {
     .await;
     let api = ApiClient::new(config_with_token(base)).unwrap();
     let error = api
-        .update("d1", 1, json!({"tables": [], "references": [], "areas": [], "notes": []}))
+        .update(
+            "d1",
+            1,
+            json!({"tables": [], "references": [], "areas": [], "notes": []}),
+        )
         .await
         .unwrap_err();
     // 房间不存在 → plan_room_save 报 NOT_FOUND；关键是**没有**落入笼统 VALIDATION_ERROR，
@@ -98,11 +102,15 @@ async fn ut_mcp_36_non_json_409_use_op_channel_falls_back_to_op_channel() {
     );
     let seen = requests.lock().unwrap();
     assert!(
-        seen.first().map(|r| r.starts_with("PUT /api/v1/diagrams/d1")).unwrap_or(false),
+        seen.first()
+            .map(|r| r.starts_with("PUT /api/v1/diagrams/d1"))
+            .unwrap_or(false),
         "UT-MCP-36: 首个请求必须为 PUT update_diagram"
     );
     assert!(
-        seen.get(1).map(|r| r.starts_with("GET /api/v1/rooms")).unwrap_or(false),
+        seen.get(1)
+            .map(|r| r.starts_with("GET /api/v1/rooms"))
+            .unwrap_or(false),
         "UT-MCP-36: 回退路径必须请求 GET /rooms（证明进入 write_room_diagram）"
     );
     record(&["UT-MCP-36"], started);
@@ -126,16 +134,28 @@ async fn ut_mcp_37_non_json_upstream_error_carries_diagnostics() {
         .update("d1", 1, json!({"tables": []}))
         .await
         .unwrap_err();
-    assert_eq!(error.code, "UPSTREAM_ERROR", "UT-MCP-37: 5xx 必须为 UPSTREAM_ERROR");
+    assert_eq!(
+        error.code, "UPSTREAM_ERROR",
+        "UT-MCP-37: 5xx 必须为 UPSTREAM_ERROR"
+    );
     assert!(error.retryable, "UT-MCP-37: 5xx 必须可重试");
     let details = error.details.expect("UT-MCP-37: 错误必须携带 details");
-    assert_eq!(details["http_status"], 502, "UT-MCP-37: details.http_status 必须为 502");
+    assert_eq!(
+        details["http_status"], 502,
+        "UT-MCP-37: details.http_status 必须为 502"
+    );
     assert!(
-        details["content_type"].as_str().unwrap_or("").contains("text/html"),
+        details["content_type"]
+            .as_str()
+            .unwrap_or("")
+            .contains("text/html"),
         "UT-MCP-37: details.content_type 必须如实记录 text/html"
     );
     assert!(
-        details["body_excerpt"].as_str().unwrap_or("").contains("502 Bad Gateway"),
+        details["body_excerpt"]
+            .as_str()
+            .unwrap_or("")
+            .contains("502 Bad Gateway"),
         "UT-MCP-37: details.body_excerpt 必须含 body 摘要（可辨网关错误页）"
     );
     assert!(
@@ -162,4 +182,83 @@ fn ut_mcp_38_import_schema_description_create_only() {
         "UT-MCP-38: import_schema 描述必须明确「仅新建，不覆盖已有 id」，实际: {description}"
     );
     record(&["UT-MCP-38"], started);
+}
+
+/// UT-MCP-39（#57）：连接失败直接指出 BASE_URL，诊断只保留脱敏 origin。
+#[tokio::test]
+async fn ut_mcp_39_unreachable_upstream_includes_safe_base_url() {
+    let started = Instant::now();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    drop(listener);
+    let origin = format!("http://{address}");
+    let configured = format!("http://user:secret@{address}/?token=secret#fragment");
+    let api = ApiClient::new(config(configured)).unwrap();
+    let error = api.get("d1").await.unwrap_err();
+
+    assert_eq!(error.code, "UPSTREAM_UNREACHABLE");
+    assert!(error.retryable);
+    assert!(
+        error.message.contains(&origin),
+        "message 缺少 BASE_URL: {}",
+        error.message
+    );
+    assert!(!error.message.contains("secret") && !error.message.contains("user"));
+    let details = error.details.expect("连接错误必须携带 details");
+    assert_eq!(details["base_url"], json!(origin));
+    assert!(!details.to_string().contains("secret"));
+    record(&["UT-MCP-39"], started);
+}
+
+/// ST-MCP-17（#57）：stdio 错误仅文本 content，避免成功 outputSchema 二次报错。
+#[test]
+fn st_mcp_17_stdio_error_omits_structured_content() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::{Command, Stdio};
+
+    let started = Instant::now();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    drop(listener);
+    let origin = format!("http://{address}");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_coldrawdb-mcp"))
+        .env("COLDRAWDB_BASE_URL", &origin)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    writeln!(
+        stdin,
+        "{}",
+        json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}})
+    )
+    .unwrap();
+    writeln!(stdin, "{}", json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_diagram","arguments":{"id":"d1"}}})).unwrap();
+    drop(stdin);
+
+    let mut reader = BufReader::new(child.stdout.take().unwrap());
+    let mut initialized = String::new();
+    let mut called = String::new();
+    reader.read_line(&mut initialized).unwrap();
+    reader.read_line(&mut called).unwrap();
+    let response: Value = serde_json::from_str(&called).unwrap();
+    assert_eq!(response["id"], json!(2));
+    assert_eq!(response.pointer("/result/isError"), Some(&json!(true)));
+    assert!(response.pointer("/result/structuredContent").is_none());
+    let text = response
+        .pointer("/result/content/0/text")
+        .and_then(Value::as_str)
+        .unwrap();
+    let error: Value = serde_json::from_str(text).unwrap();
+    assert_eq!(error["code"], json!("UPSTREAM_UNREACHABLE"));
+    assert_eq!(error["retryable"], json!(true));
+    assert_eq!(error.pointer("/details/base_url"), Some(&json!(origin)));
+    assert!(error["message"]
+        .as_str()
+        .unwrap()
+        .contains("COLDRAWDB_BASE_URL"));
+    assert!(child.wait().unwrap().success());
+    record(&["ST-MCP-17"], started);
 }

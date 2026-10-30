@@ -618,6 +618,18 @@ pub async fn save_diagram<C: ConnectionTrait + TransactionTrait>(
     }
 
     for reference in &diagram.references {
+        // #57：遗留软删行不关联 diagram_link，purge 无法覆盖；仅回收当前同 ID
+        // 软删行，活跃行仍由全局唯一约束保护。
+        let delete_soft_deleted = format!(
+            "DELETE FROM reference WHERE id='{}' AND is_deleted=1",
+            esc(&reference.id)
+        );
+        tx.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            delete_soft_deleted,
+            vec![],
+        ))
+        .await?;
         let ins_r = format!(
             "INSERT INTO reference(id, name, cardinality, deleteConstraint, updateConstraint, startFieldId, endFieldId, startTableId, endTableId, color, line_type, stroke_style, is_deleted) \
              VALUES('{}',{},'{}','{}','{}','{}','{}','{}','{}','{}','{}','{}',0)",
@@ -1103,6 +1115,69 @@ mod tests {
         assert!(message.contains("tables"), "错误需包含数组名: {message}");
         assert!(message.contains("boolean"), "错误需包含 Serde 原因: {message}");
         crate::verify_reporter::report_pass("UT-S01-15", 0);
+    }
+
+    /// UT-S01-16：同 ID 的遗留软删关系可在全量保存中重建，活跃行保护不变。
+    #[tokio::test]
+    async fn ut_s01_16_recreates_soft_deleted_reference_with_same_id() {
+        let db = build_db().await;
+        let id = next_id();
+        let sql = format!(
+            "INSERT INTO diagram(id, name, database, pan, zoom, revision, updated_at, is_deleted) VALUES('{}','test',NULL,'','',0,datetime('now'),0)",
+            esc(&id)
+        );
+        db.execute(Statement::from_sql_and_values(DatabaseBackend::Sqlite, sql, vec![]))
+            .await
+            .unwrap();
+        let mut diagram = diagram_from_import_payload(&id, &serde_json::json!({
+            "name": "test",
+            "tables": [
+                {"id":"t1","name":"users","fields":[{"id":"f1","name":"id"}]},
+                {"id":"t2","name":"teams","fields":[{"id":"f2","name":"id"}]}
+            ]
+        })).unwrap();
+        save_diagram(&db, &id, 0, &diagram).await.unwrap();
+
+        db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "INSERT INTO reference(id, name, cardinality, deleteConstraint, updateConstraint, startFieldId, endFieldId, startTableId, endTableId, color, line_type, stroke_style, is_deleted) \
+             VALUES('r1','old','one_to_many','RESTRICT','RESTRICT','f2','f1','t2','t1','','bezier','solid',1)",
+            vec![],
+        )).await.unwrap();
+        diagram.references.push(ReferenceDto {
+            id: "r1".into(),
+            name: "membership".into(),
+            start_table_id: "t1".into(),
+            end_table_id: "t2".into(),
+            start_field_id: "f1".into(),
+            end_field_id: "f2".into(),
+            type_: "many_to_one".into(),
+            on_delete: "CASCADE".into(),
+            on_update: "SET_NULL".into(),
+            color: "#123456".into(),
+            line_type: "orthogonal".into(),
+            stroke_style: "dashed".into(),
+        });
+
+        let revision = save_diagram(&db, &id, 1, &diagram).await.unwrap();
+        assert_eq!(revision, 2);
+        let loaded = load_diagram(&db, &id).await.unwrap().unwrap();
+        assert_eq!(loaded.references.len(), 1);
+        let reference = &loaded.references[0];
+        assert_eq!(reference.id, "r1");
+        assert_eq!(reference.name, "membership");
+        assert_eq!(reference.start_table_id, "t1");
+        assert_eq!(reference.end_field_id, "f2");
+        assert_eq!(reference.on_delete, "CASCADE");
+        assert_eq!(reference.color, "#123456");
+        let row = db.query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "SELECT COUNT(*) AS count, is_deleted FROM reference WHERE id='r1'",
+            vec![],
+        )).await.unwrap().unwrap();
+        assert_eq!(row.try_get::<i64>("", "count").unwrap(), 1);
+        assert_eq!(row.try_get::<i64>("", "is_deleted").unwrap(), 0);
+        crate::verify_reporter::report_pass("UT-S01-16", 0);
     }
 
     #[tokio::test]

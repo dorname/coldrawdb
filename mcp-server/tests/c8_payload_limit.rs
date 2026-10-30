@@ -375,7 +375,8 @@ async fn st_mcp15_oversize_intercept_then_batched_writes() {
         json!({"id":"d1","expected_revision":5,"diagram":padded_diagram(20000)}),
     );
     assert_eq!(resp.pointer("/result/isError"), Some(&json!(true)));
-    let error = &resp["result"]["structuredContent"];
+    let error_text = resp.pointer("/result/content/0/text").and_then(Value::as_str).unwrap();
+    let error: Value = serde_json::from_str(error_text).unwrap();
     assert_eq!(error["code"], json!("PAYLOAD_TOO_LARGE"));
     assert_eq!(error["retryable"], json!(false));
     assert_eq!(error["details"]["payload_bytes"], json!(20000));
@@ -467,7 +468,8 @@ async fn st_mcp16_batched_chain_conflict_retry() {
     let resp = stdio_call(&mut stdin, &mut reader, 2, "update_table",
         json!({"id":"d1","table_id":"t2","name":"orders_v2"}));
     assert_eq!(resp.pointer("/result/isError"), Some(&json!(true)));
-    let error = &resp["result"]["structuredContent"];
+    let error_text = resp.pointer("/result/content/0/text").and_then(Value::as_str).unwrap();
+    let error: Value = serde_json::from_str(error_text).unwrap();
     assert_eq!(error["code"], json!("REVISION_CONFLICT"));
     assert_eq!(error["retryable"], json!(false));
     assert_eq!(error["details"]["current_revision"], json!(7));

@@ -10,6 +10,6 @@
 
 ## [code] 代码实现
 
-- [ ] 修改 `backend/src/diagram_persistence.rs`，在保存事务中清理同 ID 软删除 reference 并实现 UT-S01-16
-- [ ] 修改 `mcp-server/src/api.rs`、`error.rs`、`protocol.rs`，实现连接诊断和 schema 安全错误结果
-- [ ] 更新 MCP 相关测试，交付 UT-MCP-39、ST-MCP-17 与 OpenLogos reporter，并运行后端/MCP 定向及全量测试
+- [x] 修改 `backend/src/diagram_persistence.rs`，在保存事务中清理同 ID 软删除 reference 并实现 UT-S01-16
+- [x] 修改 `mcp-server/src/api.rs`、`error.rs`、`protocol.rs`，实现连接诊断和 schema 安全错误结果
+- [x] 更新 MCP 相关测试，交付 UT-MCP-39、ST-MCP-17 与 OpenLogos reporter，并运行后端/MCP 定向及全量测试（后端 98/98；MCP 全部通过）
