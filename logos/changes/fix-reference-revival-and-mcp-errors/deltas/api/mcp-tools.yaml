@@ -1,0 +1,32 @@
+## MODIFIED — components.schemas.ToolError.code.enum
+
+在既有错误码中追加 `UPSTREAM_UNREACHABLE`，保留 `UPSTREAM_UNAVAILABLE` 供既有协作 WebSocket 通道使用：
+
+```yaml
+code:
+  enum:
+    - CONFIG_INVALID
+    - VALIDATION_ERROR
+    - UNAUTHENTICATED
+    - PERMISSION_DENIED
+    - NOT_FOUND
+    - REVISION_CONFLICT
+    - UPSTREAM_TIMEOUT
+    - UPSTREAM_UNAVAILABLE
+    - UPSTREAM_UNREACHABLE
+    - UPSTREAM_ERROR
+    - INTERNAL_ERROR
+```
+
+## MODIFIED — error_mapping.network_connect
+
+```yaml
+error_mapping:
+  network_connect: UPSTREAM_UNREACHABLE
+```
+
+HTTP 连接失败的 `details.base_url` 只包含脱敏 origin；其他映射不变。
+
+## MODIFIED — tools/call 错误结果
+
+`isError=true` 时仅返回文本 `content` 与 `isError`，不返回 `structuredContent`；文本内容为完整 `ToolError` JSON。成功结果的 `structuredContent` 与 outputSchema 契约不变。

@@ -771,6 +771,8 @@ schemas:
         maximum: 500
         default: 180
 
+  # tools/call 的 isError=true 结果仅含文本 content（完整 ToolError JSON）与 isError，
+  # 不返回 structuredContent；outputSchema 只约束成功响应。
   ToolError:
     type: object
     required: [code, message, retryable]
@@ -785,6 +787,7 @@ schemas:
           - REVISION_CONFLICT
           - UPSTREAM_TIMEOUT
           - UPSTREAM_UNAVAILABLE
+          - UPSTREAM_UNREACHABLE
           - UPSTREAM_ERROR
           - INTERNAL_ERROR
       message:
@@ -802,7 +805,7 @@ schemas:
 error_mapping:
   local_validation: VALIDATION_ERROR
   local_payload_oversize: PAYLOAD_TOO_LARGE
-  network_connect: UPSTREAM_UNAVAILABLE
+  network_connect: UPSTREAM_UNREACHABLE
   network_timeout: UPSTREAM_TIMEOUT
   http_400: VALIDATION_ERROR
   http_401: UNAUTHENTICATED

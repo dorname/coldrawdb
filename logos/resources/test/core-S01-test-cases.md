@@ -315,6 +315,14 @@ pub fn make_diagram() -> DiagramCreateRequest {
 - **操作**：构建导入 DiagramFull。
 - **断言**：返回 `SaveDiagramError::BadRequest`；错误包含 `tables` 和 Serde 的布尔类型原因；不得返回 tables 为空的成功 DTO。
 
+### UT-S01-16 — 同 ID 软删除 reference 可在全量保存中重建
+
+- **位置**：`backend/src/diagram_persistence.rs` 单元测试，独立临时 SQLite。
+- **前置**：图内已有两张表及字段；数据库另有一条同 ID、`is_deleted=1` 且无有效 `diagram_link` 的遗留 reference。
+- **操作**：以最新 revision 全量保存含同 ID、更新后端点/属性的 reference，再 GET 加载。
+- **断言**：保存成功且 revision +1；同 ID 仅一行，`is_deleted=0`，加载后的关系端点和属性等于新快照；事务不修改其他活跃关系。
+- **reporter**：登记 `UT-S01-16` 到 `logos/resources/verify/test-results.jsonl`。
+
 ### ST-S01-06 — 重复导入、400/500 诊断与跨图隔离
 
 - **位置**：`backend/src/diagrams_v1.rs::tests`，独立临时 SQLite。
@@ -349,6 +357,7 @@ pub fn make_diagram() -> DiagramCreateRequest {
 | UT-S01-13 | normalize_import_payload 逐实体容错 | `backend/src/diagram_persistence.rs` |
 | UT-S01-14 | 导入实体 ID 重映射与端点回填 | `backend/src/diagram_persistence.rs` |
 | UT-S01-15 | 嵌套 DTO 类型错误不得静默变空图 | `backend/src/diagram_persistence.rs` |
+| UT-S01-16 | 同 ID 软删除 reference 可在全量保存中重建 | `backend/src/diagram_persistence.rs` |
 | UT-ID-GLOBAL-01 | 前端实体 id 全局唯一(1000 个 id 互不重复) | `frontend-rs/tests/entity_id_uniqueness.rs` |
 | UT-ID-GLOBAL-02 | 新格式 id 绕过 max+1 解析(兼容存量加载) | `frontend-rs/src/editor_panels.rs` |
 | UT-S01-AUTH-01 | flag=on：无 token POST/PUT/DELETE/import → 401 | `backend/src/diagrams_v1.rs` |
