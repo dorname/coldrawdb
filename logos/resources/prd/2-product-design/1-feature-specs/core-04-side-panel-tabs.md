@@ -396,7 +396,7 @@ V1 的 280px 左栏 7 Tab 已在 **Phase A** 中废弃（`redesign-phase-a-layou
 
 | 按钮 | 图标（E2） | 提示 | data-testid |
 |---|---|---|---|
-| 平移 | `<IconPan />` | "平移画布" | `tool-pan` |
+| 选择 / 平移 | `<IconPan />` | "选择 / 平移" | `tool-pan` |
 | 框选 | `<IconMarquee />` | "框选多表" | `tool-marquee` |
 | 创建关系 | `<IconRelationshipCreate />` | "创建关系 (R)" | `tool-relationship-create` |
 | 选中关系 | `<IconRelationshipSelect />` | "选中关系 (Shift+R)" | `tool-relationship-select` |
@@ -408,7 +408,7 @@ V1 的 280px 左栏 7 Tab 已在 **Phase A** 中废弃（`redesign-phase-a-layou
 | 协作动态 | `<IconActivity />` | "协作动态" | `tool-activity` |
 | 画布设置 | `<IconSettings />` | "画布设置" | `tool-settings` |
 
-> 原 `tool-relationship` 按钮拆分为 `tool-relationship-create` 与 `tool-relationship-select` 两个独立入口；框选入口由 `IconSelect` 改为独立 `IconMarquee`，字典入口由 `IconEnum` 改为 `IconDictionary`。
+> 原 `tool-relationship` 按钮拆分为 `tool-relationship-create` 与 `tool-relationship-select` 两个独立入口；框选入口由 `IconSelect` 改为独立 `IconMarquee`，字典入口由 `IconEnum` 改为 `IconDictionary`。`tool-pan` 仅为稳定测试标识，产品名称统一为「选择 / 平移」，避免把表选择能力误解为另一工具专属。
 
 **Issues 折叠面板**（E3 Collapse 组件）：
 
