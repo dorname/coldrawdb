@@ -8,4 +8,4 @@
 - [x] 在 `frontend-rs/src/editor_core.rs` 与 `frontend-rs/src/editor_panels.rs` 中复用并扩展统一关系显示模型，实现表方向、方向化端点基数、ON UPDATE 和关系搜索
 - [x] 在 `frontend-rs/src/editor_panels.rs` 与 `frontend-rs/src/styles.css` 中实现树节点方向标记和逐条关系明细，保留对端表导航与只读行为
 - [x] 在 `frontend-rs/src/editor_panels.rs` 中实现 UT-SP-LIST-REL-01/02，在 `frontend-rs/scripts/test-spec-parity-d.mjs` 中实现 ST-SP-LIST-REL-01/02，并在 `frontend-rs/tests/openlogos_reporter.rs` 登记新用例
-- [ ] 使用 16 表 / 19 关系模型执行定向 Rust 与真实浏览器回归；正式验收时限制构建、测试和 Playwright 并发
+- [x] 使用 16 表 / 19 关系模型执行定向 Rust 与真实浏览器回归；正式验收时限制构建、测试和 Playwright 并发
