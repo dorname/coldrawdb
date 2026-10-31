@@ -40,7 +40,7 @@
 //   ST-SP-LIST-03    列表视图表树导航（搜索过滤 + 切表渲染 + 空态 + 删表回落）
 //   ST-SP-LIST-04    列表搜索字段命中提示与网格空态
 //   ST-SP-LIST-GROUP-01 列表视图按 Area 分组（几何包含 + 折叠/搜索自动展开，fix-issue-50）
-//   ST-SP-LIST-REL-01   列表视图关联表摘要 + 树节点关联高亮/非关联弱化（fix-issue-50）
+//   ST-SP-LIST-REL-01/02 列表视图逐条关系明细、独立方向标记与关系搜索（#61）
 //   ST-DB-02         引擎创建后锁定（AppBar 禁用）；PG 基类型清单；UUID 无占位重复
 // fix-appbar-roomname-back-and-import-merge 新增：
 //   ST-PC-01         导入 DDL 本地合并进当前画布（2→4 表 + FK 落账 + Toast + 不跳页面不调 bridge）
@@ -2680,7 +2680,7 @@ try {
     await page.locator('[data-testid="btn-list-view"]').click();
     await page.locator('[data-testid="tab-pane-list-view"]:visible').waitFor();
     const search = page.locator('[data-testid="list-tree-search"]');
-    assert.equal(await search.getAttribute("placeholder"), "按表名/字段名/类型搜索…");
+    assert.equal(await search.getAttribute("placeholder"), "按表/字段/类型/关系搜索…");
     assert.match(await page.locator('[data-testid="list-view-title"]').textContent(), /users（1 字段）/);
     const initialPuts = state.putCalls;
 
@@ -2764,65 +2764,69 @@ try {
     assert.equal(state.lastPutBody?.diagram?.areas?.length, 1, "分组导航不得改动落账区域数");
   });
 
-  // ─── ST-SP-LIST-REL-01：选中表时右侧展示关联表清单 + 树中关联表高亮/非关联弱化（fix-issue-50 / #50）───
-  await run(["ST-SP-LIST-REL-01"], "列表视图关联表摘要与树节点关联高亮", async page => {
-    const state = await installApi(page);
+  // ─── ST-SP-LIST-REL-01：完整关系明细、独立方向标记与对端表导航（#61）───
+  await run(["ST-SP-LIST-REL-01"], "列表视图完整关系明细与树节点方向", async page => {
+    const mkT = (id, name, fields) => ({
+      id, name, x: 100, y: 100, color: "", comment: "",
+      fields: fields.map(([fieldId, fieldName]) => ({
+        id: fieldId, name: fieldName, type_: "INT", default: "", check: "",
+        primary: fieldName === "id", unique: false, not_null: true, increment: false,
+        comment: "", tag: "", dict_code: "",
+      })),
+      indices: [],
+    });
+    const presetDiagram = {
+      tables: [
+        mkT("t_users", "users", [["u_id", "id"]]),
+        mkT("t_orders", "orders", [["o_id", "id"], ["o_user", "user_id"]]),
+        mkT("t_products", "products", [["p_id", "id"], ["p_order", "order_id"]]),
+      ],
+      references: [
+        { id: "r_users_orders", name: "fk_orders_users", start_table_id: "t_users", end_table_id: "t_orders",
+          start_field_id: "u_id", end_field_id: "o_user", type_: "one_to_many",
+          on_delete: "CASCADE", on_update: "RESTRICT", color: "", line_type: "", stroke_style: "" },
+        { id: "r_orders_products", name: "fk_products_orders", start_table_id: "t_orders", end_table_id: "t_products",
+          start_field_id: "o_id", end_field_id: "p_order", type_: "one_to_one",
+          on_delete: "SET NULL", on_update: "NO ACTION", color: "", line_type: "", stroke_style: "" },
+      ],
+      areas: [], notes: [],
+    };
+    const state = await installApi(page, { presetDiagram });
     await login(page);
     await createRoomAndEnter(page);
-    // 先建 table_1 → table_2 关系（ST-CR-02 验证过的稳定组合：2 表 + createVisibleRelation）
-    await createVisibleRelation(page);
-    // 再建第三张表 table_3：不参与关系（关系工具已由 helper 的 Escape 退出）
-    await page.keyboard.press("t");
-    await page.locator('[data-testid="save-state"][data-state="saved"]').waitFor({ timeout: 8_000 });
-    assert.equal(state.lastPutBody?.diagram?.tables?.length, 3, "setup 后必须恰 3 张表（无凭空表）");
+    const initialPuts = state.putCalls;
+    const initialOps = state.sentOps?.length ?? 0;
 
     await page.locator('[data-testid="btn-list-view"]').click();
     await page.locator('[data-testid="tab-pane-list-view"]:visible').waitFor();
-
-    // 1. 默认选中首表 table_1 → 摘要区显示出边 table_2；芯片展示表名 + 映射后关系类型标签
-    //（core-04 §10.5：1:1 / 1:N / N:M；cardinality_label 把存储值 one_to_* / many_to_* 映射为标签）
+    await page.locator('[data-testid="list-tree-node-orders"]').click();
     const summary = page.locator('[data-testid="list-related-tables"]');
     await summary.waitFor();
-    const summaryText = await summary.textContent();
-    assert.ok(summaryText.includes("出边"), "table_1 的关联 table_2 必须归入出边");
-    assert.match(summaryText, /table_2（(1:1|1:N|N:M)）/, `芯片必须展示表名与关系类型标签（actual=${summaryText}）`);
+    assert.equal(await page.locator('[data-testid^="list-relation-"]').count(), 2, "两条 reference 必须独立成行");
+    const expected = {
+      r_users_orders: ["入边", "fk_orders_users", "users.id (1) → orders.user_id (N)", "ON DELETE CASCADE", "ON UPDATE RESTRICT"],
+      r_orders_products: ["出边", "fk_products_orders", "orders.id (1) → products.order_id (1)", "ON DELETE SET NULL", "ON UPDATE NO ACTION"],
+    };
+    for (const [id, fragments] of Object.entries(expected)) {
+      const text = (await page.locator(`[data-testid="list-relation-${id}"]`).textContent()) ?? "";
+      for (const fragment of fragments) assert.ok(text.includes(fragment), `${id} 缺少 ${fragment}；实际 ${text}`);
+    }
 
-    // 2. 树中关联标记：table_2（关联）⇄ 高亮、table_3（非关联）弱化标记、当前表 table_1 无标记
-    assert.equal(await page.locator('[data-testid="list-tree-node-related"]').count(), 1, "关联表节点必须追加 related 标记");
-    assert.equal(await page.locator('[data-testid="list-tree-node-unrelated"]').count(), 1, "非关联表节点必须追加 unrelated 标记");
-    assert.ok(
-      await page.locator('[data-testid="list-tree-node-table_2"].is-related').count() === 1,
-      "关联表节点必须高亮（is-related）"
-    );
-    assert.ok(
-      await page.locator('[data-testid="list-tree-node-table_3"].is-unrelated').count() === 1,
-      "非关联表节点必须弱化（is-unrelated）"
-    );
-    assert.ok(
-      await page.locator('[data-testid="list-tree-node-table_1"].is-related').count() === 0
-        && await page.locator('[data-testid="list-tree-node-table_1"].is-unrelated').count() === 0,
-      "当前表自身既不算关联也不算非关联"
-    );
+    const directions = { users: "出边", orders: "双向", products: "入边" };
+    for (const [table, label] of Object.entries(directions)) {
+      const badge = page.locator(`[data-testid="list-tree-relation-direction-${table}"]`);
+      assert.equal((await badge.textContent())?.trim(), label, `${table} 方向必须独立且稳定`);
+    }
+    assert.equal(await page.locator('[data-testid="list-tree-node-related"]').count(), 2, "当前 orders 的两个对端表继续高亮");
+    assert.equal(await page.locator('[data-testid="list-tree-node-orders"].is-related').count(), 0, "当前表自身不做关联高亮");
+    assert.equal(await summary.textContent().then(text => text.includes("⇄")), false, "不再使用无方向语义的 ⇄");
 
-    // 3. 点击关联表芯片 → 左树定位并切换选中（table_2 高亮 + 右网格切到 table_2）
-    await page.locator('[data-testid="list-related-table-table_2"]').click();
-    await page.locator('[data-testid="list-tree-node-table_2"].is-active').waitFor();
-    assert.match(await page.locator('[data-testid="list-view-title"]').textContent(), /table_2（\d+ 字段）/, "点击芯片后右网格必须切到 table_2");
-    // 选中切换后标记随当前表重算：table_1（关联）⇄，table_3 仍弱化
-    assert.equal(await page.locator('[data-testid="list-tree-node-related"]').count(), 1, "切换后关联标记必须随当前表重算");
-    assert.ok(
-      await page.locator('[data-testid="list-tree-node-table_1"].is-related').count() === 1,
-      "切换到 table_2 后 table_1 必须成为关联高亮节点"
-    );
-
-    // 4. 选中无关联的 table_3 → 摘要区隐藏不占位，标记全部消失
-    await page.locator('[data-testid="list-tree-node-table_3"]').click();
-    assert.equal(await page.locator('[data-testid="list-related-tables"]').count(), 0, "无关联时摘要区必须隐藏不占位");
-    assert.equal(await page.locator('[data-testid="list-tree-node-related"]').count(), 0, "无关联时 related 标记必须消失");
-    assert.equal(await page.locator('[data-testid="list-tree-node-unrelated"]').count(), 0, "无关联时 unrelated 标记必须消失");
-
-    // 导航全程不改动落账数据（3 表；关系由 WS op 落账，前端 UI 关系来自本地 store 回放）
-    assert.equal(state.lastPutBody?.diagram?.tables?.length, 3, "关联导航不得改动落账表数");
+    await page.locator('[data-testid="list-related-table-users"]').click();
+    await page.locator('[data-testid="list-tree-node-users"].is-active').waitFor();
+    assert.match(await page.locator('[data-testid="list-view-title"]').textContent(), /users（\d+ 字段）/);
+    assert.equal((await page.locator('[data-testid="list-tree-relation-direction-orders"]').textContent())?.trim(), "双向", "切换选中表不得改变方向");
+    assert.equal(state.putCalls, initialPuts, "关系查看与导航不得新增 PUT");
+    assert.equal(state.sentOps?.length ?? 0, initialOps, "关系查看与导航不得新增协作 op");
   });
 
   // ─── ST-DB-02：引擎创建后锁定 + PG 清单内容（fix-pg-types-listview-zindex-lock-engine） ──
@@ -3454,7 +3458,12 @@ try {
     for (let i = 0; i < 13; i += 1) {
       const start = 7 + (i % 8);
       const end = 7 + ((i + 1) % 8);
-      references.push(mkR(`r_chain_${i}`, `fk_chain_${i}`, `t${start}`, "id", `t${end}`, "id"));
+      if (i === 12) {
+        // #61：保留 19 条关系，同时让 t15 成为无关系表，覆盖「无方向标记」。
+        references.push(mkR("r_chain_12", "fk_chain_12", "t7", "id", "t8", "id"));
+      } else {
+        references.push(mkR(`r_chain_${i}`, `fk_chain_${i}`, `t${start}`, "id", `t${end}`, "id"));
+      }
     }
     assert.equal(tables.length, 16);
     assert.equal(references.length, 19);
@@ -3498,6 +3507,63 @@ try {
     );
     assert.equal(state.putCalls, initialPuts, "查看与定位关系不得新增 PUT");
     assert.equal(state.sentOps?.length ?? 0, initialOps, "查看与定位关系不得新增协作 op");
+  });
+
+  // ─── ST-SP-LIST-REL-02：16 表 / 19 关系完整明细与关系搜索（#61）───
+  await run(["ST-SP-LIST-REL-02"], "列表视图在大图中搜索并核对逐条外键", async page => {
+    const state = await openRelationReviewModel(page);
+    const initialPuts = state.putCalls;
+    const initialOps = state.sentOps?.length ?? 0;
+    await page.locator('[data-testid="btn-list-view"]').click();
+    await page.locator('[data-testid="tab-pane-list-view"]:visible').waitFor();
+    await page.locator('[data-testid="list-tree-node-orders"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('[data-testid^="list-relation-"]').length === 6);
+
+    const expected = {
+      r_users_orders: ["fk_orders_users", "users.id (1) → orders.user_id (N)", "ON DELETE CASCADE", "ON UPDATE RESTRICT"],
+      r_addresses_orders: ["fk_orders_addresses", "addresses.id (1) → orders.address_id (N)", "ON DELETE RESTRICT", "ON UPDATE RESTRICT"],
+      r_orders_items: ["fk_items_orders", "orders.id (1) → order_items.order_id (N)", "ON DELETE CASCADE", "ON UPDATE RESTRICT"],
+      r_orders_payments: ["fk_payments_orders", "orders.id (1) → payments.order_id (1)", "ON DELETE RESTRICT", "ON UPDATE RESTRICT"],
+      r_orders_shipments: ["fk_shipments_orders", "orders.id (1) → shipments.order_id (N)", "ON DELETE RESTRICT", "ON UPDATE RESTRICT"],
+      r_orders_refunds: ["fk_refunds_orders", "orders.id (1) → refunds.order_id (N)", "ON DELETE CASCADE", "ON UPDATE RESTRICT"],
+    };
+    for (const [id, fragments] of Object.entries(expected)) {
+      const text = (await page.locator(`[data-testid="list-relation-${id}"]`).textContent()) ?? "";
+      for (const fragment of fragments) assert.ok(text.includes(fragment), `${id} 缺少 ${fragment}；实际 ${text}`);
+    }
+    const directions = { orders: "双向", users: "出边", addresses: "出边", payments: "入边" };
+    for (const [table, label] of Object.entries(directions)) {
+      assert.equal(
+        (await page.locator(`[data-testid="list-tree-relation-direction-${table}"]`).textContent())?.trim(),
+        label,
+        `${table} 方向标记错误`,
+      );
+    }
+    assert.equal(await page.locator('[data-testid="list-tree-relation-direction-t15"]').count(), 0, "无关系表不得显示方向标记");
+    assert.equal(await page.locator('[data-testid="list-tree-node-t15"].is-unrelated').count(), 1, "无关系且非当前关联的节点必须弱化");
+
+    const visibleNodes = page.locator('button.cdb-list-tree-node:visible');
+    await page.locator('[data-testid="list-tree-search"]').fill("fk_payments_orders");
+    await page.waitForFunction(() => document.querySelectorAll('button.cdb-list-tree-node').length === 2);
+    assert.equal(await visibleNodes.count(), 2, "关系名搜索只保留该 reference 两端表");
+    assert.deepEqual((await visibleNodes.allTextContents()).map(text => text.includes("orders") || text.includes("payments")), [true, true]);
+    assert.equal(await page.locator('[data-testid="list-tree-search-match"]').count(), 2, "两个端点表都显示关系命中原因");
+    const reasons = await page.locator('[data-testid="list-tree-search-match"]').allTextContents();
+    assert.ok(reasons.every(text => text.includes("关系 fk_payments_orders 命中")), `命中原因错误：${reasons}`);
+
+    await page.locator('[data-testid="list-tree-search"]').fill("address_id");
+    await page.waitForFunction(() => document.querySelectorAll('button.cdb-list-tree-node').length === 2);
+    const fieldHitNames = await visibleNodes.allTextContents();
+    assert.ok(fieldHitNames.some(text => text.includes("orders")) && fieldHitNames.some(text => text.includes("addresses")), "字段对搜索必须保留两端表");
+
+    await page.locator('[data-testid="list-tree-search"]').fill("");
+    await page.waitForFunction(() => document.querySelectorAll('button.cdb-list-tree-node').length === 16);
+    await page.locator('[data-testid="list-tree-search"]').fill("no_such_relation");
+    await page.locator('[data-testid="list-view-search-empty"]:visible').waitFor();
+    assert.equal(await page.locator('[data-testid="list-related-tables"]').count(), 0, "无命中不得保留搜索前关系明细");
+    assert.equal(await page.locator('[data-testid="list-view-table"]:visible').count(), 0, "无命中不得保留搜索前字段网格");
+    assert.equal(state.putCalls, initialPuts, "关系搜索与空态切换不得新增 PUT");
+    assert.equal(state.sentOps?.length ?? 0, initialOps, "关系搜索与空态切换不得新增协作 op");
   });
 
   // ─── ST-PB-19：完整悬停、上下文/全局标签、碰撞与偏好（#65/#66）───

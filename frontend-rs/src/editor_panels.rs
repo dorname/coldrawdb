@@ -8720,20 +8720,46 @@ pub fn related_table_ids(
     set
 }
 
-/// feat-issue-50-listview-grouping-and-relations（issue #50）：关联表清单项。
-#[derive(Clone, Debug, PartialEq)]
-pub struct RelatedTable {
-    pub table_id: String,
-    pub table_name: String,
-    pub direction: RelationDirection,
-    pub cardinality: String,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RelationDirection {
     Incoming,
     Outgoing,
     SelfLoop,
+}
+
+/// #61：树节点方向按每张表自身统计，不与「当前表的关联表」高亮混用。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TableRelationDirectionCounts {
+    pub incoming: usize,
+    pub outgoing: usize,
+}
+
+pub fn table_relation_direction_counts(
+    table_id: &str,
+    refs: &[Reference],
+) -> TableRelationDirectionCounts {
+    let mut counts = TableRelationDirectionCounts::default();
+    for reference in refs {
+        // 两个独立判断使自环同时计入入边与出边，显示为「双向」。
+        if reference.end_table_id == table_id {
+            counts.incoming += 1;
+        }
+        if reference.start_table_id == table_id {
+            counts.outgoing += 1;
+        }
+    }
+    counts
+}
+
+pub fn table_relation_direction_mark(
+    counts: TableRelationDirectionCounts,
+) -> Option<(&'static str, &'static str)> {
+    match (counts.incoming > 0, counts.outgoing > 0) {
+        (true, true) => Some(("双向", "bidirectional")),
+        (true, false) => Some(("入边", "incoming")),
+        (false, true) => Some(("出边", "outgoing")),
+        (false, false) => None,
+    }
 }
 
 /// feat-issue-50-listview-grouping-and-relations（issue #50）：关系类型存储值 → 显示标签。
@@ -8743,15 +8769,27 @@ pub fn cardinality_label(type_: &str) -> String {
     crate::editor_core::relation_cardinality_label(type_)
 }
 
-/// #66：检查器中的每一条 reference 独立成行，不按对端表合并。
+/// #66/#61：检查器与列表视图共用逐条 reference 明细，不按对端表合并。
 #[derive(Clone, Debug, PartialEq)]
 pub struct TableRelationDetail {
     pub reference_id: String,
     pub name: String,
     pub direction: RelationDirection,
     pub endpoints: String,
+    pub directed_endpoints: String,
     pub cardinality: String,
     pub on_delete: String,
+    pub on_update: String,
+    pub peer_table_id: String,
+    pub peer_table_name: String,
+}
+
+pub fn relation_policy_label(policy: &str) -> &str {
+    if policy.trim().is_empty() {
+        "未设置"
+    } else {
+        policy
+    }
 }
 
 pub fn table_relations_for(
@@ -8769,45 +8807,75 @@ pub fn table_relations_for(
             } else {
                 RelationDirection::Incoming
             };
+            let peer_table_id = if r.start_table_id == table_id {
+                &r.end_table_id
+            } else {
+                &r.start_table_id
+            };
+            let peer_table_name = tables
+                .iter()
+                .find(|t| &t.id == peer_table_id)
+                .map(|t| t.name.clone())
+                .unwrap_or_else(|| peer_table_id.clone());
             TableRelationDetail {
                 reference_id: r.id.clone(),
                 name: crate::editor_core::relation_display_name(r),
                 direction,
                 endpoints: crate::editor_core::relation_endpoint_label(tables, r),
+                directed_endpoints: crate::editor_core::relation_directed_endpoint_label(tables, r),
                 cardinality: cardinality_label(&r.type_),
                 on_delete: r.on_delete.clone(),
+                on_update: r.on_update.clone(),
+                peer_table_id: peer_table_id.clone(),
+                peer_table_name,
             }
         })
         .collect()
 }
 
-/// feat-issue-50-listview-grouping-and-relations（issue #50）：构造当前表的关联表清单。
-/// 按方向分组，关系类型经 cardinality_label 映射为显示标签（core-04 §10.5：1:1 / 1:N / N:M）。
-pub fn related_tables_for(
+/// #61：关系搜索命中的具体关系；完整字段对与显示名共用画布/Inspector 口径。
+pub fn list_tree_relation_search_match(
     table_id: &str,
     tables: &[Table],
     refs: &[Reference],
-) -> Vec<RelatedTable> {
-    let mut out = Vec::new();
-    let name_of = |id: &str| tables.iter().find(|t| t.id == id).map(|t| t.name.clone()).unwrap_or_default();
-    for r in refs {
-        if r.start_table_id == table_id && r.end_table_id != table_id {
-            out.push(RelatedTable {
-                table_id: r.end_table_id.clone(),
-                table_name: name_of(&r.end_table_id),
-                direction: RelationDirection::Outgoing,
-                cardinality: cardinality_label(&r.type_),
-            });
-        } else if r.end_table_id == table_id && r.start_table_id != table_id {
-            out.push(RelatedTable {
-                table_id: r.start_table_id.clone(),
-                table_name: name_of(&r.start_table_id),
-                direction: RelationDirection::Incoming,
-                cardinality: cardinality_label(&r.type_),
-            });
-        }
+    filter_query: &str,
+) -> Option<String> {
+    if filter_query.is_empty() {
+        return None;
     }
-    out
+    let query = filter_query.to_lowercase();
+    refs.iter()
+        .filter(|r| r.start_table_id == table_id || r.end_table_id == table_id)
+        .find(|r| {
+            crate::editor_core::relation_display_name(r)
+                .to_lowercase()
+                .contains(&query)
+                || crate::editor_core::relation_endpoint_label(tables, r)
+                    .to_lowercase()
+                    .contains(&query)
+        })
+        .map(|r| format!("关系 {} 命中", crate::editor_core::relation_display_name(r)))
+}
+
+/// 保留原表名/字段/类型过滤，再叠加关系名与字段对的 OR 匹配，保持原表顺序。
+pub fn filter_list_tables(tables: &[Table], refs: &[Reference], filter_query: &str) -> Vec<Table> {
+    let ordinary_matches: std::collections::HashSet<String> = filter_tables(
+        tables,
+        filter_query,
+        "",
+        None,
+    )
+    .into_iter()
+    .map(|t| t.id)
+    .collect();
+    tables
+        .iter()
+        .filter(|t| {
+            ordinary_matches.contains(&t.id)
+                || list_tree_relation_search_match(&t.id, tables, refs, filter_query).is_some()
+        })
+        .cloned()
+        .collect()
 }
 
 /// ux-canvas-batch 批次2：列表视图批量重命名纯函数（UT-MM-24）
@@ -9522,18 +9590,18 @@ pub fn ListView(
         let store = store.clone();
         Rc::new(move || {
             let tables = store.tables.get();
-            let visible = filter_tables(&tables, &tree_search.get(), "", None);
+            let visible = filter_list_tables(&tables, &store.references.get(), &tree_search.get());
             resolve_list_current_table(&visible, &list_table.get())
         })
     };
 
-    // feat-issue-50（issue #50）：当前表关联表清单（入边/出边 + cardinality）与关联表 id 集合
-    let related_list: Rc<dyn Fn() -> Vec<RelatedTable>> = {
+    // #61：右侧逐条 reference 明细与树关联高亮共用同一当前表解析。
+    let related_list: Rc<dyn Fn() -> Vec<TableRelationDetail>> = {
         let store = store;
         let current_table_id = current_table_id.clone();
         Rc::new(move || {
             current_table_id()
-                .map(|cid| related_tables_for(&cid, &store.tables.get(), &store.references.get()))
+                .map(|cid| table_relations_for(&cid, &store.tables.get(), &store.references.get()))
                 .unwrap_or_default()
         })
     };
@@ -9771,7 +9839,7 @@ pub fn ListView(
                             <input
                                 class="cdb-form-input"
                                 data-testid="list-tree-search"
-                                placeholder="按表名/字段名/类型搜索…"
+                                placeholder="按表/字段/类型/关系搜索…"
                                 prop:value=move || tree_search.get()
                                 on:input=move |ev| {
                                     tree_search.set(event_target_value(&ev));
@@ -9785,9 +9853,9 @@ pub fn ListView(
                             // 分组自动展开（忽略折叠集），无匹配分组因空分组不返回而不再渲染
                             <For
                                 each=move || {
-                                    // 复用 filter_tables 名称模糊匹配口径（core-04 §10.5）后再分组
+                                    // #61：表/字段/类型与关系搜索共用同一可见集合
                                     let tables = store.tables.get();
-                                    let filtered = filter_tables(&tables, &tree_search.get(), "", None);
+                                    let filtered = filter_list_tables(&tables, &store.references.get(), &tree_search.get());
                                     group_tables_by_area(&filtered, &store.areas.get())
                                 }
                                 key=|g| g.0.clone()
@@ -9829,7 +9897,7 @@ pub fn ListView(
                                                 {move || {
                                                     // 响应式重算该分组表数（同名口径：搜索过滤后分组）
                                                     let tables = store_cnt.tables.get();
-                                                    let filtered = filter_tables(&tables, &tree_search.get(), "", None);
+                                                    let filtered = filter_list_tables(&tables, &store_cnt.references.get(), &tree_search.get());
                                                     group_tables_by_area(&filtered, &store_cnt.areas.get())
                                                         .into_iter()
                                                         .find(|g| g.0 == area_id_cnt)
@@ -9850,7 +9918,7 @@ pub fn ListView(
                                                 each=move || {
                                                     // 内层响应式重算：tables/areas/搜索变化时该组成员随之更新
                                                     let tables = store_inner.tables.get();
-                                                    let filtered = filter_tables(&tables, &tree_search.get(), "", None);
+                                                    let filtered = filter_list_tables(&tables, &store_inner.references.get(), &tree_search.get());
                                                     group_tables_by_area(&filtered, &store_inner.areas.get())
                                                         .into_iter()
                                                         .find(|g| g.0 == area_id_inner)
@@ -9866,6 +9934,7 @@ pub fn ListView(
                                                     let tid_related = t.id.clone();
                                                     let tid_dim = t.id.clone();
                                                     let tid_mark = t.id.clone();
+                                                    let tid_direction = t.id.clone();
                                                     let on_select = on_select_tree.clone();
                                                     let on_jump = on_jump_tree.clone();
                                                     // 每个响应式闭包独占一份 cur 克隆（Rc 非 Copy，move 语义）
@@ -9879,6 +9948,7 @@ pub fn ListView(
                                                     let list_dict_active = list_dict.clone();
                                                     let list_dict_click = list_dict.clone();
                                                     let table_match = t.clone();
+                                                    let table_direction_testid = format!("list-tree-relation-direction-{}", t.name);
                                                     view! {
                                                         <button
                                                             class="cdb-list-tree-node"
@@ -9923,12 +9993,46 @@ pub fn ListView(
                                                                         </small>
                                                                     }
                                                                 })}
-                                                                {move || list_tree_search_match(&table_match, &tree_search.get()).map(|reason| view! {
-                                                                    <small class="cdb-list-tree-comment" data-testid="list-tree-search-match">
-                                                                        {reason}
-                                                                    </small>
-                                                                })}
+                                                                {move || {
+                                                                    let query = tree_search.get();
+                                                                    list_tree_search_match(&table_match, &query)
+                                                                        .or_else(|| list_tree_relation_search_match(
+                                                                            &table_match.id,
+                                                                            &store.tables.get(),
+                                                                            &store.references.get(),
+                                                                            &query,
+                                                                        ))
+                                                                        .map(|reason| view! {
+                                                                            <small class="cdb-list-tree-comment" data-testid="list-tree-search-match">
+                                                                                {reason}
+                                                                            </small>
+                                                                        })
+                                                                }}
                                                             </span>
+                                                            // #61：每张表自身的方向始终可见，不随当前选中表变化。
+                                                            {move || {
+                                                                let counts = table_relation_direction_counts(
+                                                                    &tid_direction,
+                                                                    &store.references.get(),
+                                                                );
+                                                                table_relation_direction_mark(counts).map(|(label, kind)| {
+                                                                    let detail = format!(
+                                                                        "入边 {} · 出边 {}",
+                                                                        counts.incoming, counts.outgoing
+                                                                    );
+                                                                    view! {
+                                                                        <span
+                                                                            class="cdb-list-tree-node__direction"
+                                                                            data-testid=table_direction_testid.clone()
+                                                                            data-direction=kind
+                                                                            title=detail.clone()
+                                                                            aria-label=detail
+                                                                        >
+                                                                            {label}
+                                                                        </span>
+                                                                    }
+                                                                })
+                                                            }}
                                                             // feat-issue-50（issue #50）：关联标记——当前表存在关联时，
                                                             // 关联表节点追加 list-tree-node-related，非关联节点 list-tree-node-unrelated
                                                             {move || {
@@ -9941,9 +10045,8 @@ pub fn ListView(
                                                                         <span
                                                                             class="cdb-list-tree-node__relmark"
                                                                             data-testid="list-tree-node-related"
-                                                                        >
-                                                                            "⇄"
-                                                                        </span>
+                                                                            aria-label="与当前选中表相关"
+                                                                        ></span>
                                                                     }.into_view()
                                                                 } else {
                                                                     view! {
@@ -9967,7 +10070,7 @@ pub fn ListView(
                             />
                             {move || {
                                 if !tree_search.get().is_empty()
-                                    && filter_tables(&store.tables.get(), &tree_search.get(), "", None).is_empty()
+                                    && filter_list_tables(&store.tables.get(), &store.references.get(), &tree_search.get()).is_empty()
                                 {
                                     view! {
                                         <div class="cdb-empty-hint" data-testid="list-tree-empty">
@@ -10044,9 +10147,7 @@ pub fn ListView(
                                     .unwrap_or_default()
                             }}
                         </div>
-                        // feat-issue-50-listview-grouping-and-relations（issue #50）：关联表摘要区——
-                        // 网格标题下方、字段行上方；按入边/出边分组显示关系类型；点击关联表名在左树
-                        // 定位（展开所在分组）并切换选中；无关联时隐藏不占位
+                        // #61：逐条 reference 明细——名称、字段对、端点基数与两种级联策略。
                         {move || {
                             if list_dict.get().is_some() {
                                 return view! { <></> }.into_view();
@@ -10055,113 +10156,113 @@ pub fn ListView(
                             if rels.is_empty() {
                                 return view! { <></> }.into_view();
                             }
-                            let incoming: Vec<RelatedTable> = rels
+                            let render_group = {
+                                let on_select = on_select_rel.clone();
+                                move |direction: RelationDirection,
+                                      group_label: &'static str,
+                                      items: Vec<TableRelationDetail>| {
+                                    if items.is_empty() {
+                                        return view! { <></> }.into_view();
+                                    }
+                                    let group_kind = match direction {
+                                        RelationDirection::Incoming => "incoming",
+                                        RelationDirection::Outgoing => "outgoing",
+                                        RelationDirection::SelfLoop => "self-loop",
+                                    };
+                                    let on_select_group = on_select.clone();
+                                    view! {
+                                        <section class="cdb-list-related__group" data-direction=group_kind>
+                                            <div class="cdb-list-related__dir">
+                                                <span>{group_label}</span>
+                                                <span>{items.len()}</span>
+                                            </div>
+                                            <div class="cdb-list-related__items">
+                                                {items.into_iter().map(move |r| {
+                                                    let on_select = on_select_group.clone();
+                                                    let direction_label = match r.direction {
+                                                        RelationDirection::Incoming => "入边",
+                                                        RelationDirection::Outgoing => "出边",
+                                                        RelationDirection::SelfLoop => "自环",
+                                                    };
+                                                    let relation_testid = format!("list-relation-{}", r.reference_id);
+                                                    let peer_testid = format!("list-related-table-{}", r.peer_table_name);
+                                                    let peer_button = if r.direction == RelationDirection::SelfLoop {
+                                                        view! { <></> }.into_view()
+                                                    } else {
+                                                        let tid = r.peer_table_id.clone();
+                                                        let tid_sel = r.peer_table_id.clone();
+                                                        let peer_name = r.peer_table_name.clone();
+                                                        view! {
+                                                            <button
+                                                                type="button"
+                                                                class="cdb-list-related__peer"
+                                                                data-testid=peer_testid
+                                                                title="在左树定位并查看对端表"
+                                                                on:click=move |_| {
+                                                                    let groups = group_tables_by_area(
+                                                                        &store.tables.get(),
+                                                                        &store.areas.get(),
+                                                                    );
+                                                                    if let Some(group) = groups
+                                                                        .iter()
+                                                                        .find(|g| g.2.iter().any(|t| t.id == tid))
+                                                                    {
+                                                                        let area_id = group.0.clone();
+                                                                        collapsed_groups.update(|set| { set.remove(&area_id); });
+                                                                    }
+                                                                    list_sel.set(None);
+                                                                    list_dict.set(None);
+                                                                    list_table.set(Some(tid_sel.clone()));
+                                                                    on_select(Some(tid_sel.clone()));
+                                                                }
+                                                            >
+                                                                {format!("查看 {}", peer_name)}
+                                                            </button>
+                                                        }.into_view()
+                                                    };
+                                                    view! {
+                                                        <div class="cdb-list-relation" data-testid=relation_testid>
+                                                            <div class="cdb-list-relation__heading">
+                                                                <span class="cdb-list-relation__direction">{direction_label}</span>
+                                                                <strong>{r.name}</strong>
+                                                            </div>
+                                                            <span class="cdb-list-relation__endpoints">{r.directed_endpoints}</span>
+                                                            <span class="cdb-list-relation__meta">
+                                                                {format!(
+                                                                    "ON DELETE {} · ON UPDATE {}",
+                                                                    relation_policy_label(&r.on_delete),
+                                                                    relation_policy_label(&r.on_update),
+                                                                )}
+                                                            </span>
+                                                            {peer_button}
+                                                        </div>
+                                                    }
+                                                }).collect_view()}
+                                            </div>
+                                        </section>
+                                    }.into_view()
+                                }
+                            };
+                            let incoming = rels
                                 .iter()
                                 .filter(|r| r.direction == RelationDirection::Incoming)
                                 .cloned()
                                 .collect();
-                            let outgoing: Vec<RelatedTable> = rels
+                            let outgoing = rels
                                 .iter()
                                 .filter(|r| r.direction == RelationDirection::Outgoing)
                                 .cloned()
                                 .collect();
-                            let incoming_click = incoming.clone();
-                            let outgoing_click = outgoing.clone();
+                            let self_loops = rels
+                                .iter()
+                                .filter(|r| r.direction == RelationDirection::SelfLoop)
+                                .cloned()
+                                .collect();
                             view! {
                                 <div class="cdb-list-related" data-testid="list-related-tables">
-                                    {(!incoming.is_empty()).then(|| {
-                                        let items = incoming_click.clone();
-                                        let on_select = on_select_rel.clone();
-                                        view! {
-                                            <div class="cdb-list-related__group">
-                                                <span class="cdb-list-related__dir">"入边"</span>
-                                                {items.into_iter().map(move |r: RelatedTable| {
-                                                    let tid = r.table_id.clone();
-                                                    let tid_sel = r.table_id.clone();
-                                                    let label = format!("{}（{}）", r.table_name, r.cardinality);
-                                                    let store_g = store;
-                                                    let collapsed_g = collapsed_groups;
-                                                    let list_table_g = list_table;
-                                                    let list_sel_g = list_sel;
-                                                    let list_dict_g = list_dict;
-                                                    let on_select = on_select.clone();
-                                                    view! {
-                                                        <button
-                                                            class="cdb-list-related__chip"
-                                                            data-testid=format!("list-related-table-{}", r.table_name)
-                                                            title=label.clone()
-                                                            on:click=move |_| {
-                                                                // 定位：展开该表所在分组 + 切换树选中 + Inspector 同步
-                                                                let groups = group_tables_by_area(
-                                                                    &store_g.tables.get(),
-                                                                    &store_g.areas.get(),
-                                                                );
-                                                                if let Some(g) = groups
-                                                                    .iter()
-                                                                    .find(|g| g.2.iter().any(|t| t.id == tid))
-                                                                {
-                                                                    let aid = g.0.clone();
-                                                                    collapsed_g.update(|s| { s.remove(&aid); });
-                                                                }
-                                                                list_sel_g.set(None);
-                                                                list_dict_g.set(None);
-                                                                list_table_g.set(Some(tid_sel.clone()));
-                                                                on_select(Some(tid_sel.clone()));
-                                                            }
-                                                        >
-                                                            {label}
-                                                        </button>
-                                                    }
-                                                }).collect_view()}
-                                            </div>
-                                        }
-                                    })}
-                                    {(!outgoing.is_empty()).then(|| {
-                                        let items = outgoing_click.clone();
-                                        let on_select = on_select_rel.clone();
-                                        view! {
-                                            <div class="cdb-list-related__group">
-                                                <span class="cdb-list-related__dir">"出边"</span>
-                                                {items.into_iter().map(move |r: RelatedTable| {
-                                                    let tid = r.table_id.clone();
-                                                    let tid_sel = r.table_id.clone();
-                                                    let label = format!("{}（{}）", r.table_name, r.cardinality);
-                                                    let store_g = store;
-                                                    let collapsed_g = collapsed_groups;
-                                                    let list_table_g = list_table;
-                                                    let list_sel_g = list_sel;
-                                                    let list_dict_g = list_dict;
-                                                    let on_select = on_select.clone();
-                                                    view! {
-                                                        <button
-                                                            class="cdb-list-related__chip"
-                                                            data-testid=format!("list-related-table-{}", r.table_name)
-                                                            title=label.clone()
-                                                            on:click=move |_| {
-                                                                let groups = group_tables_by_area(
-                                                                    &store_g.tables.get(),
-                                                                    &store_g.areas.get(),
-                                                                );
-                                                                if let Some(g) = groups
-                                                                    .iter()
-                                                                    .find(|g| g.2.iter().any(|t| t.id == tid))
-                                                                {
-                                                                    let aid = g.0.clone();
-                                                                    collapsed_g.update(|s| { s.remove(&aid); });
-                                                                }
-                                                                list_sel_g.set(None);
-                                                                list_dict_g.set(None);
-                                                                list_table_g.set(Some(tid_sel.clone()));
-                                                                on_select(Some(tid_sel.clone()));
-                                                            }
-                                                        >
-                                                            {label}
-                                                        </button>
-                                                    }
-                                                }).collect_view()}
-                                            </div>
-                                        }
-                                    })}
+                                    {render_group(RelationDirection::Incoming, "入边", incoming)}
+                                    {render_group(RelationDirection::Outgoing, "出边", outgoing)}
+                                    {render_group(RelationDirection::SelfLoop, "自环", self_loops)}
                                 </div>
                             }.into_view()
                         }}
@@ -20106,42 +20207,118 @@ mod tests_ut_mm_28 {
     }
 
     #[test]
-    fn test_related_tables_for_ut_sp_list_rel_01() {
-        let tables = vec![
-            make_table_for_test("users", 1, "INT"),
-            make_table_for_test("orders", 1, "INT"),
-            make_table_for_test("logs", 1, "INT"),
-        ];
+    fn test_table_relation_direction_ut_sp_list_rel_01() {
         let refs = vec![
             make_ref_for_test("r1", "t_users", "t_orders", "one_to_many"),
             make_ref_for_test("r2", "t_logs", "t_users", "many_to_many"),
+            make_ref_for_test("r3", "t_users", "t_users", "one_to_one"),
+            make_ref_for_test("r4", "t_orders", "t_products", "one_to_many"),
+            make_ref_for_test("r5", "t_users", "t_orders", "one_to_one"),
         ];
-        let rels = related_tables_for("t_users", &tables, &refs);
-        assert_eq!(rels.len(), 2, "UT-SP-LIST-REL-01: 清单含出边与入边各一条");
-        let out = rels
-            .iter()
-            .find(|r| r.direction == RelationDirection::Outgoing)
-            .expect("UT-SP-LIST-REL-01: 出边项存在");
-        assert_eq!(out.table_name, "orders");
+        let users = table_relation_direction_counts("t_users", &refs);
+        assert_eq!(users.incoming, 2, "UT-SP-LIST-REL-01: logs 入边 + 自环入边");
+        assert_eq!(users.outgoing, 3, "两条到 orders 的出边分别计数，再加自环");
+        assert_eq!(table_relation_direction_mark(users), Some(("双向", "bidirectional")));
+
+        let products = table_relation_direction_counts("t_products", &refs);
+        assert_eq!(table_relation_direction_mark(products), Some(("入边", "incoming")));
+        let logs = table_relation_direction_counts("t_logs", &refs);
+        assert_eq!(table_relation_direction_mark(logs), Some(("出边", "outgoing")));
         assert_eq!(
-            out.cardinality, "1:N",
-            "UT-SP-LIST-REL-01: one_to_many 映射为显示标签 1:N（core-04 §10.5）"
+            table_relation_direction_mark(table_relation_direction_counts("t_alone", &refs)),
+            None,
+            "无关系表不渲染方向标记"
         );
-        let inc = rels
-            .iter()
-            .find(|r| r.direction == RelationDirection::Incoming)
-            .expect("UT-SP-LIST-REL-01: 入边项存在");
-        assert_eq!(inc.table_name, "logs");
-        assert_eq!(inc.cardinality, "N:M", "many_to_many 映射为 N:M");
-        assert!(
-            related_tables_for("t_alone", &tables, &refs).is_empty(),
-            "UT-SP-LIST-REL-01: 无关系表 → 空清单（摘要区隐藏不占位）"
+        assert_eq!(
+            table_relations_for("t_users", &[], &refs)
+                .iter()
+                .filter(|r| r.direction == RelationDirection::SelfLoop)
+                .count(),
+            1,
+            "自环明细只出现一次"
         );
 
         // cardinality_label 映射表：存储值域全覆盖 + 已是显示值/未知值原样返回
         assert_eq!(cardinality_label("one_to_one"), "1:1");
         assert_eq!(cardinality_label("many_to_one"), "N:1");
         assert_eq!(cardinality_label("1:N"), "1:N", "已是显示标签 → 原样");
+        assert_eq!(cardinality_label("other"), "other", "未知值原样返回");
+    }
+
+    #[test]
+    fn test_list_relation_details_and_search_ut_sp_list_rel_02() {
+        let mut tables = vec![
+            make_table_for_test("users", 1, "INT"),
+            make_table_for_test("orders", 2, "INT"),
+            make_table_for_test("alone", 1, "INT"),
+        ];
+        tables[0].fields[0].id = "u_id".into();
+        tables[0].fields[0].name = "id".into();
+        tables[1].fields[0].id = "o_id".into();
+        tables[1].fields[0].name = "id".into();
+        tables[1].fields[1].id = "o_user".into();
+        tables[1].fields[1].name = "user_id".into();
+
+        let mut refs = vec![
+            make_ref_for_test("r1", "t_users", "t_orders", "one_to_one"),
+            make_ref_for_test("r2", "t_users", "t_orders", "many_to_one"),
+            make_ref_for_test("r3", "t_users", "t_users", "many_to_many"),
+            make_ref_for_test("r4", "t_orders", "t_users", "one_to_many"),
+            make_ref_for_test("r5", "t_users", "t_orders", "custom_cardinality"),
+        ];
+        for reference in &mut refs {
+            reference.start_field_id = if reference.start_table_id == "t_users" {
+                "u_id".into()
+            } else {
+                "o_user".into()
+            };
+            reference.end_field_id = if reference.end_table_id == "t_users" {
+                "u_id".into()
+            } else {
+                "o_user".into()
+            };
+        }
+        refs[0].name = "fk_main".into();
+        refs[0].on_delete = "CASCADE".into();
+        refs[0].on_update = "RESTRICT".into();
+        refs[1].name.clear();
+        refs[4].name = "fk_custom".into();
+
+        let details = table_relations_for("t_users", &tables, &refs);
+        assert_eq!(details.len(), 5, "UT-SP-LIST-REL-02: 同对端多关系不合并，自环不重复");
+        assert_eq!(details[0].directed_endpoints, "users.id (1) → orders.user_id (1)");
+        assert_eq!(details[1].directed_endpoints, "users.id (N) → orders.user_id (1)");
+        assert_eq!(details[2].directed_endpoints, "users.id (N) → users.id (M)");
+        assert_eq!(details[3].directed_endpoints, "orders.user_id (1) → users.id (N)");
+        assert!(details[4].directed_endpoints.contains("基数 custom_cardinality"));
+        assert_eq!(details[1].name, "未命名关系（r2）");
+        assert_eq!(relation_policy_label(&details[0].on_delete), "CASCADE");
+        assert_eq!(relation_policy_label(&details[0].on_update), "RESTRICT");
+        assert_eq!(relation_policy_label(&details[1].on_delete), "未设置");
+        assert_eq!(relation_policy_label(&details[1].on_update), "未设置");
+
+        let relation_hit = filter_list_tables(&tables, &refs, "FK_MAIN");
+        assert_eq!(
+            relation_hit.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
+            vec!["users", "orders"],
+            "关系名大小写不敏感命中时两端表可见"
+        );
+        let field_hit = filter_list_tables(&tables, &refs, "user_id");
+        assert!(field_hit.iter().any(|t| t.id == "t_users"));
+        assert!(field_hit.iter().any(|t| t.id == "t_orders"));
+        assert_eq!(
+            list_tree_relation_search_match("t_users", &tables, &refs, "fk_main").as_deref(),
+            Some("关系 fk_main 命中")
+        );
+        assert_eq!(
+            filter_list_tables(&tables, &refs, "r2").len(),
+            2,
+            "空名关系可通过稳定 id 回退搜索"
+        );
+        assert_eq!(filter_list_tables(&tables, &refs, "").len(), 3);
+        assert!(filter_list_tables(&tables, &refs, "no_such_relation").is_empty());
+        assert_eq!(filter_list_tables(&tables, &refs, "alone").len(), 1, "原表名搜索保留");
+        assert_eq!(filter_list_tables(&tables, &refs, "INT").len(), 3, "原类型搜索保留");
         assert_eq!(cardinality_label(""), "", "空值原样返回");
     }
 

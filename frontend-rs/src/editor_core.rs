@@ -533,7 +533,18 @@ pub fn relation_cardinality_label(type_: &str) -> String {
     }
 }
 
-pub fn relation_endpoint_label(tables: &[Table], reference: &Reference) -> String {
+/// 起点/终点基数必须与关系存储方向一致，供列表视图展开完整字段对。
+pub fn relation_endpoint_cardinalities(type_: &str) -> Option<(&'static str, &'static str)> {
+    match type_ {
+        "one_to_one" => Some(("1", "1")),
+        "one_to_many" => Some(("1", "N")),
+        "many_to_one" => Some(("N", "1")),
+        "many_to_many" => Some(("N", "M")),
+        _ => None,
+    }
+}
+
+fn relation_endpoint_parts(tables: &[Table], reference: &Reference) -> (String, String) {
     let endpoint = |table_id: &str, field_id: &str| {
         let table = tables.iter().find(|t| t.id == table_id);
         let table_name = table.map(|t| t.name.as_str()).unwrap_or(table_id);
@@ -543,11 +554,35 @@ pub fn relation_endpoint_label(tables: &[Table], reference: &Reference) -> Strin
             .unwrap_or(field_id);
         format!("{}.{}", table_name, field_name)
     };
-    format!(
-        "{} → {}",
+    (
         endpoint(&reference.start_table_id, &reference.start_field_id),
         endpoint(&reference.end_table_id, &reference.end_field_id),
     )
+}
+
+pub fn relation_endpoint_label(tables: &[Table], reference: &Reference) -> String {
+    let (start, end) = relation_endpoint_parts(tables, reference);
+    format!("{} → {}", start, end)
+}
+
+/// 已知类型在两端字段后标基数；未知类型保留原始文案，不猜测端点含义。
+pub fn relation_directed_endpoint_label(tables: &[Table], reference: &Reference) -> String {
+    let (start, end) = relation_endpoint_parts(tables, reference);
+    if let Some((start_cardinality, end_cardinality)) =
+        relation_endpoint_cardinalities(&reference.type_)
+    {
+        format!(
+            "{} ({}) → {} ({})",
+            start, start_cardinality, end, end_cardinality
+        )
+    } else {
+        format!(
+            "{} → {} · 基数 {}",
+            start,
+            end,
+            relation_cardinality_label(&reference.type_)
+        )
+    }
 }
 
 /// #65/#66 R-REL-LABEL-01：关系标签本机视图偏好，不写入图表文档。

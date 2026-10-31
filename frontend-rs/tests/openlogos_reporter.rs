@@ -329,6 +329,7 @@ const UT_PASS_IDS: &[&str] = &[
     // feat-issue-50（issue #50）：ListView 按 Area 分组 / 关联表集合纯函数
     "UT-SP-LIST-GROUP-01",
     "UT-SP-LIST-REL-01",
+    "UT-SP-LIST-REL-02", // feat-listview-relation-details: 完整关系明细与关系搜索
     // layout-after-import-command / #23（src/layout.rs + command_palette 单测）
     "UT-PB-16",
     // ux-canvas-listview-font-size：ListView 主文字 14px 字号合同
@@ -372,6 +373,7 @@ const ST_PASS_IDS: &[&str] = &[
     // feat-issue-50（issue #50）：ListView 按 Area 分组 / 关联表可视化 e2e
     "ST-SP-LIST-GROUP-01",
     "ST-SP-LIST-REL-01",
+    "ST-SP-LIST-REL-02", // feat-listview-relation-details: 16 表 / 19 关系真实浏览器回归
     // V2 全链路回归
     "ST-FE-V2-01",
     "ST-FE-V2-02",
