@@ -257,7 +257,7 @@
 | R-PERF-04 | 拖动覆盖层（`LivePaint.tables`）只存被拖对象的 `(id, x, y)`；`draw_canvas` 绘制该表时以覆盖坐标替换。`apply_visual_table_position`（整 Vec 克隆）仅限松手落账路径调用；`pointermove` 禁止整 Vec 深克隆 |
 | R-PERF-05 | wheel/pan 与表拖动共用 `schedule_paint`（基于 `schedule_render_dedup` 的 rAF 合并），一帧至多一次 `draw_canvas`；渲染 effect 读取信号一律用 `.with()` / `.get_untracked()`，禁止 `.get()` 深克隆整表 `Vec` 进闭包 |
 | R-PERF-06 | `draw_canvas` 内先以 `tables` 构建 `HashMap<&str, &Table>`，references 端点查找 O(1)；总体绘制前准备为 O(refs + tables) |
-| R-PERF-07 | 表卡体精灵缓存：`draw_table` 拆为「卡体（投影/渐变/文字）」与「选中环（每帧活画）」。卡体按 `(表内容指纹, 主题, 真实 dpr, zoom 分档)` 缓存到离屏 canvas，拖动/平移期间每帧仅 `drawImage` 位块传输；指纹变更（编辑落账）才重光栅。zoom 分档 `k ∈ {1, 2}`（zoom≤1 取 1，否则取 2），sprite 比例 `s = 真实dpr × k`——backing 分辨率与主画布有效 dpr 解耦（位块传输按世界坐标 dw/dh 绘制，R-PERF-10 降采样时由 CTM 自然缩小），拖拽起止的有效 dpr 切换不触发全量精灵重渲染。zoom > 2（`SPRITE_CACHE_MAX_ZOOM`）回退活画。指纹为 FNV-1a（表名/颜色/宽度/最小高/字段名/类型/主键 + 主题 + dpr×100 + 分档），坐标不进指纹 |
+| R-PERF-07 | 表卡体精灵缓存：`draw_table` 拆为「卡体（投影/渐变/文字）」与「选中环（每帧活画）」。卡体按 `(表内容指纹, 主题, 真实 dpr, zoom 分档)` 缓存到离屏 canvas，拖动/平移期间每帧仅 `drawImage` 位块传输；指纹变更（编辑落账）才重光栅。zoom 分档 `k ∈ {1, 2}`（zoom≤1 取 1，否则取 2），sprite 比例 `s = 真实dpr × k`——backing 分辨率与主画布有效 dpr 解耦（位块传输按世界坐标 dw/dh 绘制，R-PERF-10 降采样时由 CTM 自然缩小），拖拽起止的有效 dpr 切换不触发全量精灵重渲染。zoom > 2（`SPRITE_CACHE_MAX_ZOOM`）回退活画。指纹为 FNV-1a（表名/颜色/宽度/最小高/字段名/类型/主键 + 主题 + dpr×100 + 分档），坐标不进指纹。（fix-selection-ring-sprite-geometry / #52 增补）缓存键还必须混入 `lod_table_size_with` 当前有效宽高的精确几何指纹；`effective_font_bucket` 的 2px 离散桶不得作为几何复用的充分条件。同一粗字体桶内，只要有效宽高随 zoom、`label_font_scale`、`comment_mode` 或 `tier` 变化就必须重光栅；卡体精灵与 `draw_table_selection` 消费同一有效几何，禁止旧精灵包围盒与新选中环并存。坐标和选中态不进指纹，几何不变的拖动/平移继续位块传输 |
 | R-PERF-08 | 渲染 effect 的 DOM 写守护：`follow_path` / `rubber_d` 信号与 `data-follow-path` 属性仅在值变化时写入（与上一帧字符串比较，`dom_write_guard` 纯函数），消除每帧 Leptos SVG 更新与属性序列化空转 |
 | R-PERF-09 | endpoint_drag 空写守卫：关系端点拖动中最近字段 id 未变化时不调 `store.references.set`，避免每 pointermove 整 Vec 落账 + 订阅者通知 |
 | R-PERF-10 | 拖拽降采样渲染：任意拖拽活跃（`drag_state.is_some()`，含表/关系/便签/区域/框选/平移）期间有效 dpr 压到 `DRAG_RENDER_DPR_CAP = 1.0`（`capped_drag_dpr` 纯函数），松手后下一帧恢复全分辨率。绘制路径（backing store 换算 / CTM / clear_rect）统一经 `effective_device_pixel_ratio()` 读取 thread_local `RENDER_DPR`，保证同源一致；宿主单测无窗口时 fallback 1.0。精灵缓存例外：恒用真实 dpr（见 R-PERF-07），避免边界帧全量重光栅 |
@@ -268,6 +268,7 @@
 - 100 张表 @ 1080p（Chrome，dpr=1）：拖表与平移保持交互可用——单帧耗时稳定在 16ms 量级以内（主观流畅；抽查手段为 `performance.measure` 包住 `draw_canvas` 或 debug 计数器，不强制引入自动化帧率断言）。
 - Inspector 字段输入（如 `inspector-field-tag` 连续键入）**不得**触发全画布重绘：重绘仅由画布自身信号（transform / 拖动覆盖层 / 选中态）驱动；可通过 `window.__cdb_paint_count` 之类的 debug 计数在 e2e 中断言（见 `core-CR-canvas-test-cases.md` ST-CR-INSP-01）。
 - HiDPI（§11 R-DPR）与性能预算不冲突：dpr 只放大 backing store 像素，不改变裁剪 / 合批 / 缓存策略。
+- （#52）同一粗字体桶内有效宽高变化必须使几何指纹失效；选中多字段表后双向连续缩放，并切换 100% / 150% 字号、注释显示模式和 Table/Field 维度，实际精灵卡体与选中环宽高始终一致；仅拖动或平移且几何不变时不触发重光栅。
 
 ## 6. 与侧栏 / 顶部菜单的联动
 

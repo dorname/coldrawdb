@@ -320,6 +320,20 @@
   - 坐标稳定性：仅改 `x` / `y` 指纹不变（拖动不触发重光栅）
   - 失效面：改名 / 改字段类型 / 改主键 / 改色 / 改宽 / 主题 / dpr×100 / 分档 任一变化指纹必变
 
+### UT-CR-SPRITE-02 — 同字体桶不同几何的缓存失效（fix-selection-ring-sprite-geometry / #52）
+
+- **位置**：`frontend-rs/src/editor_render.rs`（`table_sprite_geometry_fingerprint` / `effective_font_bucket` / `lod_table_size_with`）
+- **前置**：同一多字段 Table，Field/Detail，字号倍率 1.5；取 zoom=0.46 与 0.48
+- **断言**：两者 `sprite_zoom_bucket` 与 `effective_font_bucket` 相同，但 `lod_table_size_with` 高度不同；几何指纹必须不同，相同输入重复计算保持稳定；坐标不属于几何指纹输入
+- **reporter**：`UT-CR-SPRITE-02` 写入 `logos/resources/verify/test-results.jsonl`
+
+### ST-CR-SPRITE-02 — 缩放后卡体精灵与选中环几何一致（fix-selection-ring-sprite-geometry / #52）
+
+- **位置**：`frontend-rs/scripts/test-spec-parity-d.mjs` + `window.__cdb_table_geometry_probe`
+- **前置**：预置多字段 `asset_object` 表并选中，显式 Field，字号 100%；先缩放到同一粗字体桶内的较低 zoom 建立精灵，再反向缩放
+- **断言**：实际精灵 `body_width/body_height` 与选中环 `selection_width/selection_height` 相等，且表 id 一致；随后在 40%～150% 区间双向缩放、切换 150% 字号、注释显示模式和 Table/Field 维度后仍一致，不出现旧尺寸卡体与新选中环组合
+- **reporter**：`ST-CR-SPRITE-02` 写入 `logos/resources/verify/test-results.jsonl`
+
 ### UT-CR-GUARD-01 — DOM 写守护（R-PERF-08）
 
 - **位置**：`frontend-rs/src/editor_render.rs`（`dom_write_guard` 纯函数）
@@ -362,6 +376,8 @@
 | ST-CR-PAN-01 | pan/缩放 rAF 合并重绘 | e2e + `__cdb_paint_count` |
 | ST-CR-INSP-01 | Inspector 输入不触发画布重绘 | e2e test-spec-parity 脚本 |
 | UT-CR-SPRITE-01 | 表精灵指纹与 zoom 分档 | `editor_render.rs::sprite_zoom_bucket` / `table_sprite_fingerprint` |
+| UT-CR-SPRITE-02 | 同字体桶不同几何的缓存失效 | `editor_render.rs::table_sprite_geometry_fingerprint` |
+| ST-CR-SPRITE-02 | 缩放后卡体精灵与选中环几何一致 | e2e + `__cdb_table_geometry_probe` |
 | UT-CR-GUARD-01 | DOM 写守护 | `editor_render.rs::dom_write_guard` |
 | UT-CR-DPR-01 | 拖拽降采样 dpr | `editor_render.rs::capped_drag_dpr` |
 | UT-CR-GHOST-01 | 幽灵层准入判定与 CSS 定位 | `editor_render.rs::table_has_references` / `ghost_css_position` |
