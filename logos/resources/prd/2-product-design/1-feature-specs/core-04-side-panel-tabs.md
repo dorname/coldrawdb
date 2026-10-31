@@ -245,21 +245,28 @@ Table users {
 **布局**：
 
 - 左侧表树 `[data-testid="list-tree"]`（固定窄栏，独立纵向滚动）：
-  - 顶部搜索框 `[data-testid="list-tree-search"]`：占位文案为「按表名/字段名/类型搜索…」，按表名、字段名和首字段类型模糊匹配过滤（复用 Tables Tab 搜索口径 `filter_tables`），清空恢复全量
+  - 顶部搜索框 `[data-testid="list-tree-search"]`：占位文案为「按表/字段/类型/关系搜索…」。除原有表名、字段名和首字段类型模糊匹配外，按关系显示名及完整字段对做大小写不敏感包含匹配；关系命中时该 reference 的两端表均进入可见集合，自环只保留一个表节点。清空恢复全量。
+  - 非表名命中的节点显示具体命中原因：字段名命中显示「字段 `<name>` 命中」，首字段类型命中显示「类型 `<type>` 命中」；表名已命中时不追加冗余提示
+  - 非表名/字段/类型命中的节点显示具体关系命中原因：「关系 `<name>` 命中」；空名关系使用与画布/Inspector 相同的「未命名关系（id）」稳定回退。表名、字段或类型已命中时不追加冗余关系提示。
   - **树节点按 Area 分组渲染（fix-issue-50 / #50）**：
     - 分组头 `[data-testid="list-tree-group-{area_id}"]` 显示区域名 + 表数量；无 Area 的表归入「未分组」分组
     - 分组依据为画布 Area 与表卡的几何包含关系：表卡中心落入某 Area 矩形内即归该组；未落入任何 Area 的表归入「未分组」
     - 分组支持折叠/展开：点击分组头切换该分组的展开态；搜索时含匹配表的分组自动展开，无匹配分组自动折叠
     - 分组头样式与现有暗色主题一致，与「数据字典」分组视觉同级
   - 树节点 `[data-testid="list-tree-node-<table_name>"]`：显示表名 + 字段数（`表名（N 字段）`）；当前选中态高亮
-  - 非表名命中的节点显示具体命中原因：字段名命中显示「字段 `<name>` 命中」，首字段类型命中显示「类型 `<type>` 命中」；表名已命中时不追加冗余提示
-  - **关联表高亮（fix-issue-50 / #50）**：当前表存在关联关系时，树中关联表节点追加 `data-testid="list-tree-node-related"` 并高亮；非关联表节点弱化（`data-testid="list-tree-node-unrelated"`）
+  - **关系方向标记（feat-listview-relation-details / #61）**：每张表根据自身全部 references 独立显示 `[data-testid="list-tree-relation-direction-<table_name>"]`，只有入边显示「入边」，只有出边显示「出边」，两者兼有显示「双向」；自环同时计入入边和出边，无关系不渲染标记。标记不得受当前选中表、搜索或关联高亮影响，不得再用无方向语义的 `⇄` 代替。title/aria-label 同时给出入边和出边数量，便于区分同对端多关系。
+  - **关联表高亮（fix-issue-50 / #50）**：当前表存在关联关系时，树中关联表节点追加 `data-testid="list-tree-node-related"` 并高亮；非关联表节点弱化（`data-testid="list-tree-node-unrelated"`）。该高亮仅表达「与当前选中表相关」，与上述每张表自身的方向标记互不替代。
   - 单击节点 → 选中该表（Inspector 同步，对齐原组头单击语义）；双击节点 → 切回画布并选中该表（对齐原组头双击语义）
   - 当前表基于搜索后的可见表集合解析：原选中表仍命中则保持；未命中则回落首个匹配表；无匹配则为 None。清空搜索后恢复原选中表解析，不因搜索修改 diagram 或产生落账
-  - 无匹配时左树显示空态，右侧显示 `[data-testid="list-view-search-empty"]`，并隐藏旧表标题、关联摘要和字段网格，不得继续展示搜索前的表
+  - 无匹配时左树显示空态，右侧显示 `[data-testid="list-view-search-empty"]`，并隐藏旧表标题、关系明细和字段网格，不得继续展示搜索前的表
 - 右侧单表字段网格（占据剩余宽度，独立纵向滚动）：
   - 网格标题：当前表名 `表名（N 字段）`
-  - **关联表摘要区（fix-issue-50 / #50）**：网格标题下方、字段行上方展示当前选中表的关联表清单 `[data-testid="list-related-tables"]`，按入边/出边分组，显示关系类型（1:1 / 1:N / N:M）；点击关联表名在左树中定位并切换选中。无关联时隐藏不占位。
+  - **逐条关系明细区（feat-listview-relation-details / #61）**：网格标题下方、字段行上方展示当前选中表的全部关系 `[data-testid="list-related-tables"]`，按入边/出边/自环分组。每条 reference 独立渲染 `[data-testid="list-relation-<reference_id>"]`，不得按对端表合并；同对端多条关系均保留，自环只显示一条。每行必须显示：
+    - 关系显示名（空名回退「未命名关系（id）」）与相对当前表的方向；
+    - 完整字段对及方向化端点基数，例如 `users.id (1) → orders.user_id (N)`；`one_to_one / one_to_many / many_to_one / many_to_many` 分别映射为 `1→1 / 1→N / N→1 / N→M`，未知类型保留原始基数文案，不臆造端点基数；
+    - `ON DELETE <策略>` 与 `ON UPDATE <策略>`；空策略显示「未设置」，不得省略整项；
+    - 可点击的对端表导航（保留 `[data-testid="list-related-table-<table_name>"]`），点击后在左树定位、展开所在分组并切换右侧网格。自环不提供重复跳转按钮。
+    - 无关系时隐藏明细区不占位；该面板只读，不提供关系编辑，也不因查看/搜索/导航落账。
   - 工具条：增字段 `[data-testid="list-add-field"]`、删字段、上移、下移（后三者作用于选中字段行，未选中禁用）；右侧依次「导入」`[data-testid="list-btn-import"]`、「导出」`[data-testid="list-btn-export"]`、「返回画布」（fix-overflow-menu-room-delete-listview-io：ListView 补齐 IO 入口）
   - 只渲染当前选中表的字段行（不再按表堆叠组头行）
 - 列定义（对齐 PDManer，数据域列不做）：
@@ -325,6 +332,10 @@ Table users {
 | UT-SP-09 | 6 业务 Tab 切换（点击 Tab A→B→C，验证激活态 + 内容区切换）— B2 范围 |
 | UT-SP-10 | 全局搜索跨 Tab 过滤（spec §10，搜索框过滤 Tables/Areas/Enums 等多 Tab 列表）— B2 范围 |
 | UT-SP-11 | 字典面板开合（ToolRail `toolrail-dicts` + DictPanel 抽屉）+ 字典 CRUD/绑定/导出（详细用例见 `core-01e-data-dictionary.md` §8） |
+| UT-SP-LIST-REL-01 | 当前表关联集合与每张表自身入边/出边/双向方向聚合 |
+| ST-SP-LIST-REL-01 | 列表视图关系明细、树方向标记与对端表导航 |
+| UT-SP-LIST-REL-02 | 逐条关系完整字段对、方向化基数、级联策略及关系搜索纯函数 |
+| ST-SP-LIST-REL-02 | 16 表 / 19 关系中完整明细与关系名/字段对搜索真实浏览器回归 |
 | UT-LV-FONT-01 | ListView 字号合同：主文字 14px，辅助文字 12px，分组头 11px（`frontend-rs/tests/listview_font_ut.rs`） |
 
 ## 12. V1 边界
