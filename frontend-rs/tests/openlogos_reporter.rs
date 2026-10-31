@@ -125,8 +125,9 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-PE-HL-01",
     // fix-open-issues-26-33 / #32：注释对比度前景计算纯函数（分区背景 + 4.5:1 + chip 衬底兜底）
     "UT-PE-CMT-01",
-    // fix-open-issues-26-33 / #30：LOD 档位判定与参数纯函数（ST-CR-LOD-01 由 parity-d 上报）
+    // LOD 三态存储、显式映射与 Auto 阈值（ST-CR-LOD-01/02 由 parity-d 上报）
     "UT-CR-LOD-01",
+    "UT-CR-LOD-02",
     // fix-open-issues-26-33 / #33：语义图标统一族锚点（徽章 12px/1.5px 同源、色板、激活态、字块角标移除；ST-PE-09 由 parity-d 上报）
     "UT-PE-VIS-01",
     "UT-NOTE-01", // p0-fix 定点 2: build_note 默认值 + hit_test_note 固定 180×100 命中

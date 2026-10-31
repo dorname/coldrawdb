@@ -339,56 +339,59 @@ pub fn initial_comment_display() -> CommentDisplay {
     }
 }
 
-/// fix-issues-36-37（issue #36，core-01 §5.12 R-VIEW-DIM-01/04）：
-/// 画布表/字段维度视图偏好存储键（localStorage，不落库 diagram 数据）。
+/// fix-auto-lod-overview（issue #59，core-01 §5.12 R-VIEW-DIM-01/04）：
+/// 画布维度视图偏好存储键（localStorage，不落库 diagram 数据）。
 pub const VIEW_DIMENSION_STORAGE_KEY: &str = "cdb.view-dimension";
 
-/// R-VIEW-DIM-01：显式维度模式——Table = 表维度（仅表头，原拓扑档渲染），
-/// Field = 字段维度（字段展开，原详情档渲染，默认）。维度由用户显式切换，
-/// 不再随 zoom 阈值隐式切换（R-LOD-01 #36 修订）。
+/// Auto follows the zoom threshold; Table and Field explicitly lock the rendered tier.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ViewDimension {
+    Auto,
     Table,
     Field,
 }
 
 impl ViewDimension {
-    /// 解析 localStorage 存储值；缺省/非法回落 Field（规格默认）。
+    /// Parse localStorage; missing and invalid values fall back to Auto.
     pub fn from_stored(stored: Option<&str>) -> Self {
         match stored {
             Some("table") => Self::Table,
-            _ => Self::Field,
+            Some("field") => Self::Field,
+            _ => Self::Auto,
         }
     }
 
-    /// 存入 localStorage 的规范值。
+    /// Return the canonical localStorage value.
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Auto => "auto",
             Self::Table => "table",
             Self::Field => "field",
         }
     }
 
-    /// 双态互换：table ↔ field。
+    /// Cycle Auto → Table → Field → Auto.
     pub fn next(self) -> Self {
         match self {
+            Self::Auto => Self::Table,
             Self::Table => Self::Field,
-            Self::Field => Self::Table,
+            Self::Field => Self::Auto,
         }
     }
 
-    /// 状态指示文案（「维度：{label}」）。
+    /// Label used by the「维度：{label}」indicator.
     pub fn label(self) -> &'static str {
         match self {
+            Self::Auto => "自动",
             Self::Table => "表",
             Self::Field => "字段",
         }
     }
 }
 
-/// 从 localStorage 读维度模式（native 测试环境无 window → 默认 Field）。
+/// Read the dimension preference from localStorage (native tests default to Auto).
 pub fn initial_view_dimension() -> ViewDimension {
-    // 同 initial_comment_display：web_sys::window() 在 non-wasm target 会 panic，必须 cfg 守卫
+    // web_sys::window() panics on non-wasm targets, so keep the cfg guard.
     #[cfg(target_arch = "wasm32")]
     {
         let stored = web_sys::window()
@@ -398,7 +401,7 @@ pub fn initial_view_dimension() -> ViewDimension {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        ViewDimension::Field
+        ViewDimension::Auto
     }
 }
 

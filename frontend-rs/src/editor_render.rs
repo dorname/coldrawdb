@@ -1088,7 +1088,7 @@ mod leptos_canvas {
                 };
                 let t_now = current_transform();
                 let (dx, dy) = screen_to_diagram(cx as f64, cy as f64, &canvas, &t_now);
-                let tier = super::tier_for_dimension(store.view_dimension.get_untracked());
+                let tier = super::tier_for_dimension(store.view_dimension.get_untracked(), t_now.zoom);
                 let hit = super::hit_test_reference_tier(
                     &store.tables.get_untracked(),
                     &store.references.get_untracked(),
@@ -1339,7 +1339,7 @@ mod leptos_canvas {
                                 &first.start_field_id,
                                 &to_tbl,
                                 &first.end_field_id,
-                                super::tier_for_dimension(view_dimension),
+                                super::tier_for_dimension(view_dimension, t.zoom),
                                 comment_mode,
                                 t.zoom,
                                 label_font_scale,
@@ -1472,7 +1472,7 @@ mod leptos_canvas {
                 let comment_mode = store.comment_display.get_untracked();
                 let tables = store.tables.get_untracked();
                 let refs = store.references.get_untracked();
-                let hit_tier = super::tier_for_dimension(store.view_dimension.get_untracked());
+                let hit_tier = super::tier_for_dimension(store.view_dimension.get_untracked(), t_now.zoom);
                 let hit_label_scale = store.label_font_scale.get_untracked().factor();
                 if read_only {
                     // #51：只读分享也需近线优先——否则表 AABB 仍会吞掉关系选中（无法看 Inspector）
@@ -1544,7 +1544,7 @@ mod leptos_canvas {
                         &refs,
                         dx,
                         dy,
-                        super::tier_for_dimension(store.view_dimension.get_untracked()),
+                        super::tier_for_dimension(store.view_dimension.get_untracked(), t_now.zoom),
                         comment_mode,
                         t_now.zoom,
                         selected_ref_id.get_untracked().as_deref(),
@@ -2011,7 +2011,7 @@ mod leptos_canvas {
                     }
                 }
                 // #51 R-HIT-05：仅当表 AABB ∩ 关系同时命中，且近线（≤ REL_OVER_TABLE_PREFER_PX）时优先关系
-                let hit_tier_dim = super::tier_for_dimension(store.view_dimension.get_untracked());
+                let hit_tier_dim = super::tier_for_dimension(store.view_dimension.get_untracked(), t_now.zoom);
                 let table_hit_id = super::hit_test_with(
                     &tables,
                     dx,
@@ -2766,7 +2766,7 @@ mod leptos_canvas {
                 if let Some(rel) = drag.rel_drag {
                     let comment_mode = store.comment_display.get_untracked();
                     let tables = store.tables.get_untracked();
-                    let hit_tier = super::tier_for_dimension(store.view_dimension.get_untracked());
+                    let hit_tier = super::tier_for_dimension(store.view_dimension.get_untracked(), t_now.zoom);
                     let hit_label_scale = store.label_font_scale.get_untracked().factor();
                     let (diag_x, diag_y) = canvas
                         .as_ref()
@@ -3250,7 +3250,7 @@ mod leptos_canvas {
                 );
                 let comment_mode = store.comment_display.get_untracked();
                 let tables = store.tables.get_untracked();
-                let dbl_tier = super::tier_for_dimension(store.view_dimension.get_untracked());
+                let dbl_tier = super::tier_for_dimension(store.view_dimension.get_untracked(), t_now.zoom);
                 let dbl_label_scale = store.label_font_scale.get_untracked().factor();
                 if super::hit_test_with(&tables, dx, dy, comment_mode, t_now.zoom, dbl_label_scale, dbl_tier).is_none() {
                     if let Some(cb) = on_dblclick_blank.as_ref() {
@@ -3301,8 +3301,10 @@ mod leptos_canvas {
                     // fix-issues-42-44（#43 R-HOV-02）+ fix-issue-46（#46 R-HOV-03 B1）：
                     // 画布容器左下角固定摘要区——不跟随光标、不绑定指针坐标（R-PERF-HOV-01）
                     hover_ref.get().and_then(|ref_id| {
-                        let tier =
-                            super::tier_for_dimension(store.view_dimension.get_untracked());
+                        let tier = super::tier_for_dimension(
+                            store.view_dimension.get(),
+                            transform.get().zoom,
+                        );
                         let text = super::relation_tooltip_text(
                             &store.tables.get(),
                             &store.references.get(),
@@ -4290,9 +4292,9 @@ pub fn draw_canvas(
 
     // R-PERF-06：refs 端点查找先建 id → &Table HashMap，O(refs + tables)
     let table_map: HashMap<&str, &Table> = tables.iter().map(|t| (t.id.as_str(), t)).collect();
-    // #36 UT-CR-LOD-01：本帧渲染档由显式维度决定（R-VIEW-DIM-01）；
-    // zoom 仅驱动表维度内线宽补偿倍率（字段维度恒 1.0 无回归）
-    let frame_tier = tier_for_dimension(view_dimension);
+    // Resolve once per frame; Auto consumes zoom while Table/Field stay locked.
+    // Topology alone drives the line-width compensation scale.
+    let frame_tier = tier_for_dimension(view_dimension, t.zoom);
     let lod_scale = match frame_tier {
         LodTier::Detail => 1.0,
         LodTier::Topology => lod_line_width(t.zoom, 2.0) / 2.0,
@@ -4844,11 +4846,10 @@ pub fn sprite_zoom_bucket(zoom: f64) -> u32 {
     if zoom <= 1.0 { 1 } else { 2 }
 }
 
-// ─── #30/#36 UT-CR-LOD-01：LOD 分档与显式维度（core-01 §5.12 / R-LOD-02~08 / R-VIEW-DIM） ──────────
+// ─── UT-CR-LOD-01/02：LOD 分档与三态维度（core-01 §5.12 / R-LOD / R-VIEW-DIM） ──────────
 
-// fix-issues-36-37（issue #36，R-LOD-01 修订）：拓扑档 zoom 阈值常量与 ±0.03
-// 滞回随「zoom 触发档位切换」一并退役——维度由用户显式切换（R-VIEW-DIM-01），
-// zoom 仅驱动表维度内可读性补偿（R-LOD-03/04）。
+/// Auto uses Topology at or below this zoom; explicit dimensions ignore it.
+pub const LOD_TIER1_MAX_ZOOM: f64 = 0.5;
 
 /// 表维度表名屏幕字号下限（px，R-LOD-03）。
 pub const LOD_MIN_SCREEN_FONT_PX: f64 = 11.0;
@@ -4868,12 +4869,12 @@ pub enum LodTier {
     Topology,
 }
 
-/// #36 UT-CR-LOD-01（R-VIEW-DIM-01）：显式维度 → 渲染档映射。与 zoom 无关——
-/// 任何缩放级别下同一维度档位不变（维度不随缩放串档）。
-pub fn tier_for_dimension(dim: ViewDimension) -> LodTier {
+/// Resolve the single tier used by rendering, hit testing, and hover summaries.
+pub fn tier_for_dimension(dim: ViewDimension, zoom: f64) -> LodTier {
     match dim {
+        ViewDimension::Auto if zoom <= LOD_TIER1_MAX_ZOOM => LodTier::Topology,
+        ViewDimension::Auto | ViewDimension::Field => LodTier::Detail,
         ViewDimension::Table => LodTier::Topology,
-        ViewDimension::Field => LodTier::Detail,
     }
 }
 
@@ -5686,8 +5687,8 @@ fn create_table_ghost(
     let bucket = sprite_zoom_bucket(t.zoom);
     let scale = dpr * bucket as f64;
     let boost = bucket as f64 / t.zoom.max(0.01);
-    // #30/#36：幽灵层卡体与被拖表同维度（表维度拖的是表维度卡）；档位随显式维度（R-VIEW-DIM-01）
-    let tier = tier_for_dimension(view_dimension);
+    // The drag ghost uses the same zoom-aware tier as the main canvas.
+    let tier = tier_for_dimension(view_dimension, t.zoom);
     // #33：幽灵层仅在「无关系表」拖拽时创建（见调用处 table_has_references 守卫），
     // 无关系即无 FK 徽章，fk 传空集
     let sprite = render_table_sprite(table, palette, scale, boost, 0, comment_mode, tier, t.zoom, &std::collections::HashSet::new(), label_scale)?;
@@ -9342,35 +9343,58 @@ mod tests {
         assert_eq!(crate::editor_core::CommentDisplay::NameComment.secondary("  "), None);
     }
 
+    /// UT-CR-LOD-02 — Auto 阈值边界与显式维度覆盖（#59，core-01 §5.12 R-LOD-01）
+    #[test]
+    fn ut_cr_lod_02_auto_tier_threshold() {
+        use crate::editor_core::ViewDimension;
+        assert_eq!(tier_for_dimension(ViewDimension::Auto, 0.5), LodTier::Topology);
+        assert_eq!(tier_for_dimension(ViewDimension::Auto, 0.1), LodTier::Topology);
+        assert_eq!(tier_for_dimension(ViewDimension::Auto, 0.5001), LodTier::Detail);
+        assert_eq!(tier_for_dimension(ViewDimension::Auto, 1.0), LodTier::Detail);
+        for zoom in [0.1, 0.5, 0.5001, 1.0, 2.0] {
+            assert_eq!(tier_for_dimension(ViewDimension::Table, zoom), LodTier::Topology);
+            assert_eq!(tier_for_dimension(ViewDimension::Field, zoom), LodTier::Detail);
+        }
+        for zoom in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 0.0, -1.0] {
+            let _ = tier_for_dimension(ViewDimension::Auto, zoom);
+        }
+    }
+
     /// UT-CR-LOD-01 — 维度模式与可读性补偿纯函数（#30/#35/#36，core-01 §5.12 / R-VIEW-DIM / R-LOD-02~08）
     #[test]
     fn ut_cr_lod_01_view_dimension_and_params() {
-        // 断言 1（#36 R-VIEW-DIM-04）：ViewDimension 存储合同——缺省/非法回落 Field；
-        // as_str 往返一致；next 双态互换
+        // 断言 1（#59 R-VIEW-DIM-04）：缺省/非法/auto → Auto；旧 table/field 保留；
+        // as_str 往返一致；next 按 Auto → Table → Field → Auto 环回
         use crate::editor_core::ViewDimension;
-        assert_eq!(ViewDimension::from_stored(None), ViewDimension::Field, "UT-CR-LOD-01: 缺省必须字段维度");
-        assert_eq!(ViewDimension::from_stored(Some("bogus")), ViewDimension::Field, "UT-CR-LOD-01: 非法值必须回落字段维度");
+        assert_eq!(ViewDimension::from_stored(None), ViewDimension::Auto, "UT-CR-LOD-01: 缺省必须自动维度");
+        assert_eq!(ViewDimension::from_stored(Some("bogus")), ViewDimension::Auto, "UT-CR-LOD-01: 非法值必须回落自动维度");
+        assert_eq!(ViewDimension::from_stored(Some("auto")), ViewDimension::Auto);
         assert_eq!(ViewDimension::from_stored(Some("table")), ViewDimension::Table);
         assert_eq!(ViewDimension::from_stored(Some("field")), ViewDimension::Field);
-        for d in [ViewDimension::Table, ViewDimension::Field] {
+        for d in [ViewDimension::Auto, ViewDimension::Table, ViewDimension::Field] {
             assert_eq!(ViewDimension::from_stored(Some(d.as_str())), d, "UT-CR-LOD-01: as_str 往返必须一致");
         }
-        assert_eq!(ViewDimension::Field.next(), ViewDimension::Table);
+        assert_eq!(ViewDimension::Auto.next(), ViewDimension::Table);
         assert_eq!(ViewDimension::Table.next(), ViewDimension::Field);
+        assert_eq!(ViewDimension::Field.next(), ViewDimension::Auto);
+        assert_eq!(ViewDimension::Auto.label(), "自动");
+        assert_eq!(crate::editor_core::initial_view_dimension(), ViewDimension::Auto);
         assert_eq!(crate::editor_core::VIEW_DIMENSION_STORAGE_KEY, "cdb.view-dimension");
 
-        // 断言 2（#36 R-LOD-01 修订 / R-VIEW-DIM-01）：维度→渲染档映射与 zoom 无关——
-        // Table→Topology、Field→Detail；zoom 阈值判档（旧 lod_tier / 阈值常量）已退役（源码锚点）
-        assert_eq!(tier_for_dimension(ViewDimension::Table), LodTier::Topology);
-        assert_eq!(tier_for_dimension(ViewDimension::Field), LodTier::Detail);
+        // 断言 2（#59 R-LOD-01 / R-VIEW-DIM-01）：显式 Table/Field 跨 zoom 固定档位；
+        // Auto 阈值边界由 UT-CR-LOD-02 独立覆盖
+        for zoom in [0.1, 0.35, 1.0, 2.0] {
+            assert_eq!(tier_for_dimension(ViewDimension::Table, zoom), LodTier::Topology);
+            assert_eq!(tier_for_dimension(ViewDimension::Field, zoom), LodTier::Detail);
+        }
         let src = include_str!("editor_render.rs");
         assert!(
             !src.contains(concat!("lo", "d_tier(")),
-            "UT-CR-LOD-01: zoom 阈值判档函数必须退役（R-LOD-01 #36 修订）"
+            "UT-CR-LOD-01: 旧带滞回的 zoom 判档函数必须保持退役"
         );
         assert!(
             !src.contains(concat!("LOD_TOPOLOGY", "_ZOOM")),
-            "UT-CR-LOD-01: 拓扑档 zoom 阈值常量必须退役"
+            "UT-CR-LOD-01: 不得恢复旧拓扑档阈值常量"
         );
 
         // 断言 3：拓扑档表名世界字号保证屏幕 ≥11px（22px@0.5）；0.35 触发夹紧上限；详情档默认 13px

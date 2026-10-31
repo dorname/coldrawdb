@@ -23,6 +23,7 @@
 //   ST-PB-13         点击关系线高亮关系线与两端表（R-HL-REF-01~03）
 //   ST-PB-14         点击端点记号附近 10px 热区选中关系（fix-relation-mouse-hit-precision / R-HIT-06）
 //   ST-PB-17         16 表 / 19 关系完全重合路径提示与重复点击可达性（#60）
+//   ST-CR-LOD-02     16 表全景 Auto 自动拓扑与 Table/Field 显式覆盖（#59）
 // p0-fix 定点 3 新增：
 //   ST-PB-03         点击连线选中 + Inspector 详情/删除（不弹详情模态）
 //   ST-PB-04         选中连线 Delete / Backspace 双键删除落账 0 条
@@ -1982,10 +1983,9 @@ try {
     assert.ok(rail.hasActive && rail.activeBordered, "亮主题激活态规则无漂移");
   });
 
-  // ─── ST-CR-LOD-01：显式维度切换 e2e（fix-issues-36-37 / #36，core-01 §5.12 改写） ──
-  // 口径：维度由显式切换决定（快捷键 V / ToolRail / 右键菜单），不随 zoom 串档；
-  // zoom 仅在表维度内驱动字号/线宽补偿。0.35 夹紧裁决同旧注记（夹紧上限优先）。
-  await run(["ST-CR-LOD-01"], "显式维度切换 + 缩放不串档 + 三入口一致 + 持久", async page => {
+  // ─── ST-CR-LOD-01：三态显式维度切换 e2e（fix-auto-lod-overview / #59） ──
+  // Auto 为默认；Table/Field 由显式切换锁定，不随 zoom 串档。
+  await run(["ST-CR-LOD-01"], "三态维度切换 + 显式缩放锁定 + 三入口一致 + 持久", async page => {
     const field = (id, name, extra = {}) => ({
       id, name, type_: "INT", default: "", check: "", primary: false, unique: false,
       not_null: false, increment: false, comment: "", tag: "", dict_code: "", ...extra,
@@ -2031,15 +2031,22 @@ try {
     const dimBtn = page.locator('[data-testid="canvas-view-dimension"]');
     const railBtn = page.locator('[data-testid="tool-view-dimension"]');
 
-    // 基线 100%：默认字段维度、详情档、默认字号线宽
+    // 基线 100%：默认 Auto，在阈值上方使用详情档
     let p = await lodProbe();
-    assert.equal(p.view_dimension, "field", "默认必须为字段维度（R-VIEW-DIM-01）");
-    assert.equal(p.tier, "detail", "字段维度必须详情档渲染");
-    assert.equal(p.lod_scale, 1, "字段维度线宽补偿必须为 1");
-    assert.equal(p.font_world, 13, "字段维度表名必须为默认 13px");
-    assert.equal(p.anchor_mode, "field", "字段维度关系线必须字段锚定（R-LOD-08）");
+    assert.equal(p.view_dimension, "auto", "默认必须为自动维度（R-VIEW-DIM-01）");
+    assert.equal(p.tier, "detail", "Auto 在 100% 必须详情档渲染");
+    assert.equal(p.lod_scale, 1, "详情档线宽补偿必须为 1");
+    assert.equal(p.font_world, 13, "详情档表名必须为默认 13px");
+    assert.equal(p.anchor_mode, "field", "详情档关系线必须字段锚定（R-LOD-08）");
     await dimBtn.waitFor();
-    assert.equal(await dimBtn.innerText(), "维度：字段", "指示器必须为「维度：字段」（R-VIEW-DIM-03）");
+    assert.equal(await dimBtn.innerText(), "维度：自动", "指示器必须为「维度：自动」（R-VIEW-DIM-03）");
+
+    // 快捷键 V 两次：Auto → Table → Field，后续验证显式 Field 跨 zoom 锁定
+    await page.keyboard.press("v");
+    await page.waitForFunction(() => JSON.parse(window.__cdb_lod_probe).view_dimension === "table");
+    await page.keyboard.press("v");
+    await page.waitForFunction(() => JSON.parse(window.__cdb_lod_probe).view_dimension === "field");
+    assert.equal(await dimBtn.innerText(), "维度：字段", "快捷键循环后必须指示字段维度");
 
     // 先在 100% 点击选中 t5（i=5 → col0/row1 → 世界 (80,320)，表头中心）
     const head = await canvasPoint(page, { x: 80 + 100, y: 320 + 21 });
@@ -2049,7 +2056,16 @@ try {
       () => JSON.parse(window.__cdb_hl_probe).any_sel === true, null, { timeout: 4_000, polling: 100 },
     );
 
-    // WHEN：缩至 ≈50%（zoom-out ×3 → 0.512）——THEN 1：维度不随缩放串档（核心）
+    // 显式 Field 在约 200% 仍锁定详情档，再回到 100%
+    await zoomIn.click(); await zoomIn.click(); await zoomIn.click();
+    await waitZoom(() => JSON.parse(window.__cdb_lod_probe).zoom > 1.8);
+    p = await lodProbe();
+    assert.equal(p.view_dimension, "field", "放到 200% 必须仍为字段维度");
+    assert.equal(p.tier, "detail", "字段维度高 zoom 必须保持详情档");
+    await zoomOut.click(); await zoomOut.click(); await zoomOut.click();
+    await waitZoom(() => Math.abs(JSON.parse(window.__cdb_lod_probe).zoom - 1) < 0.05);
+
+    // WHEN：缩至 ≈50%（zoom-out ×3 → 0.512）——显式 Field 不随缩放串档
     await zoomOut.click(); await zoomOut.click(); await zoomOut.click();
     await waitZoom(() => JSON.parse(window.__cdb_lod_probe).zoom < 0.6);
     p = await lodProbe();
@@ -2059,7 +2075,17 @@ try {
     assert.equal(p.lod_scale, 1, "字段维度任意缩放不得补偿线宽");
     assert.equal(p.font_world, 13, "字段维度任意缩放不得补偿字号");
 
-    // WHEN：快捷键 V 切表维度（R-VIEW-DIM-02 入口 ③）
+    // 显式 Field 续缩至 ≈35% 仍保持字段详情
+    await zoomOut.click(); await zoomOut.click();
+    await waitZoom(() => JSON.parse(window.__cdb_lod_probe).zoom < 0.4);
+    p = await lodProbe();
+    assert.equal(p.view_dimension, "field", "字段维度内缩放不得串档");
+    assert.equal(p.tier, "detail", "0.328 必须保持字段详情档");
+    assert.equal(p.anchor_mode, "field", "0.328 必须保持字段锚定");
+
+    // 快捷键 V 两次：Field → Auto → Table；Table 在低 zoom 锁定拓扑
+    await page.keyboard.press("v");
+    await page.waitForFunction(() => JSON.parse(window.__cdb_lod_probe).view_dimension === "auto");
     await page.keyboard.press("v");
     await page.waitForFunction(
       () => JSON.parse(window.__cdb_lod_probe).view_dimension === "table", null, { timeout: 4_000, polling: 100 },
@@ -2068,9 +2094,8 @@ try {
     // THEN 2：表维度——拓扑渲染 + 维度内补偿 + 中文注释可见 + 表级锚定（#35 沿用）
     assert.equal(p.tier, "topology", "V 后必须表维度渲染");
     assert.equal(p.anchor_mode, "table", "表维度关系线必须表级锚定（R-LOD-08）");
-    assert.ok(p.font_world * p.zoom >= 11.0,
-      `表维度表名屏幕字号必须 ≥11px（${p.font_world}×${p.zoom}=${(p.font_world * p.zoom).toFixed(2)}）`);
-    assert.ok(p.lod_scale >= 1.4, `表维度 0.512 线宽补偿必须 ≥1.4（实际 ${p.lod_scale}）`);
+    assert.equal(p.font_world, 30, "0.328 表名字号必须触发夹紧上限 30px（夹紧优先于 11px 补偿）");
+    assert.ok(p.lod_scale >= 2.2, `0.328 线宽补偿必须 ≥2.2（实际 ${p.lod_scale}）`);
     assert.ok(p.topo_comments > 0,
       `表维度 NameComment 模式中文注释必须渲染（R-LOD-02，实际计数 ${p.topo_comments}）`);
     // THEN 3a：三入口状态一致——指示器文案 + ToolRail 激活态
@@ -2082,15 +2107,6 @@ try {
     assert.equal(hl.any_sel, true, "切换维度后选中态必须保持");
     assert.ok(hl.rel_width_scale_max >= 2.1,
       `表维度选中后相关线必须叠乘加粗 ≥2.1×（实际 ${hl.rel_width_scale_max}）`);
-
-    // WHEN：续缩至 ≈35%（zoom-out ×2 → 0.328）——维度不变，补偿随 zoom 加深
-    await zoomOut.click(); await zoomOut.click();
-    await waitZoom(() => JSON.parse(window.__cdb_lod_probe).zoom < 0.4);
-    p = await lodProbe();
-    assert.equal(p.view_dimension, "table", "表维度内缩放不得串档");
-    assert.equal(p.tier, "topology", "0.328 必须保持表维度渲染");
-    assert.equal(p.font_world, 30, "0.328 表名字号必须触发夹紧上限 30px");
-    assert.ok(p.lod_scale >= 2.2, `0.328 线宽补偿必须 ≥2.2（实际 ${p.lod_scale}）`);
 
     // WHEN：回 100%（zoom-in ×5）——维度仍表（关键新行为：zoom 不再驱动维度）
     for (let i = 0; i < 5; i++) await zoomIn.click();
@@ -2116,21 +2132,28 @@ try {
     assert.ok(!(await railBtn.evaluate(el => el.classList.contains("cdb-is-active"))),
       "字段维度下 ToolRail 维度按钮不得为激活态");
 
-    // WHEN：右键菜单切表维度（R-VIEW-DIM-02 入口 ①）
+    // WHEN：右键菜单依次 Field → Auto → Table（R-VIEW-DIM-02 入口 ①）
     const blank = await canvasPoint(page, { x: 640, y: 480 });
-    await page.mouse.click(blank.x, blank.y, { button: "right" });
-    const ctxMenu = page.locator('[data-testid="canvas-context-menu"]:visible');
-    await ctxMenu.waitFor();
-    await page.locator('[data-testid="ctx-toggle-dimension"]').click();
-    await page.waitForFunction(
-      () => JSON.parse(window.__cdb_lod_probe).view_dimension === "table", null, { timeout: 4_000, polling: 100 },
-    );
-    assert.equal(await dimBtn.innerText(), "维度：表", "右键菜单切换后指示器必须一致");
-    assert.equal((await lodProbe()).tier, "topology", "右键菜单切换后必须表维度渲染");
-    assert.equal(
-      await page.locator('[data-testid="canvas-context-menu"]:visible').count(), 0,
-      "维度切换后右键菜单必须关闭",
-    );
+    for (const expected of ["auto", "table"]) {
+      await page.mouse.click(blank.x, blank.y, { button: "right" });
+      const ctxMenu = page.locator('[data-testid="canvas-context-menu"]:visible');
+      await ctxMenu.waitFor();
+      await page.locator('[data-testid="ctx-toggle-dimension"]').click();
+      await page.waitForFunction(
+        dim => JSON.parse(window.__cdb_lod_probe).view_dimension === dim,
+        expected,
+        { timeout: 4_000, polling: 100 },
+      );
+      p = await lodProbe();
+      assert.equal(await dimBtn.innerText(), expected === "auto" ? "维度：自动" : "维度：表",
+        "右键菜单切换后指示器必须一致");
+      assert.equal(p.tier, expected === "auto" ? "detail" : "topology",
+        "右键菜单切换后渲染档位必须一致");
+      assert.equal(await page.evaluate(() => localStorage.getItem("cdb.view-dimension")), expected,
+        "右键菜单切换后必须同步持久化");
+      assert.equal(await page.locator('[data-testid="canvas-context-menu"]:visible').count(), 0,
+        "维度切换后右键菜单必须关闭");
+    }
 
     // THEN 4：持久化（R-VIEW-DIM-04）——刷新后仍为表维度
     // （token 在 localStorage 跨刷新存活，无需重登；刷新回落房间列表，重新进入）
@@ -2140,6 +2163,109 @@ try {
     p = await lodProbe();
     assert.equal(p.view_dimension, "table", "刷新后维度必须持久为表（cdb.view-dimension）");
     assert.equal(p.tier, "topology", "刷新后必须保持表维度渲染");
+  });
+
+  // ─── ST-CR-LOD-02：16 表全景自动拓扑与显式覆盖（fix-auto-lod-overview / #59） ──
+  await run(["ST-CR-LOD-02"], "Auto 全景切档 + Table/Field 覆盖 + 刷新持久", async page => {
+    const field = (id, name, extra = {}) => ({
+      id, name, type_: "INT", default: "", check: "", primary: false, unique: false,
+      not_null: false, increment: false, comment: "", tag: "", dict_code: "", ...extra,
+    });
+    const tables = [];
+    const references = [];
+    for (let i = 0; i < 16; i++) {
+      const col = i % 4;
+      const row = Math.floor(i / 4);
+      tables.push({
+        id: `t${i}`, name: `table_${i}`, x: 80 + col * 340, y: 80 + row * 240,
+        color: "", comment: "",
+        fields: [field(`f${i}_id`, "id", { primary: true }), field(`f${i}_fk`, "ref_id")],
+        indices: [],
+      });
+      if (i < 15) {
+        references.push({
+          id: `r${i}`, name: "", start_table_id: `t${i}`, end_table_id: `t${i + 1}`,
+          start_field_id: `f${i}_fk`, end_field_id: `f${i + 1}_id`,
+          type_: "one_to_many", on_delete: "RESTRICT", on_update: "RESTRICT",
+          color: "", line_type: "", stroke_style: "",
+        });
+      }
+    }
+    for (let i = 15; i < 19; i++) {
+      references.push({
+        id: `r${i}`, name: "", start_table_id: `t${i - 15}`, end_table_id: `t${i - 11}`,
+        start_field_id: `f${i - 15}_fk`, end_field_id: `f${i - 11}_id`,
+        type_: "one_to_many", on_delete: "RESTRICT", on_update: "RESTRICT",
+        color: "", line_type: "", stroke_style: "",
+      });
+    }
+    await installApi(page, { presetDiagram: { tables, references, areas: [], notes: [] } });
+    await login(page);
+    await createRoomAndEnter(page);
+    await page.waitForFunction(() => !!window.__cdb_lod_probe, null, { timeout: 8_000 });
+    const lod = () => page.evaluate(() => JSON.parse(window.__cdb_lod_probe));
+    const dimBtn = page.locator('[data-testid="canvas-view-dimension"]');
+    const zoomOut = page.locator('[data-testid="btn-zoom-out"]').first();
+    const zoomIn = page.locator('[data-testid="btn-zoom-in"]').first();
+    const zoomToOverview = async () => {
+      for (let i = 0; i < 10; i++) await zoomOut.click();
+      await page.waitForFunction(() => JSON.parse(window.__cdb_lod_probe).zoom < 0.12);
+    };
+    const zoomToDetail = async () => {
+      for (let i = 0; i < 10; i++) await zoomIn.click();
+      await page.waitForFunction(() => JSON.parse(window.__cdb_lod_probe).zoom > 0.95);
+    };
+    const assertState = (p, dimension, tier, anchor) => {
+      assert.equal(p.view_dimension, dimension, "维度状态必须符合当前模式");
+      assert.equal(p.tier, tier, "渲染档位必须与维度/zoom 一致");
+      assert.equal(p.anchor_mode, anchor, "命中/锚定几何必须与渲染档位一致");
+    };
+
+    let p = await lod();
+    assertState(p, "auto", "detail", "field");
+    assert.equal(p.tables_n, 16);
+    assert.equal(p.refs_n, 19);
+    assert.equal(await dimBtn.innerText(), "维度：自动");
+
+    await zoomToOverview();
+    p = await lod();
+    assertState(p, "auto", "topology", "table");
+    assert.equal(await page.evaluate(() => localStorage.getItem("cdb.view-dimension") ?? "auto"), "auto",
+      "缺省 localStorage 必须按 Auto 解释");
+
+    await zoomToDetail();
+    p = await lod();
+    assertState(p, "auto", "detail", "field");
+
+    await dimBtn.click();
+    await page.waitForFunction(() => JSON.parse(window.__cdb_lod_probe).view_dimension === "table");
+    assertState(await lod(), "table", "topology", "table");
+    assert.equal(await dimBtn.innerText(), "维度：表");
+    await zoomToOverview();
+    assertState(await lod(), "table", "topology", "table");
+
+    await dimBtn.click();
+    await page.waitForFunction(() => JSON.parse(window.__cdb_lod_probe).view_dimension === "field");
+    assertState(await lod(), "field", "detail", "field");
+    assert.equal(await dimBtn.innerText(), "维度：字段");
+    await zoomToDetail();
+    assertState(await lod(), "field", "detail", "field");
+
+    await dimBtn.click();
+    await page.waitForFunction(() => JSON.parse(window.__cdb_lod_probe).view_dimension === "auto");
+    assertState(await lod(), "auto", "detail", "field");
+    await zoomToOverview();
+    assertState(await lod(), "auto", "topology", "table");
+
+    await page.reload();
+    await createRoomAndEnter(page);
+    await page.waitForFunction(() => !!window.__cdb_lod_probe, null, { timeout: 8_000 });
+    p = await lod();
+    assertState(p, "auto", "detail", "field");
+    assert.equal(await dimBtn.innerText(), "维度：自动");
+    assert.equal(await page.evaluate(() => localStorage.getItem("cdb.view-dimension")), "auto");
+    await zoomToOverview();
+    assertState(await lod(), "auto", "topology", "table");
   });
 
   // ─── ST-KB-SEL-01：Ctrl+A 全选 + Delete 删除 + 撤销 e2e（fix-issues-36-37 / #37，core-01 §5.13） ──
@@ -2915,6 +3041,19 @@ try {
     await page.waitForFunction(
       () => JSON.parse(window.__cdb_lod_probe)?.label_font_scale === 1.25,
       null, { timeout: 6_000, polling: 100 },
+    );
+
+    // Auto 默认下先显式锁定 Field，避免全景自动拓扑改变本用例的字段字号前置
+    const dimBtn = page.locator('[data-testid="canvas-view-dimension"]');
+    for (let i = 0; i < 3; i++) {
+      const text = await dimBtn.textContent();
+      if (text?.includes("维度：字段")) break;
+      await dimBtn.click();
+      await page.waitForTimeout(80);
+    }
+    await page.waitForFunction(
+      () => JSON.parse(window.__cdb_lod_probe).view_dimension === "field",
+      null, { timeout: 3_000 },
     );
 
     // WHEN 3：缩小到 zoom ≤ 0.35（R-FONT-04 低 zoom 钳制）——滚轮缩放（与用户操作同口径，

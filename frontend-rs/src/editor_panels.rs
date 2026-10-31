@@ -5755,8 +5755,8 @@ pub fn ToolRail(
                 <span class="cdb-tool-tip">"添加便签"</span>
             </button>
             <div class="cdb-tool-rail__divider"></div>
-            // fix-issues-36-37（issue #36，R-VIEW-DIM-02/03）：表/字段维度切换按钮——
-            // 表维度时 cdb-is-active 激活态可见；纯视图操作，只读/Viewer 也可用（不挂 rel_disabled）
+            // Cycle Auto / Table / Field; Table shows the active state.
+            // This is a view-only operation and remains available to read-only viewers.
             <button
                 class="cdb-tool-btn"
                 class:cdb-is-active=move || {
@@ -5771,7 +5771,7 @@ pub fn ToolRail(
                 }
             >
                 <IconBox size="md"><IconEye /></IconBox>
-                <span class="cdb-tool-tip">"切换表/字段维度 "<kbd>"V"</kbd></span>
+                <span class="cdb-tool-tip">"切换自动/表/字段维度 "<kbd>"V"</kbd></span>
             </button>
             <button
                 class="cdb-tool-btn"
@@ -13974,13 +13974,10 @@ pub fn AppRoot(
                                         }
                                     >
                                         {move || {
-                                            if store_ctx.view_dimension.get()
-                                                == crate::editor_core::ViewDimension::Table
-                                            {
-                                                "切换为字段维度"
-                                            } else {
-                                                "切换为表维度"
-                                            }
+                                            format!(
+                                                "切换为{}维度",
+                                                store_ctx.view_dimension.get().next().label()
+                                            )
                                         }}
                                     </button>
                                     // fix-issues-38-41-canvas-interaction（#41，R-AREALOCK-02a/07）：
