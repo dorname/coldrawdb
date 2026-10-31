@@ -3008,22 +3008,19 @@ pub fn AppBar(
 
     view! {
         <header class="cdb-app-bar" data-testid="app-bar">
-            // fix-appbar-roomname-back-and-import-merge：房间上下文显性返回入口（← 空间）
-            {let on_open_rooms_back = on_open_rooms.clone();
-             move || current_room.get().map(|_| {
-                let on_open_rooms = on_open_rooms_back.clone();
-                view! {
-                    <button
-                        class="cdb-btn cdb-btn--ghost cdb-back-to-rooms"
-                        data-testid="btn-back-to-rooms"
-                        title="返回空间列表"
-                        on:click=move |_| on_open_rooms()
-                    >
-                        <IconBox size="sm"><IconArrowLeft /></IconBox>
-                        <span>"空间"</span>
-                    </button>
+            // 协作与个人画布均提供显性工作空间返回入口。
+            <button
+                class="cdb-btn cdb-btn--ghost cdb-back-to-rooms"
+                data-testid="btn-back-to-rooms"
+                title="返回空间列表"
+                on:click={
+                    let on_open_rooms = on_open_rooms.clone();
+                    move |_| on_open_rooms()
                 }
-            })}
+            >
+                <IconBox size="sm"><IconArrowLeft /></IconBox>
+                <span>"空间"</span>
+            </button>
             <div class="cdb-app-bar__brand">
                 <span class="cdb-brand-mark" aria-hidden="true"><IconBox size="md"><IconLogo /></IconBox></span>
             </div>
@@ -3034,8 +3031,8 @@ pub fn AppBar(
             <select
                 class="cdb-form-select"
                 data-testid="app-db-select"
-                disabled=move || read_only || current_room.get().is_some()
-                title=move || if current_room.get().is_some() { "引擎在创建房间时确定" } else { "数据库引擎" }
+                disabled=true
+                title="引擎在创建图表时确定"
                 on:change={
                     let on_after = on_after_change.clone();
                     move |ev| {
@@ -4272,6 +4269,71 @@ pub fn AuthGate(
     }
 }
 
+pub fn diagram_display_name(diagram: &DiagramSummary) -> String {
+    diagram
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .unwrap_or("未命名模型")
+        .to_string()
+}
+
+pub fn diagram_short_id(id: &str) -> String {
+    let suffix = id.chars().rev().take(6).collect::<Vec<_>>();
+    suffix.into_iter().rev().collect()
+}
+
+pub fn diagram_modified_at(diagram: &DiagramSummary) -> Option<&str> {
+    diagram
+        .updated_at
+        .as_deref()
+        .or(diagram.last_modified.as_deref())
+}
+
+pub fn diagram_summary_label(diagram: &DiagramSummary) -> String {
+    format!(
+        "{} · ID {} · rev {} · {} 表 · {} 关系 · {}",
+        diagram_display_name(diagram),
+        diagram.id,
+        diagram.revision,
+        diagram.table_count,
+        diagram.reference_count,
+        diagram_modified_at(diagram).unwrap_or("时间未知")
+    )
+}
+
+/// 图表候选统一过滤与排序：排除活跃房间绑定图，按名称或 ID 搜索，
+/// 最近修改倒序，同时间按名称与 ID 稳定排序。输入和当前选中项均不被修改。
+pub fn filter_diagram_candidates(
+    diagrams: &[DiagramSummary],
+    bound_diagram_ids: &[String],
+    query: &str,
+) -> Vec<DiagramSummary> {
+    let query = query.trim().to_lowercase();
+    let mut candidates = diagrams
+        .iter()
+        .filter(|diagram| !bound_diagram_ids.contains(&diagram.id))
+        .filter(|diagram| {
+            query.is_empty()
+                || diagram_display_name(diagram).to_lowercase().contains(&query)
+                || diagram.id.to_lowercase().contains(&query)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    candidates.sort_by(|left, right| {
+        diagram_modified_at(right)
+            .cmp(&diagram_modified_at(left))
+            .then_with(|| {
+                diagram_display_name(left)
+                    .to_lowercase()
+                    .cmp(&diagram_display_name(right).to_lowercase())
+            })
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    candidates
+}
+
 /// `rooms-list-page`（align-frontend-to-prototype Batch B 完整实现）。
 ///
 /// 顶栏 + 房间列表 + 新建房间入口 + 用户菜单 + session-indicator。
@@ -4289,6 +4351,7 @@ pub fn RoomsListPage(
     on_logout: Rc<dyn Fn()>,
     on_select_room: Rc<dyn Fn(RoomDetail)>,
     on_create_room: Rc<dyn Fn(RoomDetail)>,
+    on_open_diagram: Rc<dyn Fn(String)>,
     // p0-fix 定点 1：外部强制刷新信号（删除房间后回列表时 bump → 绕过 token 缓存重新拉取）
     reload_rooms: RwSignal<u32>,
 ) -> impl IntoView {
@@ -4301,7 +4364,10 @@ pub fn RoomsListPage(
     // p0-fix 定点 1：已消费的外部刷新计数（与 reload_rooms 比较决定是否清缓存）
     let last_external_reload = create_rw_signal(0_u32);
     let create_modal_open = create_rw_signal(false);
+    let personal_mode = create_rw_signal(false);
     let room_name = create_rw_signal(String::from("数据模型评审"));
+    let personal_diagram_name = create_rw_signal(String::from("未命名数据模型"));
+    let diagram_search = create_rw_signal(String::new());
     let diagram_choice = create_rw_signal(String::from("__new__"));
     // fix-listview-grid-and-room-dbtype: 创建房间选「新建空白模型」时的引擎前置选择（默认 Generic 不透传，回归不破）
     let create_database = create_rw_signal(String::from("generic"));
@@ -4406,10 +4472,13 @@ pub fn RoomsListPage(
         }
     });
 
-    let open_create_modal: Rc<dyn Fn()> = {
+    let open_diagram_picker: Rc<dyn Fn(bool)> = {
         let diagram_client = diagram_client.clone();
-        Rc::new(move || {
+        Rc::new(move |personal: bool| {
             create_error.set(None);
+            personal_mode.set(personal);
+            diagram_choice.set("__new__".to_string());
+            diagram_search.set(String::new());
             create_modal_open.set(true);
             if diagrams_loaded.get_untracked() || diagrams_loading.get_untracked() {
                 return;
@@ -4432,6 +4501,14 @@ pub fn RoomsListPage(
             });
         })
     };
+    let open_create_modal = {
+        let open = open_diagram_picker.clone();
+        Rc::new(move || open(false)) as Rc<dyn Fn()>
+    };
+    let open_personal_modal = {
+        let open = open_diagram_picker.clone();
+        move |_| open(true)
+    };
     let open_create_from_header = open_create_modal.clone();
     let open_create_from_card = open_create_modal.clone();
 
@@ -4446,8 +4523,51 @@ pub fn RoomsListPage(
         let room_client = room_client.clone();
         let auth_session = auth_session.clone();
         let on_create_room = on_create_room.clone();
+        let on_open_diagram = on_open_diagram.clone();
         Rc::new(move || {
             if creating.get() {
+                return;
+            }
+            if personal_mode.get() {
+                let selected = diagram_choice.get();
+                let name = personal_diagram_name.get().trim().to_string();
+                if selected == "__new__" && (name.is_empty() || name.chars().count() > 64) {
+                    create_error.set(Some("图表名称须为 1–64 个字符".to_string()));
+                    return;
+                }
+                creating.set(true);
+                create_error.set(None);
+                let diagram_client = diagram_client.clone();
+                let on_open_diagram = on_open_diagram.clone();
+                spawn_local(async move {
+                    let created_diagram = selected == "__new__";
+                    let diagram_id = if created_diagram {
+                        let db = match create_database.get().as_str() {
+                            "generic" => None,
+                            other => Some(other.to_string()),
+                        };
+                        match diagram_client.create(&name, db).await {
+                            Ok(id) => id,
+                            Err(_) => {
+                                create_error.set(Some("空白模型创建失败，请稍后重试".to_string()));
+                                creating.set(false);
+                                return;
+                            }
+                        }
+                    } else {
+                        selected
+                    };
+                    if created_diagram {
+                        diagrams.update(|items| items.push(DiagramSummary {
+                            id: diagram_id.clone(),
+                            name: Some(name),
+                            ..DiagramSummary::default()
+                        }));
+                    }
+                    creating.set(false);
+                    create_modal_open.set(false);
+                    on_open_diagram(diagram_id);
+                });
                 return;
             }
             let name = room_name.get().trim().to_string();
@@ -4506,6 +4626,7 @@ pub fn RoomsListPage(
                                 items.push(DiagramSummary {
                                     id: diagram_id.clone(),
                                     name: Some(diagram_title),
+                                    ..DiagramSummary::default()
                                 });
                             });
                             diagram_choice.set(diagram_id);
@@ -4767,6 +4888,16 @@ pub fn RoomsListPage(
                         "回收站"
                     </button>
                     <button
+                        class="cdb-btn"
+                        type="button"
+                        data-testid="btn-personal-modeling"
+                        title="无需创建协作房间，直接新建或打开个人图表"
+                        on:click=open_personal_modal
+                    >
+                        <IconBox size="sm"><IconEdit /></IconBox>
+                        "个人建模"
+                    </button>
+                    <button
                         class="cdb-btn cdb-btn--primary"
                         type="button"
                         data-testid="btn-create-room"
@@ -5023,8 +5154,8 @@ pub fn RoomsListPage(
                         >
                             <header class="cdb-create-room-modal__header">
                                 <div>
-                                    <span class="cdb-eyebrow">"新建协作空间"</span>
-                                    <h2 id="create-room-title">"创建协作房间"</h2>
+                                    <span class="cdb-eyebrow">{move || if personal_mode.get() { "个人工作区" } else { "新建协作空间" }}</span>
+                                    <h2 id="create-room-title">{move || if personal_mode.get() { "个人建模" } else { "创建协作房间" }}</h2>
                                 </div>
                                 <button
                                     class="cdb-btn cdb-btn--ghost cdb-btn--icon"
@@ -5043,71 +5174,118 @@ pub fn RoomsListPage(
                                 }
                             >
                                 <div class="cdb-create-room-modal__body">
-                                    <div class="cdb-field">
-                                        <label for="room-name">"房间名称"</label>
-                                        <input
-                                            class="cdb-input"
-                                            id="room-name"
-                                            data-testid="create-room-name"
-                                            maxlength="64"
-                                            prop:value=move || room_name.get()
-                                            on:input=move |event| room_name.set(event_target_value(&event))
-                                        />
-                                    </div>
-                                    <div class="cdb-field">
-                                        <label for="room-diagram">"关联 diagram"</label>
-                                        <select
-                                            class="cdb-input cdb-select"
-                                            id="room-diagram"
-                                            data-testid="create-room-diagram"
-                                            prop:value=move || diagram_choice.get()
-                                            on:change=move |event| diagram_choice.set(event_target_value(&event))
-                                        >
-                                            <option value="__new__">"新建空白模型"</option>
-                                            <For
-                                                each=move || {
-                                                    let bound = rooms.get().into_iter().map(|room| room.diagram_id).collect::<Vec<_>>();
-                                                    diagrams.get().into_iter().filter(move |diagram| !bound.contains(&diagram.id)).collect::<Vec<_>>()
-                                                }
-                                                key=|diagram| diagram.id.clone()
-                                                children=move |diagram: DiagramSummary| {
-                                                    let id = diagram.id.clone();
-                                                    let label = diagram.name.unwrap_or_else(|| "未命名模型".to_string());
-                                                    view! { <option value=id>{label}</option> }
-                                                }
+                                    {move || (!personal_mode.get()).then(|| view! {
+                                        <div class="cdb-field">
+                                            <label for="room-name">"房间名称"</label>
+                                            <input
+                                                class="cdb-input"
+                                                id="room-name"
+                                                data-testid="create-room-name"
+                                                maxlength="64"
+                                                prop:value=move || room_name.get()
+                                                on:input=move |event| room_name.set(event_target_value(&event))
                                             />
-                                        </select>
-                                        // fix-select-bg-diagram-delete-and-log-format：删除游离图表入口
-                                        // （core-S04 图表行：仅当选中已有图表时出现，点击弹二次确认）
-                                        {move || {
-                                            let selected = diagram_choice.get();
-                                            if selected == "__new__" {
-                                                return view! { <></> }.into_view();
-                                            }
-                                            view! {
-                                                <button
-                                                    class="cdb-btn cdb-btn--ghost cdb-btn--danger-text"
-                                                    type="button"
-                                                    data-testid="create-room-diagram-delete"
-                                                    on:click=move |_| {
-                                                        let id = diagram_choice.get_untracked();
-                                                        let target = diagrams
-                                                            .get_untracked()
-                                                            .into_iter()
-                                                            .find(|d| d.id == id);
-                                                        delete_diagram_error.set(None);
-                                                        delete_diagram_target.set(target);
+                                        </div>
+                                    })}
+                                    {move || (personal_mode.get() && diagram_choice.get() == "__new__").then(|| view! {
+                                        <div class="cdb-field">
+                                            <label for="personal-diagram-name">"图表名称"</label>
+                                            <input
+                                                class="cdb-input"
+                                                id="personal-diagram-name"
+                                                data-testid="personal-diagram-name"
+                                                maxlength="64"
+                                                prop:value=move || personal_diagram_name.get()
+                                                on:input=move |event| personal_diagram_name.set(event_target_value(&event))
+                                            />
+                                        </div>
+                                    })}
+                                    <div class="cdb-field cdb-diagram-picker-field">
+                                        <label for="room-diagram-search">"关联 diagram"</label>
+                                        <div class="cdb-diagram-picker" data-testid="create-room-diagram">
+                                            <button
+                                                class="cdb-diagram-picker__new"
+                                                type="button"
+                                                role="option"
+                                                aria-selected=move || diagram_choice.get() == "__new__"
+                                                data-testid="create-room-diagram-new"
+                                                on:click=move |_| diagram_choice.set("__new__".to_string())
+                                            >
+                                                <strong>"新建空白模型"</strong>
+                                                <span>"从零开始设计，选择所需数据库引擎"</span>
+                                            </button>
+                                            <div class="cdb-diagram-picker__selected" data-testid="create-room-diagram-selected">
+                                                {move || {
+                                                    let selected = diagram_choice.get();
+                                                    if selected == "__new__" {
+                                                        "当前选择：新建空白模型".to_string()
+                                                    } else {
+                                                        diagrams.get().into_iter().find(|diagram| diagram.id == selected)
+                                                            .map(|diagram| format!("当前选择：{}", diagram_summary_label(&diagram)))
+                                                            .unwrap_or_else(|| "当前选择不可用，请重新选择".to_string())
                                                     }
-                                                >
-                                                    <IconBox size="sm"><IconDelete /></IconBox>
-                                                    "删除此图表"
-                                                </button>
-                                            }.into_view()
-                                        }}
+                                                }}
+                                            </div>
+                                            <input
+                                                class="cdb-input cdb-diagram-picker__search"
+                                                id="room-diagram-search"
+                                                data-testid="create-room-diagram-search"
+                                                type="search"
+                                                placeholder="按图表名称或 ID 搜索"
+                                                aria-label="搜索图表名称或 ID"
+                                                prop:value=move || diagram_search.get()
+                                                on:input=move |event| diagram_search.set(event_target_value(&event))
+                                            />
+                                            <div class="cdb-diagram-picker__options" role="listbox" aria-label="已有图表" data-testid="create-room-diagram-options">
+                                                <For
+                                                    each=move || {
+                                                        let bound = rooms.get().into_iter().map(|room| room.diagram_id).collect::<Vec<_>>();
+                                                        filter_diagram_candidates(&diagrams.get(), &bound, &diagram_search.get())
+                                                    }
+                                                    key=|diagram| diagram.id.clone()
+                                                    children=move |diagram: DiagramSummary| {
+                                                        let id = diagram.id.clone();
+                                                        let select_id = id.clone();
+                                                        let selected_id = select_id.clone();
+                                                        let choose_id = select_id.clone();
+                                                        let name = diagram_display_name(&diagram);
+                                                        let short_id = diagram_short_id(&diagram.id);
+                                                        let modified = diagram_modified_at(&diagram).unwrap_or("时间未知").to_string();
+                                                        view! {
+                                                            <button
+                                                                class="cdb-diagram-picker__option"
+                                                                type="button"
+                                                                role="option"
+                                                                aria-selected=move || diagram_choice.get() == selected_id
+                                                                data-testid=format!("create-room-diagram-option-{}", id)
+                                                                on:click=move |_| diagram_choice.set(choose_id.clone())
+                                                            >
+                                                                <span class="cdb-diagram-picker__option-heading">
+                                                                    <strong>{name}</strong>
+                                                                    <code title=diagram.id.clone()>{format!("…{}", short_id)}</code>
+                                                                </span>
+                                                                <span class="cdb-diagram-picker__option-meta">
+                                                                    {format!("rev {} · {} 表 · {} 关系 · {}", diagram.revision, diagram.table_count, diagram.reference_count, modified)}
+                                                                </span>
+                                                            </button>
+                                                        }
+                                                    }
+                                                />
+                                            </div>
+                                            {move || {
+                                                let bound = rooms.get().into_iter().map(|room| room.diagram_id).collect::<Vec<_>>();
+                                                let empty = filter_diagram_candidates(&diagrams.get(), &bound, &diagram_search.get()).is_empty();
+                                                (empty && !diagrams_loading.get()).then(|| view! {
+                                                    <p class="cdb-diagram-picker__empty" data-testid="create-room-diagram-empty">
+                                                        "没有匹配的图表。可清空搜索，或选择新建空白模型。"
+                                                    </p>
+                                                })
+                                            }}
+                                        </div>
                                         {move || if diagrams_loading.get() {
                                             view! { <small class="cdb-field-hint">"正在加载已有模型..."</small> }.into_view()
                                         } else {
-                                            view! { <small class="cdb-field-hint">"新建模型会先创建 diagram，再绑定房间。"</small> }.into_view()
+                                            view! { <small class="cdb-field-hint">"搜索不会改变当前选择；已绑定协作房间的图表不会出现在这里。"</small> }.into_view()
                                         }}
                                     </div>
                                     <div class="cdb-field" style:display=move || if diagram_choice.get() == "__new__" { "grid" } else { "none" }>
@@ -5125,18 +5303,48 @@ pub fn RoomsListPage(
                                         </select>
                                         <small class="cdb-field-hint">"字段类型清单随引擎过滤，建图后即定口径。"</small>
                                     </div>
-                                    <div class="cdb-field">
-                                        <label for="room-default-role">"默认邀请角色"</label>
-                                        <select
-                                            class="cdb-input cdb-select"
-                                            id="room-default-role"
-                                            prop:value=move || default_role.get()
-                                            on:change=move |event| default_role.set(event_target_value(&event))
-                                        >
-                                            <option value="editor">"Editor · 可编辑"</option>
-                                            <option value="viewer">"Viewer · 只读"</option>
-                                        </select>
-                                    </div>
+                                    {move || (!personal_mode.get()).then(|| view! {
+                                        <div class="cdb-field">
+                                            <label for="room-default-role">"默认邀请角色"</label>
+                                            <select
+                                                class="cdb-input cdb-select"
+                                                id="room-default-role"
+                                                prop:value=move || default_role.get()
+                                                on:change=move |event| default_role.set(event_target_value(&event))
+                                            >
+                                                <option value="editor">"Editor · 可编辑"</option>
+                                                <option value="viewer">"Viewer · 只读"</option>
+                                            </select>
+                                        </div>
+                                    })}
+                                    {move || {
+                                        let selected = diagram_choice.get();
+                                        if selected == "__new__" {
+                                            return view! { <></> }.into_view();
+                                        }
+                                        view! {
+                                            <section class="cdb-diagram-management" data-testid="create-room-diagram-management" aria-label="图表管理与危险操作">
+                                                <div>
+                                                    <strong>"图表管理"</strong>
+                                                    <p>"删除会移除整张图表及其画布内容，请先在上方核对名称、ID 与规模。"</p>
+                                                </div>
+                                                <button
+                                                    class="cdb-btn cdb-btn--ghost cdb-btn--danger-text"
+                                                    type="button"
+                                                    data-testid="create-room-diagram-delete"
+                                                    on:click=move |_| {
+                                                        let id = diagram_choice.get_untracked();
+                                                        let target = diagrams.get_untracked().into_iter().find(|d| d.id == id);
+                                                        delete_diagram_error.set(None);
+                                                        delete_diagram_target.set(target);
+                                                    }
+                                                >
+                                                    <IconBox size="sm"><IconDelete /></IconBox>
+                                                    "删除此图表"
+                                                </button>
+                                            </section>
+                                        }.into_view()
+                                    }}
                                     <p class="cdb-create-room-error" role="alert" data-testid="create-room-error">
                                         {move || create_error.get().unwrap_or_default()}
                                     </p>
@@ -5146,7 +5354,13 @@ pub fn RoomsListPage(
                                         "取消"
                                     </button>
                                     <button class="cdb-btn cdb-btn--primary" type="submit" data-testid="create-room-submit" disabled=move || creating.get()>
-                                        {move || if creating.get() { "创建中..." } else { "创建并进入" }}
+                                        {move || if creating.get() {
+                                            "创建中..."
+                                        } else if personal_mode.get() {
+                                            "打开个人画布"
+                                        } else {
+                                            "创建并进入"
+                                        }}
                                     </button>
                                 </footer>
                             </form>
@@ -5324,6 +5538,11 @@ pub fn RoomsListPage(
                             </header>
                             <div class="cdb-create-room-modal__body">
                                 <p>{format!("确认删除图表「{}」？此操作不可恢复。", label)}</p>
+                                <dl class="cdb-diagram-delete-summary" data-testid="delete-diagram-summary">
+                                    <div><dt>"完整 ID"</dt><dd><code>{target.id.clone()}</code></dd></div>
+                                    <div><dt>"revision"</dt><dd>{target.revision}</dd></div>
+                                    <div><dt>"画布规模"</dt><dd>{format!("{} 表 · {} 关系", target.table_count, target.reference_count)}</dd></div>
+                                </dl>
                                 <p class="cdb-create-room-error" role="alert" data-testid="delete-diagram-error">
                                     {move || delete_diagram_error.get().unwrap_or_default()}
                                 </p>
@@ -11948,6 +12167,51 @@ pub fn AppRoot(
 
     let on_create_room_enter: Rc<dyn Fn(RoomDetail)> = on_enter_room.clone();
 
+    // 个人建模复用「先加载后切页 + nonce」守卫；不建立 room 上下文，保存走 S01 私有通路。
+    let on_open_personal_diagram: Rc<dyn Fn(String)> = {
+        let client = client.clone();
+        let store = store.clone();
+        let current_page = current_page.clone();
+        let current_diagram_id = current_diagram_id.clone();
+        let current_room = current_room.clone();
+        let current_title = current_title.clone();
+        let error = error.clone();
+        let enter_nonce = enter_nonce.clone();
+        let collab_ctl = collab_ctl.clone();
+        let next_id = next_id.clone();
+        Rc::new(move |diagram_id: String| {
+            let nonce = enter_nonce.get_untracked() + 1;
+            enter_nonce.set(nonce);
+            let client = client.clone();
+            let store = store.clone();
+            let collab_ctl = collab_ctl.clone();
+            spawn_local(async move {
+                match client.get(&diagram_id).await {
+                    Ok(diagram) => {
+                        if enter_nonce.get_untracked() != nonce {
+                            return;
+                        }
+                        current_page.set(PageState::RoomEditor);
+                        current_diagram_id.set(diagram_id);
+                        current_title.set(diagram.name.clone());
+                        current_room.set(None);
+                        store.load(diagram);
+                        collab_ctl.refresh_baseline();
+                        let max_id = crate::editor_core::next_id_from_store(&store);
+                        next_id.set(max_id + 1);
+                        error.set(None);
+                    }
+                    Err(_) => {
+                        if enter_nonce.get_untracked() != nonce {
+                            return;
+                        }
+                        error.set(Some("图表加载失败，请返回工作空间后重试".to_string()));
+                    }
+                }
+            });
+        })
+    };
+
     // invite → 接受成功后进入 editor；未登录跳 auth
     let on_invite_after_accept: Rc<dyn Fn()> = {
         let current_page = current_page.clone();
@@ -13950,6 +14214,7 @@ pub fn AppRoot(
                 on_logout=on_logout.clone()
                 on_select_room=on_enter_room.clone()
                 on_create_room=on_create_room_enter.clone()
+                on_open_diagram=on_open_personal_diagram.clone()
                 reload_rooms=rooms_reload_nonce
             />
         </div>
@@ -19555,6 +19820,113 @@ CREATE TABLE posts (id UUID PRIMARY KEY, user_id UUID NOT NULL, FOREIGN KEY (use
                 && client.contains("/api/v1/diagrams/{}"),
             "UT-S04-UI-16: DiagramClient 应有 delete 指向 DELETE /api/v1/diagrams/{{id}}"
         );
+    }
+
+    /// UT-S04-UI-19：350+ 图表候选的排除、搜索、排序与完整显示元数据。
+    #[test]
+    fn test_diagram_candidate_filter_sort_and_metadata_ut_s04_ui_19() {
+        fn summary(
+            id: &str,
+            name: Option<&str>,
+            updated_at: Option<&str>,
+            last_modified: Option<&str>,
+            table_count: i64,
+            reference_count: i64,
+        ) -> DiagramSummary {
+            DiagramSummary {
+                id: id.to_string(),
+                name: name.map(str::to_string),
+                revision: 7,
+                updated_at: updated_at.map(str::to_string),
+                last_modified: last_modified.map(str::to_string),
+                table_count,
+                reference_count,
+            }
+        }
+
+        let mut diagrams = (0..360)
+            .map(|index| {
+                summary(
+                    &format!("diagram-{index:03}"),
+                    Some(&format!("模型 {index:03}")),
+                    Some("2026-10-01T00:00:00Z"),
+                    None,
+                    0,
+                    0,
+                )
+            })
+            .collect::<Vec<_>>();
+        diagrams.push(summary(
+            "EMPTY-123456",
+            Some("博客内容管理系统"),
+            Some("2026-10-30T10:00:00Z"),
+            None,
+            0,
+            0,
+        ));
+        diagrams.push(summary(
+            "FULL-ABCDEF",
+            Some("博客内容管理系统"),
+            Some("2026-10-30T11:00:00Z"),
+            None,
+            12,
+            18,
+        ));
+        diagrams.push(summary(
+            "fallback-time",
+            Some("回退时间"),
+            None,
+            Some("2026-10-31T01:00:00Z"),
+            1,
+            0,
+        ));
+        diagrams.push(summary("unnamed", None, None, None, 0, 0));
+        diagrams.push(summary(
+            "bound-diagram",
+            Some("已绑定图"),
+            Some("2026-10-31T02:00:00Z"),
+            None,
+            3,
+            2,
+        ));
+        let bound = vec!["bound-diagram".to_string()];
+
+        let all = filter_diagram_candidates(&diagrams, &bound, "");
+        assert_eq!(all.len(), 364, "UT-S04-UI-19: 365 项仅排除一个已绑定图");
+        assert!(all.iter().all(|diagram| diagram.id != "bound-diagram"));
+        assert_eq!(all[0].id, "fallback-time", "UT-S04-UI-19: updated_at 缺省时回退 lastModified");
+        assert_eq!(all[1].id, "FULL-ABCDEF");
+        assert_eq!(all.last().unwrap().id, "unnamed", "UT-S04-UI-19: 无时间候选排最后");
+
+        let same_name = filter_diagram_candidates(&diagrams, &bound, "博客内容");
+        assert_eq!(same_name.len(), 2);
+        assert_eq!(same_name[0].id, "FULL-ABCDEF");
+        assert_eq!(filter_diagram_candidates(&diagrams, &bound, "full-abcdef").len(), 1);
+        assert_eq!(filter_diagram_candidates(&diagrams, &bound, "abcdef").len(), 1);
+        assert!(filter_diagram_candidates(&diagrams, &bound, "BOUND-DIAGRAM").is_empty());
+        assert!(filter_diagram_candidates(&diagrams, &bound, "不存在的模型").is_empty());
+
+        let selected = "FULL-ABCDEF".to_string();
+        let before = selected.clone();
+        let _ = filter_diagram_candidates(&diagrams, &bound, "不存在的模型");
+        assert_eq!(selected, before, "UT-S04-UI-19: 搜索不得隐式改变当前选中 ID");
+
+        let full = diagrams.iter().find(|diagram| diagram.id == "FULL-ABCDEF").unwrap();
+        let label = diagram_summary_label(full);
+        for expected in ["博客内容管理系统", "FULL-ABCDEF", "rev 7", "12 表", "18 关系", "2026-10-30T11:00:00Z"] {
+            assert!(label.contains(expected), "UT-S04-UI-19: 摘要缺少 {expected}：{label}");
+        }
+        assert_eq!(diagram_short_id(&full.id), "ABCDEF");
+        let unnamed = diagrams.iter().find(|diagram| diagram.id == "unnamed").unwrap();
+        assert_eq!(diagram_display_name(unnamed), "未命名模型");
+        assert!(diagram_summary_label(unnamed).contains("时间未知"));
+
+        let tied = vec![
+            summary("b-id", Some("Alpha"), Some("2026-10-01T00:00:00Z"), None, 0, 0),
+            summary("a-id", Some("Alpha"), Some("2026-10-01T00:00:00Z"), None, 0, 0),
+        ];
+        let tied = filter_diagram_candidates(&tied, &[], "");
+        assert_eq!(tied.iter().map(|diagram| diagram.id.as_str()).collect::<Vec<_>>(), vec!["a-id", "b-id"]);
     }
 
     /// UT-PC-19: 表单下拉视觉条款锚点（feat-room-recycle-bin-dropdown-and-db-export，core-09 §13）

@@ -1766,6 +1766,135 @@ html {
   font-size: 12px;
 }
 
+.cdb-diagram-picker {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cdb-diagram-picker__new,
+.cdb-diagram-picker__option {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--cdb-workspace-line);
+  border-radius: 10px;
+  color: var(--cdb-workspace-text);
+  background: var(--cdb-workspace-surface-soft);
+  text-align: left;
+  cursor: pointer;
+}
+
+.cdb-diagram-picker__new:hover,
+.cdb-diagram-picker__option:hover,
+.cdb-diagram-picker__new:focus-visible,
+.cdb-diagram-picker__option:focus-visible {
+  border-color: var(--cdb-color-brand);
+  outline: none;
+}
+
+.cdb-diagram-picker__new[aria-selected="true"],
+.cdb-diagram-picker__option[aria-selected="true"] {
+  border-color: var(--cdb-color-brand);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--cdb-color-brand) 18%, transparent);
+}
+
+.cdb-diagram-picker__new span,
+.cdb-diagram-picker__option-meta,
+.cdb-diagram-picker__selected,
+.cdb-diagram-management p {
+  color: var(--cdb-workspace-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.cdb-diagram-picker__selected {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--cdb-workspace-surface-soft);
+  overflow-wrap: anywhere;
+}
+
+.cdb-diagram-picker__options {
+  display: grid;
+  gap: 7px;
+  max-height: 248px;
+  padding-right: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.cdb-diagram-picker__option-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cdb-diagram-picker__option-heading strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cdb-diagram-picker__option-heading code {
+  flex: none;
+  color: var(--cdb-workspace-text-muted);
+  font-size: 11px;
+}
+
+.cdb-diagram-picker__empty {
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed var(--cdb-workspace-line);
+  border-radius: 10px;
+  color: var(--cdb-workspace-text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.cdb-diagram-management {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 8px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--cdb-color-error) 30%, transparent);
+  border-radius: 12px;
+}
+
+.cdb-diagram-management p {
+  margin: 4px 0 0;
+}
+
+.cdb-diagram-delete-summary {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--cdb-workspace-surface-soft);
+  font-size: 12px;
+}
+
+.cdb-diagram-delete-summary div {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.cdb-diagram-delete-summary dt {
+  color: var(--cdb-workspace-text-muted);
+}
+
+.cdb-diagram-delete-summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .cdb-create-room-modal__footer {
   justify-content: flex-end;
   border-top: 1px solid var(--cdb-workspace-line);

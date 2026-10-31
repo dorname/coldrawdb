@@ -31,7 +31,11 @@ pub struct DiagramVo{
     pub revision: i64,
     pub updated_at: Option<String>,
     #[serde(rename = "lastModified")]
-    pub last_modified: Option<String>
+    pub last_modified: Option<String>,
+    #[serde(default)]
+    pub table_count: i64,
+    #[serde(default)]
+    pub reference_count: i64,
 }
 
 impl DiagramVo {
@@ -62,7 +66,9 @@ impl DiagramVo {
             pan: diagram.pan.clone(),
             revision: 0,
             updated_at: diagram.last_modified.clone(),
-            last_modified: diagram.last_modified.clone()
+            last_modified: diagram.last_modified.clone(),
+            table_count: 0,
+            reference_count: 0,
         }
     }
 

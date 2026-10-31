@@ -42,7 +42,14 @@ async fn list_active_diagrams(conn: &DatabaseConnection) -> Result<Vec<DiagramVo
     // 避免 MCP 与创建房间候选把已有元数据回退成 0/null。
     let rows = conn.query_all(sea_orm::Statement::from_sql_and_values(
         sea_orm::DbBackend::Sqlite,
-        "SELECT id, zoom, name, database, last_modified, pan, revision, updated_at FROM diagram WHERE is_deleted=0",
+        "SELECT d.id, d.zoom, d.name, d.database, d.last_modified, d.pan, d.revision, d.updated_at, \
+         (SELECT COUNT(*) FROM diagram_link dl JOIN \"table\" t ON t.id = dl.table_id \
+          WHERE dl.diagram_id = d.id AND t.is_deleted = 0) AS table_count, \
+         (SELECT COUNT(*) FROM diagram_link dl JOIN \"reference\" r ON r.id = dl.reference_id \
+          WHERE dl.diagram_id = d.id AND r.is_deleted = 0) AS reference_count \
+         FROM diagram d WHERE d.is_deleted = 0 \
+         ORDER BY COALESCE(d.updated_at, d.last_modified) DESC, \
+                  COALESCE(d.name, '') COLLATE NOCASE ASC, d.id ASC",
         vec![],
     )).await?;
     let mut diagrams = Vec::with_capacity(rows.len());
@@ -66,6 +73,8 @@ async fn list_active_diagrams(conn: &DatabaseConnection) -> Result<Vec<DiagramVo
             revision: row.try_get("", "revision")?,
             updated_at,
             last_modified,
+            table_count: row.try_get("", "table_count")?,
+            reference_count: row.try_get("", "reference_count")?,
         });
     }
     Ok(diagrams)
@@ -307,5 +316,72 @@ mod tests {
         db.close().await.unwrap();
         std::fs::remove_file(&db_path).unwrap();
         crate::verify_reporter::report_pass("UT-S04-20", 0);
+    }
+
+    /// UT-S04-21：queryAll 在同一条摘要查询中聚合真实表/关系数。
+    #[actix_web::test]
+    async fn ut_s04_21_query_all_aggregates_content_counts() {
+        let db_path = std::env::temp_dir().join(format!(
+            "coldrawdb_query_all_counts_{}.sqlite",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::File::create(&db_path).unwrap();
+        let db = Database::connect(format!("sqlite://{}?", db_path.display()))
+            .await
+            .unwrap();
+        crate::init::init_table("init.sql", &db).await.unwrap();
+        crate::init::apply_migrations("migrations", &db).await.unwrap();
+
+        let statements = [
+            "INSERT INTO diagram(id, name, last_modified, revision, updated_at, is_deleted) VALUES('d-full', '完整模型', '2020-01-01T00:00:00Z', 8, '2026-10-29T12:34:56Z', 0)",
+            "INSERT INTO diagram(id, name, is_deleted) VALUES('d-empty', '空模型', 0)",
+            "INSERT INTO diagram(id, name, is_deleted) VALUES('d-deleted', '已删模型', 1)",
+            "INSERT INTO \"table\"(id, name, is_deleted) VALUES('t-1', 'users', 0)",
+            "INSERT INTO \"table\"(id, name, is_deleted) VALUES('t-2', 'orders', 0)",
+            "INSERT INTO \"table\"(id, name, is_deleted) VALUES('t-deleted', 'ignored', 1)",
+            "INSERT INTO \"table\"(id, name, is_deleted) VALUES('t-deleted-diagram', 'ignored', 0)",
+            "INSERT INTO diagram_link(id, diagram_id, table_id) VALUES('dl-t-1', 'd-full', 't-1')",
+            "INSERT INTO diagram_link(id, diagram_id, table_id) VALUES('dl-t-2', 'd-full', 't-2')",
+            "INSERT INTO diagram_link(id, diagram_id, table_id) VALUES('dl-t-deleted', 'd-full', 't-deleted')",
+            "INSERT INTO diagram_link(id, diagram_id, table_id) VALUES('dl-t-deleted-diagram', 'd-deleted', 't-deleted-diagram')",
+            "INSERT INTO \"reference\"(id, name, is_deleted) VALUES('r-1', 'orders_user', 0)",
+            "INSERT INTO \"reference\"(id, name, is_deleted) VALUES('r-deleted', 'ignored', 1)",
+            "INSERT INTO \"reference\"(id, name, is_deleted) VALUES('r-deleted-diagram', 'ignored', 0)",
+            "INSERT INTO diagram_link(id, diagram_id, reference_id) VALUES('dl-r-1', 'd-full', 'r-1')",
+            "INSERT INTO diagram_link(id, diagram_id, reference_id) VALUES('dl-r-deleted', 'd-full', 'r-deleted')",
+            "INSERT INTO diagram_link(id, diagram_id, reference_id) VALUES('dl-r-deleted-diagram', 'd-deleted', 'r-deleted-diagram')",
+        ];
+        for sql in statements {
+            sea_orm::ConnectionTrait::execute(
+                &db,
+                sea_orm::Statement::from_sql_and_values(
+                    sea_orm::DbBackend::Sqlite,
+                    sql,
+                    vec![],
+                ),
+            )
+            .await
+            .unwrap();
+        }
+
+        let vos = list_active_diagrams(&db).await.unwrap();
+        assert_eq!(vos.len(), 2, "UT-S04-21: 软删除图及其内容不得进入摘要");
+        let full = vos.iter().find(|diagram| diagram.id == "d-full").unwrap();
+        assert_eq!(full.table_count, 2);
+        assert_eq!(full.reference_count, 1);
+        assert_eq!(full.revision, 8);
+        assert_eq!(full.updated_at.as_deref(), Some("2026-10-29T12:34:56Z"));
+        assert_eq!(full.last_modified.as_deref(), Some("2020-01-01T00:00:00Z"));
+        let empty = vos.iter().find(|diagram| diagram.id == "d-empty").unwrap();
+        assert_eq!(empty.table_count, 0);
+        assert_eq!(empty.reference_count, 0);
+        let serialized = serde_json::to_value(full).unwrap();
+        assert_eq!(serialized["table_count"], 2);
+        assert_eq!(serialized["reference_count"], 1);
+        assert_eq!(serialized["lastModified"], "2020-01-01T00:00:00Z");
+
+        db.close().await.unwrap();
+        std::fs::remove_file(&db_path).unwrap();
+        crate::verify_reporter::report_pass("UT-S04-21", 0);
     }
 }

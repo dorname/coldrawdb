@@ -178,6 +178,8 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-PC-23",
     // fix-select-bg-diagram-delete-and-log-format：创建空间弹窗删除图表锚点
     "UT-S04-UI-16",
+    // feat-room-diagram-picker（issue #56）：350+ 图表候选搜索/排序/元数据纯函数
+    "UT-S04-UI-19",
     // fix-canvas-zoom-invite-comment-resize：前端数据面（同源 base_url + 结构化 import/connect
     // 消费 + COMMENT ON 解析/导出 + JSON 注释透传；UT-PC-24/25 由 backend 上报）
     "UT-S04-UI-17",

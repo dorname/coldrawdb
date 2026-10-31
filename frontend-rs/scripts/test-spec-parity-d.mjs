@@ -59,7 +59,9 @@
 // fix-dbimport-save-and-pg-schema 新增：
 //   ST-PC-06         二次导入 + 保存成功 + schema 透传：两次连接导入（sqlite/postgres）→ 保存 ID 无交集 → schema 仅 postgres 携带
 // fix-select-bg-diagram-delete-and-log-format 新增：
-//   ST-S04-UI-16     创建空间弹窗删除游离图表：选中 → 删除入口 → 二次确认 → DELETE 落账 + Toast + 候选移除 + 回落新建
+//   ST-S04-UI-16     共享选择器独立危险区：搜索选中 → 完整 ID/规模确认 → DELETE + 候选移除 + 回落新建
+// feat-room-diagram-picker（issue #56）新增：
+//   ST-S04-UI-18     350+ 图表搜索/排序/同名识别 + 个人新建/打开 + 零 room 创建 + enter_nonce
 // fix-canvas-zoom-invite-comment-resize 新增：
 //   ST-PC-04         MODIFIED：import/connect 响应改结构化 {table_count, tables[]}（core-03 §13.1），
 //                    断言迁移为 tables 数组 + 表/列 comment 透传（mock 含 comment）
@@ -186,10 +188,15 @@ async function installApi(page, options = {}) {
       });
     }
     if (url.pathname === "/api/v1/diagrams" && request.method() === "POST") {
+      const body = request.postDataJSON();
+      state.createdDiagrams = state.createdDiagrams ?? [];
+      state.createdDiagrams.push(body);
       return response(route, 200, { code: 0, request_id: "create-diagram", data: { id: "diagram-new" } });
     }
     if (url.pathname === "/api/v1/rooms" && request.method() === "POST") {
       const body = request.postDataJSON();
+      state.createdRooms = state.createdRooms ?? [];
+      state.createdRooms.push(body);
       return response(route, 201, { id: "room-new", name: body.name, diagramId: body.diagramId, ownerId: "owner-1" });
     }
     if (url.pathname === "/api/v1/rooms/room-new" && request.method() === "GET") {
@@ -228,6 +235,27 @@ async function installApi(page, options = {}) {
       state.putBodies.push(state.lastPutBody);
       diagramRev += 1;
       return response(route, 200, { code: 0, request_id: "save-diagram", data: { revision: diagramRev } });
+    }
+    // feat-room-diagram-picker：个人打开任意已有图；可按 ID 延迟以验证 enter_nonce。
+    if (url.pathname.startsWith("/api/v1/diagrams/") && request.method() === "GET") {
+      const diagramId = url.pathname.split("/").pop();
+      const delay = options.diagramGetDelays?.[diagramId] ?? 0;
+      if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+      const summary = (options.diagramsList ?? []).find(diagram => diagram.id === diagramId);
+      return response(route, 200, {
+        code: 0,
+        request_id: "load-personal-diagram",
+        data: {
+          id: diagramId,
+          name: summary?.name ?? "未命名模型",
+          database: summary?.database ?? null,
+          revision: summary?.revision ?? 0,
+          tables: [],
+          references: [],
+          areas: [],
+          notes: [],
+        },
+      });
     }
     if (url.pathname.endsWith("/collab/head")) {
       return response(route, 200, { roomId: "room-new", diagramId: "diagram-new", serverRev: 7 });
@@ -956,35 +984,46 @@ try {
     await page.locator('[data-testid="trash-empty"]:visible').waitFor();
   });
 
-  // ─── ST-S04-UI-16：创建空间弹窗删除游离图表（fix-select-bg-diagram-delete-and-log-format，core-S04 图表行） ──
-  await run(["ST-S04-UI-16"], "关联图表选中游离图表 → 删除入口 → 二次确认 → DELETE 落账 + Toast + 候选移除", async page => {
+  // ─── ST-S04-UI-16：共享选择器独立危险区删除游离图表 ──
+  await run(["ST-S04-UI-16"], "搜索选中游离图表 → 独立危险区 → 完整 ID/规模确认 → DELETE + 回落新建", async page => {
     const state = await installApi(page, {
-      diagramsList: [{ id: "diagram-orphan", name: "游离图表" }],
+      diagramsList: [{
+        id: "diagram-orphan",
+        name: "游离图表",
+        revision: 3,
+        table_count: 2,
+        reference_count: 1,
+        updated_at: "2026-10-30T10:00:00Z",
+        lastModified: "2026-10-29T10:00:00Z",
+      }],
     });
     await login(page);
 
-    // 打开创建空间弹窗：候选含游离图表；未选中时无删除入口
     await page.locator('[data-testid="btn-create-room"]').click();
     await page.locator('[data-testid="modal-create-room"]:visible').waitFor();
-    const select = page.locator('[data-testid="create-room-diagram"]');
-    await select.locator('option[value="diagram-orphan"]').waitFor({ state: "attached" });
+    const orphanOption = page.locator('[data-testid="create-room-diagram-option-diagram-orphan"]');
+    await orphanOption.waitFor({ state: "attached" });
     assert.equal(
       await page.locator('[data-testid="create-room-diagram-delete"]').count(), 0,
       "选中「新建空白模型」时不得渲染删除按钮",
     );
 
-    // 选中游离图表 → 删除入口出现 → 点击弹二次确认（确认前候选不移除）
-    await select.selectOption("diagram-orphan");
-    await page.locator('[data-testid="create-room-diagram-delete"]:visible').waitFor();
-    await page.locator('[data-testid="create-room-diagram-delete"]').click();
+    await page.locator('[data-testid="create-room-diagram-search"]').fill("orphan");
+    await orphanOption.click();
+    const deleteButton = page.locator('[data-testid="create-room-diagram-delete"]:visible');
+    await deleteButton.waitFor();
+    assert.equal(await deleteButton.evaluate(el => Boolean(el.closest('[data-testid="create-room-diagram-options"]'))), false);
+    assert.equal(await deleteButton.evaluate(el => Boolean(el.closest(".cdb-create-room-modal__footer"))), false);
+    await deleteButton.click();
     const modal = page.locator('[data-testid="modal-delete-diagram"]:visible');
     await modal.waitFor();
     const modalText = (await modal.textContent()) ?? "";
     assert.match(modalText, /游离图表/, "确认模态须含图表名");
+    assert.match(modalText, /diagram-orphan/, "确认模态须含完整 ID");
+    assert.match(modalText, /2 表 · 1 关系/, "确认模态须含表/关系规模");
     assert.match(modalText, /不可恢复/, "确认模态须含「不可恢复」警示");
-    await select.locator('option[value="diagram-orphan"]').waitFor({ state: "attached" });
+    await orphanOption.waitFor({ state: "attached" });
 
-    // 确认删除：DELETE 落账 + Toast「已删除图表」+ 候选移除 + 选择回落新建空白模型
     await page.locator('[data-testid="btn-confirm-delete-diagram"]').click();
     await page.waitForFunction(
       () => !document.querySelector('[data-testid="modal-delete-diagram"]'),
@@ -994,11 +1033,127 @@ try {
     const toast = page.locator('[data-testid="notice-toast"]:visible');
     await toast.waitFor({ timeout: 3_000 });
     assert.match((await toast.textContent()) ?? "", /已删除图表/, "删除成功必须有「已删除图表」Toast");
-    assert.equal(
-      await select.locator('option[value="diagram-orphan"]').count(), 0,
-      "删除后候选下拉不得再含该图表",
+    assert.equal(await orphanOption.count(), 0, "删除后候选不得再含该图表");
+    assert.match(
+      (await page.locator('[data-testid="create-room-diagram-selected"]').textContent()) ?? "",
+      /新建空白模型/,
+      "删除选中图表后应回落「新建空白模型」",
     );
-    assert.equal(await select.inputValue(), "__new__", "删除选中图表后应回落「新建空白模型」");
+  });
+
+  // ─── ST-S04-UI-18：350+ 图表搜索选择器与个人建模完整链路（#56） ──
+  await run(["ST-S04-UI-18"], "350+ 候选搜索/排序/同名识别/空态 + 个人新建/打开 + 零 room 创建 + nonce", async page => {
+    const diagramsList = Array.from({ length: 360 }, (_, index) => ({
+      id: `diagram-${String(index).padStart(3, "0")}`,
+      name: `模型 ${String(index).padStart(3, "0")}`,
+      revision: index,
+      table_count: index % 4,
+      reference_count: index % 3,
+      updated_at: "2026-10-01T00:00:00Z",
+      lastModified: null,
+    }));
+    diagramsList.push(
+      { id: "EMPTY-123456", name: "博客内容管理系统", revision: 1, table_count: 0, reference_count: 0, updated_at: "2026-10-30T10:00:00Z", lastModified: null },
+      { id: "FULL-ABCDEF", name: "博客内容管理系统", revision: 12, table_count: 12, reference_count: 18, updated_at: "2026-10-30T11:00:00Z", lastModified: null },
+      { id: "recent-fallback", name: "最近修改", revision: 2, table_count: 1, reference_count: 0, updated_at: null, lastModified: "2026-10-31T01:00:00Z" },
+      { id: "bound-diagram", name: "已绑定图", revision: 9, table_count: 3, reference_count: 2, updated_at: "2026-10-31T02:00:00Z", lastModified: null },
+    );
+    const state = await installApi(page, {
+      diagramsList,
+      roomsList: [{ id: "room-bound", name: "协作房间", diagramId: "bound-diagram", ownerId: "owner-1", diagramTitle: "已绑定图", myRole: "owner", memberCount: 2, updatedAt: "2026-10-31T02:00:00Z" }],
+      diagramGetDelays: { "EMPTY-123456": 450 },
+    });
+    await login(page);
+    await page.locator('[data-testid="btn-create-room"]').click();
+    const createModal = page.locator('[data-testid="modal-create-room"]:visible');
+    await createModal.waitFor();
+    const options = page.locator('[data-testid="create-room-diagram-options"]');
+    await page.locator('[data-testid="create-room-diagram-option-FULL-ABCDEF"]').waitFor({ state: "attached" });
+    const scroll = await options.evaluate(el => ({ height: el.clientHeight, content: el.scrollHeight }));
+    assert.ok(scroll.content > scroll.height, "350+ 候选必须在独立列表内滚动，而非撑高模态");
+    const firstOption = options.locator('[role="option"]').first();
+    assert.equal(await firstOption.getAttribute("data-testid"), "create-room-diagram-option-recent-fallback");
+    assert.equal(await page.locator('[data-testid="create-room-diagram-option-bound-diagram"]').count(), 0);
+
+    const search = page.locator('[data-testid="create-room-diagram-search"]');
+    await search.fill("博客内容管理系统");
+    assert.equal(await options.locator('[role="option"]').count(), 2, "同名搜索应保留空图与完整模型两项");
+    const fullOption = page.locator('[data-testid="create-room-diagram-option-FULL-ABCDEF"]');
+    const fullText = (await fullOption.textContent()) ?? "";
+    for (const expected of ["ABCDEF", "rev 12", "12 表", "18 关系", "2026-10-30T11:00:00Z"]) {
+      assert.ok(fullText.includes(expected), `同名完整模型应显示 ${expected}，实际：${fullText}`);
+    }
+    assert.match((await page.locator('[data-testid="create-room-diagram-option-EMPTY-123456"]').textContent()) ?? "", /0 表 · 0 关系/);
+    await fullOption.click();
+    await search.fill("abcdef");
+    assert.equal(await options.locator('[role="option"]').count(), 1, "ID 后缀搜索应只保留目标图");
+    await search.fill("完全不存在的图表");
+    await page.locator('[data-testid="create-room-diagram-empty"]:visible').waitFor();
+    assert.match((await page.locator('[data-testid="create-room-diagram-selected"]').textContent()) ?? "", /FULL-ABCDEF/, "无结果不得隐式改变当前选择");
+    await search.fill("");
+    await page.locator('[data-testid="create-room-diagram-option-bound-diagram"]').waitFor({ state: "detached" });
+
+    const danger = page.locator('[data-testid="create-room-diagram-management"]:visible');
+    await danger.waitFor();
+    const deleteButton = page.locator('[data-testid="create-room-diagram-delete"]');
+    assert.equal(await deleteButton.evaluate(el => Boolean(el.closest('[data-testid="create-room-diagram-options"]') || el.closest(".cdb-create-room-modal__footer"))), false);
+    await deleteButton.click();
+    const deleteModal = page.locator('[data-testid="modal-delete-diagram"]:visible');
+    assert.match((await deleteModal.textContent()) ?? "", /FULL-ABCDEF/);
+    assert.match((await deleteModal.textContent()) ?? "", /12 表 · 18 关系/);
+    await deleteModal.getByRole("button", { name: "关闭" }).click();
+    await createModal.locator(".cdb-create-room-modal__footer").getByRole("button", { name: "取消" }).click();
+
+    // 个人打开已有图：先 GET，再进入无 room 上下文的编辑器。
+    await page.locator('[data-testid="btn-personal-modeling"]').click();
+    assert.equal(await page.locator('[data-testid="create-room-name"]').count(), 0);
+    assert.equal(await page.locator('#room-default-role').count(), 0);
+    await search.fill("FULL-ABCDEF");
+    await fullOption.click();
+    await page.locator('[data-testid="create-room-submit"]').click();
+    await page.locator('[data-testid="room-editor-page"]:visible').waitFor();
+    assert.equal(await page.locator('[data-testid="diagram-title"]').inputValue(), "博客内容管理系统");
+    assert.equal(await page.locator('[data-testid="room-badge"]').count(), 0);
+    assert.equal(state.createdRooms, undefined, "个人打开不得创建 room");
+    assert.ok(state.requests.includes("GET /api/v1/diagrams/FULL-ABCDEF"));
+
+    // 通过个人画布的显性入口返回工作空间，新建 PostgreSQL 个人图。
+    await page.locator('[data-testid="btn-back-to-rooms"]').click();
+    await page.locator('[data-testid="rooms-list-page"]:visible').waitFor();
+    await page.locator('[data-testid="btn-personal-modeling"]').click();
+    await page.locator('[data-testid="personal-diagram-name"]').fill("个人博客模型");
+    await page.locator('[data-testid="create-room-database"]').selectOption("postgresql");
+    await page.locator('[data-testid="create-room-submit"]').click();
+    await page.locator('[data-testid="room-editor-page"]:visible').waitFor();
+    assert.equal(state.createdDiagrams.length, 1);
+    assert.equal(state.createdDiagrams[0].name, "个人博客模型");
+    assert.equal(state.createdDiagrams[0].database, "postgresql");
+    assert.equal(state.createdRooms, undefined, "个人新建同样不得创建 room");
+    assert.equal(await page.locator('[data-testid="room-badge"]').count(), 0);
+    assert.equal(await page.locator('[data-testid="app-db-select"]').isDisabled(), true, "个人图创建后引擎同样锁定");
+
+    // 不刷新页面返回后，新建图必须已写入摘要缓存，可立即再次找到。
+    await page.locator('[data-testid="btn-back-to-rooms"]').click();
+    await page.locator('[data-testid="rooms-list-page"]:visible').waitFor();
+    await page.locator('[data-testid="btn-personal-modeling"]').click();
+    await search.fill("个人博客模型");
+    await page.locator('[data-testid="create-room-diagram-option-diagram-new"]:visible').waitFor();
+    await page.locator('[data-testid="modal-create-room"] .cdb-create-room-modal__footer').getByRole("button", { name: "取消" }).click();
+
+    // 第一次 GET 故意慢于第二次：旧响应不得覆盖后选图。
+    await page.locator('[data-testid="rooms-list-page"]:visible').waitFor();
+    await page.locator('[data-testid="btn-personal-modeling"]').click();
+    await search.fill("EMPTY-123456");
+    await page.locator('[data-testid="create-room-diagram-option-EMPTY-123456"]').click();
+    await page.locator('[data-testid="create-room-submit"]').click();
+    await page.locator('[data-testid="btn-personal-modeling"]').click();
+    await search.fill("recent-fallback");
+    await page.locator('[data-testid="create-room-diagram-option-recent-fallback"]').click();
+    await page.locator('[data-testid="create-room-submit"]').click();
+    await page.locator('[data-testid="room-editor-page"]:visible').waitFor();
+    await page.waitForTimeout(600);
+    assert.equal(await page.locator('[data-testid="diagram-title"]').inputValue(), "最近修改");
+    assert.equal(state.createdRooms, undefined);
   });
 
   // ─── ST-PC-05：导出到数据库（feat-room-recycle-bin-dropdown-and-db-export，core-01d §5.4） ──

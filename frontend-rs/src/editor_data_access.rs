@@ -219,11 +219,21 @@ pub struct RoomSummary {
     pub archived_at: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DiagramSummary {
     pub id: String,
     #[serde(default)]
     pub name: Option<String>,
+    #[serde(default)]
+    pub revision: i64,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+    #[serde(rename = "lastModified", default)]
+    pub last_modified: Option<String>,
+    #[serde(default)]
+    pub table_count: i64,
+    #[serde(default)]
+    pub reference_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
