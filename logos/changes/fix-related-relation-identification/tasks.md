@@ -7,9 +7,9 @@
 
 ## [code] 代码实现
 
-- [ ] 修改 `frontend-rs/src/editor_core.rs`，实现关系标签本机视图偏好及 UT-PB-35 存储边界覆盖
-- [ ] 修改 `frontend-rs/src/editor_panels.rs`，实现关系明细、表检查器列表、关系定位与标签开关，并交付 UT-PB-34
-- [ ] 修改 `frontend-rs/src/editor_render.rs`，实现完整悬停、上下文/全局标签、路径中点、碰撞避让与标签探针，并交付 UT-PB-35
-- [ ] 更新 `frontend-rs/src/styles.css`，完善多行悬停摘要与关系明细的可读样式
-- [ ] 更新 `frontend-rs/scripts/test-spec-parity-d.mjs`，交付 ST-PB-18、ST-PB-19，同步 ST-PB-12 并接入 OpenLogos reporter
-- [ ] 更新 `frontend-rs/tests/openlogos_reporter.rs`，登记 UT-PB-34、UT-PB-35，运行定向与全量测试
+- [x] 修改 `frontend-rs/src/editor_core.rs`，实现关系标签本机视图偏好及 UT-PB-35 存储边界覆盖
+- [x] 修改 `frontend-rs/src/editor_panels.rs`，实现关系明细、表检查器列表、关系定位与标签开关，并交付 UT-PB-34
+- [x] 修改 `frontend-rs/src/editor_render.rs`，实现完整悬停、上下文/全局标签、路径中点、碰撞避让与标签探针，并交付 UT-PB-35
+- [x] 更新 `frontend-rs/src/styles.css`，完善多行悬停摘要与关系明细的可读样式
+- [x] 更新 `frontend-rs/scripts/test-spec-parity-d.mjs`，交付 ST-PB-18、ST-PB-19，同步 ST-PB-12 并接入 OpenLogos reporter
+- [x] 更新 `frontend-rs/tests/openlogos_reporter.rs`，登记 UT-PB-34、UT-PB-35，运行定向与全量测试

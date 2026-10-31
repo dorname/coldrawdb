@@ -3418,6 +3418,156 @@ try {
     assert.equal(state.sentOps?.length ?? 0, initialOps, "叠线轮选不得新增协作 op");
   });
 
+  // #65/#66：共享 16 表 / 19 关系电商模型，确保检查器、悬停与画布标签使用同一数据。
+  async function openRelationReviewModel(page) {
+    const mkT = (id, x, y, fieldNames = ["id"]) => ({
+      id, name: id, x, y, color: "", comment: "",
+      fields: fieldNames.map(name => ({
+        id: `${id}_${name}`, name, type_: "INT", default: "", check: "",
+        primary: name === "id", unique: false, not_null: true, increment: false,
+        comment: "", tag: "", dict_code: "",
+      })),
+      indices: [],
+    });
+    const mkR = (id, name, st, sf, et, ef, type = "one_to_many", onDelete = "RESTRICT") => ({
+      id, name, start_table_id: st, end_table_id: et,
+      start_field_id: `${st}_${sf}`, end_field_id: `${et}_${ef}`,
+      type_: type, on_delete: onDelete, on_update: "RESTRICT", color: "", line_type: "", stroke_style: "",
+    });
+    const tables = [
+      mkT("orders", 100, 130, ["id", "user_id", "address_id"]),
+      mkT("users", 600, 100), mkT("addresses", 600, 350),
+      mkT("order_items", 1000, 50, ["order_id"]), mkT("payments", 1000, 250, ["order_id"]),
+      mkT("shipments", 1000, 450, ["order_id"]), mkT("refunds", 1000, 650, ["order_id"]),
+    ];
+    for (let i = 7; i <= 15; i += 1) {
+      tables.push(mkT(`t${i}`, 500 + ((i - 7) % 4) * 350, 700 + Math.floor((i - 7) / 4) * 300));
+    }
+    const references = [
+      mkR("r_users_orders", "fk_orders_users", "users", "id", "orders", "user_id", "one_to_many", "CASCADE"),
+      mkR("r_addresses_orders", "fk_orders_addresses", "addresses", "id", "orders", "address_id"),
+      mkR("r_orders_items", "fk_items_orders", "orders", "id", "order_items", "order_id", "one_to_many", "CASCADE"),
+      mkR("r_orders_payments", "fk_payments_orders", "orders", "id", "payments", "order_id", "one_to_one"),
+      mkR("r_orders_shipments", "fk_shipments_orders", "orders", "id", "shipments", "order_id"),
+      mkR("r_orders_refunds", "fk_refunds_orders", "orders", "id", "refunds", "order_id", "one_to_many", "CASCADE"),
+    ];
+    for (let i = 0; i < 13; i += 1) {
+      const start = 7 + (i % 8);
+      const end = 7 + ((i + 1) % 8);
+      references.push(mkR(`r_chain_${i}`, `fk_chain_${i}`, `t${start}`, "id", `t${end}`, "id"));
+    }
+    assert.equal(tables.length, 16);
+    assert.equal(references.length, 19);
+    const state = await installApi(page, { presetDiagram: { tables, references, areas: [], notes: [] } });
+    await login(page);
+    await createRoomAndEnter(page);
+    await page.waitForFunction(() => !!window.__cdb_hl_probe, null, { timeout: 8_000 });
+    return state;
+  }
+
+  // ─── ST-PB-18：当前表完整关系明细与点击定位（#66）───
+  await run(["ST-PB-18"], "16 表 / 19 关系中检查器识别并定位 orders 关系", async page => {
+    const state = await openRelationReviewModel(page);
+    const initialPuts = state.putCalls;
+    const initialOps = state.sentOps?.length ?? 0;
+    const ordersHeader = await canvasPoint(page, { x: 180, y: 150 });
+    await page.mouse.click(ordersHeader.x, ordersHeader.y);
+    await page.locator('[data-testid="inspector-table-form"]:visible').waitFor();
+    const rows = page.locator('[data-testid^="inspector-table-relation-"]');
+    await page.waitForFunction(() => document.querySelectorAll('[data-testid^="inspector-table-relation-"]').length === 6);
+    assert.equal(await rows.count(), 6, "orders 必须显示 2 入边 + 4 出边");
+
+    const expected = {
+      r_users_orders: ["入边", "fk_orders_users", "users.id → orders.user_id", "基数 1:N", "ON DELETE CASCADE"],
+      r_addresses_orders: ["入边", "fk_orders_addresses", "addresses.id → orders.address_id", "基数 1:N", "ON DELETE RESTRICT"],
+      r_orders_items: ["出边", "fk_items_orders", "orders.id → order_items.order_id", "基数 1:N", "ON DELETE CASCADE"],
+      r_orders_payments: ["出边", "fk_payments_orders", "orders.id → payments.order_id", "基数 1:1", "ON DELETE RESTRICT"],
+      r_orders_shipments: ["出边", "fk_shipments_orders", "orders.id → shipments.order_id", "基数 1:N", "ON DELETE RESTRICT"],
+      r_orders_refunds: ["出边", "fk_refunds_orders", "orders.id → refunds.order_id", "基数 1:N", "ON DELETE CASCADE"],
+    };
+    for (const [id, fragments] of Object.entries(expected)) {
+      const text = (await page.locator(`[data-testid="inspector-table-relation-${id}"]`).textContent()) ?? "";
+      for (const fragment of fragments) assert.ok(text.includes(fragment), `${id} 缺少：${fragment}；实际 ${text}`);
+    }
+
+    await page.locator('[data-testid="inspector-table-relation-r_users_orders"]').click();
+    await page.locator('[data-testid="inspector-reference-form"]:visible').waitFor();
+    await page.waitForFunction(
+      () => JSON.parse(window.__cdb_hl_probe)?.sel_ref_id === "r_users_orders", null,
+      { timeout: 4_000, polling: 100 },
+    );
+    assert.equal(state.putCalls, initialPuts, "查看与定位关系不得新增 PUT");
+    assert.equal(state.sentOps?.length ?? 0, initialOps, "查看与定位关系不得新增协作 op");
+  });
+
+  // ─── ST-PB-19：完整悬停、上下文/全局标签、碰撞与偏好（#65/#66）───
+  await run(["ST-PB-19"], "完整悬停与上下文/全局关系标签真实绘制", async page => {
+    const state = await openRelationReviewModel(page);
+    const labelProbe = () => page.evaluate(() => JSON.parse(window.__cdb_relation_label_probe));
+    await page.waitForFunction(
+      () => {
+        const raw = window.__cdb_relation_label_probe;
+        return raw && JSON.parse(raw).show_all === false && JSON.parse(raw).visible_ids.length === 0;
+      }, null, { timeout: 6_000, polling: 100 },
+    );
+    const initialPuts = state.putCalls;
+    const initialOps = state.sentOps?.length ?? 0;
+
+    const mid = await canvasPoint(page, { x: 465, y: 193 });
+    await page.mouse.move(mid.x, mid.y);
+    const tip = page.locator('[data-testid="rel-hover-tooltip"]:visible');
+    await tip.waitFor({ timeout: 4_000 });
+    const tipText = (await tip.textContent()) ?? "";
+    for (const fragment of ["fk_orders_users", "users.id → orders.user_id", "基数：1:N", "ON DELETE：CASCADE", "若线条重叠，重复点击可切换关系"]) {
+      assert.ok(tipText.includes(fragment), `悬停摘要缺少 ${fragment}；实际 ${tipText}`);
+    }
+    assert.equal(JSON.parse(await page.evaluate(() => window.__cdb_hl_probe)).sel_ref, false, "悬停不得改选中态");
+    const away = await canvasPoint(page, { x: 450, y: 420 });
+    await page.mouse.move(away.x, away.y);
+
+    const ordersHeader = await canvasPoint(page, { x: 180, y: 150 });
+    await page.mouse.click(ordersHeader.x, ordersHeader.y);
+    await page.waitForFunction(
+      () => JSON.parse(window.__cdb_relation_label_probe)?.visible_ids.includes("r_users_orders"),
+      null, { timeout: 5_000, polling: 100 },
+    );
+    let probe = await labelProbe();
+    assert.equal(probe.show_all, false, "未开全局开关时只绘制上下文标签");
+    assert.ok(probe.visible_ids.every(id => id.startsWith("r_users_") || id.startsWith("r_addresses_") || id.startsWith("r_orders_")));
+
+    await page.locator('[data-testid="canvas-relation-labels"]').click();
+    const related = ["r_users_orders", "r_addresses_orders", "r_orders_items", "r_orders_payments", "r_orders_shipments", "r_orders_refunds"];
+    await page.waitForFunction(
+      relatedIds => {
+        const p = JSON.parse(window.__cdb_relation_label_probe);
+        return p?.show_all === true && p.visible_ids.some(id => !relatedIds.includes(id));
+      }, related, { timeout: 5_000, polling: 100 },
+    );
+    probe = await labelProbe();
+    assert.ok(probe.visible_ids.length > 0);
+    assert.ok(probe.visible_ids.every(id => !probe.skipped_ids.includes(id)), "同一关系不得同时可见且被省略");
+    assert.equal(await page.evaluate(() => localStorage.getItem("cdb.relation-labels")), "on");
+    assert.equal(state.putCalls, initialPuts, "悬停/选中/标签开关不得新增 PUT");
+    assert.equal(state.sentOps?.length ?? 0, initialOps, "悬停/选中/标签开关不得新增协作 op");
+
+    await page.reload();
+    await createRoomAndEnter(page);
+    await page.waitForFunction(
+      () => JSON.parse(window.__cdb_relation_label_probe)?.show_all === true
+        && JSON.parse(window.__cdb_relation_label_probe).visible_ids.length > 0,
+      null, { timeout: 8_000, polling: 100 },
+    );
+    assert.equal(await page.evaluate(() => localStorage.getItem("cdb.relation-labels")), "on", "刷新后标签偏好必须保留");
+    const afterRefreshPuts = state.putCalls;
+    await page.locator('[data-testid="canvas-relation-labels"]').click();
+    await page.waitForFunction(
+      () => JSON.parse(window.__cdb_relation_label_probe)?.show_all === false
+        && JSON.parse(window.__cdb_relation_label_probe).visible_ids.length === 0,
+      null, { timeout: 5_000, polling: 100 },
+    );
+    assert.equal(state.putCalls, afterRefreshPuts, "关闭标签不得新增 PUT");
+  });
+
   // ─── ST-PB-13：点击关系线高亮关系线与两端表（fix-issue-47 / #47 R-HL-REF-01~03） ──
   await run(["ST-PB-13"], "点击关系线高亮关系线与两端表", async page => {
     const mkT = (id, x, y, fid) => ({
@@ -3518,10 +3668,15 @@ try {
     // WHEN：悬浮线中段（R-HOV-01）
     const mid = await canvasPoint(page, { x: 465, y: 190.5 });
     await page.mouse.move(mid.x, mid.y);
-    // THEN：tooltip 出现且文案为 源表.源字段 → 目标表.目标字段（R-HOV-02）
+    // THEN：tooltip 展示完整关系定义（#65 R-HOV-02），不再对旧单行文案做全串相等断言。
     const tip = page.locator('[data-testid="rel-hover-tooltip"]');
     await tip.waitFor({ timeout: 4_000 });
-    assert.equal(await tip.textContent(), "t1.f1 → t2.f2", "tooltip 必须为 源表.源字段 → 目标表.目标字段");
+    const tipText = (await tip.textContent()) ?? "";
+    assert.match(tipText, /未命名关系（r1）/);
+    assert.match(tipText, /t1\.f1 → t2\.f2/);
+    assert.match(tipText, /基数：1:N/);
+    assert.match(tipText, /ON DELETE：RESTRICT/);
+    assert.match(tipText, /若线条重叠，重复点击可切换关系/);
     // fix-issue-46（#46 R-HOV-03 B1）：tooltip 为画布容器左下角固定摘要区——
     // 同一命中下指针微动，tooltip 位置不变（R-PERF-HOV-01/02 抖动回归锚点）
     const box1 = await tip.boundingBox();

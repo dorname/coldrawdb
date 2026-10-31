@@ -2715,6 +2715,22 @@ pub fn FloatingControls(transform: RwSignal<Transform>, store: EditorStore) -> i
                 {move || format!("维度：{}", store.view_dimension.get().label())}
             </button>
             // fix-issues-38-41-canvas-interaction（issue #40，core-01 §5.16 R-FONT-01/02）：
+            // #65/#66 R-REL-LABEL-01：评审时展开全部关系标签；关闭时仍保留选中上下文标签。
+            <button
+                class="cdb-btn cdb-btn--ghost cdb-btn--small"
+                class:cdb-is-active=move || store.show_relation_labels.get()
+                data-testid="canvas-relation-labels"
+                title="显示全部关系标签；关闭时仅显示选中表/关系的上下文标签"
+                aria-pressed=move || store.show_relation_labels.get().to_string()
+                on:click=move |_| {
+                    crate::editor_core::set_relation_labels(
+                        &store,
+                        !store.show_relation_labels.get_untracked(),
+                    );
+                }
+            >
+                {move || format!("关系标签：{}", if store.show_relation_labels.get() { "开" } else { "关" })}
+            </button>
             // 画布标签字号倍率循环按钮（本机偏好 localStorage cdb.label-font-scale，
             // 不写图表文档、协作不同步、不进撤销栈；纯视图操作，只读可用）
             <button
@@ -6786,6 +6802,7 @@ pub fn Inspector(
     on_delete_area: Rc<dyn Fn(String)>,
     on_delete_note: Rc<dyn Fn(String)>,
     on_jump_to_table: Rc<dyn Fn(String)>,
+    on_select_reference: Rc<dyn Fn(String)>,
     read_only: Rc<dyn Fn() -> bool>,
 ) -> impl IntoView {
     let selected_table = create_memo(move |_| {
@@ -7087,6 +7104,12 @@ pub fn Inspector(
                             let on_set_comment = on_set_table_comment.clone();
                             let table_id_for_comment = table_id.clone();
                             let table_comment = t.comment.clone();
+                            let relation_details = table_relations_for(
+                                &table_id,
+                                &store.tables.get(),
+                                &store.references.get(),
+                            );
+                            let on_pick_relation = on_select_reference.clone();
                             view! {
                                 <div data-testid="inspector-table-form">
                                     <section class="cdb-panel-section">
@@ -7177,6 +7200,54 @@ pub fn Inspector(
                                                 }
                                             />
                                         </div>
+                                    </section>
+                                    <section
+                                        class="cdb-panel-section cdb-table-relations"
+                                        data-testid="inspector-table-relations"
+                                    >
+                                        <div class="cdb-panel-title">
+                                            <span>"关系"</span>
+                                            <span class="cdb-panel-tag">{relation_details.len()}</span>
+                                        </div>
+                                        {if relation_details.is_empty() {
+                                            view! { <p class="cdb-empty-hint">"当前表暂无关系"</p> }.into_view()
+                                        } else {
+                                            view! {
+                                                <div class="cdb-table-relations__list">
+                                                    <For
+                                                        each=move || relation_details.clone()
+                                                        key=|r| r.reference_id.clone()
+                                                        children=move |r| {
+                                                            let on_pick = on_pick_relation.clone();
+                                                            let rid = r.reference_id.clone();
+                                                            let direction = match r.direction {
+                                                                RelationDirection::Incoming => "入边",
+                                                                RelationDirection::Outgoing => "出边",
+                                                                RelationDirection::SelfLoop => "自环",
+                                                            };
+                                                            view! {
+                                                                <button
+                                                                    type="button"
+                                                                    class="cdb-table-relation"
+                                                                    data-testid={format!("inspector-table-relation-{}", r.reference_id)}
+                                                                    title="选中此关系并查看完整定义"
+                                                                    on:click=move |_| on_pick(rid.clone())
+                                                                >
+                                                                    <span class="cdb-table-relation__heading">
+                                                                        <span class="cdb-table-relation__direction">{direction}</span>
+                                                                        <strong>{r.name}</strong>
+                                                                    </span>
+                                                                    <span class="cdb-table-relation__endpoints">{r.endpoints}</span>
+                                                                    <span class="cdb-table-relation__meta">
+                                                                        {format!("基数 {} · ON DELETE {}", r.cardinality, r.on_delete)}
+                                                                    </span>
+                                                                </button>
+                                                            }
+                                                        }
+                                                    />
+                                                </div>
+                                            }.into_view()
+                                        }}
                                     </section>
                                     <section class="cdb-panel-section">
                                         <div class="cdb-panel-title">
@@ -8661,19 +8732,52 @@ pub struct RelatedTable {
 pub enum RelationDirection {
     Incoming,
     Outgoing,
+    SelfLoop,
 }
 
 /// feat-issue-50-listview-grouping-and-relations（issue #50）：关系类型存储值 → 显示标签。
 /// 值域对齐关系工具存储（"one_to_one"/"one_to_many"/"many_to_one"/"many_to_many"，
 /// 见 editor_panels CARDINALITY 常量）；已是显示标签（"1:N" 等）或未知值原样返回。
 pub fn cardinality_label(type_: &str) -> String {
-    match type_ {
-        "one_to_one" => "1:1".into(),
-        "one_to_many" => "1:N".into(),
-        "many_to_one" => "N:1".into(),
-        "many_to_many" => "N:M".into(),
-        other => other.to_string(),
-    }
+    crate::editor_core::relation_cardinality_label(type_)
+}
+
+/// #66：检查器中的每一条 reference 独立成行，不按对端表合并。
+#[derive(Clone, Debug, PartialEq)]
+pub struct TableRelationDetail {
+    pub reference_id: String,
+    pub name: String,
+    pub direction: RelationDirection,
+    pub endpoints: String,
+    pub cardinality: String,
+    pub on_delete: String,
+}
+
+pub fn table_relations_for(
+    table_id: &str,
+    tables: &[Table],
+    refs: &[Reference],
+) -> Vec<TableRelationDetail> {
+    refs.iter()
+        .filter(|r| r.start_table_id == table_id || r.end_table_id == table_id)
+        .map(|r| {
+            let direction = if r.start_table_id == table_id && r.end_table_id == table_id {
+                RelationDirection::SelfLoop
+            } else if r.start_table_id == table_id {
+                RelationDirection::Outgoing
+            } else {
+                RelationDirection::Incoming
+            };
+            TableRelationDetail {
+                reference_id: r.id.clone(),
+                name: crate::editor_core::relation_display_name(r),
+                direction,
+                endpoints: crate::editor_core::relation_endpoint_label(tables, r),
+                cardinality: cardinality_label(&r.type_),
+                on_delete: r.on_delete.clone(),
+            }
+        })
+        .collect()
 }
 
 /// feat-issue-50-listview-grouping-and-relations（issue #50）：构造当前表的关联表清单。
@@ -13044,6 +13148,16 @@ pub fn AppRoot(
         }
     });
 
+    // #66：表检查器关系明细与画布点线共用同一 SelectionKind::Reference 通路。
+    let on_inspector_reference_pick = {
+        let selection = selection.clone();
+        let inspector_open = inspector_open.clone();
+        Rc::new(move |ref_id: String| {
+            selection.set(SelectionKind::Reference(ref_id));
+            inspector_open.set(true);
+        })
+    };
+
     // relation-inspector-and-ddl-io：点击连线 → 选中该关系 + 打开 Inspector（ST-PB-03）
     // 不再弹详情模态：详情与删除入口统一在 Inspector 关系面板
     let on_reference_pick: Option<Box<dyn Fn(String) + 'static>> = {
@@ -13918,6 +14032,7 @@ pub fn AppRoot(
                     />
                     <Canvas
                         store=store.clone()
+                        selection=selection
                         transform=canvas_transform
                         read_only=share_mode
                         remote_presence=remote_presence
@@ -14059,6 +14174,7 @@ pub fn AppRoot(
                     on_delete_area=on_delete_area.clone()
                     on_delete_note=on_delete_note.clone()
                     on_jump_to_table=on_jump_to_table.clone()
+                    on_select_reference=on_inspector_reference_pick.clone()
                     read_only=inspector_read_only.clone()
                 />
                 <RoomPanel
@@ -20026,6 +20142,44 @@ mod tests_ut_mm_28 {
         assert_eq!(cardinality_label("many_to_one"), "N:1");
         assert_eq!(cardinality_label("1:N"), "1:N", "已是显示标签 → 原样");
         assert_eq!(cardinality_label(""), "", "空值原样返回");
+    }
+
+    #[test]
+    fn test_table_relations_for_ut_pb_34() {
+        let tables = vec![
+            make_table_for_test("users", 1, "INT"),
+            make_table_for_test("orders", 1, "INT"),
+            make_table_for_test("logs", 1, "INT"),
+        ];
+        let mut refs = vec![
+            make_ref_for_test("r_in", "t_users", "t_orders", "one_to_many"),
+            make_ref_for_test("r_out", "t_orders", "t_logs", "many_to_one"),
+            make_ref_for_test("r_self", "t_orders", "t_orders", "one_to_one"),
+            make_ref_for_test("r_out_2", "t_orders", "t_logs", "many_to_many"),
+        ];
+        for (index, reference) in refs.iter_mut().enumerate() {
+            reference.start_field_id = "f0".into();
+            reference.end_field_id = "f0".into();
+            reference.on_delete = if index % 2 == 0 { "CASCADE" } else { "RESTRICT" }.into();
+        }
+        refs[2].name.clear();
+
+        let details = table_relations_for("t_orders", &tables, &refs);
+        assert_eq!(details.len(), 4, "UT-PB-34: 入边/出边/自环及同对端第二条均保留");
+        assert_eq!(
+            details.iter().map(|r| r.reference_id.as_str()).collect::<Vec<_>>(),
+            vec!["r_in", "r_out", "r_self", "r_out_2"],
+            "UT-PB-34: 顺序必须与 references 一致"
+        );
+        assert_eq!(details[0].direction, RelationDirection::Incoming);
+        assert_eq!(details[1].direction, RelationDirection::Outgoing);
+        assert_eq!(details[2].direction, RelationDirection::SelfLoop);
+        assert_eq!(details[0].endpoints, "users.f0 → orders.f0");
+        assert_eq!(details[0].cardinality, "1:N");
+        assert_eq!(details[1].cardinality, "N:1");
+        assert_eq!(details[0].on_delete, "CASCADE");
+        assert_eq!(details[2].name, "未命名关系（r_self）");
+        assert!(table_relations_for("t_alone", &tables, &refs).is_empty());
     }
 
     #[test]

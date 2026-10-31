@@ -903,6 +903,7 @@ mod leptos_canvas {
     #[component]
     pub fn Canvas(
         store: EditorStore,
+        selection: RwSignal<crate::editor_panels::SelectionKind>,
         transform: RwSignal<Transform>,
         read_only: bool,
         remote_presence: RwSignal<Vec<RemotePresence>>,
@@ -949,6 +950,17 @@ mod leptos_canvas {
         let canvas_ref = create_node_ref::<html::Canvas>();
         let selected_id = create_rw_signal(None::<String>);
         let selected_ref_id = create_rw_signal(None::<String>);
+        // #66 R-REL-LIST-04：Inspector 关系明细与画布点线共用外部 SelectionKind，
+        // 反向同步到内部高亮信号，确保不经过 canvas pointerdown 也能立即高亮。
+        create_effect(move |_| {
+            let external = match selection.get() {
+                crate::editor_panels::SelectionKind::Reference(id) => Some(id),
+                _ => None,
+            };
+            if selected_ref_id.get_untracked() != external {
+                selected_ref_id.set(external);
+            }
+        });
         let selected_area_id = create_rw_signal(None::<String>);
         let selected_note_id = create_rw_signal(None::<String>);
         let drag_state = create_rw_signal(None::<DragState>);
@@ -1263,6 +1275,8 @@ mod leptos_canvas {
             // fix-issues-38-41-canvas-interaction（issue #40，R-FONT-02）：订阅字号倍率——
             // 切档即重绘（倍率经精灵指纹混入触发重光栅）
             let label_font_scale = store.label_font_scale.get().factor();
+            // #65/#66：切换全局关系标签后立即重绘；上下文标签仍由选中态驱动。
+            let show_relation_labels = store.show_relation_labels.get();
 
             let width = canvas.width() as f64;
             let height = canvas.height() as f64;
@@ -1304,6 +1318,7 @@ mod leptos_canvas {
                                     // R-ARESZ-05：只读模式不渲染 resize 手柄
                                     !read_only,
                                     label_font_scale,
+                                    show_relation_labels,
                                 );
                             });
                         });
@@ -1431,6 +1446,7 @@ mod leptos_canvas {
             let _ = canvas.set_pointer_capture(pointer_id);
         };
 
+        let on_reference_pick_up = on_reference_pick.clone();
         let on_pointerdown = {
             let live = live.clone();
             let on_select = on_select.clone();
@@ -2701,6 +2717,7 @@ mod leptos_canvas {
             let ghost = ghost.clone();
             let schedule_paint = schedule_paint.clone();
             let on_field_pick = on_field_pick.clone();
+            let on_reference_pick = on_reference_pick_up.clone();
             let on_relation_drop = on_relation_drop.clone();
             let on_relation_drag_cancel = on_relation_drag_cancel.clone();
             let on_table_drop = on_table_drop.clone();
@@ -2784,7 +2801,30 @@ mod leptos_canvas {
                     drag_state.set(None);
                     schedule_paint();
                     if !rel.moved {
-                        if let Some(cb) = on_field_pick.as_ref() {
+                        // R-HIT-06：连接点短按若同时命中已有关系，优先完成关系选择；
+                        // 真正拖动仍走下方建关系通路，未命中关系时保留字段短按语义。
+                        let refs = store.references.get_untracked();
+                        if let Some(ref_id) = super::hit_test_reference_tier(
+                            &tables,
+                            &refs,
+                            diag_x,
+                            diag_y,
+                            hit_tier,
+                            comment_mode,
+                            t_now.zoom,
+                            selected_ref_id.get_untracked().as_deref(),
+                        ) {
+                            selected_id.set(None);
+                            selected_ref_id.set(Some(ref_id.clone()));
+                            selected_area_id.set(None);
+                            selected_note_id.set(None);
+                            selected_table_ids.set(Vec::new());
+                            selected_note_ids.set(Vec::new());
+                            selected_area_ids.set(Vec::new());
+                            if let Some(cb) = on_reference_pick.as_ref() {
+                                cb(ref_id);
+                            }
+                        } else if let Some(cb) = on_field_pick.as_ref() {
                             cb(rel.start_table_id, rel.start_field_id);
                         }
                         return;
@@ -4199,6 +4239,281 @@ pub fn rubber_band_path(x1: f64, y1: f64, x2: f64, y2: f64) -> String {
     .to_svg_d()
 }
 
+// ─── Relationship labels (#65/#66) ──────────────────────────────────────────
+
+pub type CanvasRect = (f64, f64, f64, f64);
+
+pub fn relation_label_should_show(show_all: bool, selected: bool, related: bool) -> bool {
+    show_all || selected || related
+}
+
+pub fn relation_label_priority(selected: bool, related: bool) -> u8 {
+    if selected { 0 } else if related { 1 } else { 2 }
+}
+
+pub fn relation_label_lines(tables: &[Table], reference: &Reference) -> (String, String) {
+    (
+        format!(
+            "{} · {}",
+            crate::editor_core::relation_display_name(reference),
+            crate::editor_core::relation_cardinality_label(&reference.type_),
+        ),
+        crate::editor_core::relation_endpoint_label(tables, reference),
+    )
+}
+
+pub fn rects_overlap(a: CanvasRect, b: CanvasRect) -> bool {
+    a.0 < b.0 + b.2 && a.0 + a.2 > b.0 && a.1 < b.1 + b.3 && a.1 + a.3 > b.1
+}
+
+fn rect_inside(inner: CanvasRect, outer: CanvasRect) -> bool {
+    inner.0 >= outer.0
+        && inner.1 >= outer.1
+        && inner.0 + inner.2 <= outer.0 + outer.2
+        && inner.1 + inner.3 <= outer.1 + outer.3
+}
+
+/// 以路径中点为中心上下交替寻找位置；所有候选均冲突时返回 None。
+pub fn choose_relation_label_rect(
+    anchor: (f64, f64),
+    width: f64,
+    height: f64,
+    zoom: f64,
+    viewport: CanvasRect,
+    obstacles: &[CanvasRect],
+) -> Option<CanvasRect> {
+    let safe_zoom = zoom.max(0.01);
+    for offset_px in [-18.0, 18.0, -44.0, 44.0, -70.0, 70.0, 0.0] {
+        let rect = (
+            anchor.0 - width / 2.0,
+            anchor.1 + offset_px / safe_zoom - height / 2.0,
+            width,
+            height,
+        );
+        if rect_inside(rect, viewport) && !obstacles.iter().any(|o| rects_overlap(rect, *o)) {
+            return Some(rect);
+        }
+    }
+    None
+}
+
+/// 正交折线按实际总长度取中点，而非简单取中间顶点。
+pub fn polyline_midpoint(points: &[(f64, f64)]) -> Option<(f64, f64)> {
+    if points.is_empty() {
+        return None;
+    }
+    if points.len() == 1 {
+        return Some(points[0]);
+    }
+    let lengths: Vec<f64> = points
+        .windows(2)
+        .map(|segment| {
+            let (a, b) = (segment[0], segment[1]);
+            ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt()
+        })
+        .collect();
+    let total: f64 = lengths.iter().sum();
+    if total <= f64::EPSILON {
+        return Some(points[0]);
+    }
+    let mut remaining = total / 2.0;
+    for (index, length) in lengths.iter().enumerate() {
+        if remaining <= *length {
+            let ratio = if *length <= f64::EPSILON { 0.0 } else { remaining / *length };
+            let (a, b) = (points[index], points[index + 1]);
+            return Some((a.0 + (b.0 - a.0) * ratio, a.1 + (b.1 - a.1) * ratio));
+        }
+        remaining -= *length;
+    }
+    points.last().copied()
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn relation_label_anchor(
+    from: &Table,
+    from_field_id: &str,
+    to: &Table,
+    to_field_id: &str,
+    line_type: &str,
+    tier: LodTier,
+    comment_mode: CommentDisplay,
+    zoom: f64,
+    label_scale: f64,
+) -> Option<(f64, f64)> {
+    match effective_line_type(line_type) {
+        "orthogonal" => polyline_midpoint(&calc_orthogonal_path_tier_with(
+            from, from_field_id, to, to_field_id, tier, comment_mode, zoom, label_scale,
+        )),
+        "straight" => {
+            let (x1, y1, x2, y2) = calc_straight_path_tier_with(
+                from, from_field_id, to, to_field_id, tier, comment_mode, zoom, label_scale,
+            );
+            Some(((x1 + x2) / 2.0, (y1 + y2) / 2.0))
+        }
+        _ => Some(bezier_point(
+            &calc_path_tier_with(
+                from, from_field_id, to, to_field_id, tier, comment_mode, zoom, label_scale,
+            ),
+            0.5,
+        )),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_relation_labels(
+    ctx: &CanvasRenderingContext2d,
+    tables: &[Table],
+    refs: &[Reference],
+    table_map: &HashMap<&str, &Table>,
+    selected_id: Option<&str>,
+    selected_table_ids: &[String],
+    selected_ref_id: Option<&str>,
+    comment_mode: CommentDisplay,
+    tier: LodTier,
+    zoom: f64,
+    label_scale: f64,
+    show_all: bool,
+    palette: &CanvasPalette,
+    viewport: CanvasRect,
+) {
+    let mut candidates = Vec::new();
+    for (index, reference) in refs.iter().enumerate() {
+        let (Some(from), Some(to)) = (
+            table_map.get(reference.start_table_id.as_str()),
+            table_map.get(reference.end_table_id.as_str()),
+        ) else {
+            continue;
+        };
+        let from_rect = table_aabb_with(from, comment_mode, zoom, label_scale, tier);
+        let to_rect = table_aabb_with(to, comment_mode, zoom, label_scale, tier);
+        if !aabb_intersects(from_rect, viewport) && !aabb_intersects(to_rect, viewport) {
+            continue;
+        }
+        let selected = selected_ref_id == Some(reference.id.as_str());
+        let related = relation_is_related(
+            &reference.id,
+            &reference.start_table_id,
+            &reference.end_table_id,
+            selected_table_ids,
+            selected_id,
+            selected_ref_id,
+        );
+        if !relation_label_should_show(show_all, selected, related) {
+            continue;
+        }
+        if let Some(anchor) = relation_label_anchor(
+            from,
+            &reference.start_field_id,
+            to,
+            &reference.end_field_id,
+            &reference.line_type,
+            tier,
+            comment_mode,
+            zoom,
+            label_scale,
+        ) {
+            candidates.push((relation_label_priority(selected, related), index, reference, anchor));
+        }
+    }
+    candidates.sort_by_key(|(priority, index, _, _)| (*priority, *index));
+
+    let table_rects: Vec<CanvasRect> = tables
+        .iter()
+        .map(|table| table_aabb_with(table, comment_mode, zoom, label_scale, tier))
+        .filter(|rect| aabb_intersects(*rect, viewport))
+        .collect();
+    let mut placed: Vec<CanvasRect> = Vec::new();
+    let mut visible_ids = Vec::new();
+    let mut skipped_ids = Vec::new();
+    let safe_zoom = zoom.max(0.01);
+    let font_screen = (12.0 * label_scale).max(10.0);
+    let font_world = font_screen / safe_zoom;
+    let padding = 6.0 / safe_zoom;
+    let line_gap = 4.0 / safe_zoom;
+    let font_family = resolve_canvas_font_family(CANVAS_FONT, CANVAS_FONT_MONO);
+
+    for (_, _, reference, anchor) in candidates {
+        let (title, endpoints) = relation_label_lines(tables, reference);
+        let _ = ctx.set_font(&dpr_font(650, font_world, &font_family));
+        let title = truncate_to_width(ctx, &title, 228.0 / safe_zoom);
+        let title_width = ctx.measure_text(&title).map(|m| m.width()).unwrap_or(0.0);
+        let _ = ctx.set_font(&dpr_font(500, font_world, &font_family));
+        let endpoints = truncate_to_width(ctx, &endpoints, 228.0 / safe_zoom);
+        let endpoint_width = ctx.measure_text(&endpoints).map(|m| m.width()).unwrap_or(0.0);
+        let width = (title_width.max(endpoint_width) + padding * 2.0).min(240.0 / safe_zoom);
+        let height = font_world * 2.0 + line_gap + padding * 2.0;
+        let obstacles: Vec<CanvasRect> = table_rects
+            .iter()
+            .chain(placed.iter())
+            .copied()
+            .collect();
+        let Some(rect) = choose_relation_label_rect(
+            anchor, width, height, safe_zoom, viewport, &obstacles,
+        ) else {
+            skipped_ids.push(reference.id.clone());
+            continue;
+        };
+
+        ctx.save();
+        ctx.set_global_alpha(0.96);
+        let _ = ctx.set_fill_style_str(palette.table_bg);
+        let _ = ctx.set_stroke_style_str(if selected_ref_id == Some(reference.id.as_str()) {
+            palette.selected
+        } else {
+            palette.table_border
+        });
+        ctx.set_line_width(1.0 / safe_zoom);
+        ctx.begin_path();
+        round_rect(ctx, rect.0, rect.1, rect.2, rect.3, 6.0 / safe_zoom);
+        ctx.fill();
+        ctx.stroke();
+        let _ = ctx.set_text_align("left");
+        let _ = ctx.set_font(&dpr_font(650, font_world, &font_family));
+        let _ = ctx.set_fill_style_str(palette.text_strong);
+        let _ = ctx.fill_text(&title, rect.0 + padding, rect.1 + padding + font_world);
+        let _ = ctx.set_font(&dpr_font(500, font_world, &font_family));
+        let _ = ctx.set_fill_style_str(palette.text_muted);
+        let _ = ctx.fill_text(
+            &endpoints,
+            rect.0 + padding,
+            rect.1 + padding + font_world * 2.0 + line_gap,
+        );
+        ctx.restore();
+        placed.push(rect);
+        visible_ids.push(reference.id.clone());
+    }
+    update_relation_label_probe(show_all, &visible_ids, &skipped_ids);
+}
+
+#[cfg(target_arch = "wasm32")]
+fn update_relation_label_probe(show_all: bool, visible_ids: &[String], skipped_ids: &[String]) {
+    fn ids_json(ids: &[String]) -> String {
+        format!(
+            "[{}]",
+            ids.iter()
+                .map(|id| format!("\"{}\"", id.replace('\\', "\\\\").replace('"', "\\\"")))
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+    }
+    if let Some(window) = web_sys::window() {
+        let json = format!(
+            "{{\"show_all\":{},\"visible_ids\":{},\"skipped_ids\":{}}}",
+            show_all,
+            ids_json(visible_ids),
+            ids_json(skipped_ids),
+        );
+        let _ = js_sys::Reflect::set(
+            window.unchecked_ref(),
+            &wasm_bindgen::JsValue::from_str("__cdb_relation_label_probe"),
+            &wasm_bindgen::JsValue::from_str(&json),
+        );
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn update_relation_label_probe(_: bool, _: &[String], _: &[String]) {}
+
 // ─── Pure rendering functions ────────────────────────────────────────────────
 
 /// Main draw dispatcher — clears and redraws all layers.
@@ -4247,6 +4562,8 @@ pub fn draw_canvas(
     // fix-issues-38-41-canvas-interaction（issue #40，R-FONT-01/03）：画布标签字号倍率
     // （本机视图偏好；作用于表名/字段名/注释，含 10px 屏幕下限钳制）
     label_font_scale: f64,
+    // #65/#66 R-REL-LABEL-01：是否展开全部关系标签；关闭时仍绘制选中上下文。
+    show_relation_labels: bool,
 ) {
     bump_paint_counter();
 
@@ -4425,6 +4742,24 @@ pub fn draw_canvas(
             draw_table(ctx, &visual, is_sel, palette, t.zoom, comment_mode, frame_tier, &fk_fields, label_font_scale);
         }
     }
+
+    // #65/#66：标签位于表卡和关系线之上；真实绘制集合同步到探针。
+    draw_relation_labels(
+        ctx,
+        tables,
+        refs,
+        &table_map,
+        selected_id,
+        selected_table_ids,
+        selected_ref_id,
+        comment_mode,
+        frame_tier,
+        t.zoom,
+        label_font_scale,
+        show_relation_labels,
+        palette,
+        vp,
+    );
 
     for note in collect_visible_notes(notes, vp) {
         let is_sel = table_visually_selected(note.id.as_str(), selected_note_id, selected_note_ids);
@@ -7022,40 +7357,27 @@ pub fn hit_test_reference(tables: &[Table], refs: &[Reference], x: f64, y: f64, 
     )
 }
 
-/// #35 R-LOD-08：tier 感知命中检测——拓扑档线几何为表级锚定，命中必须与绘制同口径
-/// （否则拓扑档点击可见连线不命中）。
-/// fix-issues-42-44（#43 R-HOV-02）：悬浮摘要文案纯函数——
-/// 详情档 `源表.源字段 → 目标表.目标字段`；拓扑档 `源表 → 目标表`。
-/// #60：追加固定叠线轮选提示，不改变 hover 信号与命中状态。
-/// ref/端点表缺失返回 None（tooltip 不渲染）。
+/// #65 R-HOV-02：完整关系定义；字段/表缺失时由共用显示函数回退到稳定 id。
+/// 保留 tier 参数以维持既有调用与测试接口，但拓扑档同样展示完整字段对。
 pub fn relation_tooltip_text(
     tables: &[Table],
     refs: &[Reference],
     ref_id: &str,
-    tier: LodTier,
+    _tier: LodTier,
 ) -> Option<String> {
-    let r = refs.iter().find(|r| r.id == ref_id)?;
-    let from = tables.iter().find(|t| t.id == r.start_table_id)?;
-    let to = tables.iter().find(|t| t.id == r.end_table_id)?;
-    let summary = match tier {
-        LodTier::Topology => format!("{} → {}", from.name, to.name),
-        LodTier::Detail => {
-            let sf = from
-                .fields
-                .iter()
-                .find(|f| f.id == r.start_field_id)
-                .map(|f| f.name.as_str())
-                .unwrap_or("");
-            let tf = to
-                .fields
-                .iter()
-                .find(|f| f.id == r.end_field_id)
-                .map(|f| f.name.as_str())
-                .unwrap_or("");
-            format!("{}.{} → {}.{}", from.name, sf, to.name, tf)
-        }
+    let reference = refs.iter().find(|r| r.id == ref_id)?;
+    let on_delete = if reference.on_delete.trim().is_empty() {
+        "未设置"
+    } else {
+        reference.on_delete.as_str()
     };
-    Some(format!("{} · 若线条重叠，重复点击可切换关系", summary))
+    Some(format!(
+        "{}\n{}\n基数：{} · ON DELETE：{}\n若线条重叠，重复点击可切换关系",
+        crate::editor_core::relation_display_name(reference),
+        crate::editor_core::relation_endpoint_label(tables, reference),
+        crate::editor_core::relation_cardinality_label(&reference.type_),
+        on_delete,
+    ))
 }
 
 /// #51 / R-HIT-05：默认选择工具下，表与关系同时命中时是否优先关系。
@@ -8193,24 +8515,73 @@ mod tests {
         );
     }
 
-    /// UT-PB-20（fix-issues-42-44 / #43 R-HOV-02）：tooltip 文案纯函数
+    /// UT-PB-20（#43/#65 R-HOV-02）：完整 tooltip 文案纯函数
     #[test]
     fn test_relation_tooltip_text_ut_pb_20() {
         let (tables, refs) = ut_mm_33_fixture();
-        // 详情档：源表.源字段 → 目标表.目标字段
-        assert_eq!(
-            relation_tooltip_text(&tables, &refs, "r1", LodTier::Detail),
-            Some("t1.f1 → t2.f2 · 若线条重叠，重复点击可切换关系".to_string()),
-            "UT-PB-20: 详情档文案必须为 源表.源字段 → 目标表.目标字段"
-        );
-        // 拓扑档：至少 源表 → 目标表
-        assert_eq!(
-            relation_tooltip_text(&tables, &refs, "r1", LodTier::Topology),
-            Some("t1 → t2 · 若线条重叠，重复点击可切换关系".to_string()),
-            "UT-PB-20: 拓扑档文案必须为 源表 → 目标表"
-        );
-        // 未知 ref → None（不渲染）
+        for tier in [LodTier::Detail, LodTier::Topology] {
+            let text = relation_tooltip_text(&tables, &refs, "r1", tier)
+                .expect("UT-PB-20: 已知关系必须产生摘要");
+            assert!(text.contains(&crate::editor_core::relation_display_name(&refs[0])));
+            assert!(text.contains("t1.f1 → t2.f2"), "UT-PB-20: 两档均展示完整字段对");
+            assert!(text.contains("基数：1:N"), "UT-PB-20: 显示化基数");
+            assert!(text.contains("ON DELETE：RESTRICT"), "UT-PB-20: 级联策略");
+            assert!(text.contains("若线条重叠，重复点击可切换关系"));
+        }
         assert_eq!(relation_tooltip_text(&tables, &refs, "nope", LodTier::Detail), None);
+    }
+
+    /// UT-PB-35（#65/#66）：偏好、内容、显隐、路径中点与碰撞布局。
+    #[test]
+    fn test_relation_labels_ut_pb_35() {
+        use crate::editor_core::{relation_labels_as_str, relation_labels_from_stored};
+        assert!(!relation_labels_from_stored(None));
+        assert!(!relation_labels_from_stored(Some("invalid")));
+        assert!(relation_labels_from_stored(Some("on")));
+        assert_eq!(relation_labels_as_str(false), "off");
+        assert_eq!(relation_labels_as_str(true), "on");
+
+        let (tables, refs) = ut_mm_33_fixture();
+        let (title, endpoints) = relation_label_lines(&tables, &refs[0]);
+        assert!(title.contains(&crate::editor_core::relation_display_name(&refs[0])));
+        assert!(title.contains("1:N"));
+        assert_eq!(endpoints, "t1.f1 → t2.f2");
+        assert!(relation_label_should_show(true, false, false));
+        assert!(relation_label_should_show(false, true, false));
+        assert!(relation_label_should_show(false, false, true));
+        assert!(!relation_label_should_show(false, false, false));
+        assert!(relation_label_priority(true, true) < relation_label_priority(false, true));
+        assert!(relation_label_priority(false, true) < relation_label_priority(false, false));
+
+        let bezier_path = calc_path_tier_with(
+            &tables[0], "f1", &tables[1], "f2", LodTier::Detail,
+            CommentDisplay::NameComment, 1.0, 1.0,
+        );
+        let bezier_anchor = relation_label_anchor(
+            &tables[0], "f1", &tables[1], "f2", "bezier", LodTier::Detail,
+            CommentDisplay::NameComment, 1.0, 1.0,
+        ).expect("UT-PB-35: 贝塞尔中点存在");
+        assert_eq!(bezier_anchor, bezier_point(&bezier_path, 0.5));
+        assert_eq!(polyline_midpoint(&[(0.0, 0.0), (30.0, 0.0), (30.0, 10.0)]), Some((20.0, 0.0)));
+        let (x1, y1, x2, y2) = calc_straight_path(&tables[0], "f1", &tables[1], "f2");
+        let straight = relation_label_anchor(
+            &tables[0], "f1", &tables[1], "f2", "straight", LodTier::Detail,
+            CommentDisplay::NameComment, 1.0, 1.0,
+        ).expect("UT-PB-35: 直线中点存在");
+        assert_eq!(straight, ((x1 + x2) / 2.0, (y1 + y2) / 2.0));
+
+        assert!(rects_overlap((0.0, 0.0, 20.0, 20.0), (10.0, 10.0, 20.0, 20.0)));
+        assert!(rects_overlap((0.0, 0.0, 50.0, 50.0), (10.0, 10.0, 5.0, 5.0)));
+        assert!(!rects_overlap((0.0, 0.0, 10.0, 10.0), (20.0, 20.0, 5.0, 5.0)));
+        let viewport = (0.0, 0.0, 200.0, 200.0);
+        assert!(choose_relation_label_rect((100.0, 100.0), 40.0, 20.0, 1.0, viewport, &[]).is_some());
+        assert_eq!(
+            choose_relation_label_rect(
+                (100.0, 100.0), 40.0, 20.0, 1.0, viewport, &[viewport],
+            ),
+            None,
+            "UT-PB-35: 全部候选冲突时省略普通标签，不叠字"
+        );
     }
 
     /// UT-PB-21（fix-issue-46 / #46 R-PERF-HOV）：hover 守卫/信号瘦身/角落定位/rAF 节流锚点
@@ -9983,7 +10354,7 @@ mod tests {
         assert!(src.contains("fn draw_endpoint_notation"), "crow's foot 端点函数必须存在");
         // concat! 避免断言字面量自匹配
         assert!(!src.contains(concat!("fn draw_arrow", "_head")), "旧箭头端点必须移除");
-        let rel_call = src.split("fn draw_relation").nth(1).expect("draw_relation 必须存在");
+        let rel_call = src.split("fn draw_relation(").nth(1).expect("draw_relation 必须存在");
         assert!(
             rel_call.contains("draw_endpoint_notation"),
             "UT-PE-VIS-01: draw_relation 必须走 crow's foot 端点族"

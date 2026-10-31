@@ -273,7 +273,7 @@ fn ut_pb_11_relation_color_render_contract() {
     );
 
     // 2) 渲染锚点：draw_relation 经 relation_stroke_color 取色
-    let bez_idx = RENDER.find("fn draw_relation").expect("draw_relation 存在");
+    let bez_idx = RENDER.find("fn draw_relation(").expect("draw_relation 存在");
     let bez_block = &RENDER[bez_idx..bez_idx + 2500.min(RENDER.len() - bez_idx)];
     assert!(
         bez_block.contains("relation_stroke_color(ref_color, source_table_color, palette.relation)"),

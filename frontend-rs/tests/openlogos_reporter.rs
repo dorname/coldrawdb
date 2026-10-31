@@ -306,6 +306,8 @@ const UT_PASS_IDS: &[&str] = &[
     // fix-relation-precise-pick：叠线簇轮选
     "UT-PB-32",
     "UT-PB-33", // fix-dense-relation-hit-discoverability: 详情/拓扑完全重合路径逐条轮选
+    "UT-PB-34", // fix-related-relation-identification: 当前表入边/出边/自环明细
+    "UT-PB-35", // fix-related-relation-identification: 标签偏好、内容、路径中点与碰撞避让
     // ST-PB-16 e2e 由 scripts/test-spec-parity-d.mjs 真实运行，reporter 声明式兜底
     "ST-PB-16",
     // fix-issue-48（issue #48 R-LOD-10）：表维度卡宽上限放宽

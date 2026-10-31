@@ -4774,13 +4774,72 @@ textarea {
   left: 12px;
   bottom: 12px;
   z-index: 60;
-  padding: 4px 10px;
-  border-radius: 6px;
-  background: rgba(24, 27, 34, 0.92);
+  max-width: min(520px, calc(100% - 24px));
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(24, 27, 34, 0.94);
   color: #e5e9f0;
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.55;
   pointer-events: none; /* 不拦截指针，避免抖动 */
-  white-space: nowrap;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+/* #66：当前表关系明细。整行按钮让方向、字段对和约束一眼可扫读。 */
+.cdb-table-relations__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cdb-table-relation {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--cdb-color-border-strong);
+  border-radius: 8px;
+  background: var(--cdb-color-surface);
+  color: var(--cdb-color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cdb-table-relation:hover,
+.cdb-table-relation:focus-visible {
+  border-color: var(--cdb-color-primary);
+  background: var(--cdb-color-primary-soft);
+  outline: none;
+}
+.cdb-table-relation__heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.cdb-table-relation__heading strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cdb-table-relation__direction {
+  flex: none;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--cdb-color-primary-soft);
+  color: var(--cdb-color-primary);
+  font-size: 11px;
+}
+.cdb-table-relation__endpoints {
+  color: var(--cdb-color-text);
+  font-family: var(--cdb-font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.cdb-table-relation__meta {
+  color: var(--cdb-color-text-muted);
+  font-size: 11px;
 }

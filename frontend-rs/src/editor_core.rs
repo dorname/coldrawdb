@@ -514,6 +514,80 @@ pub fn set_label_font_scale(store: &EditorStore, scale: LabelFontScale) {
     }
 }
 
+/// 关系名、字段对与基数在画布标签、悬停和检查器中共用同一显示口径。
+pub fn relation_display_name(reference: &Reference) -> String {
+    if reference.name.trim().is_empty() {
+        format!("未命名关系（{}）", reference.id)
+    } else {
+        reference.name.clone()
+    }
+}
+
+pub fn relation_cardinality_label(type_: &str) -> String {
+    match type_ {
+        "one_to_one" => "1:1".into(),
+        "one_to_many" => "1:N".into(),
+        "many_to_one" => "N:1".into(),
+        "many_to_many" => "N:M".into(),
+        other => other.to_string(),
+    }
+}
+
+pub fn relation_endpoint_label(tables: &[Table], reference: &Reference) -> String {
+    let endpoint = |table_id: &str, field_id: &str| {
+        let table = tables.iter().find(|t| t.id == table_id);
+        let table_name = table.map(|t| t.name.as_str()).unwrap_or(table_id);
+        let field_name = table
+            .and_then(|t| t.fields.iter().find(|f| f.id == field_id))
+            .map(|f| f.name.as_str())
+            .unwrap_or(field_id);
+        format!("{}.{}", table_name, field_name)
+    };
+    format!(
+        "{} → {}",
+        endpoint(&reference.start_table_id, &reference.start_field_id),
+        endpoint(&reference.end_table_id, &reference.end_field_id),
+    )
+}
+
+/// #65/#66 R-REL-LABEL-01：关系标签本机视图偏好，不写入图表文档。
+pub const RELATION_LABELS_STORAGE_KEY: &str = "cdb.relation-labels";
+
+/// 缺省和非法存储值均回落关闭，避免升级后突然改变既有画布密度。
+pub fn relation_labels_from_stored(stored: Option<&str>) -> bool {
+    matches!(stored, Some("on"))
+}
+
+pub fn relation_labels_as_str(enabled: bool) -> &'static str {
+    if enabled { "on" } else { "off" }
+}
+
+pub fn initial_relation_labels() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let stored = web_sys::window()
+            .and_then(|w| w.local_storage().ok().flatten())
+            .and_then(|s| s.get_item(RELATION_LABELS_STORAGE_KEY).ok().flatten());
+        relation_labels_from_stored(stored.as_deref())
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        false
+    }
+}
+
+pub fn set_relation_labels(store: &EditorStore, enabled: bool) {
+    store.show_relation_labels.set(enabled);
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(local) = web_sys::window()
+            .and_then(|w| w.local_storage().ok().flatten())
+        {
+            let _ = local.set_item(RELATION_LABELS_STORAGE_KEY, relation_labels_as_str(enabled));
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct EditorStore {
     pub tables: RwSignal<Vec<Table>>,
@@ -533,6 +607,8 @@ pub struct EditorStore {
     /// 画布表/字段维度（视图偏好，不落库 diagram 数据、不进 CommandStack）。
     /// 初值读 localStorage `cdb.view-dimension`，缺省/非法回落 `Field`（字段维度）。
     pub view_dimension: RwSignal<ViewDimension>,
+    /// #65/#66：关系标签本机视图偏好；上下文标签不受此开关限制。
+    pub show_relation_labels: RwSignal<bool>,
     /// fix-issues-38-41-canvas-interaction（issue #40，R-FONT-01）：画布标签字号倍率
     /// （本机视图偏好；不落库、不进撤销栈、不触发保存）。
     pub label_font_scale: RwSignal<LabelFontScale>,
@@ -645,6 +721,7 @@ impl EditorStore {
             dictionaries: create_rw_signal(Vec::new()),
             comment_display: create_rw_signal(initial_comment_display()),
             view_dimension: create_rw_signal(initial_view_dimension()),
+            show_relation_labels: create_rw_signal(initial_relation_labels()),
             label_font_scale: create_rw_signal(initial_label_font_scale()),
         }
     }
