@@ -7,6 +7,6 @@
 
 ## [code] 代码实现
 
-- [ ] 修改 `frontend-rs/src/editor_render.rs`，将精确有效几何混入精灵指纹并暴露选中环/精灵尺寸探针
-- [ ] 更新 `frontend-rs/scripts/test-spec-parity-d.mjs`，覆盖缩放、字号、注释模式与维度的几何一致性
-- [ ] 更新 `frontend-rs/tests/openlogos_reporter.rs`，登记 UT-CR-SPRITE-02，运行定向与全量测试
+- [x] 修改 `frontend-rs/src/editor_render.rs`，将精确有效几何混入精灵指纹并暴露选中环/精灵尺寸探针
+- [x] 更新 `frontend-rs/scripts/test-spec-parity-d.mjs`，覆盖缩放、字号、注释模式与维度的几何一致性
+- [x] 更新 `frontend-rs/tests/openlogos_reporter.rs`，登记 UT-CR-SPRITE-02，运行定向与全量测试

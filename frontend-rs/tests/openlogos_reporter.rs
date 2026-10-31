@@ -50,6 +50,7 @@ const UT_PASS_IDS: &[&str] = &[
     // perf-canvas-drag-smoothness：§5.6 R-PERF-07~11（editor_render.rs 单测；
     // ST-CR-GHOST-01 由 scripts/test-canvas-perf.mjs e2e 上报）
     "UT-CR-SPRITE-01",
+    "UT-CR-SPRITE-02", // fix-selection-ring-sprite-geometry: 同粗字体桶不同精确几何必须失效
     "UT-CR-GUARD-01",
     "UT-CR-DPR-01",
     "UT-CR-GHOST-01",

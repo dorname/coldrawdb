@@ -4506,6 +4506,47 @@ fn bump_paint_counter() {
 #[cfg(not(target_arch = "wasm32"))]
 fn bump_paint_counter() {}
 
+/// ST-CR-SPRITE-02: expose the actual cached sprite body and live selection geometry.
+#[cfg(target_arch = "wasm32")]
+fn update_table_geometry_probe(
+    table_id: &str,
+    selection_width: f64,
+    selection_height: f64,
+    sprite_body: Option<(f64, f64)>,
+) {
+    if let Some(win) = web_sys::window() {
+        let target: &js_sys::Object = win.unchecked_ref();
+        let (body_width, body_height) = sprite_body
+            .map(|(w, h)| (w.to_string(), h.to_string()))
+            .unwrap_or_else(|| ("null".to_string(), "null".to_string()));
+        let json = format!(
+            "{{\"table_id\":\"{}\",\"body_width\":{},\"body_height\":{},\"selection_width\":{},\"selection_height\":{}}}",
+            table_id, body_width, body_height, selection_width, selection_height
+        );
+        let _ = js_sys::Reflect::set(
+            target,
+            &wasm_bindgen::JsValue::from_str("__cdb_table_geometry_probe"),
+            &wasm_bindgen::JsValue::from_str(&json),
+        );
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn update_table_geometry_probe(_: &str, _: f64, _: f64, _: Option<(f64, f64)>) {}
+
+fn sync_table_geometry_probe(table: &Table, selection_width: f64, selection_height: f64, zoom: f64) {
+    let sprite_body = if zoom <= SPRITE_CACHE_MAX_ZOOM {
+        TABLE_SPRITES.with(|cache| {
+            cache.borrow().get(&table.id).map(|sprite| {
+                (sprite.w_world - sprite.margin * 2.0, sprite.h_world - sprite.margin * 2.0)
+            })
+        })
+    } else {
+        None
+    };
+    update_table_geometry_probe(&table.id, selection_width, selection_height, sprite_body);
+}
+
 /// ST-PE-10 探针（#31/#32）：每帧把选中高亮参数写入 `window.__cdb_hl_probe`
 /// （JSON 字符串：any_sel / sel_table / sel_ref / multi_n / table_alpha_min /
 /// rel_width_scale_max），供 e2e 断言「相关线加粗提亮、非相关表/线退到背景层」
@@ -5444,6 +5485,25 @@ pub fn table_sprite_fingerprint(
     h
 }
 
+/// Hash the exact effective body geometry so a coarse font bucket cannot reuse a stale sprite.
+pub fn table_sprite_geometry_fingerprint(
+    table: &Table,
+    comment_mode: CommentDisplay,
+    zoom: f64,
+    label_scale: f64,
+    tier: LodTier,
+) -> u64 {
+    let (width, height) = lod_table_size_with(table, comment_mode, tier, zoom, label_scale);
+    let width_bytes = width.to_bits().to_le_bytes();
+    let height_bytes = height.to_bits().to_le_bytes();
+    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+    for byte in width_bytes.iter().chain(height_bytes.iter()) {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
+}
+
 /// R-PERF-08：DOM 写守护——仅值变化才写（返回 true 表示已更新 last，调用方应执行 DOM 写）。
 pub fn dom_write_guard(last: &mut String, next: &str) -> bool {
     if last == next {
@@ -5549,6 +5609,7 @@ fn blit_table_sprite(
         .map(|f| fk_fields.contains(f.id.as_str()))
         .collect();
     let font_bucket = effective_font_bucket(zoom, label_scale, lod);
+    let geometry_fingerprint = table_sprite_geometry_fingerprint(table, comment_mode, zoom, label_scale, lod);
     let fp = table_sprite_fingerprint(
         table,
         current_theme_dark(),
@@ -5560,7 +5621,8 @@ fn blit_table_sprite(
         font_bucket,
     // #40 R-FONT-03：倍率混入指纹（黄金比例散列到高位，避免与低位 zoom/dpr 桶串扰）——
     // 切档即重光栅；table_sprite_fingerprint 签名不变（既有 UT 调用点不动）
-    ) ^ ((label_scale * 100.0).round() as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    ) ^ ((label_scale * 100.0).round() as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        ^ geometry_fingerprint;
     let sprite = TABLE_SPRITES.with(|c| {
         let mut map = c.borrow_mut();
         let fresh = map
@@ -6075,6 +6137,7 @@ fn draw_table_topology_body(
 fn draw_table_selection(ctx: &CanvasRenderingContext2d, table: &Table, palette: &CanvasPalette, comment_mode: CommentDisplay, tier: LodTier, zoom: f64, label_scale: f64) {
     // #30：选中环尺寸按档位取（拓扑档仅表头高，避免圈出隐藏的字段区）
     let (width, total_height) = lod_table_size_with(table, comment_mode, tier, zoom, label_scale);
+    sync_table_geometry_probe(table, width, total_height, zoom);
     let x = table.x;
     let y = table.y;
     let _ = ctx.set_stroke_style_str(palette.selected_soft);
@@ -9043,6 +9106,32 @@ mod tests {
         assert_ne!(table_sprite_fingerprint(&t, false, 200, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[], 1), base, "主题切换失效");
         assert_ne!(table_sprite_fingerprint(&t, true, 100, 1, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[], 1), base, "dpr 变化失效");
         assert_ne!(table_sprite_fingerprint(&t, true, 200, 2, crate::editor_core::CommentDisplay::NameComment, LodTier::Detail, &[], 1), base, "zoom 分档切换失效");
+    }
+
+    /// UT-CR-SPRITE-02 — 同粗字体桶内几何变化仍必须失效（#52 R-PERF-07）
+    #[test]
+    fn ut_cr_sprite_02_geometry_fingerprint() {
+        let mode = crate::editor_core::CommentDisplay::NameComment;
+        let mut table = fixture_table("asset_object", "f1", 100.0, 80.0);
+        let mut second = table.fields[0].clone();
+        second.id = "f2".into();
+        second.name = "updated_at".into();
+        table.fields.push(second);
+        assert_eq!(sprite_zoom_bucket(0.46), sprite_zoom_bucket(0.48));
+        assert_eq!(
+            effective_font_bucket(0.46, 1.5, LodTier::Detail),
+            effective_font_bucket(0.48, 1.5, LodTier::Detail),
+            "UT-CR-SPRITE-02: 前置必须落在同一粗字体桶"
+        );
+        let size_046 = lod_table_size_with(&table, mode, LodTier::Detail, 0.46, 1.5);
+        let size_048 = lod_table_size_with(&table, mode, LodTier::Detail, 0.48, 1.5);
+        assert_ne!(size_046, size_048, "UT-CR-SPRITE-02: 前置必须产生不同有效几何");
+        let fp_046 = table_sprite_geometry_fingerprint(&table, mode, 0.46, 1.5, LodTier::Detail);
+        let fp_048 = table_sprite_geometry_fingerprint(&table, mode, 0.48, 1.5, LodTier::Detail);
+        assert_ne!(fp_046, fp_048, "UT-CR-SPRITE-02: 同字体桶不同几何不得复用旧精灵");
+        assert_eq!(fp_046, table_sprite_geometry_fingerprint(&table, mode, 0.46, 1.5, LodTier::Detail));
+        let moved = Table { x: 999.0, y: -40.0, ..table };
+        assert_eq!(fp_046, table_sprite_geometry_fingerprint(&moved, mode, 0.46, 1.5, LodTier::Detail));
     }
 
     /// UT-CR-GUARD-01 — DOM 写守护：值未变不写（R-PERF-08）

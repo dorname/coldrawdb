@@ -24,6 +24,7 @@
 //   ST-PB-14         点击端点记号附近 10px 热区选中关系（fix-relation-mouse-hit-precision / R-HIT-06）
 //   ST-PB-17         16 表 / 19 关系完全重合路径提示与重复点击可达性（#60）
 //   ST-CR-LOD-02     16 表全景 Auto 自动拓扑与 Table/Field 显式覆盖（#59）
+//   ST-CR-SPRITE-02  缩放后卡体精灵与选中环精确几何一致（#52）
 // p0-fix 定点 3 新增：
 //   ST-PB-03         点击连线选中 + Inspector 详情/删除（不弹详情模态）
 //   ST-PB-04         选中连线 Delete / Backspace 双键删除落账 0 条
@@ -3144,6 +3145,97 @@ try {
     const pScale = await probe();
     assert.equal(pScale.font_bucket_consistent, true, "1.5× 字号下仍 consistent");
     assert.ok(pScale.min_aabb_w > pZoomBack.min_aabb_w, `1.5× 字号下表框应再次加宽（${pScale.min_aabb_w} > ${pZoomBack.min_aabb_w}）`);
+  });
+
+  // ─── ST-CR-SPRITE-02：同粗字体桶缩放后精灵与选中环几何一致（#52） ──
+  await run(["ST-CR-SPRITE-02"], "缩放/字号/注释/维度下卡体与选中环尺寸一致", async page => {
+    const fields = ["id", "asset_code", "asset_name", "asset_type", "owner_id", "created_at", "updated_at", "remark"]
+      .map((name, i) => ({
+        id: `f${i}`, name, type_: "VARCHAR", default: "", check: "", primary: i === 0,
+        unique: false, not_null: true, increment: false, comment: "", tag: "", dict_code: "",
+      }));
+    await installApi(page, {
+      presetDiagram: {
+        tables: [{ id: "asset_object", name: "asset_object", x: 120, y: 120, color: "", comment: "资产对象", fields, indices: [] }],
+        references: [], areas: [], notes: [],
+      },
+    });
+    await login(page);
+    await createRoomAndEnter(page);
+    await page.waitForFunction(() => !!window.__cdb_lod_probe, null, { timeout: 8_000 });
+    const head = await canvasPoint(page, { x: 180, y: 140 });
+    await page.mouse.click(head.x, head.y);
+    await page.locator('[data-testid="inspector-table-form"]:visible').waitFor();
+    await page.waitForFunction(() => !!window.__cdb_table_geometry_probe, null, { timeout: 4_000 });
+    const geometry = () => page.evaluate(() => JSON.parse(window.__cdb_table_geometry_probe));
+    const lod = () => page.evaluate(() => JSON.parse(window.__cdb_lod_probe));
+    const assertAligned = async stage => {
+      const p = await geometry();
+      assert.equal(p.table_id, "asset_object", `${stage}: 探针必须对应当前选中表`);
+      assert.ok(Number.isFinite(p.body_width) && Number.isFinite(p.body_height), `${stage}: 必须使用真实精灵尺寸`);
+      assert.ok(Math.abs(p.body_width - p.selection_width) < 1e-6,
+        `${stage}: 精灵/选中环宽度不一致 ${JSON.stringify(p)}`);
+      assert.ok(Math.abs(p.body_height - p.selection_height) < 1e-6,
+        `${stage}: 精灵/选中环高度不一致 ${JSON.stringify(p)}`);
+    };
+    const dimBtn = page.locator('[data-testid="canvas-view-dimension"]');
+    const selectDimension = async label => {
+      for (let i = 0; i < 3; i++) {
+        if ((await dimBtn.textContent())?.includes(`维度：${label}`)) break;
+        await dimBtn.click();
+        await page.waitForTimeout(100);
+      }
+      await page.waitForFunction(
+        text => document.querySelector('[data-testid="canvas-view-dimension"]')?.textContent?.includes(text),
+        `维度：${label}`, { timeout: 3_000 },
+      );
+    };
+    await selectDimension("字段");
+    await assertAligned("100% 基线");
+
+    const anchor = await canvasPoint(page, { x: 250, y: 200 });
+    await page.mouse.move(anchor.x, anchor.y);
+    const wheel = async (delta, count) => {
+      for (let i = 0; i < count; i++) {
+        await page.mouse.wheel(0, delta);
+        await page.waitForTimeout(160);
+      }
+    };
+    // 1 → 0.756 → 0.870：同一 zoom/粗字体桶、不同精确高度，覆盖旧缓存复现路径
+    await wheel(240, 2);
+    await assertAligned("缩到同字体桶低点");
+    await wheel(-120, 1);
+    await assertAligned("同字体桶反向放大");
+
+    await wheel(240, 5);
+    assert.ok((await lod()).zoom >= 0.4 && (await lod()).zoom < 0.5, "必须覆盖 40%～50% 全景区间");
+    await assertAligned("全景字段维度");
+
+    const fontBtn = page.locator('[data-testid="canvas-font-scale"]');
+    await fontBtn.click();
+    await fontBtn.click();
+    await page.waitForFunction(() => JSON.parse(window.__cdb_lod_probe).label_font_scale === 1.5);
+    await assertAligned("150% 字号");
+    await page.mouse.move(anchor.x, anchor.y);
+    for (let i = 0; i < 15 && (await lod()).zoom < 1.45; i++) {
+      await page.mouse.wheel(0, -120);
+      await page.waitForTimeout(160);
+    }
+    assert.ok((await lod()).zoom >= 1.45 && (await lod()).zoom <= 1.6, "必须覆盖约 150% zoom");
+    await assertAligned("150% zoom 与字号");
+
+    const commentBtn = page.locator('[data-testid="canvas-comment-display"]');
+    await commentBtn.click();
+    await page.waitForTimeout(180);
+    await assertAligned("注释模式一切换");
+    await commentBtn.click();
+    await page.waitForTimeout(180);
+    await assertAligned("注释模式二切换");
+
+    await selectDimension("表");
+    await assertAligned("显式表维度");
+    await selectDimension("字段");
+    await assertAligned("返回字段维度");
   });
 
   // ─── ST-AN-03：区域锁定全链路（fix-issues-38-41 / #41，§5.17 R-AREALOCK-02~06）───
