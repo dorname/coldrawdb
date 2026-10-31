@@ -3647,6 +3647,82 @@ try {
     );
   });
 
+  // ─── ST-PB-20：选中关系工具下统一选择、拖动与平移（#63）───
+  await run(["ST-PB-20"], "选中关系工具下点表、拖表、点线、禁止误建与空白平移", async page => {
+    const mkT = (id, x, y, fid) => ({
+      id, name: id, x, y, color: "", comment: "",
+      fields: [{ id: fid, name: fid, type_: "INT", default: "", check: "", primary: true, unique: false, not_null: true, increment: false, comment: "", tag: "", dict_code: "" }],
+      indices: [],
+    });
+    const presetDiagram = {
+      tables: [mkT("t1", 100, 130, "f1"), mkT("t2", 600, 130, "f2")],
+      references: [{ id: "r1", name: "fk_t1_t2", start_table_id: "t1", end_table_id: "t2", start_field_id: "f1", end_field_id: "f2",
+        type_: "one_to_many", on_delete: "RESTRICT", on_update: "RESTRICT", color: "", line_type: "", stroke_style: "" }],
+      areas: [], notes: [],
+    };
+    const state = await installApi(page, { presetDiagram });
+    await login(page);
+    await createRoomAndEnter(page);
+    await page.waitForFunction(() => !!window.__cdb_hl_probe, null, { timeout: 8_000 });
+    const canvas = page.locator('[data-testid="editor-canvas-container"] canvas');
+    const hl = () => page.evaluate(() => JSON.parse(window.__cdb_hl_probe));
+
+    assert.equal(await page.locator('[data-testid="tool-pan"]').getAttribute("aria-label"), "选择 / 平移");
+    await page.locator('[data-testid="tool-relationship-select"]').click();
+
+    // 点表不再被关系工具吞掉：立即显示选中环与表 Inspector。
+    const header = await canvasPoint(page, { x: 150, y: 150 });
+    await page.mouse.click(header.x, header.y);
+    await page.locator('[data-testid="inspector-table-name"]').waitFor({ timeout: 4_000 });
+    await page.waitForFunction(() => JSON.parse(window.__cdb_hl_probe)?.sel_table === true, null, { timeout: 4_000 });
+
+    // 无需切换工具即可拖表；raw (187,193) 松手吸附 (180,200)。
+    await page.mouse.move(header.x, header.y);
+    await page.mouse.down();
+    await page.mouse.move(header.x + 87, header.y + 63, { steps: 5 });
+    await page.mouse.up();
+    await waitSaved(page);
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="editor-canvas-container"] canvas')?.getAttribute("data-table-pos")?.includes("t1:180,200"),
+      null, { timeout: 4_000 },
+    );
+    const moved = state.lastPutBody?.diagram?.tables?.find(t => t.id === "t1");
+    assert.equal(moved?.x, 180, "协作物化文档必须包含拖动后的 x");
+    assert.equal(moved?.y, 200, "协作物化文档必须包含拖动后的 y");
+
+    // 点线仍进入关系选择，统一回落不影响既有精度命中。
+    const mid = await relationLineMidpoint(page);
+    const midScreen = await canvasPoint(page, mid);
+    await page.mouse.click(midScreen.x, midScreen.y);
+    await page.waitForFunction(() => JSON.parse(window.__cdb_hl_probe)?.sel_ref_id === "r1", null, { timeout: 4_000 });
+    await page.locator('[data-testid="inspector-reference-form"]').waitFor({ timeout: 4_000 });
+
+    // 字段端口手势不得误建关系，也不得进入创建工具状态。
+    const port = await canvasPoint(page, { x: 600, y: 190.5 });
+    await page.mouse.move(port.x, port.y);
+    await page.mouse.down();
+    await page.mouse.move(port.x - 80, port.y + 120, { steps: 4 });
+    await page.mouse.up();
+    await page.waitForTimeout(200);
+    assert.equal(await page.evaluate(() => JSON.parse(window.__cdb_lod_probe)?.refs_n), 1, "选中关系工具不得新增 reference");
+    assert.equal(await page.locator('[data-testid="rel-tool-hint"]').isVisible().catch(() => false), false);
+
+    // 空白拖动只平移视口，保留关系选中且不写文档。
+    const docBeforePan = JSON.stringify(state.lastPutBody?.diagram);
+    const panBefore = await canvas.getAttribute("data-view-pan");
+    const blank = await canvasPoint(page, { x: 900, y: 500 });
+    await page.mouse.move(blank.x, blank.y);
+    await page.mouse.down();
+    await page.mouse.move(blank.x - 50, blank.y - 50, { steps: 5 });
+    await page.mouse.up();
+    await page.waitForFunction(
+      prev => document.querySelector('[data-testid="editor-canvas-container"] canvas')?.getAttribute("data-view-pan") !== prev,
+      panBefore, { timeout: 4_000 },
+    );
+    assert.equal((await hl()).sel_ref_id, "r1", "空白平移必须保留关系选中");
+    assert.equal(JSON.stringify(state.lastPutBody?.diagram), docBeforePan, "空白平移不得改写文档");
+  });
+
   // ─── ST-PB-12：悬浮关系线 tooltip（fix-issues-42-44 / #43，§4.8 R-HOV-01~05）───
   await run(["ST-PB-12"], "悬浮关系线角落摘要 tooltip（B1）+ 同命中零位移 + 不改选中态", async page => {
     const mkT = (id, x, y, fid) => ({

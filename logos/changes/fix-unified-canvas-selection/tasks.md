@@ -9,7 +9,7 @@
 
 ## [code] 代码实现
 
-- [ ] 修改 `frontend-rs/src/editor_render.rs`，统一选择类工具的指针路由并交付 UT-PB-36
-- [ ] 修改 `frontend-rs/src/editor_panels.rs`，更新 ToolRail 名称、可访问名称与模式锚点
-- [ ] 更新 `frontend-rs/scripts/test-spec-parity-d.mjs`，交付 ST-PB-20 真实浏览器交互与 OpenLogos reporter
-- [ ] 更新 `frontend-rs/tests/openlogos_reporter.rs`，登记 UT-PB-36 并运行定向及限资源回归
+- [x] 修改 `frontend-rs/src/editor_render.rs`，统一选择类工具的指针路由并交付 UT-PB-36
+- [x] 修改 `frontend-rs/src/editor_panels.rs`，更新 ToolRail 名称、可访问名称与模式锚点
+- [x] 更新 `frontend-rs/scripts/test-spec-parity-d.mjs`，交付 ST-PB-20 真实浏览器交互与 OpenLogos reporter
+- [x] 更新 `frontend-rs/tests/openlogos_reporter.rs`，登记 UT-PB-36 并运行定向及限资源回归

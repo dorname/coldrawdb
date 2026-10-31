@@ -5674,14 +5674,15 @@ pub fn ToolRail(
                     matches!(active_tool.get(), ActiveTool::Select | ActiveTool::Pan)
                 }
                 data-testid="tool-pan"
+                aria-label="选择 / 平移"
                 on:click=move |_| {
-                    // 小手 / 平移：空白拖动画布；退出框选 / 创建 / 关系工具
+                    // 选择 / 平移：图元选择拖动，空白拖动画布；退出框选 / 创建 / 关系工具
                     rel_tool_state.set(RelToolState::Idle);
                     active_tool.set(ActiveTool::Select);
                 }
             >
                 <IconBox size="md"><IconPan /></IconBox>
-                <span class="cdb-tool-tip">"平移画布 "</span>
+                <span class="cdb-tool-tip">"选择 / 平移"</span>
             </button>
             <button
                 class="cdb-tool-btn"

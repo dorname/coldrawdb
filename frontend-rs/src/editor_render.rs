@@ -976,6 +976,8 @@ mod leptos_canvas {
         // R-PERF-08：渲染 effect 的 DOM 写守护——记录上一帧值，仅变化才写信号/属性
         let last_rubber_d: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
         let last_follow_d: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
+        let last_table_pos: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
+        let last_view_pan: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
         let raf_pending = Rc::new(Cell::new(false));
         let raf_closure: Rc<RefCell<Option<Closure<dyn FnMut(JsValue)>>>> =
             Rc::new(RefCell::new(None));
@@ -1371,6 +1373,22 @@ mod leptos_canvas {
                         let _ = canvas.set_attribute("data-follow-path", "");
                     }
                 });
+                // #63：只读坐标探针与真实绘制共用表覆盖层；仅变化时写 DOM。
+                let positions = tables
+                    .iter()
+                    .map(|tbl| {
+                        let current = super::table_with_override(tbl, table_override);
+                        format!("{}:{},{}", current.id, current.x, current.y)
+                    })
+                    .collect::<Vec<_>>()
+                    .join(";");
+                if super::dom_write_guard(&mut last_table_pos.borrow_mut(), &positions) {
+                    let _ = canvas.set_attribute("data-table-pos", &positions);
+                }
+                let pan = format!("{},{}", t.pan_x, t.pan_y);
+                if super::dom_write_guard(&mut last_view_pan.borrow_mut(), &pan) {
+                    let _ = canvas.set_attribute("data-view-pan", &pan);
+                }
             });
         });
         }
@@ -1553,7 +1571,7 @@ mod leptos_canvas {
                     }
                     return;
                 }
-                // ux-canvas-relation-tool-split：选中关系工具下仅命中关系线，命中则选中，否则清选
+                // #63：关系命中优先；未命中时继续统一图元路由，不再吞掉表/空白手势。
                 if relationship_select_active.get_untracked() {
                     if let Some(ref_id) = super::hit_test_reference_tier(
                         &tables,
@@ -1575,20 +1593,9 @@ mod leptos_canvas {
                         if let Some(cb) = on_reference_pick.as_ref() {
                             cb(ref_id);
                         }
-                    } else {
-                        selected_id.set(None);
-                        selected_ref_id.set(None);
-                        selected_area_id.set(None);
-                        selected_note_id.set(None);
-                        selected_table_ids.set(Vec::new());
-                        selected_note_ids.set(Vec::new());
-                        selected_area_ids.set(Vec::new());
-                        if let Some(cb) = on_deselect.as_ref() {
-                            cb();
-                        }
+                        schedule_paint();
+                        return;
                     }
-                    schedule_paint();
-                    return;
                 }
                 if rel_tool_active.get_untracked() {
                     // #3 reopen：仅左右连接点起拖连；字段行点击仍走 on_field_pick（两点选取）
@@ -1661,7 +1668,7 @@ mod leptos_canvas {
                 // fix-remote-github-issues / UT-PB-08：Idle 下可从字段**连接点**拖出建关系（无需先点关系工具）
                 // #3 reopen：触发面改为左右 port，非整行；行内短按仍经表命中 → on_field_pick
                 // #5：Shift 或已多选集合内拖动时让路给框选/多表拖
-                if !read_only {
+                if super::allow_field_relation_drag(read_only, relationship_select_active.get_untracked()) {
                     if let Some((tid, fid, side)) = super::hit_test_field_port_with(&tables, dx, dy, comment_mode, t_now.zoom, hit_label_scale, hit_tier) {
                         let multi = selected_table_ids.get_untracked();
                         if !super::prefer_selection_over_field_rel(
@@ -7380,6 +7387,12 @@ pub fn relation_tooltip_text(
     ))
 }
 
+/// #63：Idle 字段连接点建关系只受创建权限与工具模式约束；
+/// 选中关系工具禁止创建，但未命中关系时仍继续统一选择/平移路由。
+pub fn allow_field_relation_drag(read_only: bool, relationship_select_active: bool) -> bool {
+    !read_only && !relationship_select_active
+}
+
 /// #51 / R-HIT-05：默认选择工具下，表与关系同时命中时是否优先关系。
 /// 阈值 = 当前 zoom 的自适应主线带宽（`rel_line_hit_px`）。
 pub fn should_prefer_reference_over_table(ref_world_dist: f64, zoom: f64) -> bool {
@@ -8582,6 +8595,15 @@ mod tests {
             None,
             "UT-PB-35: 全部候选冲突时省略普通标签，不叠字"
         );
+    }
+
+    /// UT-PB-36（#63）：字段拖连只受权限/创建语义约束，不阻断统一选择回落。
+    #[test]
+    fn test_selection_tool_relation_drag_policy_ut_pb_36() {
+        assert!(allow_field_relation_drag(false, false), "默认可写选择态保留字段拖连");
+        assert!(!allow_field_relation_drag(false, true), "选中关系工具不得误建关系");
+        assert!(!allow_field_relation_drag(true, false), "只读默认工具禁止建关系");
+        assert!(!allow_field_relation_drag(true, true), "只读关系工具禁止建关系");
     }
 
     /// UT-PB-21（fix-issue-46 / #46 R-PERF-HOV）：hover 守卫/信号瘦身/角落定位/rAF 节流锚点
