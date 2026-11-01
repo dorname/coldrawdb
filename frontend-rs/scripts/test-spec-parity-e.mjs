@@ -311,6 +311,13 @@ try {
     await createRoomAndEnter(page);
     await page.locator('[data-testid="splitter-inspector"]').waitFor();
 
+    // fix-e2e-harness-stability（#67）：本用例是全仓唯一「进房后立即拖拽」的交互，
+    // 验收负载下曾与页面初始化窗口（协作 WS 连接 / 首帧网格布局）竞态——拖拽处理
+    // 器未生效、宽度恒 330 假失败（真实栈仪器化诊断 + 隔离三连 PASS 证明功能无误）。
+    // 双 rAF 排空主线程已排队任务 + 短静默窗覆盖 WS 往返，再开始拖拽；断言语义不变。
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await page.waitForTimeout(300);
+
     // 左拖 -200：Inspector 左缘分隔条左拖变宽（§14.2 第 2 条）330 → 530 超界 → 钳制 520；拖动中（is-resizing 无过渡）实时跟随
     await dragSplitter(page, "splitter-inspector", -200);
     await page.waitForTimeout(120); // rAF 重排

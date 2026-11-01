@@ -35,6 +35,11 @@ export default defineConfig({
       args: [
         "--font-render-hinting=none",
         "--force-device-scale-factor=1", // 强制 dpr=1，避免截图因 HiDPI 漂移
+        // fix-e2e-harness-stability（#68）：离线/受限网络下 fonts.googleapis.com
+        // 连接被黑洞化挂起，`waitUntil:"load"` 随之超时（导航阶段假失败，断言未执行）。
+        // 将字体域名映射到本机拒绝端口 → 请求立即失败，load 正常触发；与 parity
+        // 系列脚本的 route abort 口径等价，且覆盖全部 specs / contexts。
+        "--host-resolver-rules=MAP fonts.googleapis.com 127.0.0.1,MAP fonts.gstatic.com 127.0.0.1",
       ],
     },
   },
