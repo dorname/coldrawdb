@@ -43,13 +43,13 @@ async function importSql(page: Page, sql: string, expectTable: string) {
 }
 
 test.describe("fix-open-issues-19-22 canvas / relation", () => {
-  test("ST-CR-CLICK-01 区域拖到邀请按钮不打开模态", async ({ browser }) => {
-    const { page } = await newRoomPage(browser);
-    await registerAndLogin(page);
-    await createRoomWithDiagram(page);
+  test("ST-CR-CLICK-01 区域拖到邀请按钮不打开模态", async ({ browser, request }) => {
+    const owner = await registerAndLogin(request, "cr-click-01");
+    const { roomId } = await createRoomWithDiagram(request, owner, "cr-click-01");
+    const { page } = await newRoomPage(browser, owner, roomId);
 
-    // 创建区域后拖到 btn-invite
-    await page.click('[data-testid="tool-area"]');
+    // 创建区域后拖到 btn-invite（区域工具真实 testid 为 tool-new-area）
+    await page.click('[data-testid="tool-new-area"]');
     const canvas = page.locator('[data-testid="editor-canvas"]');
     const box = await canvas.boundingBox();
     expect(box).toBeTruthy();
@@ -71,13 +71,14 @@ test.describe("fix-open-issues-19-22 canvas / relation", () => {
     });
     await page.mouse.up();
 
-    await expect(page.locator('[data-testid="modal-invite"]')).toHaveCount(0);
+    // modal-invite 常驻 DOM（open 仅切 overlay 的 display），断言「未打开」应为不可见而非 count=0
+    await expect(page.locator('[data-testid="modal-invite-overlay"]')).not.toBeVisible();
   });
 
-  test("ST-CR-WIDTH-01 长表名撑宽", async ({ browser }) => {
-    const { page } = await newRoomPage(browser);
-    await registerAndLogin(page);
-    await createRoomWithDiagram(page);
+  test("ST-CR-WIDTH-01 长表名撑宽", async ({ browser, request }) => {
+    const owner = await registerAndLogin(request, "cr-width-01");
+    const { roomId } = await createRoomWithDiagram(request, owner, "cr-width-01");
+    const { page } = await newRoomPage(browser, owner, roomId);
     await importSql(
       page,
       `CREATE TABLE asset_v2_virtualization_cluster_profile (
@@ -91,36 +92,65 @@ test.describe("fix-open-issues-19-22 canvas / relation", () => {
     expect(meta.tables).toContain("asset_v2_virtualization_cluster_profile");
   });
 
-  test("ST-PB-07 正交折线持久化", async ({ browser }) => {
-    const { page } = await newRoomPage(browser);
-    await registerAndLogin(page);
-    await createRoomWithDiagram(page);
+  test("ST-PB-07 正交折线持久化", async ({ browser, request }) => {
+    const owner = await registerAndLogin(request, "cr-pb-07");
+    const { roomId } = await createRoomWithDiagram(request, owner, "cr-pb-07");
+    const { page } = await newRoomPage(browser, owner, roomId);
     await importSql(
       page,
-      `CREATE TABLE books (id INT PRIMARY KEY);
-CREATE TABLE authors (id INT PRIMARY KEY, book_id INT);
-ALTER TABLE authors ADD CONSTRAINT fk_book FOREIGN KEY (book_id) REFERENCES books(id);`,
+      // 内联 FOREIGN KEY（ALTER TABLE ADD CONSTRAINT 形式导入解析器不建关系，同 cr-comment-color FK_DDL）
+      `CREATE TABLE books (
+  id INT PRIMARY KEY,
+  author_id INT,
+  FOREIGN KEY (author_id) REFERENCES authors(id)
+);
+CREATE TABLE authors (
+  id INT PRIMARY KEY
+);`,
       "books",
     );
-    // 选中关系 → 切换 orthogonal
-    const refs = (await debugState(page)).refs ?? [];
-    expect(refs.length).toBeGreaterThan(0);
-    // 点击画布关系后 Inspector 切换（若 harness 提供 ref 选中 API）
+    // （此前用例引用不存在的 refs/line_type 字段，从未真实运行——本提案修正为真实交互路径）
+    await expect
+      .poll(async () => (await debugState(page)).ref_meta?.length ?? 0, { timeout: 8_000 })
+      .toBe(1);
+
+    // 选中关系线：解析 canvas data-follow-path 贝塞尔，点击 t=0.5 中点（同 cr-comment-color ST-PB-06）
+    const canvas = page.locator('[data-testid="editor-canvas"]');
+    const pickRel = async () => {
+      const d = await canvas.getAttribute("data-follow-path");
+      const m =
+        /^M(-?[\d.]+)[ ,]+(-?[\d.]+)[ ,]+C(-?[\d.]+)[ ,]+(-?[\d.]+)[ ,]+(-?[\d.]+)[ ,]+(-?[\d.]+)[ ,]+(-?[\d.]+)[ ,]+(-?[\d.]+)/.exec(
+          d ?? "",
+        );
+      if (!m) throw new Error(`data-follow-path 为空或格式异常: ${d}`);
+      const [x1, y1, cx1, cy1, cx2, cy2, x2, y2] = m.slice(1).map(Number);
+      const rect = await canvas.boundingBox();
+      if (!rect) throw new Error("canvas 无布局盒");
+      await page.mouse.click(
+        rect.x + (x1 + 3 * cx1 + 3 * cx2 + x2) / 8,
+        rect.y + (y1 + 3 * cy1 + 3 * cy2 + y2) / 8,
+      );
+    };
     const lineType = page.locator('[data-testid="inspector-rel-line-type"]');
-    // 尽力：若 Inspector 已打开关系面板则切换
-    if (await lineType.count()) {
-      await lineType.selectOption("orthogonal");
-      await page.waitForTimeout(800);
-      const after = await debugState(page);
-      const r0 = (after.refs ?? [])[0];
-      expect(r0?.line_type ?? r0?.lineType).toBe("orthogonal");
-    }
+    await pickRel();
+    await expect(lineType).toBeVisible({ timeout: 5_000 });
+    await lineType.selectOption("orthogonal");
+
+    // THEN：保存落账后刷新重进——重新选中关系，线型仍为 orthogonal
+    await expect.poll(async () => (await debugState(page)).dirty, { timeout: 8_000 }).toBe(false);
+    await page.reload();
+    await page.waitForSelector('[data-testid="rooms-list-page"]', { timeout: 20_000 });
+    await page.locator(`[data-testid="room-list-item-${roomId}"]`).click();
+    await page.waitForSelector('[data-testid="room-editor-page"]', { timeout: 20_000 });
+    await pickRel();
+    await expect(lineType).toBeVisible({ timeout: 5_000 });
+    await expect.poll(async () => lineType.inputValue(), { timeout: 5_000 }).toBe("orthogonal");
   });
 
-  test("ST-CR-COLOR-02 / ST-PB-08 picker 与出边跟随", async ({ browser }) => {
-    const { page } = await newRoomPage(browser);
-    await registerAndLogin(page);
-    await createRoomWithDiagram(page);
+  test("ST-CR-COLOR-02 / ST-PB-08 picker 与出边跟随", async ({ browser, request }) => {
+    const owner = await registerAndLogin(request, "cr-color-02");
+    const { roomId } = await createRoomWithDiagram(request, owner, "cr-color-02");
+    const { page } = await newRoomPage(browser, owner, roomId);
     await importSql(
       page,
       `CREATE TABLE books (id INT PRIMARY KEY);

@@ -2078,6 +2078,11 @@ textarea {
 .cdb-main {
   display: grid;
   grid-template-columns: var(--cdb-toolrail-w) minmax(0, 1fr) var(--cdb-inspector-w);
+  /* fix-floating-controls-statusbar-overlap（#69）：显式行约束。此前行是隐式 auto 行，
+     行高被画布渲染缓冲的 CSS 高度反馈撑大——矮视口（≤~768 高）下画布容器溢出行框
+     叠到状态栏带下，底部悬浮控件被状态栏（z-index:20）截获点击。minmax(0,1fr) 把
+     行高锁定为 .cdb-app 分配的 1fr 份额，溢出内容由画布容器 overflow:hidden 裁剪 */
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--cdb-editor-gap);
   overflow: visible;
   min-height: 0;
@@ -4053,7 +4058,10 @@ textarea {
   border: 1px solid var(--cdb-color-border);
   border-radius: 999px;
   box-shadow: var(--cdb-shadow-md);
-  z-index: 10;
+  /* fix-floating-controls-statusbar-overlap（#69）：防御性层级——状态栏 z-index:20，
+     旧值 10 会让任何重叠态（如极端视口）下悬浮条点击被状态栏截获；抬到 30 与
+     .cdb-inspector 分层口径一致，保证悬浮条恒可点 */
+  z-index: 30;
 }
 
 .cdb-floating-controls .cdb-btn {

@@ -256,16 +256,22 @@ test.describe("fix-remote-github-issues-7-18 画布注释与颜色", () => {
     const midY = (y1 + 3 * cy1 + 3 * cy2 + y2) / 8;
     const rect = await canvas.boundingBox();
     if (!rect) throw new Error("canvas 无布局盒");
+
+    // 基线必须在未选中态截取：选中/related 态关系线强制高亮色族（fix-31 §4.4），
+    // 显式关系色仅在非选中态渲染——选中后改色再截图会恒等（此前断言因此永假）
+    const before = await stableShot(page);
+
+    // 选中关系线：点击 t=0.5 中点
     await page.mouse.click(rect.x + midX, rect.y + midY);
     const relColor = page.locator('[data-testid="inspector-relation-color"]');
     await expect(relColor).toBeVisible({ timeout: 5_000 });
 
-    // WHEN：改关系颜色（琥珀色）→ 仅该线变色（画布像素变化 + ref_meta 落账）
-    const before = await stableShot(page);
+    // WHEN：改关系颜色（琥珀色）+ ref_meta 落账 → 取消选中后该线显式色生效（画布像素变化）
     await relColor.selectOption("#f2b84b");
     await expect
       .poll(async () => (await debugState(page)).ref_meta?.[0]?.color, { timeout: 5_000 })
       .toBe("#f2b84b");
+    await page.mouse.click(rect.x + rect.width - 120, rect.y + 60); // 点画布空白取消选中
     const after = await stableShot(page);
     expect(after.equals(before), "R-COLOR-02：改色后关系线必须变色").toBe(false);
 
