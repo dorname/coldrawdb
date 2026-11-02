@@ -4058,6 +4058,8 @@ textarea {
   border: 1px solid var(--cdb-color-border);
   border-radius: 999px;
   box-shadow: var(--cdb-shadow-md);
+  /* #74：容器背景、padding、gap 与文本不截获画布手势；实际按钮单独恢复命中。 */
+  pointer-events: none;
   /* fix-floating-controls-statusbar-overlap（#69）：防御性层级——状态栏 z-index:20，
      旧值 10 会让任何重叠态（如极端视口）下悬浮条点击被状态栏截获；抬到 30 与
      .cdb-inspector 分层口径一致，保证悬浮条恒可点 */
@@ -4065,6 +4067,7 @@ textarea {
 }
 
 .cdb-floating-controls .cdb-btn {
+  pointer-events: auto;
   border: none;
   background: transparent;
   min-width: 36px;

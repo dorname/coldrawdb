@@ -8,8 +8,8 @@
 
 ## [code] 代码实现
 
-- [ ] 修改 `frontend-rs/src/editor_render.rs`：可编辑默认/框选路径命中表时优先表；关系命中及 AABB 预过滤接收当前 zoom 与 label_font_scale，点击/悬停统一使用完整参数路径
-- [ ] 修改 `frontend-rs/src/styles.css`：悬浮条容器非按钮区域指针穿透，实际按钮保持指针可点
-- [ ] 在 `frontend-rs/src/editor_render.rs` 交付 UT-PB-37，覆盖 bezier/orthogonal/straight 在低缩放与放大字号下的同源命中，并保留既有包装函数兼容测试
-- [ ] 更新 `frontend-rs/scripts/test-spec-parity-d.mjs`，交付 54 表 / 97 关系的 ST-PB-21：默认工具拖表、显式关系选择、悬浮条空白穿透与按钮可点
-- [ ] 更新 `frontend-rs/tests/openlogos_reporter.rs` 及对应 reporter 登记，确保 UT-PB-37、ST-PB-21 写入 `logos/resources/verify/test-results.jsonl`
+- [x] 修改 `frontend-rs/src/editor_render.rs`：可编辑默认/框选路径命中表时优先表；关系命中及 AABB 预过滤接收当前 zoom 与 label_font_scale，点击/悬停统一使用完整参数路径
+- [x] 修改 `frontend-rs/src/styles.css`：悬浮条容器非按钮区域指针穿透，实际按钮保持指针可点
+- [x] 在 `frontend-rs/src/editor_render.rs` 交付 UT-PB-37，覆盖 bezier/orthogonal/straight 在低缩放与放大字号下的同源命中，并保留既有包装函数兼容测试
+- [x] 更新 `frontend-rs/scripts/test-spec-parity-d.mjs`，交付 54 表 / 97 关系的 ST-PB-21：默认工具拖表、显式关系选择、悬浮条空白穿透与按钮可点
+- [x] 更新 `frontend-rs/tests/openlogos_reporter.rs` 及对应 reporter 登记，确保 UT-PB-37、ST-PB-21 写入 `logos/resources/verify/test-results.jsonl`

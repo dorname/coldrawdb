@@ -1103,7 +1103,8 @@ mod leptos_canvas {
                 let t_now = current_transform();
                 let (dx, dy) = screen_to_diagram(cx as f64, cy as f64, &canvas, &t_now);
                 let tier = super::tier_for_dimension(store.view_dimension.get_untracked(), t_now.zoom);
-                let hit = super::hit_test_reference_tier(
+                let hit_label_scale = store.label_font_scale.get_untracked().factor();
+                let hit = super::hit_test_reference_tier_with(
                     &store.tables.get_untracked(),
                     &store.references.get_untracked(),
                     dx,
@@ -1111,6 +1112,7 @@ mod leptos_canvas {
                     tier,
                     store.comment_display.get_untracked(),
                     t_now.zoom,
+                    hit_label_scale,
                     None, // 悬停不轮选
                 );
                 // R-PERF-HOV-02 写守卫：同 ref 命中不反复 set（文案不变 → DOM 不重建）
@@ -1520,7 +1522,7 @@ mod leptos_canvas {
                         hit_tier,
                     )
                     .and_then(|_| {
-                        super::hit_test_reference_tier_dist(
+                        super::hit_test_reference_tier_dist_with(
                             &tables,
                             &refs,
                             dx,
@@ -1528,6 +1530,7 @@ mod leptos_canvas {
                             hit_tier,
                             comment_mode,
                             t_now.zoom,
+                            hit_label_scale,
                             selected_ref_id.get_untracked().as_deref(),
                         )
                         .filter(|(_, d)| super::should_prefer_reference_over_table(*d, t_now.zoom))
@@ -1550,7 +1553,7 @@ mod leptos_canvas {
                         }
                         return;
                     }
-                    if let Some(ref_id) = super::hit_test_reference_tier(
+                    if let Some(ref_id) = super::hit_test_reference_tier_with(
                         &tables,
                         &refs,
                         dx,
@@ -1558,6 +1561,7 @@ mod leptos_canvas {
                         hit_tier,
                         comment_mode,
                         t_now.zoom,
+                        hit_label_scale,
                         selected_ref_id.get_untracked().as_deref(),
                     ) {
                         selected_id.set(None);
@@ -1573,7 +1577,7 @@ mod leptos_canvas {
                 }
                 // #63：关系命中优先；未命中时继续统一图元路由，不再吞掉表/空白手势。
                 if relationship_select_active.get_untracked() {
-                    if let Some(ref_id) = super::hit_test_reference_tier(
+                    if let Some(ref_id) = super::hit_test_reference_tier_with(
                         &tables,
                         &refs,
                         dx,
@@ -1581,6 +1585,7 @@ mod leptos_canvas {
                         super::tier_for_dimension(store.view_dimension.get_untracked(), t_now.zoom),
                         comment_mode,
                         t_now.zoom,
+                        hit_label_scale,
                         selected_ref_id.get_untracked().as_deref(),
                     ) {
                         selected_id.set(None);
@@ -2033,7 +2038,8 @@ mod leptos_canvas {
                         return;
                     }
                 }
-                // #51 R-HIT-05：仅当表 AABB ∩ 关系同时命中，且近线（≤ REL_OVER_TABLE_PREFER_PX）时优先关系
+                // #74 R-HIT-05：可编辑默认/框选工具命中表时一律优先表；
+                // 关系仅在未命中表的空白路由中参与选择，显式选线由「选中关系」工具承接。
                 let hit_tier_dim = super::tier_for_dimension(store.view_dimension.get_untracked(), t_now.zoom);
                 let table_hit_id = super::hit_test_with(
                     &tables,
@@ -2044,33 +2050,8 @@ mod leptos_canvas {
                     hit_label_scale,
                     hit_tier,
                 );
-                let prefer_ref = table_hit_id.as_ref().and_then(|_| {
-                    super::hit_test_reference_tier_dist(
-                        &tables,
-                        &refs,
-                        dx,
-                        dy,
-                        hit_tier_dim,
-                        comment_mode,
-                        t_now.zoom,
-                        selected_ref_id.get_untracked().as_deref(),
-                    )
-                    .filter(|(_, d)| super::should_prefer_reference_over_table(*d, t_now.zoom))
-                });
 
-                if let Some((ref_id, _)) = prefer_ref {
-                    selected_id.set(None);
-                    selected_ref_id.set(Some(ref_id.clone()));
-                    selected_area_id.set(None);
-                    selected_note_id.set(None);
-                    selected_table_ids.set(Vec::new());
-                    selected_note_ids.set(Vec::new());
-                    selected_area_ids.set(Vec::new());
-                    if let Some(cb) = on_reference_pick.as_ref() {
-                        cb(ref_id);
-                    }
-                    schedule_paint();
-                } else if let Some(id) = table_hit_id {
+                if let Some(id) = table_hit_id {
                     let table_x = tables.iter().find(|t| t.id == id).map(|t| t.x).unwrap_or(0.0);
                     let table_y = tables.iter().find(|t| t.id == id).map(|t| t.y).unwrap_or(0.0);
                     selected_id.set(Some(id.clone()));
@@ -2142,7 +2123,7 @@ mod leptos_canvas {
                         start_table_x: table_x,
                         start_table_y: table_y,
                     }));
-                } else if let Some(ref_id) = super::hit_test_reference_tier(
+                } else if let Some(ref_id) = super::hit_test_reference_tier_with(
                     &tables,
                     &refs,
                     dx,
@@ -2151,10 +2132,11 @@ mod leptos_canvas {
                     hit_tier_dim,
                     comment_mode,
                     t_now.zoom,
+                    hit_label_scale,
                     selected_ref_id.get_untracked().as_deref(),
                 ) {
                     // relation-inspector-and-ddl-io：点击连线（表未命中时）→ 选中高亮 + Inspector 展示（不再弹详情模态）
-                    // #51：近线优先已在上方 prefer_ref 分支处理；此处覆盖「未点中表、仅点中关系」
+                    // #74：表内冲突已由上方表优先分支处理；此处仅覆盖空白处的关系命中。
                     selected_id.set(None);
                     selected_ref_id.set(Some(ref_id.clone()));
                     selected_area_id.set(None);
@@ -2811,7 +2793,7 @@ mod leptos_canvas {
                         // R-HIT-06：连接点短按若同时命中已有关系，优先完成关系选择；
                         // 真正拖动仍走下方建关系通路，未命中关系时保留字段短按语义。
                         let refs = store.references.get_untracked();
-                        if let Some(ref_id) = super::hit_test_reference_tier(
+                        if let Some(ref_id) = super::hit_test_reference_tier_with(
                             &tables,
                             &refs,
                             diag_x,
@@ -2819,6 +2801,7 @@ mod leptos_canvas {
                             hit_tier,
                             comment_mode,
                             t_now.zoom,
+                            hit_label_scale,
                             selected_ref_id.get_untracked().as_deref(),
                         ) {
                             selected_id.set(None);
@@ -7262,6 +7245,21 @@ pub fn dist_to_reference(
     tier: LodTier,
     comment_mode: CommentDisplay,
 ) -> Option<(f64, f64)> {
+    dist_to_reference_with(tables, r, x, y, tier, comment_mode, 1.0, 1.0)
+}
+
+/// #74：画布事件入口必须传入与正式绘制相同的 zoom 和有效字号。
+/// 旧签名保留给默认几何纯函数测试，不再用于运行时画布命中。
+pub fn dist_to_reference_with(
+    tables: &[Table],
+    r: &Reference,
+    x: f64,
+    y: f64,
+    tier: LodTier,
+    comment_mode: CommentDisplay,
+    zoom: f64,
+    label_scale: f64,
+) -> Option<(f64, f64)> {
     #[cfg(test)]
     DIST_TO_REFERENCE_CALLS.with(|c| c.set(c.get() + 1));
 
@@ -7278,7 +7276,7 @@ pub fn dist_to_reference(
 
     match effective_line_type(&r.line_type) {
         "orthogonal" => {
-            let pts = calc_orthogonal_path_tier_with(from, &r.start_field_id, to, &r.end_field_id, tier, comment_mode, 1.0, 1.0);
+            let pts = calc_orthogonal_path_tier_with(from, &r.start_field_id, to, &r.end_field_id, tier, comment_mode, zoom, label_scale);
             let mut best = f64::MAX;
             for w in pts.windows(2) {
                 best = best.min(dist_point_segment(x, y, w[0].0, w[0].1, w[1].0, w[1].1));
@@ -7288,13 +7286,13 @@ pub fn dist_to_reference(
             Some((best, endpoint_dist(*x1, *y1, *x2, *y2)))
         }
         "straight" => {
-            let (x1, y1, x2, y2) = calc_straight_path_tier_with(from, &r.start_field_id, to, &r.end_field_id, tier, comment_mode, 1.0, 1.0);
+            let (x1, y1, x2, y2) = calc_straight_path_tier_with(from, &r.start_field_id, to, &r.end_field_id, tier, comment_mode, zoom, label_scale);
             let line_d = dist_point_segment(x, y, x1, y1, x2, y2);
             Some((line_d, endpoint_dist(x1, y1, x2, y2)))
         }
         _ => {
             // bezier 默认
-            let path = calc_path_tier_with(from, &r.start_field_id, to, &r.end_field_id, tier, comment_mode, 1.0, 1.0);
+            let path = calc_path_tier_with(from, &r.start_field_id, to, &r.end_field_id, tier, comment_mode, zoom, label_scale);
             let line_d = dist_point_bezier(&path, x, y);
             Some((line_d, endpoint_dist(path.x1, path.y1, path.x2, path.y2)))
         }
@@ -7315,12 +7313,24 @@ pub fn reference_aabb(
     tier: LodTier,
     comment_mode: CommentDisplay,
 ) -> Option<(f64, f64, f64, f64)> {
+    reference_aabb_with(tables, r, tier, comment_mode, 1.0, 1.0)
+}
+
+/// #74：AABB 预过滤与主线/端点命中共享当前有效几何。
+pub fn reference_aabb_with(
+    tables: &[Table],
+    r: &Reference,
+    tier: LodTier,
+    comment_mode: CommentDisplay,
+    zoom: f64,
+    label_scale: f64,
+) -> Option<(f64, f64, f64, f64)> {
     let from = tables.iter().find(|t| t.id == r.start_table_id)?;
     let to = tables.iter().find(|t| t.id == r.end_table_id)?;
 
     let (min_x, min_y, max_x, max_y) = match effective_line_type(&r.line_type) {
         "orthogonal" => {
-            let pts = calc_orthogonal_path_tier_with(from, &r.start_field_id, to, &r.end_field_id, tier, comment_mode, 1.0, 1.0);
+            let pts = calc_orthogonal_path_tier_with(from, &r.start_field_id, to, &r.end_field_id, tier, comment_mode, zoom, label_scale);
             let (mut min_x, mut min_y) = (f64::MAX, f64::MAX);
             let (mut max_x, mut max_y) = (f64::MIN, f64::MIN);
             for (px, py) in &pts {
@@ -7332,12 +7342,12 @@ pub fn reference_aabb(
             (min_x, min_y, max_x, max_y)
         }
         "straight" => {
-            let (x1, y1, x2, y2) = calc_straight_path_tier_with(from, &r.start_field_id, to, &r.end_field_id, tier, comment_mode, 1.0, 1.0);
+            let (x1, y1, x2, y2) = calc_straight_path_tier_with(from, &r.start_field_id, to, &r.end_field_id, tier, comment_mode, zoom, label_scale);
             (x1.min(x2), y1.min(y2), x1.max(x2), y1.max(y2))
         }
         _ => {
             // bezier 默认
-            let path = calc_path_tier_with(from, &r.start_field_id, to, &r.end_field_id, tier, comment_mode, 1.0, 1.0);
+            let path = calc_path_tier_with(from, &r.start_field_id, to, &r.end_field_id, tier, comment_mode, zoom, label_scale);
             let min_x = path.x1.min(path.x2).min(path.cx1).min(path.cx2);
             let min_y = path.y1.min(path.y2).min(path.cy1).min(path.cy2);
             let max_x = path.x1.max(path.x2).max(path.cx1).max(path.cx2);
@@ -7393,7 +7403,8 @@ pub fn allow_field_relation_drag(read_only: bool, relationship_select_active: bo
     !read_only && !relationship_select_active
 }
 
-/// #51 / R-HIT-05：默认选择工具下，表与关系同时命中时是否优先关系。
+/// #51 / #74 R-HIT-05：只读分享 / Viewer 下，表与关系同时命中时是否优先关系。
+/// 可编辑默认/框选工具不再调用该函数覆盖表命中；显式选线由「选中关系」工具承接。
 /// 阈值 = 当前 zoom 的自适应主线带宽（`rel_line_hit_px`）。
 pub fn should_prefer_reference_over_table(ref_world_dist: f64, zoom: f64) -> bool {
     ref_world_dist * zoom <= rel_line_hit_px(zoom)
@@ -7416,7 +7427,24 @@ pub fn hit_test_reference_tier(
         .map(|(id, _)| id)
 }
 
-/// 与 `hit_test_reference_tier` 同口径，额外返回命中关系的世界距离（供 R-HIT-05 近线优先）。
+/// #74：运行时完整参数入口；label_scale 必须与 Canvas 正式绘制一致。
+pub fn hit_test_reference_tier_with(
+    tables: &[Table],
+    refs: &[Reference],
+    x: f64,
+    y: f64,
+    tier: LodTier,
+    comment_mode: CommentDisplay,
+    zoom: f64,
+    label_scale: f64,
+    prev_selected: Option<&str>,
+) -> Option<String> {
+    hit_test_reference_tier_dist_with(tables, refs, x, y, tier, comment_mode, zoom, label_scale, prev_selected)
+        .map(|(id, _)| id)
+}
+
+/// 与 `hit_test_reference_tier` 同口径，额外返回命中关系的世界距离（供只读 R-HIT-05 近线优先）。
+/// 兼容旧纯函数：带宽使用调用方 zoom，路径几何保持旧版默认 `1.0 / 1.0`。
 pub fn hit_test_reference_tier_dist(
     tables: &[Table],
     refs: &[Reference],
@@ -7427,24 +7455,55 @@ pub fn hit_test_reference_tier_dist(
     zoom: f64,
     prev_selected: Option<&str>,
 ) -> Option<(String, f64)> {
-    let hit_px = rel_line_hit_px(zoom);
+    hit_test_reference_tier_dist_impl(tables, refs, x, y, tier, comment_mode, zoom, 1.0, 1.0, prev_selected)
+}
+
+/// #74：完整参数距离命中；AABB 预过滤和精算不得退回默认字号几何。
+pub fn hit_test_reference_tier_dist_with(
+    tables: &[Table],
+    refs: &[Reference],
+    x: f64,
+    y: f64,
+    tier: LodTier,
+    comment_mode: CommentDisplay,
+    zoom: f64,
+    label_scale: f64,
+    prev_selected: Option<&str>,
+) -> Option<(String, f64)> {
+    hit_test_reference_tier_dist_impl(tables, refs, x, y, tier, comment_mode, zoom, zoom, label_scale, prev_selected)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn hit_test_reference_tier_dist_impl(
+    tables: &[Table],
+    refs: &[Reference],
+    x: f64,
+    y: f64,
+    tier: LodTier,
+    comment_mode: CommentDisplay,
+    hit_zoom: f64,
+    geometry_zoom: f64,
+    label_scale: f64,
+    prev_selected: Option<&str>,
+) -> Option<(String, f64)> {
+    let hit_px = rel_line_hit_px(hit_zoom);
     // R-HIT-07：AABB 外扩 = max(自适应主线带宽, 端点热区) / zoom
-    let pad = hit_px.max(REL_ENDPOINT_SIZE) / zoom;
+    let pad = hit_px.max(REL_ENDPOINT_SIZE) / hit_zoom;
     let mut cands: Vec<(f64, f64, String)> = Vec::new(); // screen, world, id
     for r in refs {
-        let Some(aabb) = reference_aabb(tables, r, tier, comment_mode) else {
+        let Some(aabb) = reference_aabb_with(tables, r, tier, comment_mode, geometry_zoom, label_scale) else {
             continue;
         };
         let expanded = (aabb.0 - pad, aabb.1 - pad, aabb.2 + 2.0 * pad, aabb.3 + 2.0 * pad);
         if !aabb_intersects((x, y, 0.0, 0.0), expanded) {
             continue;
         }
-        if let Some((line_d, endpoint_d)) = dist_to_reference(tables, r, x, y, tier, comment_mode) {
-            let line_ok = line_d * zoom <= hit_px;
-            let endpoint_ok = endpoint_d * zoom <= REL_ENDPOINT_SIZE;
+        if let Some((line_d, endpoint_d)) = dist_to_reference_with(tables, r, x, y, tier, comment_mode, geometry_zoom, label_scale) {
+            let line_ok = line_d * hit_zoom <= hit_px;
+            let endpoint_ok = endpoint_d * hit_zoom <= REL_ENDPOINT_SIZE;
             if line_ok || endpoint_ok {
                 let world = line_d.min(endpoint_d);
-                cands.push((world * zoom, world, r.id.clone()));
+                cands.push((world * hit_zoom, world, r.id.clone()));
             }
         }
     }
@@ -8038,7 +8097,7 @@ mod tests {
         }
     }
 
-    /// UT-PB-28（#51 R-HIT-05）：表∩关系时近线优先关系（阈值 = REL_LINE_HIT_PX）
+    /// UT-PB-28（#51/#74 R-HIT-05）：只读表∩关系时近线优先（阈值 = REL_LINE_HIT_PX）
     #[test]
     fn test_should_prefer_reference_over_table_ut_pb_28() {
         assert!(
@@ -8067,7 +8126,7 @@ mod tests {
         );
         assert_eq!(REL_LINE_HIT_PX, 12.0, "UT-PB-28: 主线带宽常量口径");
 
-        // 几何回归：表内近端口点（旧 6px 阈值会误选表）必须近线优先
+        // 只读几何回归：表内近端口点（旧 6px 阈值会误选表）必须近线优先
         use crate::editor_core::types::Field;
         let mk = |id: &str, x: f64, y: f64, fields: Vec<(&str, bool)>| Table {
             id: id.into(),
@@ -8291,7 +8350,7 @@ mod tests {
         );
     }
 
-    /// UT-PB-31（fix-dense-lowzoom-relation-hit / R-HIT-05）：低缩放近线优先对齐自适应带宽
+    /// UT-PB-31（#74 R-HIT-05）：只读低缩放近线优先对齐自适应带宽
     #[test]
     fn test_should_prefer_reference_adaptive_ut_pb_31() {
         assert!(
@@ -8383,6 +8442,113 @@ mod tests {
                 );
                 assert_eq!(hit.as_deref(), Some(expected), "UT-PB-33: 完全重合路径必须逐条环回");
                 prev = hit;
+            }
+        }
+    }
+
+    /// UT-PB-37（#74）：三种线型在 Detail / Topology 下均使用当前 zoom 与有效字号几何。
+    #[test]
+    fn test_reference_hit_uses_effective_geometry_ut_pb_37() {
+        let (mut tables, base_refs) = ut_mm_33_fixture();
+        tables[1].x = 900.0;
+        for (table_index, table) in tables.iter_mut().enumerate() {
+            table.name = format!("order_item_detail_with_long_name_{table_index}");
+            let base_field = table.fields[0].clone();
+            for field_index in 1..=3 {
+                let mut field = base_field.clone();
+                field.id = format!("extra_{table_index}_{field_index}");
+                field.name = format!("additional_field_{field_index}");
+                field.primary = false;
+                table.fields.push(field);
+            }
+        }
+
+        const ZOOM: f64 = 0.25;
+        const LABEL_SCALE: f64 = 1.5;
+        for tier in [LodTier::Detail, LodTier::Topology] {
+            for line_type in ["bezier", "orthogonal", "straight"] {
+                let mut refs = base_refs.clone();
+                refs[0].line_type = line_type.into();
+                let from = &tables[0];
+                let to = &tables[1];
+                let (actual_mid, actual_start, stale_start) = match line_type {
+                    "orthogonal" => {
+                        let actual = calc_orthogonal_path_tier_with(
+                            from, "f1", to, "f1", tier, CommentDisplay::NameComment, ZOOM, LABEL_SCALE,
+                        );
+                        let old = calc_orthogonal_path_tier_with(
+                            from, "f1", to, "f1", tier, CommentDisplay::NameComment, 1.0, 1.0,
+                        );
+                        let segment = actual.windows(2).max_by(|a, b| {
+                            let da = (a[1].0 - a[0].0).powi(2) + (a[1].1 - a[0].1).powi(2);
+                            let db = (b[1].0 - b[0].0).powi(2) + (b[1].1 - b[0].1).powi(2);
+                            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+                        }).unwrap();
+                        (
+                            ((segment[0].0 + segment[1].0) / 2.0, (segment[0].1 + segment[1].1) / 2.0),
+                            actual[0],
+                            old[0],
+                        )
+                    }
+                    "straight" => {
+                        let (x1, y1, x2, y2) = calc_straight_path_tier_with(
+                            from, "f1", to, "f1", tier, CommentDisplay::NameComment, ZOOM, LABEL_SCALE,
+                        );
+                        let old = calc_straight_path_tier_with(
+                            from, "f1", to, "f1", tier, CommentDisplay::NameComment, 1.0, 1.0,
+                        );
+                        (((x1 + x2) / 2.0, (y1 + y2) / 2.0), (x1, y1), (old.0, old.1))
+                    }
+                    _ => {
+                        let actual = calc_path_tier_with(
+                            from, "f1", to, "f1", tier, CommentDisplay::NameComment, ZOOM, LABEL_SCALE,
+                        );
+                        let old = calc_path_tier_with(
+                            from, "f1", to, "f1", tier, CommentDisplay::NameComment, 1.0, 1.0,
+                        );
+                        (bezier_point(&actual, 0.5), (actual.x1, actual.y1), (old.x1, old.y1))
+                    }
+                };
+
+                let aabb = reference_aabb_with(
+                    &tables, &refs[0], tier, CommentDisplay::NameComment, ZOOM, LABEL_SCALE,
+                ).unwrap();
+                assert!(
+                    aabb_intersects((actual_mid.0, actual_mid.1, 0.0, 0.0), aabb),
+                    "UT-PB-37: {tier:?}/{line_type} 当前路径点不得被 AABB 裁剪"
+                );
+                assert_eq!(
+                    hit_test_reference_tier_with(
+                        &tables, &refs, actual_mid.0, actual_mid.1, tier,
+                        CommentDisplay::NameComment, ZOOM, LABEL_SCALE, None,
+                    ).as_deref(),
+                    Some("r1"),
+                    "UT-PB-37: {tier:?}/{line_type} 实际可见路径必须命中"
+                );
+                assert_eq!(
+                    hit_test_reference_tier_with(
+                        &tables, &refs, stale_start.0, stale_start.1, tier,
+                        CommentDisplay::NameComment, ZOOM, LABEL_SCALE, None,
+                    ),
+                    None,
+                    "UT-PB-37: {tier:?}/{line_type} 旧几何独有点不得形成不可见热区"
+                );
+                assert_eq!(
+                    hit_test_reference_tier_with(
+                        &tables, &refs, actual_start.0, actual_start.1 + 9.0 / ZOOM, tier,
+                        CommentDisplay::NameComment, ZOOM, LABEL_SCALE, None,
+                    ).as_deref(),
+                    Some("r1"),
+                    "UT-PB-37: {tier:?}/{line_type} 当前端点热区必须命中"
+                );
+                assert_eq!(
+                    hit_test_reference_tier(
+                        &tables, &refs, stale_start.0, stale_start.1, tier,
+                        CommentDisplay::NameComment, 1.0, None,
+                    ).as_deref(),
+                    Some("r1"),
+                    "UT-PB-37: 默认参数包装函数必须保持既有签名与默认几何"
+                );
             }
         }
     }

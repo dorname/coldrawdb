@@ -3944,6 +3944,246 @@ try {
     assert.equal(JSON.stringify(state.lastPutBody?.diagram), docBeforePan, "空白平移不得改写文档");
   });
 
+  // ─── ST-PB-21：54 表 / 97 关系下拖表、显式选线与悬浮条穿透（#74）───
+  await run(["ST-PB-21"], "大图直接拖表、有效几何选线与悬浮条指针边界", async page => {
+    const runtimeErrors = [];
+    page.on("pageerror", error => runtimeErrors.push(String(error)));
+    page.on("console", message => {
+      if (message.type() === "error" && !message.text().includes("Failed to load resource")) {
+        runtimeErrors.push(message.text());
+      }
+    });
+    const mkT = (id, x, y, long = false) => ({
+      id,
+      name: long ? `order_item_detail_with_long_name_${id}` : id,
+      x, y, color: "", comment: "",
+      fields: Array.from({ length: long ? 4 : 1 }, (_, i) => ({
+        id: i === 0 ? `f_${id}` : `f_${id}_${i}`,
+        name: i === 0 ? "id" : `additional_field_${i}`,
+        type_: "INT", default: "", check: "", primary: i === 0,
+        unique: false, not_null: true, increment: false, comment: "", tag: "", dict_code: "",
+      })),
+      indices: [],
+    });
+    const mkR = (id, st, et, lineType = "bezier") => ({
+      id, name: id, start_table_id: st, end_table_id: et,
+      start_field_id: `f_${st}`, end_field_id: `f_${et}`,
+      type_: "one_to_many", on_delete: "RESTRICT", on_update: "RESTRICT",
+      color: "", line_type: lineType, stroke_style: "solid",
+    });
+    const tables = [
+      mkT("effective_left", 100, 600, true),
+      mkT("effective_right", 900, 600, true),
+      mkT("drag_target", 100, 100),
+      mkT("cross_left", -300, 61),
+      mkT("cross_right", 700, 61),
+      mkT("marquee_target", 100, 300),
+      mkT("marquee_left", -300, 261),
+      mkT("marquee_right", 700, 261),
+      mkT("floating_target", 800, 400),
+    ];
+    for (let i = 0; i < 45; i += 1) {
+      tables.push(mkT(`filler_${i}`, 3000 + (i % 9) * 400, 2000 + Math.floor(i / 9) * 400));
+    }
+    const references = [
+      mkR("r_effective", "effective_left", "effective_right"),
+      mkR("r_cross", "cross_left", "cross_right", "straight"),
+      mkR("r_cross_marquee", "marquee_left", "marquee_right", "straight"),
+    ];
+    for (let i = 0; i < 94; i += 1) {
+      const start = 9 + (i % 45);
+      let end = 9 + ((i * 7 + 3) % 45);
+      if (end === start) end = 9 + ((end - 9 + 1) % 45);
+      references.push(mkR(`r_filler_${i}`, tables[start].id, tables[end].id, ["bezier", "orthogonal", "straight"][i % 3]));
+    }
+    assert.equal(tables.length, 54, "夹具必须恰好包含 54 张表");
+    assert.equal(references.length, 97, "夹具必须恰好包含 97 条关系");
+
+    const state = await installApi(page, { presetDiagram: { tables, references, areas: [], notes: [] } });
+    await login(page);
+    await createRoomAndEnter(page);
+    await page.waitForFunction(() => !!window.__cdb_hl_probe && !!window.__cdb_lod_probe, null, { timeout: 8_000 });
+    await page.waitForFunction(
+      () => {
+        const p = JSON.parse(window.__cdb_lod_probe);
+        return p?.tables_n === 54 && p?.refs_n === 97;
+      },
+      null, { timeout: 8_000, polling: 100 },
+    );
+    const canvas = page.locator('[data-testid="editor-canvas-container"] canvas');
+    const hl = () => page.evaluate(() => JSON.parse(window.__cdb_hl_probe));
+    const lod = () => page.evaluate(() => JSON.parse(window.__cdb_lod_probe));
+    const tablePos = async id => {
+      const positions = await canvas.getAttribute("data-table-pos");
+      const entry = positions?.split(";").find(value => value.startsWith(`${id}:`));
+      assert.ok(entry, `data-table-pos 必须包含 ${id}`);
+      const [x, y] = entry.slice(id.length + 1).split(",").map(Number);
+      return { x, y };
+    };
+    const worldPoint = async point => {
+      const { zoom } = await lod();
+      const [panX, panY] = (await canvas.getAttribute("data-view-pan")).split(",").map(Number);
+      return canvasPoint(page, { x: point.x * zoom + panX, y: point.y * zoom + panY });
+    };
+    const followPath = async () => {
+      const d = await canvas.getAttribute("data-follow-path");
+      assert.ok(d?.startsWith("M"), "首条关系必须暴露当前有效 data-follow-path");
+      const nums = d.match(/-?\d+\.?\d*/g).map(Number);
+      assert.equal(nums.length, 8);
+      const [x1, y1, cx1, cy1, cx2, cy2, x2, y2] = nums;
+      return { x1, y1, cx1, cy1, cx2, cy2, x2, y2 };
+    };
+    const dragTable = async (id, toolId, expected) => {
+      await page.locator(`[data-testid="${toolId}"]`).click();
+      const before = await tablePos(id);
+      const header = await worldPoint({ x: before.x + 50, y: before.y + 21.5 });
+      await page.mouse.move(header.x, header.y);
+      await page.mouse.down();
+      await page.mouse.move(header.x + 80, header.y + 60, { steps: 6 });
+      await page.mouse.up();
+      await waitSaved(page);
+      await page.waitForFunction(
+        ({ tableId, x, y }) => document.querySelector('[data-testid="editor-canvas-container"] canvas')
+          ?.getAttribute("data-table-pos")?.includes(`${tableId}:${x},${y}`),
+        { tableId: id, x: expected.x, y: expected.y }, { timeout: 5_000, polling: 100 },
+      );
+      const moved = state.lastPutBody?.diagram?.tables?.find(table => table.id === id);
+      assert.equal(moved?.x, expected.x, `${id} 拖动后的协作文档 x 必须落账`);
+      assert.equal(moved?.y, expected.y, `${id} 拖动后的协作文档 y 必须落账`);
+    };
+
+    const oldPath = await followPath();
+    await dragTable("drag_target", "tool-pan", { x: 180, y: 160 });
+    let selected = await hl();
+    assert.equal(selected.sel_table, true, "默认工具必须选中表而不是穿过表头的 r_cross");
+    assert.equal(selected.sel_ref_id, null);
+    assert.equal(await page.locator('[data-testid="inspector-table-name"]').inputValue(), "drag_target");
+
+    await dragTable("marquee_target", "tool-marquee", { x: 180, y: 360 });
+    selected = await hl();
+    assert.notEqual(selected.sel_ref_id, "r_cross_marquee", "框选工具不得让穿表关系抢占拖表");
+    const docBeforeView = JSON.stringify(state.lastPutBody?.diagram);
+
+    // 显式关系工具仍关系优先；未命中关系时回落表选择。
+    await page.locator('[data-testid="tool-relationship-select"]').click();
+    const cross = await worldPoint({ x: 500, y: 121.5 });
+    await page.mouse.click(cross.x, cross.y);
+    await page.waitForFunction(() => JSON.parse(window.__cdb_hl_probe)?.sel_ref_id === "r_cross", null, { timeout: 4_000 });
+    const tableBody = await worldPoint({ x: 820, y: 460 });
+    await page.mouse.click(tableBody.x, tableBody.y);
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="inspector-table-name"]')?.value === "floating_target",
+      null, { timeout: 4_000, polling: 100 },
+    );
+    assert.equal((await hl()).sel_ref_id, null);
+
+    // 低缩放 + 150% 字号：旧几何独有点不得选中不可见关系，当前路径中点仍可显式选中。
+    const fontButton = page.locator('[data-testid="canvas-font-scale"]');
+    await fontButton.click();
+    await page.waitForFunction(() => JSON.parse(window.__cdb_lod_probe)?.label_font_scale === 1.25);
+    await fontButton.click();
+    await page.waitForFunction(() => JSON.parse(window.__cdb_lod_probe)?.label_font_scale === 1.5);
+    const zoomOutButton = page.locator('[data-testid="floating-controls"] [data-testid="btn-zoom-out"]');
+    for (let i = 0; i < 60 && (await lod()).zoom > 0.25; i += 1) {
+      await zoomOutButton.click();
+      await page.waitForTimeout(100);
+    }
+    assert.ok((await lod()).zoom <= 0.25, "必须进入低缩放命中场景");
+    await waitForCanvasStable(page);
+    const actualPath = await followPath();
+    assert.notDeepEqual(actualPath, oldPath, "有效几何必须随 zoom/字号/Tier 更新");
+    const stalePoint = await worldPoint({ x: oldPath.x1, y: oldPath.y1 });
+    await page.mouse.click(stalePoint.x, stalePoint.y);
+    await page.waitForTimeout(250);
+    assert.equal((await hl()).sel_ref, false, "旧几何独有点不得选中不可见关系");
+    const actualMid = await worldPoint({
+      x: (actualPath.x1 + actualPath.x2) / 2,
+      y: (actualPath.y1 + actualPath.y2) / 2,
+    });
+    await page.mouse.click(actualMid.x, actualMid.y);
+    await page.waitForFunction(() => JSON.parse(window.__cdb_hl_probe)?.sel_ref_id === "r_effective", null, { timeout: 4_000 });
+    assert.equal(JSON.stringify(state.lastPutBody?.diagram), docBeforeView, "选线与视图偏好操作不得改写文档");
+
+    // 重进编辑器恢复默认视口，把 floating_target 表头移到缩放文本下方。
+    await page.reload();
+    await createRoomAndEnter(page);
+    await page.waitForFunction(() => !!window.__cdb_lod_probe && !!window.__cdb_hl_probe, null, { timeout: 8_000 });
+    await page.locator('[data-testid="tool-pan"]').click();
+    await waitForCanvasStable(page);
+    const zoomLabel = page.locator(".cdb-floating-zoom-label");
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const labelBox = await zoomLabel.boundingBox();
+      assert.ok(labelBox, "缩放文本必须可测量");
+      const labelCenter = { x: labelBox.x + labelBox.width / 2, y: labelBox.y + labelBox.height / 2 };
+      const current = await tablePos("floating_target");
+      const headerCenter = await worldPoint({ x: current.x + 100, y: current.y + 21.5 });
+      if (Math.hypot(headerCenter.x - labelCenter.x, headerCenter.y - labelCenter.y) <= 12) break;
+      await page.mouse.move(headerCenter.x, headerCenter.y);
+      await page.mouse.down();
+      await page.mouse.move(labelCenter.x, labelCenter.y, { steps: 8 });
+      await page.mouse.up();
+      await waitSaved(page);
+      await waitForCanvasStable(page);
+    }
+
+    const hitAt = point => page.evaluate(({ x, y }) => {
+      const element = document.elementFromPoint(x, y);
+      return {
+        canvas: element?.id === "editor-canvas",
+        button: element?.closest(".cdb-floating-controls .cdb-btn")?.getAttribute("data-testid") ?? null,
+      };
+    }, point);
+    const assertFloatingHitBoundary = async () => {
+      await waitForCanvasStable(page);
+      const controlsBox = await page.locator('[data-testid="floating-controls"]').boundingBox();
+      const labelBox = await zoomLabel.boundingBox();
+      const zoomOutBox = await page.locator('[data-testid="floating-controls"] [data-testid="btn-zoom-out"]').boundingBox();
+      assert.ok(controlsBox && labelBox && zoomOutBox, "悬浮条、文本与缩小按钮必须可见");
+      const samples = [
+        { x: labelBox.x + labelBox.width / 2, y: labelBox.y + labelBox.height / 2 },
+        { x: controlsBox.x + 2, y: controlsBox.y + controlsBox.height / 2 },
+        { x: (zoomOutBox.x + zoomOutBox.width + labelBox.x) / 2, y: labelBox.y + labelBox.height / 2 },
+      ];
+      for (const sample of samples) {
+        assert.equal((await hitAt(sample)).canvas, true, `非按钮区域必须穿透到 Canvas：${JSON.stringify(sample)}`);
+      }
+      const buttons = page.locator(".cdb-floating-controls .cdb-btn");
+      for (let i = 0; i < await buttons.count(); i += 1) {
+        const button = buttons.nth(i);
+        const box = await button.boundingBox();
+        assert.ok(box, `按钮 ${i} 必须可见`);
+        const hit = await hitAt({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
+        assert.equal(hit.button, await button.getAttribute("data-testid"), "按钮中心必须仍命中自身");
+      }
+    };
+
+    await assertFloatingHitBoundary();
+    const labelBox = await zoomLabel.boundingBox();
+    const labelCenter = { x: labelBox.x + labelBox.width / 2, y: labelBox.y + labelBox.height / 2 };
+    const floatingBefore = await tablePos("floating_target");
+    await page.mouse.move(labelCenter.x, labelCenter.y);
+    await page.mouse.down();
+    await page.mouse.move(labelCenter.x + 60, labelCenter.y + 40, { steps: 6 });
+    await page.mouse.up();
+    await waitSaved(page);
+    const floatingAfter = await tablePos("floating_target");
+    assert.notDeepEqual(floatingAfter, floatingBefore, "悬浮文本下方表头必须能真实拖动");
+
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 720 }]) {
+      await page.setViewportSize(viewport);
+      await assertFloatingHitBoundary();
+      const opsBefore = state.sentOps?.length ?? 0;
+      const labelsButton = page.locator('[data-testid="canvas-relation-labels"]');
+      const pressedBefore = await labelsButton.getAttribute("aria-pressed");
+      await labelsButton.click();
+      await page.waitForTimeout(250);
+      const pressedAfter = await labelsButton.getAttribute("aria-pressed");
+      assert.notEqual(pressedAfter, pressedBefore, `关系标签按钮必须执行切换（点击前=${pressedBefore}，点击后=${pressedAfter}）`);
+      assert.equal(state.sentOps?.length ?? 0, opsBefore, "悬浮条视图按钮不得写协作文档");
+    }
+    assert.deepEqual(runtimeErrors, [], "全程不得出现 pageerror 或应用 console.error");
+  });
+
   // ─── ST-PB-12：悬浮关系线 tooltip（fix-issues-42-44 / #43，§4.8 R-HOV-01~05）───
   await run(["ST-PB-12"], "悬浮关系线角落摘要 tooltip（B1）+ 同命中零位移 + 不改选中态", async page => {
     const mkT = (id, x, y, fid) => ({
