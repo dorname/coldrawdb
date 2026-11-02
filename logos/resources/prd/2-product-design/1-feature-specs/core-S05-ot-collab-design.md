@@ -271,3 +271,23 @@
 协作合并成功 → Toast/Activity；**禁止** S01 409 模态。
 
 锚点：`ws-status`、`ot-rev`、`remote-cursor`、`activity-feed`、`reconnect-banner`、`room-presence`。
+
+## 12. 存量非空图首次物化的 ID 与内容保真
+
+### 12.1 触发与基线
+
+当 room 绑定的 diagram 已存在非空关系存储内容、但 `doc_json` 仍为 `NULL` 时，首个有效 op 落库会触发首次物化。服务端必须以该图当前持久化的完整快照为物化基线，再应用首个 op；不得以空文档为基线，也不得把首次物化当作重新导入。
+
+物化基线包含既有 tables 及其 fields、references、areas 与 notes。首个 op 只产生其语义指定的目标变更，不得借物化之机重建、丢弃或规范化无关实体。
+
+### 12.2 ID 与关系端点不变量
+
+1. 首次物化不得重写任何既有 table / field / reference / area / note 的 ID，不得生成新的 `auto-` ID 来替换原 ID，也不得建立或消费导入阶段的旧→新 ID 映射。
+2. 每条既有 reference 的 `start_table_id`、`end_table_id`、`start_field_id`、`end_field_id` 必须逐值保持为物化前的实际值；不得因表或字段对象被重新序列化而改变端点，也不得对端点执行第二次 remap。
+3. 既有 areas 与 notes 必须与 tables / fields / references 一同进入物化文档，其 ID 和内容不因首次物化丢失；除首个 op 明确修改的属性外，既有实体内容与数组顺序保持不变。
+4. 首个 op 应用后，既有实体仍满足以上不变量；新增或修改仅来自该 op。后续 GET 物化读与 op log 重放结果继续满足 §UT-C-09 的一致性要求。
+5. 对历史已存在的悬空关系，首次物化同样不得猜测旧→新映射、重写端点或进行启发式修复。防止新悬空关系由写入口校验负责，物化阶段不承担历史数据迁移或清理。
+
+### 12.3 职责边界
+
+ID 冲突安全重键只发生在 diagram / bridge 导入规范化，以及明确采用导入式重键语义的 MCP 整表 create；协作物化与普通 op 应用不属于这些路径。MCP 后续关系创建必须使用当前实际 ID 并在写前校验四端点存在性及字段归属，不能依赖 collab 物化修正错误输入。

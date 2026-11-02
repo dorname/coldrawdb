@@ -2,9 +2,9 @@
   "scenario_id": "core-S06",
   "scenario_name": "AI 客户端通过 MCP 管理数据库图表",
   "module": "core",
-  "description": "MCP stdio 编排：initialize → tools/list → list/create/get/update/export → stale revision 409 → import/delete",
+  "description": "MCP stdio 基础编排：initialize → tools/list（12 工具）→ list/create/get/update/export → stale revision 409（仅文本错误 content）→ import/delete；扩展编排：54 表/863 字段/76 关系无损分片、房间凭据错误、login/refresh 单次重试，以及导入→实际 ID→关系→房间首 op→物化保真",
   "alignment": "core-S06-ai-client-mcp.md",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "transport": "mcp-stdio",
   "server": {
     "command": "${COLDRAWDB_MCP_BIN}",
@@ -17,9 +17,11 @@
     "stderr_policy": "redacted-logs"
   },
   "preconditions": [
-    "coldrawdb backend 使用隔离测试数据库并运行",
+    "coldrawdb backend 使用隔离测试数据库并运行；扩展编排必须使用真实 backend 与真实 coldrawdb-mcp stdio 子进程，不得以静态 schema 检查或声明式结果替代",
     "COLDRAWDB_MCP_BIN 指向 release 或 test 构建的可执行文件",
-    "测试完成后清理所创建和导入的 diagram"
+    "基础步骤所需静态 token 或扩展步骤所需动态登录凭据按各 server.env 独立注入，静态 token 与动态 email/password 不得同时非空",
+    "测试完成后清理所创建和导入的 diagram、room、WS 连接及测试凭据会话；日志与 reporter 不记录密码、token、cookie 或完整大图 payload",
+    "本文件只定义编排与预期；执行状态、时长和 PASS/FAIL 只能由 OpenLogos reporter 在真实执行后写入"
   ],
   "variables": {
     "diagram_name": "S06 MCP Orchestration",
@@ -46,11 +48,41 @@
     },
     {
       "step_id": 3,
+      "name": "tools/list 暴露且仅暴露 12 个既有工具",
       "method": "tools/list",
       "expect": {
-        "tools": { "length": 7 },
-        "tool:delete_diagram.annotations.destructiveHint": { "equals": true },
-        "tool:get_diagram.annotations.readOnlyHint": { "equals": true }
+        "tools": {
+          "length": 12,
+          "names_exactly": [
+            "list_diagrams",
+            "get_diagram",
+            "create_diagram",
+            "update_diagram",
+            "delete_diagram",
+            "import_schema",
+            "export_schema",
+            "update_table",
+            "update_field",
+            "update_reference",
+            "layout_diagram",
+            "update_dictionary"
+          ]
+        },
+        "tool:delete_diagram.annotations.destructiveHint": {
+          "equals": true
+        },
+        "tool:get_diagram.annotations.readOnlyHint": {
+          "equals": true
+        },
+        "tool:update_table.inputSchema.properties.action.enum": {
+          "equals": [
+            "create",
+            "update"
+          ]
+        },
+        "tool:update_reference.inputSchema.properties.references.type": {
+          "equals": "array"
+        }
       }
     },
     {
@@ -92,7 +124,7 @@
     },
     {
       "step_id": 8,
-      "name": "过期 revision 不得覆盖",
+      "name": "过期 revision 不得覆盖；错误不返回 structuredContent",
       "method": "tools/call",
       "tool": "update_diagram",
       "arguments": {
@@ -102,8 +134,25 @@
       },
       "expect": {
         "isError": true,
-        "structuredContent.code": { "equals": "REVISION_CONFLICT" },
-        "structuredContent.details.current_revision": { "equals": 1 }
+        "structuredContent": {
+          "absent": true
+        },
+        "content.0.type": {
+          "equals": "text"
+        },
+        "content.0.text": {
+          "json": {
+            "code": {
+              "equals": "REVISION_CONFLICT"
+            },
+            "retryable": {
+              "equals": false
+            },
+            "details.current_revision": {
+              "equals": 1
+            }
+          }
+        }
       }
     },
     {
@@ -143,8 +192,806 @@
       "expect": { "structuredContent.deleted": { "equals": true } }
     }
   ],
+  "orchestrations": [
+    {
+      "orchestration_id": "ST-MCP-18",
+      "name": "54 表 / 863 字段 / 76 关系全保真分片",
+      "transport": "mcp-stdio",
+      "server": {
+        "command": "${COLDRAWDB_MCP_BIN}",
+        "args": [],
+        "env": {
+          "COLDRAWDB_BASE_URL": "${COLDRAWDB_BASE_URL}",
+          "COLDRAWDB_ACCESS_TOKEN": "${COLDRAWDB_ACCESS_TOKEN}"
+        },
+        "stdout_policy": "jsonrpc-only",
+        "stderr_policy": "redacted-logs"
+      },
+      "preconditions": [
+        "S06_LARGE_FIXTURE 指向测试内的全保真 DrawDB JSON fixture：54 表、合计 863 字段、76 关系，并包含字段约束/默认值/注释、关系名称/color/cardinality/on_delete/on_update、areas 与 notes",
+        "fixture 的表/字段/关系使用调用方原始 ID；runner 在每批 update_table 后收集实际 ID 映射，并在关系分片前把端点重写为服务端实际 ID",
+        "单表一片，关系按数组分片；每片工具参数保守控制在约 48 KiB，严格串行，不并行写 revision"
+      ],
+      "variables": {
+        "large_fixture": "${S06_LARGE_FIXTURE}",
+        "chunked_diagram_name": "S06 MCP Chunked 54 Tables"
+      },
+      "steps": [
+        {
+          "step_id": 1,
+          "name": "创建仅用于分片写入的空图",
+          "method": "tools/call",
+          "tool": "create_diagram",
+          "arguments": {
+            "name": "${chunked_diagram_name}",
+            "database": "postgresql"
+          },
+          "expect": {
+            "isError": false
+          },
+          "extract": {
+            "chunked_diagram_id": "$.structuredContent.id"
+          }
+        },
+        {
+          "step_id": 2,
+          "name": "逐表 create，保留完整 fields 并收集实际 ID 映射",
+          "for_each": {
+            "items": "${large_fixture.tables}",
+            "as": "table_chunk",
+            "serial": true,
+            "max_argument_bytes": 49152
+          },
+          "method": "tools/call",
+          "tool": "update_table",
+          "arguments": {
+            "id": "${chunked_diagram_id}",
+            "action": "create",
+            "table_id": "${table_chunk.id}",
+            "name": "${table_chunk.name}",
+            "comment": "${table_chunk.comment}",
+            "x": "${table_chunk.x}",
+            "y": "${table_chunk.y}",
+            "color": "${table_chunk.color}",
+            "locked": "${table_chunk.locked}",
+            "fields": "${table_chunk.fields}"
+          },
+          "expect": {
+            "isError": false,
+            "structuredContent.table_id": {
+              "type": "string",
+              "not_empty": true
+            },
+            "structuredContent.field_id_map": {
+              "type": "object"
+            }
+          },
+          "extract": {
+            "actual_table_id": "$.structuredContent.table_id",
+            "actual_field_id_map": "$.structuredContent.field_id_map"
+          },
+          "collect": {
+            "table_id_map": {
+              "key": "${table_chunk.id}",
+              "value": "${actual_table_id}"
+            },
+            "field_id_map": {
+              "merge_object": "${actual_field_id_map}"
+            }
+          }
+        },
+        {
+          "step_id": 3,
+          "name": "按 references 数组批量 create；端点只使用实际 ID",
+          "for_each": {
+            "items": "${remapped_reference_chunks}",
+            "as": "reference_chunk",
+            "serial": true,
+            "max_argument_bytes": 49152
+          },
+          "method": "tools/call",
+          "tool": "update_reference",
+          "arguments": {
+            "id": "${chunked_diagram_id}",
+            "action": "create",
+            "references": "${reference_chunk}"
+          },
+          "expect": {
+            "isError": false,
+            "structuredContent.id": {
+              "equals": "${chunked_diagram_id}"
+            },
+            "structuredContent.revision": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        {
+          "step_id": 4,
+          "name": "回读并对 fixture 做全保真比较",
+          "method": "tools/call",
+          "tool": "get_diagram",
+          "arguments": {
+            "id": "${chunked_diagram_id}"
+          },
+          "expect": {
+            "structuredContent.diagram.tables": {
+              "length": 54
+            },
+            "structuredContent.diagram.tables[*].fields": {
+              "total_length": 863
+            },
+            "structuredContent.diagram.references": {
+              "length": 76
+            },
+            "structuredContent.diagram": {
+              "semantic_equals_fixture": {
+                "fixture": "${large_fixture}",
+                "table_id_map": "${table_id_map}",
+                "field_id_map": "${field_id_map}",
+                "ignore": [
+                  "revision"
+                ],
+                "reference_normalization": {
+                  "cardinality_to": "type_",
+                  "cascades": "UPPER_SNAKE_CASE"
+                },
+                "preserve": [
+                  "tables",
+                  "fields",
+                  "references",
+                  "areas",
+                  "notes",
+                  "field_attributes",
+                  "comments",
+                  "colors",
+                  "positions"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "step_id": 5,
+          "name": "清理分片图",
+          "method": "tools/call",
+          "tool": "delete_diagram",
+          "arguments": {
+            "id": "${chunked_diagram_id}",
+            "confirm": true
+          },
+          "expect": {
+            "structuredContent.deleted": {
+              "equals": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "orchestration_id": "ST-MCP-19-token-missing",
+      "name": "房间写回退无凭据返回 TOKEN_MISSING",
+      "transport": "mcp-stdio",
+      "server": {
+        "command": "${COLDRAWDB_MCP_BIN}",
+        "args": [],
+        "env": {
+          "COLDRAWDB_BASE_URL": "${COLDRAWDB_BASE_URL}",
+          "COLDRAWDB_ACCESS_TOKEN": ""
+        },
+        "stdout_policy": "jsonrpc-only",
+        "stderr_policy": "redacted-logs"
+      },
+      "preconditions": [
+        "S06_ROOM_DIAGRAM_ID 已绑定 active room，S06_ROOM_TABLE_ID 为其中可编辑表；调用方对该房间有写权限但 MCP 进程未配置任何凭据",
+        "update_table 的全图 PUT 命中 USE_OP_CHANNEL 后进入统一 rooms/WS 回退"
+      ],
+      "steps": [
+        {
+          "step_id": 1,
+          "name": "房间写回退在业务 op 前拒绝缺失凭据",
+          "method": "tools/call",
+          "tool": "update_table",
+          "arguments": {
+            "id": "${S06_ROOM_DIAGRAM_ID}",
+            "table_id": "${S06_ROOM_TABLE_ID}",
+            "action": "update",
+            "comment": "must-not-write-without-token"
+          },
+          "expect": {
+            "isError": true,
+            "structuredContent": {
+              "absent": true
+            },
+            "content.0.text": {
+              "json": {
+                "code": {
+                  "equals": "ROOMS_AUTH_REQUIRED"
+                },
+                "retryable": {
+                  "equals": false
+                },
+                "details.reason": {
+                  "equals": "TOKEN_MISSING"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "orchestration_id": "ST-MCP-19-token-expired",
+      "name": "房间写回退 rooms 401 返回 TOKEN_INVALID_OR_EXPIRED",
+      "transport": "mcp-stdio",
+      "server": {
+        "command": "${COLDRAWDB_MCP_BIN}",
+        "args": [],
+        "env": {
+          "COLDRAWDB_BASE_URL": "${COLDRAWDB_BASE_URL}",
+          "COLDRAWDB_ACCESS_TOKEN": "${COLDRAWDB_EXPIRED_ACCESS_TOKEN}"
+        },
+        "stdout_policy": "jsonrpc-only",
+        "stderr_policy": "redacted-logs"
+      },
+      "preconditions": [
+        "S06_ROOM_DIAGRAM_ID 已绑定 active room，S06_ROOM_TABLE_ID 为其中可编辑表",
+        "COLDRAWDB_EXPIRED_ACCESS_TOKEN 为测试专用失效 token；rooms 返回 401，且不得把 403/5xx 重写成该用例预期"
+      ],
+      "steps": [
+        {
+          "step_id": 1,
+          "name": "rooms 401 上下文化且错误文本脱敏",
+          "method": "tools/call",
+          "tool": "update_table",
+          "arguments": {
+            "id": "${S06_ROOM_DIAGRAM_ID}",
+            "table_id": "${S06_ROOM_TABLE_ID}",
+            "action": "update",
+            "comment": "must-not-write-with-expired-token"
+          },
+          "expect": {
+            "isError": true,
+            "structuredContent": {
+              "absent": true
+            },
+            "content.0.text": {
+              "json": {
+                "code": {
+                  "equals": "ROOMS_AUTH_REQUIRED"
+                },
+                "retryable": {
+                  "equals": false
+                },
+                "details.reason": {
+                  "equals": "TOKEN_INVALID_OR_EXPIRED"
+                },
+                "details.http_status": {
+                  "equals": 401
+                }
+              },
+              "not_contains": [
+                "${COLDRAWDB_EXPIRED_ACCESS_TOKEN}",
+                "Authorization",
+                "Cookie"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "orchestration_id": "ST-MCP-20-api-refresh",
+      "name": "动态 login → API 401 → 单次 refresh → 原请求单次重试 → 房间 ack",
+      "transport": "mcp-stdio",
+      "server": {
+        "command": "${COLDRAWDB_MCP_BIN}",
+        "args": [],
+        "env": {
+          "COLDRAWDB_BASE_URL": "${COLDRAWDB_BASE_URL}",
+          "COLDRAWDB_AUTH_EMAIL": "${COLDRAWDB_AUTH_EMAIL}",
+          "COLDRAWDB_AUTH_PASSWORD": "${COLDRAWDB_AUTH_PASSWORD}"
+        },
+        "stdout_policy": "jsonrpc-only",
+        "stderr_policy": "redacted-logs"
+      },
+      "preconditions": [
+        "动态账号是 S06_ROOM_DIAGRAM_ID 所属 active room 的 owner/editor；静态 token 环境变量为空",
+        "真实测试 backend 支持 S03 login/refresh；测试控制器仅让内存 access token 在 rooms 请求前过期，保留有效 refresh cookie，并记录 login/refresh/原请求次数",
+        "测试观察数据只含计数与状态，不含密码、access token、refresh cookie 或完整 diagram"
+      ],
+      "steps": [
+        {
+          "step_id": 1,
+          "name": "房间写触发一次 refresh/retry 后收到 op ack",
+          "before": {
+            "test_hook": "expire_current_access_token",
+            "preserve_refresh_cookie": true
+          },
+          "method": "tools/call",
+          "tool": "update_table",
+          "arguments": {
+            "id": "${S06_ROOM_DIAGRAM_ID}",
+            "table_id": "${S06_ROOM_TABLE_ID}",
+            "action": "update",
+            "comment": " refreshed-once"
+          },
+          "expect": {
+            "isError": false,
+            "structuredContent.id": {
+              "equals": "${S06_ROOM_DIAGRAM_ID}"
+            },
+            "structuredContent.revision": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "observe": {
+            "session_trace": {
+              "login_calls": {
+                "equals": 1
+              },
+              "refresh_calls": {
+                "equals": 1
+              },
+              "original_request_retries": {
+                "equals": 1
+              },
+              "refresh_recursive_calls": {
+                "equals": 0
+              },
+              "op_acknowledged": {
+                "equals": true
+              }
+            },
+            "logs_not_contain": [
+              "${COLDRAWDB_AUTH_PASSWORD}",
+              "Authorization",
+              "Cookie",
+              "refresh_token"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "orchestration_id": "ST-MCP-20-ws-refresh",
+      "name": "WS 握手 401 且未发 op 时单次 refresh/重连",
+      "transport": "mcp-stdio",
+      "server": {
+        "command": "${COLDRAWDB_MCP_BIN}",
+        "args": [],
+        "env": {
+          "COLDRAWDB_BASE_URL": "${COLDRAWDB_BASE_URL}",
+          "COLDRAWDB_AUTH_EMAIL": "${COLDRAWDB_AUTH_EMAIL}",
+          "COLDRAWDB_AUTH_PASSWORD": "${COLDRAWDB_AUTH_PASSWORD}"
+        },
+        "stdout_policy": "jsonrpc-only",
+        "stderr_policy": "redacted-logs"
+      },
+      "preconditions": [
+        "动态账号具有房间写权限；rooms 探测成功，测试控制器在首次 WS 握手前仅过期 access token，并保留有效 refresh cookie",
+        "首次握手 401 时尚未发送任何业务 op；重连后的 ack 才能视为成功，已发送 op 不在本用例中重放"
+      ],
+      "steps": [
+        {
+          "step_id": 1,
+          "name": "握手 refresh 重连一次后发送并 ack 单个 op",
+          "before": {
+            "test_hook": "expire_access_token_before_ws_handshake",
+            "preserve_refresh_cookie": true
+          },
+          "method": "tools/call",
+          "tool": "update_table",
+          "arguments": {
+            "id": "${S06_ROOM_DIAGRAM_ID}",
+            "table_id": "${S06_ROOM_TABLE_ID}",
+            "action": "update",
+            "x": 321
+          },
+          "expect": {
+            "isError": false,
+            "structuredContent.revision": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "observe": {
+            "session_trace": {
+              "refresh_calls": {
+                "equals": 1
+              },
+              "ws_reconnects": {
+                "equals": 1
+              },
+              "op_replays_after_send": {
+                "equals": 0
+              },
+              "op_acknowledged": {
+                "equals": true
+              }
+            },
+            "logs_not_contain": [
+              "${COLDRAWDB_AUTH_PASSWORD}",
+              "Authorization",
+              "Cookie",
+              "refresh_token"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "orchestration_id": "ST-MCP-21",
+      "name": "导入 → 实际 ID → 建关系 → 开房间 → 首 op → 再读取的端点与物化保真",
+      "transport": "mcp-stdio+http",
+      "base_url": "${COLDRAWDB_BASE_URL}",
+      "server": {
+        "command": "${COLDRAWDB_MCP_BIN}",
+        "args": [],
+        "env": {
+          "COLDRAWDB_BASE_URL": "${COLDRAWDB_BASE_URL}",
+          "COLDRAWDB_ACCESS_TOKEN": "${COLDRAWDB_ACCESS_TOKEN}"
+        },
+        "stdout_policy": "jsonrpc-only",
+        "stderr_policy": "redacted-logs"
+      },
+      "preconditions": [
+        "COLDRAWDB_ACCESS_TOKEN 对应测试用户可创建 diagram 和 room；同一隔离库中不存在同名 active room",
+        "导入源使用稳定的原始 ID；get_diagram 必须按表名/字段名取得服务端实际 ID，后续关系不得引用导入前旧 ID"
+      ],
+      "steps": [
+        {
+          "step_id": 1,
+          "name": "导入带原始 ID、area 与 note 的非空图",
+          "method": "tools/call",
+          "tool": "import_schema",
+          "arguments": {
+            "format": "drawdb_json",
+            "source": "mcp-s06-st21",
+            "payload": {
+              "name": "S06 Endpoint Materialization",
+              "database": "postgresql",
+              "tables": [
+                {
+                  "id": "s06-src-users",
+                  "name": "users",
+                  "x": 100,
+                  "y": 100,
+                  "fields": [
+                    {
+                      "id": "s06-src-user-id",
+                      "name": "id",
+                      "type": "INT",
+                      "primary": true,
+                      "not_null": true
+                    }
+                  ]
+                },
+                {
+                  "id": "s06-src-posts",
+                  "name": "posts",
+                  "x": 420,
+                  "y": 100,
+                  "fields": [
+                    {
+                      "id": "s06-src-post-id",
+                      "name": "id",
+                      "type": "INT",
+                      "primary": true,
+                      "not_null": true
+                    },
+                    {
+                      "id": "s06-src-post-user-id",
+                      "name": "user_id",
+                      "type": "INT",
+                      "not_null": true
+                    }
+                  ]
+                }
+              ],
+              "references": [],
+              "areas": [
+                {
+                  "id": "s06-src-area",
+                  "name": "core",
+                  "x": 40,
+                  "y": 40,
+                  "width": 700,
+                  "height": 360
+                }
+              ],
+              "notes": [
+                {
+                  "id": "s06-src-note",
+                  "title": "preserve",
+                  "content": "IDs must survive materialization",
+                  "x": 40,
+                  "y": 440
+                }
+              ]
+            }
+          },
+          "expect": {
+            "isError": false,
+            "structuredContent.imported_tables": {
+              "equals": 2
+            },
+            "structuredContent.imported_fields": {
+              "equals": 3
+            }
+          },
+          "extract": {
+            "endpoint_diagram_id": "$.structuredContent.diagram_id"
+          }
+        },
+        {
+          "step_id": 2,
+          "name": "读取导入后的实际表/字段 ID",
+          "method": "tools/call",
+          "tool": "get_diagram",
+          "arguments": {
+            "id": "${endpoint_diagram_id}"
+          },
+          "expect": {
+            "structuredContent.diagram.tables": {
+              "length": 2
+            },
+            "structuredContent.diagram.references": {
+              "length": 0
+            }
+          },
+          "extract": {
+            "actual_users_table_id": "$.structuredContent.diagram.tables[?(@.name=='users')].id",
+            "actual_user_id_field_id": "$.structuredContent.diagram.tables[?(@.name=='users')].fields[?(@.name=='id')].id",
+            "actual_posts_table_id": "$.structuredContent.diagram.tables[?(@.name=='posts')].id",
+            "actual_post_user_field_id": "$.structuredContent.diagram.tables[?(@.name=='posts')].fields[?(@.name=='user_id')].id",
+            "actual_area_id": "$.structuredContent.diagram.areas[0].id",
+            "actual_note_id": "$.structuredContent.diagram.notes[0].id"
+          }
+        },
+        {
+          "step_id": 3,
+          "name": "仅用实际 ID 创建关系并规范化 type_/级联",
+          "method": "tools/call",
+          "tool": "update_reference",
+          "arguments": {
+            "id": "${endpoint_diagram_id}",
+            "action": "create",
+            "ref_id": "s06-users-posts",
+            "start_table_id": "${actual_users_table_id}",
+            "start_field_id": "${actual_user_id_field_id}",
+            "end_table_id": "${actual_posts_table_id}",
+            "end_field_id": "${actual_post_user_field_id}",
+            "cardinality": "one_to_many",
+            "on_delete": "cascade",
+            "on_update": "set_null",
+            "name": "user_posts",
+            "color": "#3af"
+          },
+          "expect": {
+            "isError": false
+          }
+        },
+        {
+          "step_id": 4,
+          "name": "批量中任一悬空端点使整批在 PUT/WS 前拒绝",
+          "method": "tools/call",
+          "tool": "update_reference",
+          "arguments": {
+            "id": "${endpoint_diagram_id}",
+            "action": "create",
+            "references": [
+              {
+                "ref_id": "s06-valid-but-must-not-commit",
+                "start_table_id": "${actual_posts_table_id}",
+                "start_field_id": "${actual_post_user_field_id}",
+                "end_table_id": "${actual_users_table_id}",
+                "end_field_id": "${actual_user_id_field_id}",
+                "cardinality": "many_to_one"
+              },
+              {
+                "ref_id": "s06-dangling",
+                "start_table_id": "missing-table",
+                "start_field_id": "missing-field",
+                "end_table_id": "${actual_users_table_id}",
+                "end_field_id": "${actual_user_id_field_id}"
+              }
+            ]
+          },
+          "expect": {
+            "isError": true,
+            "structuredContent": {
+              "absent": true
+            },
+            "content.0.text": {
+              "json": {
+                "code": {
+                  "equals": "VALIDATION_ERROR"
+                },
+                "retryable": {
+                  "equals": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "step_id": 5,
+          "name": "无效批量零写入，并保存开房间前快照",
+          "method": "tools/call",
+          "tool": "get_diagram",
+          "arguments": {
+            "id": "${endpoint_diagram_id}"
+          },
+          "expect": {
+            "structuredContent.diagram.references": {
+              "length": 1
+            },
+            "structuredContent.diagram.references[0].startTableId": {
+              "equals": "${actual_users_table_id}"
+            },
+            "structuredContent.diagram.references[0].startFieldId": {
+              "equals": "${actual_user_id_field_id}"
+            },
+            "structuredContent.diagram.references[0].endTableId": {
+              "equals": "${actual_posts_table_id}"
+            },
+            "structuredContent.diagram.references[0].endFieldId": {
+              "equals": "${actual_post_user_field_id}"
+            },
+            "structuredContent.diagram.references[0].type_": {
+              "equals": "one_to_many"
+            },
+            "structuredContent.diagram.references[0].onDelete": {
+              "equals": "CASCADE"
+            },
+            "structuredContent.diagram.references[0].onUpdate": {
+              "equals": "SET_NULL"
+            }
+          },
+          "extract": {
+            "pre_room_snapshot": "$.structuredContent.diagram"
+          }
+        },
+        {
+          "step_id": 6,
+          "name": "为已导入且含关系的图创建房间",
+          "transport": "http",
+          "method": "POST",
+          "path": "/api/v1/rooms",
+          "request": {
+            "headers": {
+              "Content-Type": "application/json",
+              "Authorization": "Bearer ${COLDRAWDB_ACCESS_TOKEN}"
+            },
+            "body": {
+              "name": "S06 Endpoint Room",
+              "diagramId": "${endpoint_diagram_id}"
+            }
+          },
+          "expect": {
+            "status": 201,
+            "json": {
+              "diagramId": {
+                "equals": "${endpoint_diagram_id}"
+              }
+            }
+          },
+          "extract": {
+            "endpoint_room_id": "$.id"
+          }
+        },
+        {
+          "step_id": 7,
+          "name": "首个 MCP 房间写触发存量图物化并收到 op ack",
+          "method": "tools/call",
+          "tool": "update_table",
+          "arguments": {
+            "id": "${endpoint_diagram_id}",
+            "table_id": "${actual_users_table_id}",
+            "action": "update",
+            "comment": "first-room-op"
+          },
+          "expect": {
+            "isError": false,
+            "structuredContent.revision": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        {
+          "step_id": 8,
+          "name": "再读取证明物化不重键且关系/areas/notes 完整",
+          "method": "tools/call",
+          "tool": "get_diagram",
+          "arguments": {
+            "id": "${endpoint_diagram_id}"
+          },
+          "expect": {
+            "structuredContent.diagram": {
+              "preserves_snapshot_paths": {
+                "snapshot": "${pre_room_snapshot}",
+                "paths": [
+                  "tables[*].id",
+                  "tables[*].fields[*].id",
+                  "references[*].id",
+                  "references[*].startTableId",
+                  "references[*].startFieldId",
+                  "references[*].endTableId",
+                  "references[*].endFieldId",
+                  "areas[*].id",
+                  "notes[*].id",
+                  "areas",
+                  "notes"
+                ]
+              }
+            },
+            "structuredContent.diagram.references": {
+              "length": 1
+            },
+            "structuredContent.diagram.references[0].startTableId": {
+              "equals": "${actual_users_table_id}"
+            },
+            "structuredContent.diagram.references[0].endFieldId": {
+              "equals": "${actual_post_user_field_id}"
+            },
+            "structuredContent.diagram.areas[0].id": {
+              "equals": "${actual_area_id}"
+            },
+            "structuredContent.diagram.notes[0].id": {
+              "equals": "${actual_note_id}"
+            }
+          }
+        },
+        {
+          "step_id": 9,
+          "name": "归档测试房间",
+          "transport": "http",
+          "method": "DELETE",
+          "path": "/api/v1/rooms/${endpoint_room_id}",
+          "request": {
+            "headers": {
+              "Authorization": "Bearer ${COLDRAWDB_ACCESS_TOKEN}"
+            }
+          },
+          "expect": {
+            "status": 204
+          }
+        },
+        {
+          "step_id": 10,
+          "name": "清理端点链路图",
+          "method": "tools/call",
+          "tool": "delete_diagram",
+          "arguments": {
+            "id": "${endpoint_diagram_id}",
+            "confirm": true
+          },
+          "expect": {
+            "structuredContent.deleted": {
+              "equals": true
+            }
+          }
+        }
+      ]
+    }
+  ],
   "reporter": {
     "output": "logos/resources/verify/test-results.jsonl",
-    "test_ids": ["ST-MCP-01", "ST-MCP-02", "ST-MCP-03", "ST-MCP-04", "ST-MCP-05"]
+    "test_ids": [
+      "ST-MCP-01",
+      "ST-MCP-02",
+      "ST-MCP-03",
+      "ST-MCP-04",
+      "ST-MCP-05",
+      "ST-MCP-18",
+      "ST-MCP-19",
+      "ST-MCP-20",
+      "ST-MCP-21"
+    ],
+    "result_policy": "仅真实执行后由 runner 按用例写入 PASS/FAIL、duration_ms 与 timestamp；本编排定义不得预写执行结果，失败也须记录已执行步骤，所有消息脱敏"
   }
 }

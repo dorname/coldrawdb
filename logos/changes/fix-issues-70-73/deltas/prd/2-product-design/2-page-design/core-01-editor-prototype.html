@@ -1,0 +1,65 @@
+# Delta — core-01-editor-prototype.html（#73 关系名称编辑）
+
+> 模块：core | 提案：fix-issues-70-73
+> 说明：仅对齐唯一现行主原型的关系数据、Inspector 与 blur 落账；不重做页面布局。以下按函数/区域合并。
+
+## MODIFIED — `baseDiagram.relations`、`createRelation`、`importModel` 关系数据区
+
+为关系对象补充可选名称，所有新建入口统一以空串表示未命名：
+
+1. `baseDiagram.relations` 中现有 `rel-users-posts` 增加 `name:""`，用于演示空名 placeholder。
+2. `createRelation` 的 `state.diagram.relations.push({...})` 增加 `name:""`。
+3. `importModel` 创建关系的 `state.diagram.relations.push({...})` 增加 `name:""`。
+4. 读取旧数据时以 `r.name ?? ""` 兼容缺失字段；不得把显示兜底文案写回 `name`。
+
+## ADDED — `relationDisplayName` 显示辅助函数（`relEndpointName` 邻近区域）
+
+新增与生产 `relation_display_name` 同口径的原型辅助函数：
+
+```js
+    function relationDisplayName(r) {
+      const raw = String(r.name ?? "");
+      return raw.trim() ? raw : `未命名关系（${r.id}）`;
+    }
+```
+
+具名时返回原始名称；空串或纯空白时只回退显示，不修改关系数据。
+
+## MODIFIED — `renderInspector` 的 `selRel` 分支
+
+1. 关系面板标题中的对象名称使用 `relationDisplayName(selRel)`，保留现有 id tag；空名因此可见为 `未命名关系（<id>）`。
+2. 在「起止字段」之前插入首个可编辑控件。value 使用原始名称，placeholder 使用统一显示名：
+
+```html
+<div class="field">
+  <label for="rel-name">关系名称</label>
+  <input id="rel-name" class="input"
+    data-blur="rel-name" data-id="${selRel.id}"
+    data-testid="inspector-ref-name"
+    value="${esc(selRel.name ?? "")}"
+    placeholder="${esc(relationDisplayName(selRel))}"
+    ${!canEdit()?"disabled":""}>
+</div>
+```
+
+3. 不使用 `data-change="rel-name"`，避免 change 与 blur 双通道重复落账；现有 cardinality、颜色、删除等控件保持不变。
+
+## ADDED — `app` 的 `focusout` 委托（现有 `change` 监听附近）
+
+新增关系名称 blur 处理。trim 后与原始 `r.name` 比较，同值仅恢复输入框原始值，不调用 `commit`；空串允许清空。`canEdit()` 与 `commit` 内既有只读保护共同阻止只读写入。
+
+```js
+    app.addEventListener("focusout", event => {
+      const el = event.target;
+      if (el.dataset.blur !== "rel-name") return;
+      const r = state.diagram.relations.find(item => item.id === el.dataset.id);
+      if (!r) return;
+      const current = String(r.name ?? "");
+      if (!canEdit()) { el.value = current; return; }
+      const next = el.value.trim();
+      if (next === current) { el.value = current; return; }
+      commit(next ? `将关系重命名为 ${next}` : "清空了关系名称", () => r.name = next, "relation");
+    });
+```
+
+合并后，名称编辑复用原型现有 `commit → markDirty → 自动保存` 链路；不得新增独立保存按钮或第二套名称状态。

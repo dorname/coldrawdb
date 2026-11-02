@@ -5,9 +5,9 @@ protocol:
 # mcp-canvas-tools（2026-09-18）：新增 update_table / update_field / update_reference / layout_diagram 共 4 个画布编辑 tool。
 # fix-remote-github-issues-7-18（2026-09-18）：update_reference 新增 color 参数（#12）；
 # 写工具（update_diagram/update_table/update_field/update_reference/layout_diagram/update_dictionary）成功响应约定：
-# 必须 normalize 为与各自 outputSchema 完全一致的瘦响应（update_* 恰好 { id, revision }，
-# update_dictionary 另含 { dict_id, fields_cleared }；
-# layout_diagram 恰好 { id, revision, tables_repositioned }），不透传上游 envelope 或整图字段（#18）。
+# 必须 normalize 为与各自 outputSchema 完全一致的瘦响应（update_* 通常为 { id, revision }；
+# update_table(action=create) 另含 table_id / field_id_map，update_dictionary 另含 dict_id / fields_cleared；
+# layout_diagram 为 { id, revision, tables_repositioned }），不透传上游 envelope 或整图字段。
 # fix-open-issues-26-33（2026-09-27，#26）：update_diagram 新增载荷软上限
 # （COLDRAWDB_MCP_PAYLOAD_SOFT_LIMIT_BYTES，默认 256 KiB）：超限本地拦截返回
 # PAYLOAD_TOO_LARGE（details 含 payload_bytes / soft_limit_bytes / suggestion / batch_hint），
@@ -15,10 +15,12 @@ protocol:
 # 串行 expected_revision（见 core-S06-mcp-service-design.md §4.4）。
 # mcp-dictionary-tools（2026-09-28）：新增 update_dictionary 工具（create/update/delete），
 # update_field 新增 dict_code 参数（数据字典绑定，S07 软引用按编码）。
-# 现有 tools 总数：12 个（11 个既有 + 1 个新增）。
-# fix-issues-42-44-mcp-and-relation-hit（2026-09-28，#42）：import_schema 描述明确「仅新建不覆盖」；
-# update_diagram 错误可诊断（details 含 http_status/content_type/body_excerpt）+
-# 409 非 JSON 含 USE_OP_CHANNEL 字样鲁棒识别（core-S06 §4.5）。
+# fix-issues-42-44-mcp-and-relation-hit（2026-09-28，#42）：import_schema 仅新建不覆盖；
+# update_diagram 错误可诊断，409 非 JSON 含 USE_OP_CHANNEL 字样时可识别。
+# fix-issues-70-73（2026-11-02，#70～#72）：update_table 支持整表 create；
+# update_reference 支持批量 create、type_/级联规范化与端点写前校验；
+# 房间写回退新增 ROOMS_AUTH_REQUIRED 及动态 login/refresh 会话。
+# 现有 tools 总数仍为 12 个，本次不新增工具。
   name: Model Context Protocol
   transport: stdio
   version_strategy: negotiate
@@ -28,10 +30,11 @@ server:
   instructions: >-
     仅操作 COLDRAWDB_BASE_URL 指向的 coldrawdb。修改前先读取最新 revision；
     delete_diagram 具有破坏性并需用户批准；禁止把本服务用于任意 SQL、文件或 HTTP 访问。
-    diagram-api-auth：当后端开启 COLDRAWDB_DIAGRAMS_AUTH=on 时，全部 12 个工具
-    均要求 COLDRAWDB_ACCESS_TOKEN（auth_v1 /auth/login 签发的 access_token，Bearer 注入）；
-    token 缺失或过期时所有工具调用将收到上游 401（映射为 UNAUTHENTICATED）。
-    flag=off（默认过渡态）时 token 仅 rooms/collab 写工具需要。
+    静态 COLDRAWDB_ACCESS_TOKEN 与动态 COLDRAWDB_AUTH_EMAIL / COLDRAWDB_AUTH_PASSWORD
+    两种凭据方式互斥；动态方式复用 S03 login/refresh，并只在内存保存 access token 与 refresh cookie。
+    diagram-api-auth：当后端开启 COLDRAWDB_DIAGRAMS_AUTH=on 时，全部 12 个工具均要求有效鉴权；
+    flag=off（默认过渡态）时仅 rooms/collab 写工具要求鉴权。普通 API 401 仍映射
+    UNAUTHENTICATED；只有房间写回退的缺失/失效凭据映射 ROOMS_AUTH_REQUIRED。
 configuration:
   COLDRAWDB_BASE_URL:
     required: true
@@ -42,6 +45,17 @@ configuration:
     required: false
     type: string
     secret: true
+    description: "静态 Bearer access token；与 COLDRAWDB_AUTH_EMAIL / COLDRAWDB_AUTH_PASSWORD 互斥"
+  COLDRAWDB_AUTH_EMAIL:
+    required: false
+    type: string
+    format: email
+    description: "动态登录邮箱；必须与 COLDRAWDB_AUTH_PASSWORD 同时配置，且不得同时配置静态 token"
+  COLDRAWDB_AUTH_PASSWORD:
+    required: false
+    type: string
+    secret: true
+    description: "动态登录密码；必须与 COLDRAWDB_AUTH_EMAIL 同时配置，且不得同时配置静态 token"
   COLDRAWDB_REQUEST_TIMEOUT_SECS:
     required: false
     type: integer
@@ -54,6 +68,8 @@ configuration:
     minimum: 16384
     default: 262144
     description: "update_diagram 单次参数体积软上限（字节）；超限返回 PAYLOAD_TOO_LARGE 并建议分批"
+# 动态 email/password 必须成对且与静态 token 互斥；API 401 仅允许动态会话 refresh 一次并重试一次，
+# WS 仅在尚未发送 op 的握手 401 时 refresh 并重连一次，已发送 op 不盲目重放。
 
 tools:
   - name: list_diagrams
@@ -296,8 +312,14 @@ tools:
           type: string
 
   - name: update_table
-    title: 更新表属性
-    description: 修改指定表的名称、注释、位置、颜色或锁定状态。通过 GET 全量读取 + PUT 全量写回实现。本工具是大图分批写入的官方分片手段之一（按表），详见 update_diagram 的分批指引。
+    title: 创建或更新表
+    description: >-
+      action 缺省为 update，保持旧调用兼容；update 修改指定表属性且禁止携带 fields。
+      create 一次追加一张含完整 fields 的表，fields[].id 与输入 table_id 作为调用方原始 ID，
+      服务端按导入一致的冲突安全规则重键；后续关系必须使用 create 响应返回的实际 table_id
+      与 field_id_map，不得继续使用导入前旧 ID。通过 GET 全量读取 + PUT 全量写回实现。
+      建议单表一片、单次工具参数保守控制在约 48 KiB；约 63 KB 仅是特定客户端实测边界，
+      不是服务端保证。跨调用不提供整链原子性或回滚。
     upstream:
       method: GET + PUT
       path: /api/v1/diagrams/{id}
@@ -315,13 +337,19 @@ tools:
         id:
           type: string
           minLength: 1
+        action:
+          type: string
+          enum: [create, update]
+          default: update
         table_id:
           type: string
           minLength: 1
+          description: "create：调用方原始表 ID；update：图中已存在的实际表 ID"
         name:
           type: string
           minLength: 1
           maxLength: 64
+          description: "create 必填；update 可选"
         comment:
           type: string
           maxLength: 256
@@ -334,6 +362,22 @@ tools:
           maxLength: 32
         locked:
           type: boolean
+        fields:
+          type: array
+          description: "仅 create 必填；完整字段数组，不能用于 update"
+          items:
+            $ref: "#/schemas/TableFieldInput"
+      allOf:
+        - if:
+            properties:
+              action:
+                const: create
+            required: [action]
+          then:
+            required: [name, fields]
+          else:
+            not:
+              required: [fields]
     outputSchema:
       type: object
       required: [id, revision]
@@ -343,6 +387,17 @@ tools:
         revision:
           type: integer
           minimum: 1
+        table_id:
+          type: string
+          minLength: 1
+          description: "仅 action=create 返回：服务端实际表 ID"
+        field_id_map:
+          type: object
+          description: "仅 action=create 返回：调用方原始字段 ID → 服务端实际字段 ID"
+          additionalProperties:
+            type: string
+            minLength: 1
+  # create 成功响应必须含 table_id 与完整 field_id_map；update 响应仍恰好为 {id, revision}。
 
   - name: update_field
     title: 更新字段属性
@@ -402,8 +457,15 @@ tools:
           minimum: 1
 
   - name: update_reference
-    title: 更新关系连线
-    description: "创建、更新或删除字段间的关系连线（含基数、级联约束与连线颜色 color）。通过 GET 全量读取 + PUT 全量写回实现。成功响应为 outputSchema 瘦响应 { id, revision }。本工具是大图分批写入的官方分片手段之一（按关系），详见 update_diagram 的分批指引。"
+    title: 创建、更新或删除关系连线
+    description: >-
+      保留平铺单条 create/update/delete；references 数组仅允许 action=create，且与任何平铺关系字段互斥。
+      批量 create 对数组完整校验后一次 GET/PUT 追加，任一项非法则整批返回 VALIDATION_ERROR，
+      在 PUT/WS 前拒绝且零写入。单个与批量 create 均校验 start/end 两张表和两个字段真实存在，
+      并校验字段分别属于指定表；旧 ID、悬空 ID 或表字段不归属均不得落库。
+      外部 cardinality 写入后端快照 type_；on_delete/on_update 统一转为大写下划线。
+      非房间单批 PUT 是单次快照写；房间批量关系经多个 op 逐条 ack，不宣称跨调用回滚、
+      整链原子或 revision 只加 1。建议关系按数组分片、单次参数保守控制在约 48 KiB。
     upstream:
       method: GET + PUT
       path: /api/v1/diagrams/{id}
@@ -422,10 +484,12 @@ tools:
           type: string
           minLength: 1
         action:
+          type: string
           enum: [create, update, delete]
         ref_id:
           type: string
           minLength: 1
+          description: "create 可选，缺省自动生成；update/delete 必填"
         start_table_id:
           type: string
           minLength: 1
@@ -439,17 +503,57 @@ tools:
           type: string
           minLength: 1
         cardinality:
+          type: string
           enum: [one_to_one, one_to_many, many_to_one, many_to_many]
+          description: "外部输入字段；写快照时映射为 type_，不得误写为快照 cardinality"
         on_delete:
+          type: string
           enum: [cascade, set_null, set_default, restrict, no_action]
+          description: "写入 CASCADE / SET_NULL / SET_DEFAULT / RESTRICT / NO_ACTION"
         on_update:
+          type: string
           enum: [cascade, set_null, set_default, restrict, no_action]
+          description: "写入 CASCADE / SET_NULL / SET_DEFAULT / RESTRICT / NO_ACTION"
         name:
           type: string
           maxLength: 64
         color:
           type: string
           maxLength: 64
+        references:
+          type: array
+          minItems: 1
+          description: "仅 action=create 的批量输入；与平铺关系字段互斥"
+          items:
+            $ref: "#/schemas/ReferenceInput"
+      allOf:
+        - if:
+            properties:
+              action:
+                const: create
+            required: [action]
+          then:
+            oneOf:
+              - required: [start_table_id, start_field_id, end_table_id, end_field_id]
+                not:
+                  required: [references]
+              - required: [references]
+                not:
+                  anyOf:
+                    - required: [ref_id]
+                    - required: [start_table_id]
+                    - required: [start_field_id]
+                    - required: [end_table_id]
+                    - required: [end_field_id]
+                    - required: [cardinality]
+                    - required: [on_delete]
+                    - required: [on_update]
+                    - required: [name]
+                    - required: [color]
+          else:
+            required: [ref_id]
+            not:
+              required: [references]
     outputSchema:
       type: object
       required: [id, revision]
@@ -658,13 +762,87 @@ schemas:
         type: array
         items:
           type: object
+  TableFieldInput:
+    type: object
+    additionalProperties: true
+    required: [id, name]
+    description: "整表 create 的完整字段对象；未列出的 DrawDB 字段属性必须原样保留，id 仅作重键映射输入"
+    properties:
+      id:
+        type: string
+        minLength: 1
+      name:
+        type: string
+        minLength: 1
+        maxLength: 64
+      type:
+        type: string
+        maxLength: 64
+      comment:
+        type: string
+        maxLength: 256
+      not_null:
+        type: boolean
+      primary:
+        type: boolean
+      default:
+        type: string
+        maxLength: 256
+      dict_code:
+        type: string
+        maxLength: 64
+
+  ReferenceInput:
+    type: object
+    additionalProperties: false
+    required: [start_table_id, start_field_id, end_table_id, end_field_id]
+    properties:
+      ref_id:
+        type: string
+        minLength: 1
+      start_table_id:
+        type: string
+        minLength: 1
+      start_field_id:
+        type: string
+        minLength: 1
+      end_table_id:
+        type: string
+        minLength: 1
+      end_field_id:
+        type: string
+        minLength: 1
+      cardinality:
+        type: string
+        enum: [one_to_one, one_to_many, many_to_one, many_to_many]
+        description: "规范化写入后端 type_"
+      on_delete:
+        type: string
+        enum: [cascade, set_null, set_default, restrict, no_action]
+        description: "规范化写入大写下划线枚举"
+      on_update:
+        type: string
+        enum: [cascade, set_null, set_default, restrict, no_action]
+        description: "规范化写入大写下划线枚举"
+      name:
+        type: string
+        maxLength: 64
+      color:
+        type: string
+        maxLength: 64
+
   UpdateTableInput:
     type: object
+    additionalProperties: false
     required: [id, table_id]
     properties:
       id:
         type: string
         minLength: 1
+      action:
+        type: string
+        enum: [create, update]
+        default: update
       table_id:
         type: string
         minLength: 1
@@ -684,6 +862,21 @@ schemas:
         maxLength: 32
       locked:
         type: boolean
+      fields:
+        type: array
+        items:
+          $ref: "#/schemas/TableFieldInput"
+    allOf:
+      - if:
+          properties:
+            action:
+              const: create
+          required: [action]
+        then:
+          required: [name, fields]
+        else:
+          not:
+            required: [fields]
 
   UpdateFieldInput:
     type: object
@@ -718,12 +911,14 @@ schemas:
 
   UpdateReferenceInput:
     type: object
+    additionalProperties: false
     required: [id, action]
     properties:
       id:
         type: string
         minLength: 1
       action:
+        type: string
         enum: [create, update, delete]
       ref_id:
         type: string
@@ -741,14 +936,53 @@ schemas:
         type: string
         minLength: 1
       cardinality:
+        type: string
         enum: [one_to_one, one_to_many, many_to_one, many_to_many]
       on_delete:
+        type: string
         enum: [cascade, set_null, set_default, restrict, no_action]
       on_update:
+        type: string
         enum: [cascade, set_null, set_default, restrict, no_action]
       name:
         type: string
         maxLength: 64
+      color:
+        type: string
+        maxLength: 64
+      references:
+        type: array
+        minItems: 1
+        items:
+          $ref: "#/schemas/ReferenceInput"
+    allOf:
+      - if:
+          properties:
+            action:
+              const: create
+          required: [action]
+        then:
+          oneOf:
+            - required: [start_table_id, start_field_id, end_table_id, end_field_id]
+              not:
+                required: [references]
+            - required: [references]
+              not:
+                anyOf:
+                  - required: [ref_id]
+                  - required: [start_table_id]
+                  - required: [start_field_id]
+                  - required: [end_table_id]
+                  - required: [end_field_id]
+                  - required: [cardinality]
+                  - required: [on_delete]
+                  - required: [on_update]
+                  - required: [name]
+                  - required: [color]
+        else:
+          required: [ref_id]
+          not:
+            required: [references]
 
   LayoutDiagramInput:
     type: object
@@ -771,13 +1005,39 @@ schemas:
         maximum: 500
         default: 180
 
-  # tools/call 的 isError=true 结果仅含文本 content（完整 ToolError JSON）与 isError，
-  # 不返回 structuredContent；outputSchema 只约束成功响应。
+  RoomsAuthRequiredDetails:
+    type: object
+    additionalProperties: true
+    required: [reason]
+    properties:
+      reason:
+        type: string
+        enum: [TOKEN_MISSING, TOKEN_INVALID_OR_EXPIRED]
+        description: "未配置任何凭据为 TOKEN_MISSING；rooms 401 或 refresh 失败为 TOKEN_INVALID_OR_EXPIRED"
+      operation:
+        type: string
+        description: "触发统一 USE_OP_CHANNEL 回退的写操作名称"
+      http_status:
+        type: integer
+        description: "存在安全上游响应时保留状态码；rooms 鉴权失败为 401"
+      upstream_code:
+        type: string
+        description: "安全上游错误码；不得包含凭据"
+      upstream_request_id:
+        type: string
+      body_excerpt:
+        type: string
+        maxLength: 200
+        description: "可选的脱敏上游摘要；不得包含密码、Authorization、Cookie、token 或 refresh cookie"
+
+  # tools/call 的 isError=true 结果仅含文本 content 与 isError，不返回 structuredContent；
+  # content[0].text 是完整 ToolError JSON，outputSchema 只约束成功响应。
   ToolError:
     type: object
     required: [code, message, retryable]
     properties:
       code:
+        type: string
         enum:
           - CONFIG_INVALID
           - VALIDATION_ERROR
@@ -790,6 +1050,7 @@ schemas:
           - UPSTREAM_UNREACHABLE
           - UPSTREAM_ERROR
           - INTERNAL_ERROR
+          - ROOMS_AUTH_REQUIRED
       message:
         type: string
       retryable:
@@ -799,6 +1060,7 @@ schemas:
       details:
         type: object
         additionalProperties: true
+        description: "code=ROOMS_AUTH_REQUIRED 时必含且符合 RoomsAuthRequiredDetails，尤其 reason 必填"
 
 # mcp-dictionary-tools（2026-09-28）：update_dictionary / update_field(dict_code) 复用既有错误码——
 # 参数与编码唯一性/存在性校验失败走 local_validation（VALIDATION_ERROR，retryable=false，本地拒绝不发 HTTP）；无新增错误码。
@@ -814,11 +1076,14 @@ error_mapping:
   http_409: REVISION_CONFLICT
   http_422: VALIDATION_ERROR
   http_5xx: UPSTREAM_ERROR
+  rooms_write_auth_required: ROOMS_AUTH_REQUIRED
+# 仅统一房间写回退将缺失/失效凭据映射为 ROOMS_AUTH_REQUIRED；普通 401/403/5xx 语义不变。
 
 security_invariants:
   - 不直接访问 SQLite 或 SeaORM
   - 不提供任意 SQL、shell、文件或通用 HTTP 工具
   - stdout 仅写 MCP 帧，日志仅写 stderr
-  - Authorization、Cookie、Token 在日志和 reporter 中必须脱敏
-  - 写工具不自动重试，409 不自动覆盖
-
+  - Authorization、Cookie、Token、密码与 refresh cookie 在日志、错误和 reporter 中必须脱敏
+  - 业务写工具不自动重试，409 不自动覆盖；仅动态凭据会话允许 API 401 后 refresh 一次并重试原请求一次
+  - refresh 自身不递归；WS 仅握手 401 且尚未发送 op 时 refresh 并重连一次，已发送 op 不盲目重放
+  - 密码、access token 与 refresh cookie 仅保存在内存；密码与 refresh cookie 不进入 URL，access token 仅按既有 Authorization header 与 WS 握手 query 契约传输；日志、reporter、错误摘要和诊断 URL 必须移除秘密
