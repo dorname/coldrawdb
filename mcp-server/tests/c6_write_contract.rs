@@ -626,3 +626,110 @@ async fn st_mcp14_stdio_import_missing_ids_then_get() {
 
     record(&["ST-MCP-14"], started);
 }
+
+// ── UT-MCP-50: 全工具 schema 客户端兼容守卫（拍平回归锚点）──────────────────
+
+/// 递归断言 schema 树中不存在客户端不兼容的条件关键字。
+/// Claude Code 在工具转换阶段会丢弃含这些关键字的工具（历史回归：
+/// fix-issues-70-73 的 allOf/if/then/else/oneOf/not/anyOf 使 update_table /
+/// update_reference 从工具清单消失，仅剩 10/12）。整树检查强于契约的
+/// 「顶层禁用」底线——resolve_refs 内联后的深层结构同样不得漏网。
+fn assert_no_conditional_keys(value: &Value, path: &str) {
+    if let Value::Object(map) = value {
+        for (key, child) in map {
+            assert!(
+                !matches!(
+                    key.as_str(),
+                    "allOf" | "oneOf" | "anyOf" | "if" | "then" | "else" | "not"
+                ),
+                "{path}.{key} 使用了客户端不兼容的条件关键字（工具会被 Claude Code 丢弃）"
+            );
+            assert_no_conditional_keys(child, &format!("{path}.{key}"));
+        }
+    } else if let Value::Array(items) = value {
+        for (index, item) in items.iter().enumerate() {
+            assert_no_conditional_keys(item, &format!("{path}[{index}]"));
+        }
+    }
+}
+
+#[tokio::test]
+async fn ut_mcp50_tool_schema_client_compat_guard() {
+    let started = Instant::now();
+    let tools = McpService::tools().expect("tools/list 必须可解析");
+
+    // 断言 4：工具总数 12，且含两个曾被客户端丢弃的工具（回归锚点：不得再退化为 10）
+    assert_eq!(tools.len(), 12, "工具清单必须为 12 个，实际: {}", tools.len());
+    let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
+    assert!(names.contains(&"update_table"), "update_table 必须在工具清单中");
+    assert!(names.contains(&"update_reference"), "update_reference 必须在工具清单中");
+
+    // 断言 1：全工具 inputSchema/outputSchema 整树无条件关键字
+    for tool in &tools {
+        let name = tool["name"].as_str().unwrap_or("<unknown>");
+        for field in ["inputSchema", "outputSchema"] {
+            if !tool[field].is_null() {
+                assert_no_conditional_keys(&tool[field], &format!("{name}.{field}"));
+            }
+        }
+    }
+
+    // 断言 2：update_table 拍平后关键属性保留，fields.items 的 $ref 已解析
+    let update_table = tools
+        .iter()
+        .find(|t| t["name"] == json!("update_table"))
+        .expect("必须存在 update_table 工具");
+    let table_props = &update_table["inputSchema"]["properties"];
+    for key in ["id", "table_id", "action", "name", "fields"] {
+        assert!(
+            table_props.get(key).is_some(),
+            "update_table.inputSchema.properties 缺少 {key}"
+        );
+    }
+    let field_items = &table_props["fields"]["items"];
+    assert!(
+        field_items.get("$ref").is_none(),
+        "fields.items 的 $ref 必须已被 resolve_refs 内联，实际: {field_items}"
+    );
+    assert!(
+        field_items["properties"].get("name").is_some()
+            && field_items["properties"].get("type").is_some(),
+        "fields.items 解析后必须含 name/type 属性，实际: {field_items}"
+    );
+
+    // 断言 3：update_reference 拍平后关键属性保留，references.items 解析后含端点字段
+    let update_reference = tools
+        .iter()
+        .find(|t| t["name"] == json!("update_reference"))
+        .expect("必须存在 update_reference 工具");
+    let ref_props = &update_reference["inputSchema"]["properties"];
+    for key in [
+        "id",
+        "action",
+        "ref_id",
+        "references",
+        "start_table_id",
+        "start_field_id",
+        "end_table_id",
+        "end_field_id",
+        "cardinality",
+        "on_delete",
+        "on_update",
+    ] {
+        assert!(
+            ref_props.get(key).is_some(),
+            "update_reference.inputSchema.properties 缺少 {key}"
+        );
+    }
+    let reference_items = &ref_props["references"]["items"];
+    assert!(
+        reference_items.get("$ref").is_none(),
+        "references.items 的 $ref 必须已被 resolve_refs 内联，实际: {reference_items}"
+    );
+    assert!(
+        reference_items["properties"].get("start_table_id").is_some(),
+        "references.items 解析后必须含 start_table_id 端点属性，实际: {reference_items}"
+    );
+
+    record(&["UT-MCP-50"], started);
+}
