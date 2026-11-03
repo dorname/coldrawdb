@@ -21,6 +21,11 @@ protocol:
 # update_reference 支持批量 create、type_/级联规范化与端点写前校验；
 # 房间写回退新增 ROOMS_AUTH_REQUIRED 及动态 login/refresh 会话。
 # 现有 tools 总数仍为 12 个，本次不新增工具。
+# fix-mcp-tool-schema-client-compat（2026-11-03）：update_table / update_reference 的
+# inputSchema 拍平为普通 object schema——客户端（Claude Code）无法转换 allOf/if/then/else/
+# oneOf/not/anyOf 条件结构，会在工具清单中静默丢弃这两个工具。条件语义一律写进
+# description 并由服务端 tools/call 强校验（VALIDATION_ERROR）。契约约束：
+# 所有工具 inputSchema/outputSchema 顶层禁用 allOf/oneOf/anyOf/if/then/else/not。
   name: Model Context Protocol
   transport: stdio
   version_strategy: negotiate
@@ -320,6 +325,8 @@ tools:
       与 field_id_map，不得继续使用导入前旧 ID。通过 GET 全量读取 + PUT 全量写回实现。
       建议单表一片、单次工具参数保守控制在约 48 KiB；约 63 KB 仅是特定客户端实测边界，
       不是服务端保证。跨调用不提供整链原子性或回滚。
+      action=create 必填 name 与 fields，action=update 禁止携带 fields；违反由服务端
+      tools/call 强校验并返回 VALIDATION_ERROR（零写入）。
     upstream:
       method: GET + PUT
       path: /api/v1/diagrams/{id}
@@ -341,6 +348,7 @@ tools:
           type: string
           enum: [create, update]
           default: update
+          description: "create=追加整表（必填 name+fields，服务端重键并回传实际 ID 映射）；缺省 update"
         table_id:
           type: string
           minLength: 1
@@ -349,7 +357,7 @@ tools:
           type: string
           minLength: 1
           maxLength: 64
-          description: "create 必填；update 可选"
+          description: "action=create 时必填；update 可选"
         comment:
           type: string
           maxLength: 256
@@ -364,20 +372,9 @@ tools:
           type: boolean
         fields:
           type: array
-          description: "仅 create 必填；完整字段数组，不能用于 update"
+          description: "仅 action=create 允许携带（必填），一次传入完整字段数组；action=update 禁止携带，违者 VALIDATION_ERROR"
           items:
             $ref: "#/schemas/TableFieldInput"
-      allOf:
-        - if:
-            properties:
-              action:
-                const: create
-            required: [action]
-          then:
-            required: [name, fields]
-          else:
-            not:
-              required: [fields]
     outputSchema:
       type: object
       required: [id, revision]
@@ -486,6 +483,7 @@ tools:
         action:
           type: string
           enum: [create, update, delete]
+          description: "create：单条平铺端点或批量 references 二选一（互斥）；update/delete：必填 ref_id 且禁止 references"
         ref_id:
           type: string
           minLength: 1
@@ -523,37 +521,9 @@ tools:
         references:
           type: array
           minItems: 1
-          description: "仅 action=create 的批量输入；与平铺关系字段互斥"
+          description: "仅 action=create 的批量输入；与平铺关系字段互斥，违者 VALIDATION_ERROR"
           items:
             $ref: "#/schemas/ReferenceInput"
-      allOf:
-        - if:
-            properties:
-              action:
-                const: create
-            required: [action]
-          then:
-            oneOf:
-              - required: [start_table_id, start_field_id, end_table_id, end_field_id]
-                not:
-                  required: [references]
-              - required: [references]
-                not:
-                  anyOf:
-                    - required: [ref_id]
-                    - required: [start_table_id]
-                    - required: [start_field_id]
-                    - required: [end_table_id]
-                    - required: [end_field_id]
-                    - required: [cardinality]
-                    - required: [on_delete]
-                    - required: [on_update]
-                    - required: [name]
-                    - required: [color]
-          else:
-            required: [ref_id]
-            not:
-              required: [references]
     outputSchema:
       type: object
       required: [id, revision]

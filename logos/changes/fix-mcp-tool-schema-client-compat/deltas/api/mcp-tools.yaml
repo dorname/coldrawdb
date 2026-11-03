@@ -1,0 +1,100 @@
+# Delta — mcp-tools.yaml（fix-mcp-tool-schema-client-compat）
+
+> 模块：core | 场景：S06 | 关联：Claude Code 客户端丢弃 `update_table` / `update_reference` 工具（重连后仅暴露 10/12）
+> 目标：把 fix-issues-70-73 引入的高级 JSON Schema 条件结构拍平为普通 object schema；工具行为、参数、校验与错误语义零变化。
+
+## MODIFIED — protocol 头部注释
+
+在 `# mcp-tools.yaml` 顶部注释块末尾追加：
+
+```yaml
+# fix-mcp-tool-schema-client-compat（2026-11-03）：update_table / update_reference 的
+# inputSchema 拍平为普通 object schema——客户端（Claude Code）无法转换 allOf/if/then/else/
+# oneOf/not/anyOf 条件结构，会在工具清单中静默丢弃这两个工具。条件语义一律写进
+# description 并由服务端 tools/call 强校验（VALIDATION_ERROR）；契约约束：
+# 所有工具 inputSchema/outputSchema 顶层禁用 allOf/oneOf/anyOf/if/then/else/not。
+```
+
+## MODIFIED — update_table.inputSchema（删除 allOf 条件块）
+
+`inputSchema` 中 `properties` 保持不变（id/action/table_id/name/comment/x/y/color/locked/fields），
+其中两个字段的 description 增强；**删除整个 `allOf:` 块**（原 if/then/else：create 必填
+name+fields、update 禁止 fields）。替换后 `inputSchema` 为：
+
+```yaml
+    inputSchema:
+      type: object
+      additionalProperties: false
+      required: [id, table_id]
+      properties:
+        id:
+          type: string
+          minLength: 1
+        action:
+          type: string
+          enum: [create, update]
+          default: update
+          description: "create=追加整表（必填 name+fields，服务端重键并回传实际 ID 映射）；缺省 update"
+        table_id:
+          type: string
+          minLength: 1
+          description: "create：调用方原始表 ID；update：图中已存在的实际表 ID"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: "action=create 时必填；update 可选"
+        comment:
+          type: string
+          maxLength: 256
+        x:
+          type: number
+        y:
+          type: number
+        color:
+          type: string
+          maxLength: 32
+        locked:
+          type: boolean
+        fields:
+          type: array
+          description: "仅 action=create 允许携带（必填），一次传入完整字段数组；action=update 禁止携带，违者 VALIDATION_ERROR"
+          items:
+            $ref: "#/schemas/TableFieldInput"
+```
+
+同步在工具 `description` 末尾补一句：
+
+```yaml
+      action=create 必填 name 与 fields，action=update 禁止携带 fields；违反由服务端
+      tools/call 强校验并返回 VALIDATION_ERROR（零写入）。
+```
+
+## MODIFIED — update_reference.inputSchema（删除 allOf/oneOf 条件块）
+
+`inputSchema` 中 `properties` 保持不变（id/action/ref_id/start_*/end_*/cardinality/
+on_delete/on_update/name/color/references），`references.items` 的
+`$ref: "#/schemas/ReferenceInput"` 保持不变；**删除整个 `allOf:` 块**（原 if/then/else +
+oneOf：create 单条与批量互斥、update/delete 必填 ref_id 且禁止 references）。
+`properties.references` 的 description 与工具 `description` 已含互斥语义，无需再改；
+仅在 `action` 属性上补 description：
+
+```yaml
+        action:
+          type: string
+          enum: [create, update, delete]
+          description: "create：单条平铺端点或批量 references 二选一（互斥）；update/delete：必填 ref_id 且禁止 references"
+```
+
+## ADDED — 4.x 客户端兼容性约束（契约条款）
+
+在契约文档（`core-S06-mcp-service-design.md` 或 mcp-tools.yaml 契约说明位）登记：
+
+- 所有工具 `inputSchema` / `outputSchema` 顶层仅允许基础关键字：
+  `type` / `properties` / `required` / `additionalProperties` / `items` / `enum` /
+  `default` / `minimum` / `maximum` / `minLength` / `maxLength` / `minItems` /
+  `description` / `$ref`。
+- 禁用 `allOf` / `oneOf` / `anyOf` / `if` / `then` / `else` / `not`：客户端（Claude Code、
+  Codex 等）在工具转换阶段会丢弃含这些关键字的工具。
+- 条件必填/互斥语义一律写入 description，并由服务端 `tools/call` 强校验兜底；
+  契约守卫测试 UT-MCP-50 防回归。
