@@ -98,3 +98,11 @@ oneOf：create 单条与批量互斥、update/delete 必填 ref_id 且禁止 ref
   Codex 等）在工具转换阶段会丢弃含这些关键字的工具。
 - 条件必填/互斥语义一律写入 description，并由服务端 `tools/call` 强校验兜底；
   契约守卫测试 UT-MCP-50 防回归。
+
+## REMOVED — schemas 区死定义（合并后补充清理）
+
+`#/schemas/UpdateTableInput` 与 `#/schemas/UpdateReferenceInput` 两个 schema 定义
+（含其内部 `allOf/if/then/else/oneOf/not/anyOf` 条件块）整体删除：inputSchema 拍平后
+这两个定义已无任何 `$ref` 引用（死代码），但其中残留的条件结构一旦被恢复引用即
+原样复发客户端丢工具问题，故从契约中移除。`UpdateFieldInput` 等无条件结构的定义
+不受影响。
