@@ -2,7 +2,6 @@
 //! 覆盖 UT-MCP-16～22
 
 use coldrawdb_mcp::api::ApiClient;
-use coldrawdb_mcp::error::ToolError;
 use coldrawdb_mcp::layout::{force_directed_layout, LayoutParams};
 use coldrawdb_mcp::reporter;
 use coldrawdb_mcp::{Config, McpService};
@@ -35,9 +34,7 @@ fn record(ids: &[&str]) {
 async fn ut_mcp16_update_table_missing_table_id() {
     record(&["UT-MCP-16"]);
     let svc = service("http://127.0.0.1:0".into());
-    let result = svc
-        .call("update_table", json!({"id": "d1"}))
-        .await;
+    let result = svc.call("update_table", json!({"id": "d1"})).await;
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(err.code, "VALIDATION_ERROR");
@@ -65,7 +62,10 @@ async fn ut_mcp16_update_table_invalid_x_type() {
     // x 为字符串时，as_f64 返回 None，不会 panic，会被忽略（非严格校验）
     // 但缺少必需参数时应报错
     let result = svc
-        .call("update_table", json!({"id": "d1", "table_id": "t1", "x": "abc"}))
+        .call(
+            "update_table",
+            json!({"id": "d1", "table_id": "t1", "x": "abc"}),
+        )
         .await;
     // 不会报 VALIDATION_ERROR（x 被忽略），但会尝试连接后端 → UPSTREAM_ERROR
     assert!(result.is_err());
@@ -106,10 +106,7 @@ async fn ut_mcp18_create_missing_endpoint_ids() {
     record(&["UT-MCP-18"]);
     let svc = service("http://127.0.0.1:0".into());
     let result = svc
-        .call(
-            "update_reference",
-            json!({"id": "d1", "action": "create"}),
-        )
+        .call("update_reference", json!({"id": "d1", "action": "create"}))
         .await;
     assert!(result.is_err());
     assert_eq!(result.unwrap_err().code, "VALIDATION_ERROR");
@@ -120,10 +117,7 @@ async fn ut_mcp18_update_missing_ref_id() {
     record(&["UT-MCP-18"]);
     let svc = service("http://127.0.0.1:0".into());
     let result = svc
-        .call(
-            "update_reference",
-            json!({"id": "d1", "action": "update"}),
-        )
+        .call("update_reference", json!({"id": "d1", "action": "update"}))
         .await;
     assert!(result.is_err());
     assert_eq!(result.unwrap_err().code, "VALIDATION_ERROR");
@@ -134,10 +128,7 @@ async fn ut_mcp18_invalid_action() {
     record(&["UT-MCP-18"]);
     let svc = service("http://127.0.0.1:0".into());
     let result = svc
-        .call(
-            "update_reference",
-            json!({"id": "d1", "action": "merge"}),
-        )
+        .call("update_reference", json!({"id": "d1", "action": "merge"}))
         .await;
     assert!(result.is_err());
     assert_eq!(result.unwrap_err().code, "VALIDATION_ERROR");
@@ -221,10 +212,7 @@ fn ut_mcp20_tools_list_has_eleven_tools() {
     let tools = McpService::tools().expect("tools/list 应成功");
     assert_eq!(tools.len(), 12, "应有 12 个工具，实际: {}", tools.len());
 
-    let names: Vec<&str> = tools
-        .iter()
-        .map(|t| t["name"].as_str().unwrap())
-        .collect();
+    let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
     let expected = [
         "list_diagrams",
         "get_diagram",
@@ -340,8 +328,8 @@ async fn ut_mcp22_update_reference_create_e2e_mock() {
             "id": "d1",
             "revision": 3,
             "tables": [
-                {"id": "t1", "name": "users", "x": 0.0, "y": 0.0},
-                {"id": "t2", "name": "orders", "x": 200.0, "y": 0.0},
+                {"id": "t1", "name": "users", "x": 0.0, "y": 0.0, "fields": [{"id":"f1","name":"id"}]},
+                {"id": "t2", "name": "orders", "x": 200.0, "y": 0.0, "fields": [{"id":"f2","name":"user_id"}]},
             ],
             "references": []
         }

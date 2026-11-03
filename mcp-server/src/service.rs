@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 use serde_json::{json, Value};
 
 use crate::api::ApiClient;
@@ -140,12 +142,14 @@ impl McpService {
     async fn update_table(&self, arguments: Value) -> Result<Value, ToolError> {
         let id = required_str(&arguments, "id")?;
         let table_id = required_str(&arguments, "table_id")?;
-
-        if let Some(name) = arguments.get("name").and_then(Value::as_str) {
-            if name.is_empty() || name.chars().count() > 64 {
-                return Err(ToolError::validation("name 必须在 1～64 字符之间"));
-            }
+        let action = arguments
+            .get("action")
+            .and_then(Value::as_str)
+            .unwrap_or("update");
+        if !matches!(action, "create" | "update") {
+            return Err(ToolError::validation("action 必须是 create/update"));
         }
+        validate_table_arguments(&arguments, action)?;
 
         let result = self.api.get(id).await?;
         let mut diagram = result
@@ -157,37 +161,57 @@ impl McpService {
             .and_then(Value::as_i64)
             .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "响应缺少 revision", false))?;
 
-        let tables = diagram
-            .get_mut("tables")
-            .and_then(Value::as_array_mut)
-            .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "diagram 缺少 tables 数组", false))?;
-        let table = tables
-            .iter_mut()
-            .find(|t| t.get("id").and_then(Value::as_str) == Some(table_id))
-            .ok_or_else(|| ToolError::validation(format!("table_id {table_id} 不存在")))?;
+        let created_ids = if action == "create" {
+            let mut table = json!({
+                "id": format!("auto-{}", uuid_simple()),
+                "name": required_str(&arguments, "name")?,
+                "comment": arguments.get("comment").and_then(Value::as_str).unwrap_or(""),
+                "x": arguments.get("x").and_then(Value::as_f64).unwrap_or(0.0),
+                "y": arguments.get("y").and_then(Value::as_f64).unwrap_or(0.0),
+                "color": arguments.get("color").and_then(Value::as_str).unwrap_or(""),
+                "locked": arguments.get("locked").and_then(Value::as_bool).unwrap_or(false),
+                "fields": [],
+            });
+            let mut field_id_map = serde_json::Map::new();
+            let mut fields = Vec::new();
+            for input in arguments["fields"].as_array().into_iter().flatten() {
+                let mut field = input.clone();
+                let old_id = required_str(input, "id")?;
+                let new_id = format!("auto-{}", uuid_simple());
+                field["id"] = json!(new_id.clone());
+                field_id_map.insert(old_id.to_string(), json!(new_id));
+                fields.push(field);
+            }
+            table["fields"] = json!(fields);
+            let actual_table_id = table["id"].as_str().unwrap_or_default().to_string();
+            diagram
+                .get_mut("tables")
+                .and_then(Value::as_array_mut)
+                .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "diagram 缺少 tables 数组", false))?
+                .push(table);
+            Some((actual_table_id, field_id_map))
+        } else {
+            let tables = diagram
+                .get_mut("tables")
+                .and_then(Value::as_array_mut)
+                .ok_or_else(|| {
+                    ToolError::new("UPSTREAM_ERROR", "diagram 缺少 tables 数组", false)
+                })?;
+            let table = tables
+                .iter_mut()
+                .find(|t| t.get("id").and_then(Value::as_str) == Some(table_id))
+                .ok_or_else(|| ToolError::validation(format!("table_id {table_id} 不存在")))?;
+            apply_table_update(table, &arguments);
+            None
+        };
 
-        if let Some(name) = arguments.get("name").and_then(Value::as_str) {
-            table["name"] = json!(name);
-        }
-        if let Some(comment) = arguments.get("comment").and_then(Value::as_str) {
-            table["comment"] = json!(comment);
-        }
-        if let Some(x) = arguments.get("x").and_then(Value::as_f64) {
-            table["x"] = json!(x);
-        }
-        if let Some(y) = arguments.get("y").and_then(Value::as_f64) {
-            table["y"] = json!(y);
-        }
-        if let Some(color) = arguments.get("color").and_then(Value::as_str) {
-            table["color"] = json!(color);
-        }
-        if let Some(locked) = arguments.get("locked").and_then(Value::as_bool) {
-            table["locked"] = json!(locked);
-        }
-
-        // fix-remote-github-issues-7-18（#18）：统一 normalize 为瘦响应
         let data = self.api.update(id, revision, diagram).await?;
-        slim_write_response(&data, id)
+        let mut response = slim_write_response(&data, id)?;
+        if let Some((actual_table_id, field_id_map)) = created_ids {
+            response["table_id"] = json!(actual_table_id);
+            response["field_id_map"] = Value::Object(field_id_map);
+        }
+        Ok(response)
     }
 
     async fn update_field(&self, arguments: Value) -> Result<Value, ToolError> {
@@ -210,7 +234,6 @@ impl McpService {
             .get("revision")
             .and_then(Value::as_i64)
             .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "响应缺少 revision", false))?;
-
 
         // mcp-dictionary-tools（2026-09-28 / UT-MCP-35）：dict_code 绑定校验。
         // 空串 = 解除绑定（直接放行）；非空编码必须命中 dictionaries 中的字典，
@@ -284,28 +307,13 @@ impl McpService {
     async fn update_reference(&self, arguments: Value) -> Result<Value, ToolError> {
         let id = required_str(&arguments, "id")?;
         let action = required_str(&arguments, "action")?;
-
-        // 先校验 action 及必需参数，再调 API
-        match action {
-            "create" => {
-                required_str(&arguments, "start_table_id")?;
-                required_str(&arguments, "start_field_id")?;
-                required_str(&arguments, "end_table_id")?;
-                required_str(&arguments, "end_field_id")?;
-            }
-            "update" | "delete" => {
-                required_str(&arguments, "ref_id")?;
-            }
-            _ => return Err(ToolError::validation("action 必须是 create/update/delete")),
+        if !matches!(action, "create" | "update" | "delete") {
+            return Err(ToolError::validation("action 必须是 create/update/delete"));
         }
-        // fix-remote-github-issues-7-18（#12）：color 仅 create/update 消费，delete 忽略；
-        // 长度校验沿用现有参数校验风格（本地拒绝，不发 HTTP）。
-        if action != "delete" {
-            if let Some(color) = arguments.get("color").and_then(Value::as_str) {
-                if color.chars().count() > 64 {
-                    return Err(ToolError::validation("color 最长 64 个字符"));
-                }
-            }
+        let creates = reference_create_inputs(&arguments, action)?;
+        if action != "create" {
+            required_str(&arguments, "ref_id")?;
+            validate_reference_attributes(&arguments, action != "delete")?;
         }
 
         let result = self.api.get(id).await?;
@@ -318,59 +326,29 @@ impl McpService {
             .and_then(Value::as_i64)
             .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "响应缺少 revision", false))?;
 
+        let mut new_references = Vec::new();
+        if let Some(inputs) = creates {
+            validate_reference_batch(&diagram, &inputs)?;
+            for input in &inputs {
+                new_references.push(build_reference(input));
+            }
+        }
+
         let references = diagram
             .get_mut("references")
             .and_then(Value::as_array_mut)
-            .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "diagram 缺少 references 数组", false))?;
-
+            .ok_or_else(|| {
+                ToolError::new("UPSTREAM_ERROR", "diagram 缺少 references 数组", false)
+            })?;
         match action {
-            "create" => {
-                let start_table_id = required_str(&arguments, "start_table_id")?;
-                let start_field_id = required_str(&arguments, "start_field_id")?;
-                let end_table_id = required_str(&arguments, "end_table_id")?;
-                let end_field_id = required_str(&arguments, "end_field_id")?;
-
-                let mut new_ref = json!({
-                    "id": format!("ref-{}", uuid_simple()),
-                    "start_table_id": start_table_id,
-                    "start_field_id": start_field_id,
-                    "end_table_id": end_table_id,
-                    "end_field_id": end_field_id,
-                    "cardinality": arguments.get("cardinality").and_then(Value::as_str).unwrap_or("many_to_one"),
-                    "on_delete": arguments.get("on_delete").and_then(Value::as_str).unwrap_or("no_action"),
-                    "on_update": arguments.get("on_update").and_then(Value::as_str).unwrap_or("no_action"),
-                });
-                if let Some(name) = arguments.get("name").and_then(Value::as_str) {
-                    new_ref["name"] = json!(name);
-                }
-                // fix-remote-github-issues-7-18（#12）：create 时 color 可带入
-                if let Some(color) = arguments.get("color").and_then(Value::as_str) {
-                    new_ref["color"] = json!(color);
-                }
-                references.push(new_ref);
-            }
+            "create" => references.extend(new_references),
             "update" => {
                 let ref_id = required_str(&arguments, "ref_id")?;
                 let existing = references
                     .iter_mut()
                     .find(|r| r.get("id").and_then(Value::as_str) == Some(ref_id))
                     .ok_or_else(|| ToolError::validation(format!("ref_id {ref_id} 不存在")))?;
-                if let Some(cardinality) = arguments.get("cardinality").and_then(Value::as_str) {
-                    existing["cardinality"] = json!(cardinality);
-                }
-                if let Some(on_delete) = arguments.get("on_delete").and_then(Value::as_str) {
-                    existing["on_delete"] = json!(on_delete);
-                }
-                if let Some(on_update) = arguments.get("on_update").and_then(Value::as_str) {
-                    existing["on_update"] = json!(on_update);
-                }
-                if let Some(name) = arguments.get("name").and_then(Value::as_str) {
-                    existing["name"] = json!(name);
-                }
-                // fix-remote-github-issues-7-18（#12）：update 不传 color 时保持原值
-                if let Some(color) = arguments.get("color").and_then(Value::as_str) {
-                    existing["color"] = json!(color);
-                }
+                apply_reference_update(existing, &arguments);
             }
             "delete" => {
                 let ref_id = required_str(&arguments, "ref_id")?;
@@ -380,10 +358,9 @@ impl McpService {
                     return Err(ToolError::validation(format!("ref_id {ref_id} 不存在")));
                 }
             }
-            _ => return Err(ToolError::validation("action 必须是 create/update/delete")),
+            _ => unreachable!(),
         }
 
-        // fix-remote-github-issues-7-18（#18）：统一 normalize 为瘦响应
         let data = self.api.update(id, revision, diagram).await?;
         slim_write_response(&data, id)
     }
@@ -489,7 +466,9 @@ impl McpService {
                     return Err(ToolError::validation("items[].value 必须在 1～64 字符之间"));
                 }
                 if label.is_empty() || label.chars().count() > 128 {
-                    return Err(ToolError::validation("items[].label 必须在 1～128 字符之间"));
+                    return Err(ToolError::validation(
+                        "items[].label 必须在 1～128 字符之间",
+                    ));
                 }
             }
         }
@@ -545,9 +524,7 @@ impl McpService {
                 let pos = dicts
                     .iter()
                     .position(|d| d.get("id").and_then(Value::as_str) == Some(dict_id))
-                    .ok_or_else(|| {
-                        ToolError::validation(format!("dict_id {dict_id} 不存在"))
-                    })?;
+                    .ok_or_else(|| ToolError::validation(format!("dict_id {dict_id} 不存在")))?;
                 let old_code = dicts[pos]
                     .get("code")
                     .and_then(Value::as_str)
@@ -557,11 +534,9 @@ impl McpService {
                 let new_code = arguments.get("code").and_then(Value::as_str);
                 if let Some(code) = new_code {
                     if code != old_code
-                        && dicts
-                            .iter()
-                            .enumerate()
-                            .any(|(i, d)| i != pos
-                                && d.get("code").and_then(Value::as_str) == Some(code))
+                        && dicts.iter().enumerate().any(|(i, d)| {
+                            i != pos && d.get("code").and_then(Value::as_str) == Some(code)
+                        })
                     {
                         return Err(ToolError::validation(format!(
                             "字典编码 {code} 已存在（S07 EX-7.1 唯一性约束）"
@@ -594,9 +569,7 @@ impl McpService {
                 let pos = dicts
                     .iter()
                     .position(|d| d.get("id").and_then(Value::as_str) == Some(dict_id))
-                    .ok_or_else(|| {
-                        ToolError::validation(format!("dict_id {dict_id} 不存在"))
-                    })?;
+                    .ok_or_else(|| ToolError::validation(format!("dict_id {dict_id} 不存在")))?;
                 let code = dicts[pos]
                     .get("code")
                     .and_then(Value::as_str)
@@ -621,9 +594,342 @@ impl McpService {
         Ok(resp)
     }
 }
+fn validate_table_arguments(arguments: &Value, action: &str) -> Result<(), ToolError> {
+    if action == "update" && arguments.get("fields").is_some() {
+        return Err(ToolError::validation(
+            "update_table(action=update) 不接受 fields",
+        ));
+    }
+    if action == "create" {
+        required_str(arguments, "name")?;
+        if !arguments.get("fields").is_some_and(Value::is_array) {
+            return Err(ToolError::validation(
+                "update_table(action=create) 需要 fields 数组",
+            ));
+        }
+    }
+    if let Some(name) = arguments.get("name") {
+        let name = name
+            .as_str()
+            .filter(|name| !name.is_empty() && name.chars().count() <= 64)
+            .ok_or_else(|| ToolError::validation("name 必须在 1～64 字符之间"))?;
+        let _ = name;
+    }
+    for (key, maximum) in [("comment", 256), ("color", 32)] {
+        if arguments
+            .get(key)
+            .and_then(Value::as_str)
+            .is_some_and(|value| value.chars().count() > maximum)
+        {
+            return Err(ToolError::validation(format!(
+                "{key} 最长 {maximum} 个字符"
+            )));
+        }
+    }
+    for key in ["x", "y"] {
+        if arguments.get(key).is_some_and(|value| !value.is_number()) {
+            return Err(ToolError::validation(format!("{key} 必须是 number")));
+        }
+    }
+    if arguments
+        .get("locked")
+        .is_some_and(|value| !value.is_boolean())
+    {
+        return Err(ToolError::validation("locked 必须是 boolean"));
+    }
+    if action != "create" {
+        return Ok(());
+    }
+    let mut field_ids = HashSet::new();
+    for (index, field) in arguments["fields"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .enumerate()
+    {
+        if !field.is_object() {
+            return Err(ToolError::validation(format!(
+                "fields[{index}] 必须是 object"
+            )));
+        }
+        let field_id = required_str(field, "id")?;
+        required_str(field, "name")?;
+        if field["name"]
+            .as_str()
+            .is_some_and(|name| name.chars().count() > 64)
+        {
+            return Err(ToolError::validation(format!(
+                "fields[{index}].name 最长 64 个字符"
+            )));
+        }
+        if !field_ids.insert(field_id) {
+            return Err(ToolError::validation(format!("fields[{index}].id 重复")));
+        }
+    }
+    Ok(())
+}
 
+fn apply_table_update(table: &mut Value, arguments: &Value) {
+    for key in ["name", "comment", "color"] {
+        if let Some(value) = arguments.get(key).and_then(Value::as_str) {
+            table[key] = json!(value);
+        }
+    }
+    for key in ["x", "y"] {
+        if let Some(value) = arguments.get(key).and_then(Value::as_f64) {
+            table[key] = json!(value);
+        }
+    }
+    if let Some(locked) = arguments.get("locked").and_then(Value::as_bool) {
+        table["locked"] = json!(locked);
+    }
+}
 
-/// mcp-dictionary-tools（2026-09-28）：字典项规范化——缺 id 的项自动生成
+const REFERENCE_FLAT_FIELDS: [&str; 10] = [
+    "ref_id",
+    "start_table_id",
+    "start_field_id",
+    "end_table_id",
+    "end_field_id",
+    "cardinality",
+    "on_delete",
+    "on_update",
+    "name",
+    "color",
+];
+
+fn reference_create_inputs(
+    arguments: &Value,
+    action: &str,
+) -> Result<Option<Vec<Value>>, ToolError> {
+    let has_batch = arguments.get("references").is_some();
+    if action != "create" {
+        if has_batch {
+            return Err(ToolError::validation("references 数组仅允许 action=create"));
+        }
+        return Ok(None);
+    }
+    let has_flat = REFERENCE_FLAT_FIELDS
+        .iter()
+        .any(|field| arguments.get(*field).is_some());
+    if has_batch && has_flat {
+        return Err(ToolError::validation("references 数组与平铺关系字段互斥"));
+    }
+    if !has_batch {
+        for field in [
+            "start_table_id",
+            "start_field_id",
+            "end_table_id",
+            "end_field_id",
+        ] {
+            required_str(arguments, field)?;
+        }
+        validate_reference_attributes(arguments, true)?;
+        return Ok(Some(vec![arguments.clone()]));
+    }
+    if arguments.as_object().is_some_and(|object| {
+        object
+            .keys()
+            .any(|key| !matches!(key.as_str(), "id" | "action" | "references"))
+    }) {
+        return Err(ToolError::validation(
+            "批量 create 顶层只允许 id/action/references",
+        ));
+    }
+    let inputs = arguments["references"]
+        .as_array()
+        .filter(|items| !items.is_empty())
+        .ok_or_else(|| ToolError::validation("references 必须是非空数组"))?;
+    for input in inputs {
+        if !input.is_object() {
+            return Err(ToolError::validation("references[] 必须是 object"));
+        }
+        for field in [
+            "start_table_id",
+            "start_field_id",
+            "end_table_id",
+            "end_field_id",
+        ] {
+            required_str(input, field)?;
+        }
+        validate_reference_attributes(input, true)?;
+    }
+    Ok(Some(inputs.clone()))
+}
+
+fn validate_reference_attributes(arguments: &Value, validate_color: bool) -> Result<(), ToolError> {
+    if arguments.get("ref_id").is_some() {
+        required_str(arguments, "ref_id")?;
+    }
+    if let Some(cardinality) = arguments.get("cardinality") {
+        normalize_cardinality(cardinality.as_str().unwrap_or(""))?;
+    }
+    for key in ["on_delete", "on_update"] {
+        if let Some(value) = arguments.get(key) {
+            normalize_cascade(value.as_str().unwrap_or(""))?;
+        }
+    }
+    if arguments
+        .get("name")
+        .and_then(Value::as_str)
+        .is_some_and(|name| name.chars().count() > 64)
+    {
+        return Err(ToolError::validation("name 最长 64 个字符"));
+    }
+    if validate_color
+        && arguments
+            .get("color")
+            .and_then(Value::as_str)
+            .is_some_and(|color| color.chars().count() > 64)
+    {
+        return Err(ToolError::validation("color 最长 64 个字符"));
+    }
+    Ok(())
+}
+
+fn normalize_cardinality(value: &str) -> Result<&str, ToolError> {
+    match value {
+        "one_to_one" | "one_to_many" | "many_to_one" | "many_to_many" => Ok(value),
+        _ => Err(ToolError::validation("cardinality 枚举值非法")),
+    }
+}
+
+fn normalize_cascade(value: &str) -> Result<&'static str, ToolError> {
+    match value {
+        "cascade" => Ok("CASCADE"),
+        "set_null" => Ok("SET_NULL"),
+        "set_default" => Ok("SET_DEFAULT"),
+        "restrict" => Ok("RESTRICT"),
+        "no_action" => Ok("NO_ACTION"),
+        _ => Err(ToolError::validation("级联动作枚举值非法")),
+    }
+}
+
+fn build_reference(input: &Value) -> Value {
+    let id = input
+        .get("ref_id")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("ref-{}", uuid_simple()));
+    let cardinality = input
+        .get("cardinality")
+        .and_then(Value::as_str)
+        .unwrap_or("many_to_one");
+    let on_delete = input
+        .get("on_delete")
+        .and_then(Value::as_str)
+        .unwrap_or("no_action");
+    let on_update = input
+        .get("on_update")
+        .and_then(Value::as_str)
+        .unwrap_or("no_action");
+    let mut reference = json!({
+        "id": id,
+        "start_table_id": input["start_table_id"],
+        "start_field_id": input["start_field_id"],
+        "end_table_id": input["end_table_id"],
+        "end_field_id": input["end_field_id"],
+        "type_": cardinality,
+        "on_delete": normalize_cascade(on_delete).unwrap_or("NO_ACTION"),
+        "on_update": normalize_cascade(on_update).unwrap_or("NO_ACTION"),
+    });
+    for key in ["name", "color"] {
+        if let Some(value) = input.get(key).and_then(Value::as_str) {
+            reference[key] = json!(value);
+        }
+    }
+    reference
+}
+
+fn apply_reference_update(reference: &mut Value, arguments: &Value) {
+    if let Some(cardinality) = arguments.get("cardinality").and_then(Value::as_str) {
+        reference["type_"] = json!(cardinality);
+        if let Some(object) = reference.as_object_mut() {
+            object.remove("cardinality");
+        }
+    }
+    for key in ["on_delete", "on_update"] {
+        if let Some(value) = arguments.get(key).and_then(Value::as_str) {
+            reference[key] = json!(normalize_cascade(value).unwrap_or("NO_ACTION"));
+        }
+    }
+    for key in ["name", "color"] {
+        if let Some(value) = arguments.get(key).and_then(Value::as_str) {
+            reference[key] = json!(value);
+        }
+    }
+}
+
+fn validate_reference_batch(diagram: &Value, inputs: &[Value]) -> Result<(), ToolError> {
+    let mut tables: HashMap<&str, HashSet<&str>> = HashMap::new();
+    for table in diagram
+        .get("tables")
+        .and_then(Value::as_array)
+        .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "diagram 缺少 tables 数组", false))?
+    {
+        let Some(table_id) = table.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        let fields = table
+            .get("fields")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|field| field.get("id").and_then(Value::as_str))
+            .collect();
+        tables.insert(table_id, fields);
+    }
+    let mut reference_ids: HashSet<&str> = diagram
+        .get("references")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|reference| reference.get("id").and_then(Value::as_str))
+        .collect();
+    for (index, input) in inputs.iter().enumerate() {
+        if let Some(ref_id) = input.get("ref_id").and_then(Value::as_str) {
+            if !reference_ids.insert(ref_id) {
+                return Err(endpoint_validation_error(
+                    index,
+                    "ref_id",
+                    ref_id,
+                    "关系 ID 重复或已存在",
+                ));
+            }
+        }
+        for (table_key, field_key) in [
+            ("start_table_id", "start_field_id"),
+            ("end_table_id", "end_field_id"),
+        ] {
+            let table_id = required_str(input, table_key)?;
+            let field_id = required_str(input, field_key)?;
+            let Some(fields) = tables.get(table_id) else {
+                return Err(endpoint_validation_error(
+                    index,
+                    table_key,
+                    table_id,
+                    "表端点不存在",
+                ));
+            };
+            if !fields.contains(field_id) {
+                return Err(endpoint_validation_error(
+                    index,
+                    field_key,
+                    field_id,
+                    "字段端点不存在或不属于指定表",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn endpoint_validation_error(index: usize, key: &str, value: &str, reason: &str) -> ToolError {
+    let mut error = ToolError::validation(format!("references[{index}].{key} {reason}"));
+    error.details = Some(json!({"index": index, "endpoint": key, "id": value, "reason": reason}));
+    error
+}
+
 /// `di-` 前缀 id（与 import 通路 `auto-` 先例一致：只补全不丢弃）；
 /// sort 缺省按下标。已有值一律保留。
 fn normalize_dict_items(items: Option<&Value>) -> Vec<Value> {
@@ -690,12 +996,7 @@ fn slim_write_response(data: &Value, path_id: &str) -> Result<Value, ToolError> 
 }
 
 fn uuid_simple() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    format!("{:x}", nanos)
+    uuid::Uuid::new_v4().to_string()
 }
 
 /// fix-diagram-import-persistence（UT-MCP-28）：import payload 前置规范化。

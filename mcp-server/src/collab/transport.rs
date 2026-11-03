@@ -3,9 +3,7 @@
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
 use tokio::net::TcpStream;
-use tokio_tungstenite::{
-    connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream,
-};
+use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 
 use super::redact_transport_error;
 use super::session::{submit_ops, CollabSocket};
@@ -44,6 +42,16 @@ pub async fn submit_over_websocket(
     current_rev: i64,
 ) -> Result<i64, (String, String)> {
     let (stream, _) = connect_async(ws_url).await.map_err(|error| {
+        if matches!(
+            &error,
+            tokio_tungstenite::tungstenite::Error::Http(response)
+                if response.status() == reqwest::StatusCode::UNAUTHORIZED
+        ) {
+            return (
+                "WS_HANDSHAKE_UNAUTHORIZED".to_string(),
+                "协作 WebSocket 握手返回 401".to_string(),
+            );
+        }
         (
             "UPSTREAM_UNAVAILABLE".to_string(),
             redact_transport_error(ws_url, &error.to_string()),

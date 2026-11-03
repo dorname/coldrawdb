@@ -22,7 +22,7 @@ async fn main() -> ExitCode {
     let probe_enabled = std::env::var("COLDRAWDB_AUTH_PROBE")
         .map(|v| !v.eq_ignore_ascii_case("off"))
         .unwrap_or(true);
-    if probe_enabled && config.access_token.is_none() {
+    if probe_enabled && config.access_token.is_none() && !config.dynamic_auth_enabled() {
         let auth_forced = match config.endpoint("/api/v1/diagrams/__mcp_probe__") {
             Ok(url) => match reqwest::Client::builder().no_proxy().build() {
                 Ok(client) => client
@@ -37,7 +37,7 @@ async fn main() -> ExitCode {
             Err(_) => false,
         };
         if auth_forced {
-            eprintln!("CONFIG_INVALID: 后端已开启强制鉴权（COLDRAWDB_DIAGRAMS_AUTH=on），必须配置 COLDRAWDB_ACCESS_TOKEN（POST /api/v1/auth/login 签发的 accessToken）");
+            eprintln!("CONFIG_INVALID: 后端已开启强制鉴权（COLDRAWDB_DIAGRAMS_AUTH=on），必须配置 COLDRAWDB_ACCESS_TOKEN，或成对配置 COLDRAWDB_AUTH_EMAIL / COLDRAWDB_AUTH_PASSWORD");
             return ExitCode::from(2);
         }
     }

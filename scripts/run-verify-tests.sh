@@ -60,6 +60,15 @@ echo "[verify-pre-run] frontend-rs cargo test ..."
 echo "[verify-pre-run] MCP cargo test ..."
 (cd "$ROOT/mcp-server" && "$CARGO_BIN" test)
 
+echo "[verify-pre-run] 构建真实 backend 并执行 ST-MCP-18 隔离分片验收 ..."
+"$CARGO_BIN" build --manifest-path "$ROOT/backend/Cargo.toml"
+(cd "$ROOT/mcp-server" && COLDRAWDB_BACKEND_BIN="$ROOT/backend/target/debug/backend" \
+  "$CARGO_BIN" test --test c11_chunked_import st_mcp_18_real_backend_and_stdio_54_tables -- --ignored)
+
+echo "[verify-pre-run] 执行 ST-MCP-19～21 真实鉴权、房间协作与端点保真验收 ..."
+(cd "$ROOT/mcp-server" && COLDRAWDB_BACKEND_BIN="$ROOT/backend/target/debug/backend" \
+  "$CARGO_BIN" test --test c13_auth_real -- --ignored)
+
 echo "[verify-pre-run] 解析 Playwright 浏览器 ..."
 eval "$("$NODE_BIN" "$ROOT/frontend-rs/scripts/resolve-playwright-browsers.mjs" --export-env)"
 echo "[verify-pre-run] PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-unset} HEADLESS_SHELL=${PLAYWRIGHT_CHROMIUM_USE_HEADLESS_SHELL:-default}"

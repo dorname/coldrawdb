@@ -7735,12 +7735,16 @@ pub fn Inspector(
                                 &r.end_table_id,
                                 &r.end_field_id,
                             );
+                            let ref_name = r.name.clone();
+                            let ref_name_for_value = ref_name.clone();
+                            let ref_name_placeholder = crate::editor_core::relation_display_name(r);
                             let card = r.type_.clone();
                             let on_del = r.on_delete.clone();
                             let on_upd = r.on_update.clone();
                             let on_upd_ref = on_update_ref_field.clone();
                             let on_flip = on_flip_ref.clone();
                             let on_del_ref = on_delete_ref.clone();
+                            let rid_name = rid.clone();
                             let rid_type = rid.clone();
                             let rid_on_delete = rid.clone();
                             let rid_on_update = rid.clone();
@@ -7749,6 +7753,7 @@ pub fn Inspector(
                             let rid_color = rid.clone();
                             let rid_line = rid.clone();
                             let rid_stroke = rid.clone();
+                            let on_upd_ref_name = on_upd_ref.clone();
                             let on_upd_ref_type = on_upd_ref.clone();
                             let on_upd_ref_del = on_upd_ref.clone();
                             let on_upd_ref_upd = on_upd_ref.clone();
@@ -7772,6 +7777,22 @@ pub fn Inspector(
                             let card_for_options = card.clone();
                             view! {
                                 <div data-testid="inspector-reference-form">
+                                    <div class="cdb-form-group">
+                                        <label>"关系名称"</label>
+                                        <input
+                                            class="cdb-form-input"
+                                            data-testid="inspector-ref-name"
+                                            prop:value=ref_name_for_value
+                                            placeholder=ref_name_placeholder
+                                            disabled=ro
+                                            on:blur=move |ev| {
+                                                let next = event_target_value(&ev).trim().to_string();
+                                                if !ro && next != ref_name {
+                                                    on_upd_ref_name(rid_name.clone(), "name", next);
+                                                }
+                                            }
+                                        />
+                                    </div>
                                     <p class="cdb-rel-confirm-bar__label">{label}</p>
                                     <div class="cdb-form-group">
                                         <label>"Cardinality"</label>
@@ -13396,6 +13417,7 @@ pub fn AppRoot(
             let mut refs = store.references.get();
             if let Some(r) = refs.iter_mut().find(|r| r.id == ref_id) {
                 match field {
+                    "name" => r.name = value,
                     "type_" => r.type_ = value,
                     "on_delete" => r.on_delete = value,
                     "on_update" => r.on_update = value,

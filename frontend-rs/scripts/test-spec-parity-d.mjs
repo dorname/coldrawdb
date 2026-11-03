@@ -214,16 +214,16 @@ async function installApi(page, options = {}) {
     if (url.pathname === "/api/v1/diagrams/diagram-new" && request.method() === "GET") {
       // fix-open-issues-26-33（ST-CR-AREA-02）：persistGet 时回放最近一次 PUT 落账文档
       // （刷新持久性断言；缺省保持空图，既有用例回归不破）
-      const persisted = options.persistGet ? state.lastPutBody?.diagram : null;
+      const persisted = options.persistGet ? (state.savedDiagram ?? state.lastPutBody?.diagram) : null;
       // fix-open-issues-26-33（ST-PB-10 只读段）：presetDiagram 预置图文档（只读房间造图用）
       const preset = options.presetDiagram ?? null;
       return response(route, 200, {
         code: 0, request_id: "load-diagram",
         // fix-pg-types-listview-zindex-lock-engine: diagramDatabase 透传（缺省 null = Generic 缺省，回归不破）
-        data: preset
-          ? { id: "diagram-new", name: "架构评审室", database: options.diagramDatabase ?? null, revision: diagramRev, ...preset }
-          : persisted
-            ? { id: "diagram-new", name: "架构评审室", database: options.diagramDatabase ?? null, revision: diagramRev, ...persisted }
+        data: persisted
+          ? { id: "diagram-new", name: "架构评审室", database: options.diagramDatabase ?? null, revision: diagramRev, ...persisted }
+          : preset
+            ? { id: "diagram-new", name: "架构评审室", database: options.diagramDatabase ?? null, revision: diagramRev, ...preset }
             : { id: "diagram-new", name: "架构评审室", database: options.diagramDatabase ?? null, revision: diagramRev, tables: [], references: [], areas: [], notes: [] },
       });
     }
@@ -383,6 +383,56 @@ async function waitSaved(page, timeoutMs = 8_000) {
     () => document.querySelector('[data-testid="save-state"]')?.getAttribute("data-state") === "saved",
     { timeout: timeoutMs }
   );
+}
+
+async function waitForState(predicate, description, timeoutMs = 8_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  throw new Error(`等待状态超时：${description}`);
+}
+
+async function selectReference(page, id) {
+  await page.keyboard.press("Control+k");
+  await page.locator(`[data-testid="palette-item-${id}"]`).click();
+  await page.locator('[data-testid="inspector-reference-form"]:visible').waitFor();
+}
+
+// 测试侧采集真实 Canvas 文本绘制；不以 visible_ids 代替标签内容断言。
+async function captureCanvasText(page) {
+  await page.addInitScript(() => {
+    window.__cdb_test_canvas_texts = [];
+    const original = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function(text, ...args) {
+      window.__cdb_test_canvas_texts.push(String(text));
+      if (window.__cdb_test_canvas_texts.length > 2_000) {
+        window.__cdb_test_canvas_texts.splice(0, 1_000);
+      }
+      return original.call(this, text, ...args);
+    };
+  });
+}
+
+async function resetCanvasText(page) {
+  await page.evaluate(() => { window.__cdb_test_canvas_texts = []; });
+}
+
+async function waitForCanvasLabel(page, id, text) {
+  try {
+    await page.waitForFunction(({ id, text }) => {
+      const probe = JSON.parse(window.__cdb_relation_label_probe ?? "null");
+      return probe?.show_all === true && probe.visible_ids.includes(id)
+        && window.__cdb_test_canvas_texts?.some(drawn => drawn.includes(text));
+    }, { id, text }, { timeout: 5_000, polling: 100 });
+  } catch (error) {
+    const diagnostic = await page.evaluate(() => ({
+      probe: window.__cdb_relation_label_probe,
+      texts: window.__cdb_test_canvas_texts,
+    }));
+    throw new Error(`画布标签未绘制 ${id} / ${text}：${JSON.stringify(diagnostic)}`, { cause: error });
+  }
 }
 
 // p0-fix 定点 3：从 canvas data-follow-path 解析连线中点
@@ -1586,6 +1636,124 @@ try {
     await page.locator('[data-testid="inspector-ref-delete"]').click();
     await waitSaved(page);
     assert.equal(state.lastPutBody?.diagram?.references?.length, 0, "Inspector 删除后必须落账 0 条关系");
+  });
+
+  // ─── ST-PB-22：关系名称 blur 编辑、持久化、真实标签绘制与只读（#73） ──
+  await run(["ST-PB-22"], "关系名称编辑、trim、重载、列表/画布标签与只读", async page => {
+    const field = (id, name) => ({
+      id, name, type_: "INT", default: "", check: "", primary: name === "id", unique: false,
+      not_null: true, increment: false, comment: "", tag: "", dict_code: "",
+    });
+    const presetDiagram = {
+      tables: [
+        { id: "t1", name: "users", x: 100, y: 130, color: "", comment: "", fields: [field("f1", "id")], indices: [] },
+        { id: "t2", name: "posts", x: 600, y: 130, color: "", comment: "", fields: [field("f2", "user_id")], indices: [] },
+      ],
+      references: [{ id: "r1", name: "", start_table_id: "t1", end_table_id: "t2", start_field_id: "f1", end_field_id: "f2",
+        type_: "one_to_many", on_delete: "RESTRICT", on_update: "RESTRICT", color: "", line_type: "", stroke_style: "" }],
+      areas: [], notes: [],
+    };
+    await captureCanvasText(page);
+    const state = await installApi(page, {
+      presetDiagram,
+      persistGet: true,
+      roomsList: [{
+        id: "room-view", name: "只读评审室", diagramId: "diagram-new", diagramTitle: "只读评审室",
+        myRole: "viewer", memberCount: 2, updatedAt: "2026-08-23T00:02:00Z",
+      }],
+    });
+    // 让 mock 服务端从同一份非空图开始，reference.update 不得把端点或表物化丢失。
+    state.doc = structuredClone(presetDiagram);
+    await login(page);
+    await createRoomAndEnter(page);
+    await selectReference(page, "r1");
+
+    const panel = page.locator('[data-testid="inspector-reference-form"]:visible');
+    let nameInput = page.locator('[data-testid="inspector-ref-name"]:visible');
+    assert.equal(await panel.locator("input, select, button").first().getAttribute("data-testid"), "inspector-ref-name",
+      "关系名称必须是检查器首个可编辑控件");
+    assert.equal(await nameInput.inputValue(), "", "空名的原始 value 不得被 placeholder 填充");
+    assert.equal(await nameInput.getAttribute("placeholder"), "未命名关系（r1）");
+    assert.equal(state.putCalls, 0, "placeholder 不得触发文档写入");
+    assert.equal(state.sentOps.length, 0, "placeholder 不得触发协作 op");
+
+    await nameInput.fill("  user_posts  ");
+    await page.locator('[data-testid="inspector-title"]').click();
+    await waitForState(
+      () => state.lastPutBody?.diagram?.references?.find(r => r.id === "r1")?.name === "user_posts",
+      "trim 后的关系名称物化",
+    );
+    await waitSaved(page);
+    assert.equal(await nameInput.inputValue(), "user_posts", "blur 后输入框必须回显 trim 后的值");
+
+    const afterRenamePuts = state.putCalls;
+    const afterRenameOps = state.sentOps.length;
+    await nameInput.fill("  user_posts  ");
+    await page.locator('[data-testid="inspector-title"]').click();
+    await page.waitForTimeout(700);
+    assert.equal(state.putCalls, afterRenamePuts, "同值 blur 不得新增文档 PUT");
+    assert.equal(state.sentOps.length, afterRenameOps, "同值 blur 不得新增协作 op");
+    assert.equal(await page.locator('[data-testid="save-state"]').getAttribute("data-state"), "saved", "同值 blur 不得重复置脏");
+
+    // 第一次重载：名称来自已保存文档；表检查器列表与真实 Canvas fillText 同步新名称。
+    await page.reload();
+    await createRoomAndEnter(page);
+    await selectReference(page, "r1");
+    nameInput = page.locator('[data-testid="inspector-ref-name"]:visible');
+    assert.equal(await nameInput.inputValue(), "user_posts", "重载后关系名称必须保持");
+    const tableHeader = await canvasPoint(page, { x: 180, y: 150 });
+    await page.mouse.click(tableHeader.x, tableHeader.y);
+    await page.locator('[data-testid="inspector-table-form"]:visible').waitFor();
+    const renamedRelation = page.locator('[data-testid="inspector-table-relation-r1"]');
+    assert.ok((await renamedRelation.textContent())?.includes("user_posts"), "端点表的相关关系列表必须显示新名称");
+    await renamedRelation.click();
+    await page.locator('[data-testid="inspector-reference-form"]:visible').waitFor();
+    await resetCanvasText(page);
+    await page.locator('[data-testid="canvas-relation-labels"]').click();
+    await waitForCanvasLabel(page, "r1", "user_posts");
+
+    // 清空并第二次重载：原始名称为空，所有显示面回退同一个未命名文案。
+    nameInput = page.locator('[data-testid="inspector-ref-name"]:visible');
+    await nameInput.fill("   ");
+    await page.locator('[data-testid="inspector-title"]').click();
+    await waitForState(
+      () => state.lastPutBody?.diagram?.references?.find(r => r.id === "r1")?.name === "",
+      "纯空白 blur 清空关系名称",
+    );
+    await waitSaved(page);
+    assert.equal(await nameInput.inputValue(), "");
+    assert.equal(await nameInput.getAttribute("placeholder"), "未命名关系（r1）");
+    await page.reload();
+    await createRoomAndEnter(page);
+    await selectReference(page, "r1");
+    nameInput = page.locator('[data-testid="inspector-ref-name"]:visible');
+    assert.equal(await nameInput.inputValue(), "", "清空后重载不得恢复旧名称");
+    assert.equal(await nameInput.getAttribute("placeholder"), "未命名关系（r1）");
+    await page.mouse.click(tableHeader.x, tableHeader.y);
+    await page.locator('[data-testid="inspector-table-form"]:visible').waitFor();
+    const unnamedRelation = page.locator('[data-testid="inspector-table-relation-r1"]');
+    assert.ok((await unnamedRelation.textContent())?.includes("未命名关系（r1）"), "清空后相关关系列表必须使用统一兜底");
+    await resetCanvasText(page);
+    await unnamedRelation.click();
+    await waitForCanvasLabel(page, "r1", "未命名关系（r1）");
+
+    // Viewer：输入禁用；即使测试侧强制派发 blur，第二道只读守卫也不得产生写入。
+    await page.locator('[data-testid="btn-back-to-rooms"]').click();
+    await page.locator('[data-testid="room-card-room-view"]:visible').click();
+    await page.locator('[data-testid="room-editor-page"]:visible').waitFor();
+    await selectReference(page, "r1");
+    nameInput = page.locator('[data-testid="inspector-ref-name"]:visible');
+    assert.equal(await nameInput.isDisabled(), true, "Viewer 的关系名称输入必须禁用");
+    const readOnlyPuts = state.putCalls;
+    const readOnlyOps = state.sentOps.length;
+    await nameInput.evaluate(element => {
+      element.value = "forbidden";
+      element.dispatchEvent(new FocusEvent("blur"));
+    });
+    await page.waitForTimeout(700);
+    assert.equal(state.putCalls, readOnlyPuts, "Viewer blur 不得新增文档 PUT");
+    assert.equal(state.sentOps.length, readOnlyOps, "Viewer blur 不得新增协作 op");
+    assert.equal(state.lastPutBody?.diagram?.references?.find(r => r.id === "r1")?.name, "", "Viewer 不得修改持久化名称");
   });
 
   // ─── ST-PB-04：选中连线 Delete 与 Backspace 双键删除（relation-inspector-and-ddl-io） ──

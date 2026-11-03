@@ -719,6 +719,124 @@ mod tests {
         assert_eq!(doc, before);
     }
 
+    /// UT-C-11 — 存量非空图首次物化以持久化快照为基线，不做导入式二次重键。
+    #[actix_web::test]
+    async fn ut_c11_first_materialization_preserves_existing_entity_ids() {
+        let started = std::time::Instant::now();
+        use sea_orm::Database;
+
+        use crate::auth::register_user;
+        use crate::diagram_persistence::{
+            diagram_from_import_payload, load_diagram, save_diagram,
+        };
+        use crate::init::{apply_migrations, init_table};
+        use crate::rooms::create_room;
+
+        let db_path = format!(
+            "{}/drawdb_collab_first_materialize_{}.sqlite",
+            std::env::temp_dir().display(),
+            uuid::Uuid::new_v4()
+        );
+        std::fs::File::create(&db_path).unwrap();
+        let db = Database::connect(format!("sqlite://{}?", db_path))
+            .await
+            .unwrap();
+        init_table("init.sql", &db).await.unwrap();
+        apply_migrations("migrations", &db).await.unwrap();
+        let owner = register_user(
+            &db,
+            "ut-c11@coldrawdb.test",
+            "TestPass123",
+            Some("UT-C-11"),
+        )
+        .await
+        .unwrap();
+        let diagram_id = next_id();
+        db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "INSERT INTO diagram(id, name, database, pan, zoom, revision, updated_at, is_deleted) VALUES(?, 'UT-C-11', 'postgresql', '', '', 0, datetime('now'), 0)",
+            vec![diagram_id.clone().into()],
+        ))
+        .await
+        .unwrap();
+        let imported = diagram_from_import_payload(
+            &diagram_id,
+            &json!({
+                "name":"UT-C-11",
+                "tables":[
+                    {"id":"source-users","name":"users","comment":"keep-users","fields":[
+                        {"id":"source-user-id","name":"id","type":"INT","primary":true}
+                    ]},
+                    {"id":"source-orders","name":"orders","comment":"keep-orders","fields":[
+                        {"id":"source-order-user","name":"user_id","type":"INT"}
+                    ]}
+                ],
+                "references":[{
+                    "id":"source-reference","name":"orders_user",
+                    "start_table_id":"source-users","start_field_id":"source-user-id",
+                    "end_table_id":"source-orders","end_field_id":"source-order-user",
+                    "cardinality":"one_to_many","on_delete":"cascade","on_update":"restrict"
+                }],
+                "areas":[{"id":"source-area","name":"keep-area","x":1.0,"y":2.0,"width":300.0,"height":200.0,"color":"#abcdef"}],
+                "notes":[{"id":"source-note","title":"keep-note","content":"do not remap","x":3.0,"y":4.0,"color":"#123456"}]
+            }),
+        )
+        .unwrap();
+        save_diagram(&db, &diagram_id, 0, &imported).await.unwrap();
+        let before = load_diagram(&db, &diagram_id).await.unwrap().unwrap();
+        let before_json = serde_json::to_value(&before).unwrap();
+        assert_eq!(before.tables.len(), 2);
+        assert_eq!(before.references.len(), 1);
+        assert_eq!(before.areas.len(), 1);
+        assert_eq!(before.notes.len(), 1);
+        assert!(before.tables.iter().all(|table| !table.id.is_empty()));
+        let room = create_room(&db, &owner.user_id, "UT-C-11", &diagram_id)
+            .await
+            .unwrap();
+        assert!(get_room_document(&db, &diagram_id).await.unwrap().is_none());
+
+        let target_table_id = before.tables[0].id.clone();
+        let op = json!({"type":"table.update","targetId":target_table_id,"changes":{"name":"users_after_first_op"}});
+        let appended = append_op(&db, &room.id, &owner.user_id, "table.update", op.clone())
+            .await
+            .unwrap();
+        assert_eq!(appended.server_rev, 1);
+        let (materialized, server_rev) = get_room_document(&db, &diagram_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(server_rev, 1);
+        let mut expected = before_json.clone();
+        expected["tables"][0]["name"] = json!("users_after_first_op");
+        assert_eq!(materialized, expected, "除首个 op 目标属性外必须逐值一致");
+
+        let reference = &materialized["references"][0];
+        assert_eq!(reference["id"], before_json["references"][0]["id"]);
+        for endpoint in [
+            "start_table_id",
+            "start_field_id",
+            "end_table_id",
+            "end_field_id",
+        ] {
+            assert_eq!(reference[endpoint], before_json["references"][0][endpoint]);
+        }
+        assert_eq!(reference["start_table_id"], before_json["tables"][0]["id"]);
+        assert_eq!(reference["start_field_id"], before_json["tables"][0]["fields"][0]["id"]);
+        assert_eq!(reference["end_table_id"], before_json["tables"][1]["id"]);
+        assert_eq!(reference["end_field_id"], before_json["tables"][1]["fields"][0]["id"]);
+        assert_eq!(materialized["areas"], before_json["areas"]);
+        assert_eq!(materialized["notes"], before_json["notes"]);
+
+        let (_, _, ops) = list_collab_ops(&db, &room.id, &owner.user_id, 0, 10)
+            .await
+            .unwrap();
+        assert_eq!(ops.len(), 1);
+        let mut replayed = before_json;
+        assert!(apply_op_to_doc(&mut replayed, &ops[0].payload));
+        assert_eq!(replayed, materialized, "物化读必须与 op log 重放一致");
+        crate::verify_reporter::report_pass("UT-C-11", started.elapsed().as_millis());
+    }
+
     /// UT-C-07c — reference/area/note 扁平集合 upsert/delete；未知 op 不变更 doc
     #[test]
     fn ut_c07_flat_collections_and_unknown() {

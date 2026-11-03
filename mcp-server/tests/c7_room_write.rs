@@ -132,10 +132,9 @@ async fn room_server(ws_hits: Arc<AtomicUsize>) -> String {
                         "200 OK",
                         json!({"items":[{"id":"r1","diagramId":"d1"}],"total":1}),
                     ),
-                    ("GET", "/api/v1/diagrams/d1") => (
-                        "200 OK",
-                        json!({"code":0,"data": base_diagram()}),
-                    ),
+                    ("GET", "/api/v1/diagrams/d1") => {
+                        ("200 OK", json!({"code":0,"data": base_diagram()}))
+                    }
                     _ => ("500 Internal Server Error", json!({"message":"unexpected"})),
                 };
                 stream
@@ -188,7 +187,8 @@ async fn ut_mcp_26_room_write_uses_op_channel() {
 
     let anonymous = ApiClient::new(config(base_url, None)).unwrap();
     let missing = anonymous.update("d1", 4, base_diagram()).await.unwrap_err();
-    assert_eq!(missing.code, "UNAUTHENTICATED");
+    assert_eq!(missing.code, "ROOMS_AUTH_REQUIRED");
+    assert_eq!(missing.details.unwrap()["reason"], "TOKEN_MISSING");
     assert!(!missing.message.contains("secret-token"));
     assert!(!missing.message.contains("token="));
     reporter::report("UT-MCP-26", Ok(()), started.elapsed().as_millis());

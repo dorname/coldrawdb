@@ -20,25 +20,25 @@
 
 ### #70 批：大图无损分片
 
-- [ ] 修改 `mcp-server/src/service.rs` 与 `mcp-server/src/payload_limit.rs` — 实现整表 create、冲突安全 ID 重键与映射输出、批量关系 create、`type_` 和级联规范化
-- [ ] 新增 `mcp-server/tests/c11_chunked_import.rs` 并接 reporter — 交付 UT-MCP-41～44 与真实隔离 backend + stdio 的 ST-MCP-18，验证全保真 54 表 / 863 字段 / 76 关系
-- [ ] 更新 `mcp-server/README.md` 与四客户端配置示例 — 说明客户端实测尺寸边界、单表/关系分片顺序、ID 映射与跨调用非原子边界
+- [x] 修改 `mcp-server/src/service.rs` 与 `mcp-server/src/payload_limit.rs` — 实现整表 create、冲突安全 ID 重键与映射输出、批量关系 create、`type_` 和级联规范化
+- [x] 新增 `mcp-server/tests/c11_chunked_import.rs` 并接 reporter — 交付 UT-MCP-41～44 与真实隔离 backend + stdio 的 ST-MCP-18，验证全保真 54 表 / 863 字段 / 76 关系
+- [x] 更新 `mcp-server/README.md` 与四客户端配置示例 — 说明客户端实测尺寸边界、单表/关系分片顺序、ID 映射与跨调用非原子边界
 
 ### #71 批：房间凭据与错误语义
 
-- [ ] 修改 `mcp-server/src/config.rs`、`mcp-server/src/api.rs` 与 `mcp-server/src/collab/` — 实现内存 login/refresh 凭据会话、401 单次重试、WS 握手单次重连与统一脱敏
-- [ ] 在统一房间回退中实现 `ROOMS_AUTH_REQUIRED` 及原因 details，保留普通 401/403/5xx 语义
-- [ ] 更新 `mcp-server/tests/c7_room_write.rs`、错误/配置测试并新增会话测试 — 交付 UT-MCP-45～48、ST-MCP-19/20 与 reporter
-- [ ] 更新 `mcp-server/README.md` 与四客户端示例 — 说明静态 token 和动态登录互斥、房间写前置条件及安全配置，不写入真实凭据
+- [x] 修改 `mcp-server/src/config.rs`、`mcp-server/src/api.rs` 与 `mcp-server/src/collab/` — 实现内存 login/refresh 凭据会话、401 单次重试、WS 握手单次重连与统一脱敏
+- [x] 在统一房间回退中实现 `ROOMS_AUTH_REQUIRED` 及原因 details，保留普通 401/403/5xx 语义
+- [x] 更新 `mcp-server/tests/c7_room_write.rs`、错误/配置测试并新增会话测试 — 交付 UT-MCP-45～48、ST-MCP-19/20 与 reporter
+- [x] 更新 `mcp-server/README.md` 与四客户端示例 — 说明静态 token 和动态登录互斥、房间写前置条件及安全配置，不写入真实凭据
 
 ### #72 批：关系端点一致性
 
-- [ ] 修改 `mcp-server/src/service.rs` 的单个/批量关系 create — 校验四端点存在性及字段归属，无效输入在 PUT/WS 前返回且零写入
-- [ ] 修改 `backend/src/collab/mod.rs` 或邻近既有测试模块 — 交付 UT-C-11，验证存量非空图首次物化保持实体 ID、关系端点、areas 与 notes
-- [ ] 扩展真实 MCP 集成测试与 reporter — 交付 UT-MCP-49、ST-MCP-21，覆盖导入→实际 ID→建关系→开房间→首 op→读取
+- [x] 修改 `mcp-server/src/service.rs` 的单个/批量关系 create — 校验四端点存在性及字段归属，无效输入在 PUT/WS 前返回且零写入
+- [x] 修改 `backend/src/collab/mod.rs` 或邻近既有测试模块 — 交付 UT-C-11，验证存量非空图首次物化保持实体 ID、关系端点、areas 与 notes
+- [x] 扩展真实 MCP 集成测试与 reporter — 交付 UT-MCP-49、ST-MCP-21，覆盖导入→实际 ID→建关系→开房间→首 op→读取
 
 ### #73 批：关系名称编辑
 
-- [ ] 修改 `frontend-rs/src/editor_panels.rs` — 增加 `inspector-ref-name`、blur trim/清空/同值不写、只读禁用与 `on_update_ref_field` 的 name 分支
-- [ ] 在关系纯函数测试与 `frontend-rs/scripts/test-spec-parity-d.mjs` 交付 UT-PB-38、ST-PB-22 — 覆盖真实编辑、保存重载、列表/标签显示、清空和只读
-- [ ] 更新 `frontend-rs/tests/openlogos_reporter.rs` 及对应 reporter — 确保新增 UT/ST 真实写入 `logos/resources/verify/test-results.jsonl`
+- [x] 修改 `frontend-rs/src/editor_panels.rs` — 增加 `inspector-ref-name`、blur trim/清空/同值不写、只读禁用与 `on_update_ref_field` 的 name 分支
+- [x] 在关系纯函数测试与 `frontend-rs/scripts/test-spec-parity-d.mjs` 交付 UT-PB-38、ST-PB-22 — 覆盖真实编辑、保存重载、列表/标签显示、清空和只读
+- [x] 更新 `frontend-rs/tests/openlogos_reporter.rs` 及对应 reporter — 确保新增 UT/ST 真实写入 `logos/resources/verify/test-results.jsonl`

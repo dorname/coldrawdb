@@ -1610,6 +1610,37 @@ mod tests {
         assert_eq!(restored[2].line_type, "", "UT-PB-17: 空串旧值必须原样恢复");
     }
 
+    /// UT-PB-38 — 关系显示名与空值兜底（fix-issues-70-73 / #73，core-01b §3.5）
+    #[test]
+    fn test_relation_display_name_ut_pb_38() {
+        let named = Reference {
+            id: "r1".into(),
+            name: "user_posts".into(),
+            start_table_id: "users".into(),
+            end_table_id: "posts".into(),
+            start_field_id: "user_id".into(),
+            end_field_id: "post_user_id".into(),
+            type_: "one_to_many".into(),
+            on_delete: "RESTRICT".into(),
+            on_update: "RESTRICT".into(),
+            color: String::new(),
+            line_type: String::new(),
+            stroke_style: String::new(),
+        };
+        assert_eq!(relation_display_name(&named), "user_posts");
+
+        for raw_name in ["", "   "] {
+            let reference = Reference {
+                name: raw_name.into(),
+                ..named.clone()
+            };
+            let display = relation_display_name(&reference);
+            assert_eq!(display, "未命名关系（r1）");
+            assert!(!display.contains("ref-r1"));
+            assert_eq!(reference.name, raw_name, "placeholder 不得写回模型");
+        }
+    }
+
     /// UT-S01-07 — 表创建触发 undo 栈
     /// Spec: `core-S01-test-cases.md` line 107
     /// 验证：3 次 AddTable 后 stack.undo.len() == 3

@@ -328,7 +328,7 @@ async fn ut_mcp24_update_reference_color() {
     let refs = requests[1].2["diagram"]["references"].as_array().unwrap();
     let r1 = refs.iter().find(|r| r["id"] == "r1").unwrap();
     assert_eq!(r1["color"], json!("#f00"), "不传 color 时必须保持原值");
-    assert_eq!(r1["cardinality"], json!("one_to_one"));
+    assert_eq!(r1["type_"], json!("one_to_one"));
     drop(requests);
 
     // 3) update 传 color → PUT body 中覆盖为新值

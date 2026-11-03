@@ -87,8 +87,9 @@ pub fn payload_too_large_error(
     error.details = Some(json!({
         "payload_bytes": payload_bytes,
         "soft_limit_bytes": soft_limit_bytes,
-        "suggestion": "大图请分批写入：按表 update_table、按字段 update_field、\
-                       按关系 update_reference、布局 layout_diagram；\
+        "suggestion": "大图请分批写入：update_table(action=create) 每次一张完整表；\
+                       update_reference(action=create,references=[...]) 按数组分批，\
+                       单次工具参数保守控制在约 48 KiB；按字段 update_field、布局 layout_diagram；\
                        每批携带最新 expected_revision 严格串行（并行分批必然 409）",
         "batch_hint": batch_hint(diagram),
     }));

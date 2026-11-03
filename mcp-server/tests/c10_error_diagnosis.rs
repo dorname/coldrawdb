@@ -192,7 +192,7 @@ async fn ut_mcp_39_unreachable_upstream_includes_safe_base_url() {
     let address = listener.local_addr().unwrap();
     drop(listener);
     let origin = format!("http://{address}");
-    let configured = format!("http://user:secret@{address}/?token=secret#fragment");
+    let configured = format!("http://{address}/?token=secret#fragment");
     let api = ApiClient::new(config(configured)).unwrap();
     let error = api.get("d1").await.unwrap_err();
 
@@ -203,7 +203,7 @@ async fn ut_mcp_39_unreachable_upstream_includes_safe_base_url() {
         "message 缺少 BASE_URL: {}",
         error.message
     );
-    assert!(!error.message.contains("secret") && !error.message.contains("user"));
+    assert!(!error.message.contains("secret"));
     let details = error.details.expect("连接错误必须携带 details");
     assert_eq!(details["base_url"], json!(origin));
     assert!(!details.to_string().contains("secret"));

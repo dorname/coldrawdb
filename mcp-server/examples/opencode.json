@@ -8,7 +8,10 @@
       ],
       "enabled": true,
       "environment": {
-        "COLDRAWDB_BASE_URL": "http://localhost:3000"
+        "COLDRAWDB_BASE_URL": "http://localhost:3000",
+        "COLDRAWDB_AUTH_EMAIL": "",
+        "COLDRAWDB_AUTH_PASSWORD": "",
+        "COLDRAWDB_MCP_PAYLOAD_SOFT_LIMIT_BYTES": "262144"
       }
     }
   }

@@ -312,6 +312,7 @@ const UT_PASS_IDS: &[&str] = &[
     "UT-PB-35", // fix-related-relation-identification: 标签偏好、内容、路径中点与碰撞避让
     "UT-PB-36", // fix-unified-canvas-selection: 关系选择工具禁止字段误建、统一回落
     "UT-PB-37", // fix-big-diagram-table-drag-blocked: 三种线型/Tier 的当前有效几何同源命中
+    "UT-PB-38", // fix-issues-70-73 / #73：具名显示与空串/纯空白统一未命名兜底
     // ST-PB-16 e2e 由 scripts/test-spec-parity-d.mjs 真实运行，reporter 声明式兜底
     "ST-PB-16",
     // fix-issue-48（issue #48 R-LOD-10）：表维度卡宽上限放宽

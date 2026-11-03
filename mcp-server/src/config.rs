@@ -9,6 +9,8 @@ use crate::error::ToolError;
 pub struct Config {
     pub base_url: Url,
     pub access_token: Option<String>,
+    pub auth_email: Option<String>,
+    pub auth_password: Option<String>,
     pub timeout: Duration,
     /// fix-open-issues-26-33（#26）：update_diagram 参数体积软上限（字节）。
     pub payload_soft_limit_bytes: usize,
@@ -22,6 +24,14 @@ impl std::fmt::Debug for Config {
             .field(
                 "access_token",
                 &self.access_token.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field(
+                "auth_email",
+                &self.auth_email.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field(
+                "auth_password",
+                &self.auth_password.as_ref().map(|_| "[REDACTED]"),
             )
             .field("timeout", &self.timeout)
             .field("payload_soft_limit_bytes", &self.payload_soft_limit_bytes)
@@ -43,6 +53,9 @@ impl Config {
             Url::parse(raw).map_err(|_| ToolError::config("COLDRAWDB_BASE_URL 不是有效 URI"))?;
         if !matches!(base_url.scheme(), "http" | "https") || base_url.cannot_be_a_base() {
             return Err(ToolError::config("COLDRAWDB_BASE_URL 仅允许 http 或 https"));
+        }
+        if !base_url.username().is_empty() || base_url.password().is_some() {
+            return Err(ToolError::config("COLDRAWDB_BASE_URL 禁止包含 userinfo"));
         }
         base_url.set_query(None);
         base_url.set_fragment(None);
@@ -72,15 +85,41 @@ impl Config {
             eprintln!("coldrawdb-mcp config: {warn}");
         }
 
+        let access_token = values
+            .get("COLDRAWDB_ACCESS_TOKEN")
+            .filter(|value| !value.is_empty())
+            .cloned();
+        let auth_email = values
+            .get("COLDRAWDB_AUTH_EMAIL")
+            .filter(|value| !value.trim().is_empty())
+            .cloned();
+        let auth_password = values
+            .get("COLDRAWDB_AUTH_PASSWORD")
+            .filter(|value| !value.is_empty())
+            .cloned();
+        if access_token.is_some() && (auth_email.is_some() || auth_password.is_some()) {
+            return Err(ToolError::config(
+                "COLDRAWDB_ACCESS_TOKEN 与动态登录凭据互斥，请只配置一种模式",
+            ));
+        }
+        if auth_email.is_some() != auth_password.is_some() {
+            return Err(ToolError::config(
+                "COLDRAWDB_AUTH_EMAIL 与 COLDRAWDB_AUTH_PASSWORD 必须成对配置",
+            ));
+        }
+
         Ok(Self {
             base_url,
-            access_token: values
-                .get("COLDRAWDB_ACCESS_TOKEN")
-                .filter(|value| !value.is_empty())
-                .cloned(),
+            access_token,
+            auth_email,
+            auth_password,
             timeout: Duration::from_secs(timeout_secs),
             payload_soft_limit_bytes,
         })
+    }
+
+    pub fn dynamic_auth_enabled(&self) -> bool {
+        self.auth_email.is_some() && self.auth_password.is_some()
     }
 
     pub fn endpoint(&self, path: &str) -> Result<Url, ToolError> {
