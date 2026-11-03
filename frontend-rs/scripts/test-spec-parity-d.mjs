@@ -1767,6 +1767,14 @@ try {
     const mid = await canvasPoint(page, await relationLineMidpoint(page));
     await page.mouse.click(mid.x, mid.y);
     await page.locator('[data-testid="inspector-reference-form"]:visible').waitFor();
+    // fix-mcp-tool-schema-client-compat 勘误（ST-PB-04 harness 竞态）：createVisibleRelation
+    // 的 Esc 仅退出关系工具，Inspector 关系表单保持打开——上面的 waitFor(:visible) 被
+    // 残留表单立即短路，失去「本次点击已选中」同步语义；连线命中的选中链路经 rAF 节流
+    // 异步落定，Delete 派发竞速失败时走空选中分支被静默吞掉（落账 1 条 ≠ 0，verify 首轮
+    // 复现、仪器化诊断证实功能无误）。双 rAF 排空已排队任务 + 短静默窗覆盖选中落定
+    // （#67 先例模式），断言语义不变。Backspace 段同理。
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await page.waitForTimeout(300);
     await page.keyboard.press("Delete");
     await waitSaved(page);
     assert.equal(state.lastPutBody?.diagram?.references?.length, 0, "Delete 键删除后必须落账 0 条关系");
@@ -1786,6 +1794,8 @@ try {
     const mid2 = await canvasPoint(page, await relationLineMidpoint(page));
     await page.mouse.click(mid2.x, mid2.y);
     await page.locator('[data-testid="inspector-reference-form"]:visible').waitFor();
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await page.waitForTimeout(300);
     await page.keyboard.press("Backspace");
     await waitSaved(page);
     assert.equal(state.lastPutBody?.diagram?.references?.length, 0, "Backspace 键删除后必须落账 0 条关系");

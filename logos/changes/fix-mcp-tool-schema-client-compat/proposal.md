@@ -31,6 +31,22 @@ JSON Schema 条件结构。MCP 服务端把它们原样放进 `tools/list` 响�
 - 影响的测试用例：`logos/resources/test/core-S06-test-cases.md` 新增 UT-MCP-50
   （全工具 schema 客户端兼容守卫）
 
+### 勘误补充（2026-11-04，verify 阶段暴露）
+
+verify 首轮 Gate 3.6 FAIL：唯一失败用例 ST-PB-04（`test-spec-parity-d.mjs`，
+前端 e2e）。排查确认与本提案的 MCP 修复零交集（前端代码与用例断言两次运行间
+无变化、上次归档批同用例 PASS），根因为测试 harness 时序竞态：
+`createVisibleRelation` 的 Esc 仅退出关系工具、Inspector 关系表单保持打开，
+ST-PB-04 点击连线后的 `waitFor(:visible)` 被残留表单立即短路，失去「本次点击
+已选中」的同步语义——Delete/Backspace 派发与画布 rAF 节流的异步选中链路竞速，
+竞速失败时按键走空选中分支被静默吞掉（落账 1 条 ≠ 0）。仪器化诊断 + 加稳态
+等待后复跑 PASS 证实功能无误。
+
+CLI 单活跃提案约束下独立提案不可行（verify FAIL → 不可 archive → 不可开新
+提案，死锁），按 G 批先例（测试代码缺陷随当前批次修复并真实入账）将 ST-PB-04
+harness 修复并入本提案：仅在点击与按键之间加双 rAF + 短静默窗稳态等待（#67
+先例模式），断言语义零变化。
+
 ## 部署影响
 
 - 是否需要部署：否
