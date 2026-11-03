@@ -132,7 +132,7 @@ cd <项目根目录> && openlogos <command>
 
 ## 项目当前状态
 
-- 当前无活跃变更（无 guard 锁）；最近归档：`fix-floating-controls-statusbar-overlap`（issue #69 矮视口悬浮控件遮挡，verify PASS 573/607、0 失败）。同批归档 `fix-e2e-harness-stability`（issue #67/#68 e2e 假失败）；G 批 cr-click-width/cr-comment-color 7 用例历史 PASS 实为 0ms 声明式兜底，已随 #69 修复测试代码缺陷并首次真实运行入账。
+- 当前无活跃变更（无 guard 锁）；最近归档：`fix-mcp-tool-schema-client-compat`（2026-11-04，Claude Code 客户端丢弃含 allOf/if/then/else/oneOf 高级 schema 关键字的工具致 10/12——update_table/update_reference inputSchema 拍平、schemas 区死定义清理、契约登记顶层禁用条件关键字、UT-MCP-50 守卫入账；verify PASS 592/626、0 失败；含勘误：verify 暴露的 ST-PB-04 选中竞态 harness 缺陷按 #67 先例模式随批修复）。前批：`fix-issues-70-73`（MCP 大图鉴权与关系编辑）、`fix-floating-controls-statusbar-overlap`（issue #69）。
 - 场景范围 S01～S07；`align-unified-prototype-and-add-mcp` 已完成归档，S06 MCP stdio 服务已交付；S07 数据字典前后端已实现（含 UT-S07-01～11 入账）。
 - 唯一现行 HTML 主原型：`core-01-editor-prototype.html`；S03/S04/S05 独立原型仅作历史参考。
 - S01/S02 前后端已实现；S03～S05 后端 auth/rooms/collab REST、DB、WS 与测试已实现，生产前端尚未接入（独立后续项 F1）。
