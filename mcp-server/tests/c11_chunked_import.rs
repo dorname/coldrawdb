@@ -724,7 +724,7 @@ async fn st_mcp_18_real_backend_and_stdio_54_tables() {
             let mut stderr = mcp.0.stderr.take().unwrap();
             session.call("initialize", json!({"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"st-mcp-18","version":"1"}}));
             let tools = session.call("tools/list", json!({}));
-            assert_eq!(tools["tools"].as_array().unwrap().len(), 12);
+            assert_eq!(tools["tools"].as_array().unwrap().len(), 14); // fix-mcp-tool-gaps-issue76：+update_area/update_note
 
             let created = session.tool("create_diagram", json!({"name":"ST-MCP-18","database":"postgresql"}));
             assert_eq!(created.as_object().unwrap().keys().collect::<Vec<_>>(), ["id"]);
