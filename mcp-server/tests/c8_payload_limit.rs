@@ -139,11 +139,11 @@ async fn ut_mcp30_soft_limit_intercept() {
     let started = Instant::now();
     let limit = MIN_SOFT_LIMIT_BYTES;
 
-    // 1) 体积恰 == 软上限 → 直写不拦截
-    let (base, captured) = scripted_backend(vec![(
-        200,
-        json!({"code":0,"data":{"id":"d1","revision":6}}),
-    )])
+    // 1) 体积恰 == 软上限 → 直写不拦截（守护 GET + PUT，fix-mcp-tool-gaps-issue76）
+    let (base, captured) = scripted_backend(vec![
+        (200, json!({"code":0,"data":{"diagram":{"tables":[],"references":[]}}})),
+        (200, json!({"code":0,"data":{"id":"d1","revision":6}})),
+    ])
     .await;
     let resp = service_with(base, Some("16384"))
         .call(
@@ -155,8 +155,8 @@ async fn ut_mcp30_soft_limit_intercept() {
     assert_eq!(resp, json!({"id":"d1","revision":6}));
     assert_eq!(
         captured.lock().unwrap().len(),
-        1,
-        "体积恰达软上限必须直写（恰好 1 个 PUT）"
+        2,
+        "体积恰达软上限必须直写（守护 GET + 1 个 PUT）"
     );
 
     // 2) 体积 == 上限 + 1 → 本地拦截，mock 断言零请求

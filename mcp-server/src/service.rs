@@ -104,6 +104,56 @@ impl McpService {
                         &diagram,
                     ));
                 }
+                // fix-mcp-tool-gaps-issue76（#76 / UT-MCP-54）：防误删守护。
+                // 全文档写语义为「缺失 section = 删除」，desired 大规模缺表（缺失数 > 10
+                // 或 > 50%）时必须显式 allow_mass_delete=true，否则本地拦截零写入。
+                if !arguments
+                    .get("allow_mass_delete")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+                {
+                    let base = self.api.get(id).await?;
+                    let desired_ids: std::collections::HashSet<&str> = diagram
+                        .get("tables")
+                        .and_then(Value::as_array)
+                        .map(|tables| {
+                            tables
+                                .iter()
+                                .filter_map(|t| t.get("id").and_then(Value::as_str))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let base_ids: std::collections::HashSet<&str> = base
+                        .get("diagram")
+                        .and_then(|d| d.get("tables"))
+                        .and_then(Value::as_array)
+                        .map(|tables| {
+                            tables
+                                .iter()
+                                .filter_map(|t| t.get("id").and_then(Value::as_str))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let missing: Vec<&str> = base_ids.difference(&desired_ids).copied().collect();
+                    let missing_count = missing.len();
+                    let base_count = base_ids.len();
+                    let ratio = if base_count == 0 {
+                        0.0
+                    } else {
+                        missing_count as f64 / base_count as f64
+                    };
+                    if missing_count > 10 || ratio > 0.5 {
+                        let mut error = ToolError::validation(format!(
+                            "desired 缺失 {missing_count} 张表（缺失 section = 删除）；确认批量删除请携带 allow_mass_delete=true"
+                        ));
+                        error.details = Some(json!({
+                            "missing_count": missing_count,
+                            "base_table_count": base_count,
+                            "samples": missing.iter().take(5).collect::<Vec<_>>(),
+                        }));
+                        return Err(error);
+                    }
+                }
                 // fix-remote-github-issues-7-18（#18）：统一 normalize 为瘦响应
                 let data = self.api.update(id, expected_revision, diagram).await?;
                 slim_write_response(&data, id)
@@ -130,6 +180,9 @@ impl McpService {
             "update_table" => self.update_table(arguments).await,
             "update_field" => self.update_field(arguments).await,
             "update_reference" => self.update_reference(arguments).await,
+            // fix-mcp-tool-gaps-issue76（#76）：areas/notes 细粒度增量写
+            "update_area" => self.update_area(arguments).await,
+            "update_note" => self.update_note(arguments).await,
             "layout_diagram" => self.layout_diagram(arguments).await,
             // mcp-dictionary-tools（2026-09-28）：数据字典管理工具（S07）
             "update_dictionary" => self.update_dictionary(arguments).await,
@@ -146,10 +199,22 @@ impl McpService {
             .get("action")
             .and_then(Value::as_str)
             .unwrap_or("update");
-        if !matches!(action, "create" | "update") {
-            return Err(ToolError::validation("action 必须是 create/update"));
+        if !matches!(action, "create" | "update" | "delete") {
+            return Err(ToolError::validation("action 必须是 create/update/delete"));
         }
-        validate_table_arguments(&arguments, action)?;
+        // fix-mcp-tool-gaps-issue76（#76 / UT-MCP-51）：delete 仅接受 id/table_id/action，
+        // 内容字段任一出现即本地拒绝（零写入）。
+        if action == "delete" {
+            for key in ["name", "fields", "comment", "x", "y", "color", "locked"] {
+                if arguments.get(key).is_some() {
+                    return Err(ToolError::validation(format!(
+                        "update_table(action=delete) 不接受 {key}"
+                    )));
+                }
+            }
+        } else {
+            validate_table_arguments(&arguments, action)?;
+        }
 
         let result = self.api.get(id).await?;
         let mut diagram = result
@@ -160,6 +225,42 @@ impl McpService {
             .get("revision")
             .and_then(Value::as_i64)
             .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "响应缺少 revision", false))?;
+
+        if action == "delete" {
+            // fix-mcp-tool-gaps-issue76（#76）：按 table_id 删表；顺带移除触碰该表的
+            // references（start_table_id / end_table_id 命中），维持无悬空。
+            let tables = diagram
+                .get_mut("tables")
+                .and_then(Value::as_array_mut)
+                .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "diagram 缺少 tables 数组", false))?;
+            let before = tables.len();
+            tables.retain(|t| t.get("id").and_then(Value::as_str) != Some(table_id));
+            if tables.len() == before {
+                return Err(ToolError::validation(format!("table_id {table_id} 不存在")));
+            }
+            let mut deleted_reference_ids = Vec::new();
+            if let Some(references) = diagram
+                .get_mut("references")
+                .and_then(Value::as_array_mut)
+            {
+                references.retain(|r| {
+                    let touches = ["start_table_id", "end_table_id"].iter().any(|key| {
+                        r.get(key).and_then(Value::as_str) == Some(table_id)
+                    });
+                    if touches {
+                        if let Some(rid) = r.get("id").and_then(Value::as_str) {
+                            deleted_reference_ids.push(rid.to_string());
+                        }
+                    }
+                    !touches
+                });
+            }
+            let data = self.api.update(id, revision, diagram).await?;
+            let mut response = slim_write_response(&data, id)?;
+            response["deleted_table_id"] = json!(table_id);
+            response["deleted_reference_ids"] = json!(deleted_reference_ids);
+            return Ok(response);
+        }
 
         let created_ids = if action == "create" {
             let mut table = json!({
@@ -212,6 +313,213 @@ impl McpService {
             response["field_id_map"] = Value::Object(field_id_map);
         }
         Ok(response)
+    }
+
+    // ── fix-mcp-tool-gaps-issue76（#76）：areas/notes 细粒度增量写 ─────────
+    // 与 update_table 同模式：GET 全量 → 本地修改 → PUT 全量；单次调用小载荷，
+    // 绕开全文档体积约束（#70 客户端参数通道截断）。
+
+    async fn update_area(&self, arguments: Value) -> Result<Value, ToolError> {
+        let id = required_str(&arguments, "id")?;
+        let area_id = required_str(&arguments, "area_id")?;
+        let action = arguments
+            .get("action")
+            .and_then(Value::as_str)
+            .unwrap_or("update");
+        if !matches!(action, "create" | "update" | "delete") {
+            return Err(ToolError::validation("action 必须是 create/update/delete"));
+        }
+        if action == "delete" {
+            // UT-MCP-52：delete 仅接受 id/area_id/action，内容字段任一出现即本地拒绝。
+            for key in ["name", "x", "y", "width", "height", "color", "locked"] {
+                if arguments.get(key).is_some() {
+                    return Err(ToolError::validation(format!(
+                        "update_area(action=delete) 不接受 {key}"
+                    )));
+                }
+            }
+        } else {
+            if action == "create" {
+                required_str(&arguments, "name")?;
+            }
+            if let Some(name) = arguments.get("name").and_then(Value::as_str) {
+                if name.is_empty() || name.chars().count() > 64 {
+                    return Err(ToolError::validation("name 必须在 1～64 字符之间"));
+                }
+            }
+            for key in ["x", "y", "width", "height"] {
+                if arguments.get(key).is_some_and(|value| !value.is_number()) {
+                    return Err(ToolError::validation(format!("{key} 必须是 number")));
+                }
+            }
+            if arguments
+                .get("color")
+                .and_then(Value::as_str)
+                .is_some_and(|value| value.chars().count() > 32)
+            {
+                return Err(ToolError::validation("color 最长 32 个字符"));
+            }
+            if arguments.get("locked").is_some_and(|value| !value.is_boolean()) {
+                return Err(ToolError::validation("locked 必须是 boolean"));
+            }
+        }
+
+        let result = self.api.get(id).await?;
+        let mut diagram = result
+            .get("diagram")
+            .cloned()
+            .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "响应缺少 diagram", false))?;
+        let revision = diagram
+            .get("revision")
+            .and_then(Value::as_i64)
+            .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "响应缺少 revision", false))?;
+
+        if action == "create" {
+            let area = json!({
+                "id": format!("auto-{}", uuid_simple()),
+                "name": required_str(&arguments, "name")?,
+                "x": arguments.get("x").and_then(Value::as_f64).unwrap_or(0.0),
+                "y": arguments.get("y").and_then(Value::as_f64).unwrap_or(0.0),
+                "width": arguments.get("width").and_then(Value::as_f64).unwrap_or(0.0),
+                "height": arguments.get("height").and_then(Value::as_f64).unwrap_or(0.0),
+                "color": arguments.get("color").and_then(Value::as_str).unwrap_or(""),
+                "locked": arguments.get("locked").and_then(Value::as_bool).unwrap_or(false),
+            });
+            let actual_area_id = area["id"].as_str().unwrap_or_default().to_string();
+            let areas = ensure_section_array(&mut diagram, "areas")?;
+            areas.push(area);
+            let data = self.api.update(id, revision, diagram).await?;
+            let mut response = slim_write_response(&data, id)?;
+            response["area_id"] = json!(actual_area_id);
+            return Ok(response);
+        }
+
+        let areas = diagram
+            .get_mut("areas")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "diagram 缺少 areas 数组", false))?;
+        let index = areas
+            .iter()
+            .position(|a| a.get("id").and_then(Value::as_str) == Some(area_id))
+            .ok_or_else(|| ToolError::validation(format!("area_id {area_id} 不存在")))?;
+        if action == "delete" {
+            areas.remove(index);
+        } else {
+            let area = &mut areas[index];
+            if let Some(name) = arguments.get("name").and_then(Value::as_str) {
+                area["name"] = json!(name);
+            }
+            if let Some(color) = arguments.get("color").and_then(Value::as_str) {
+                area["color"] = json!(color);
+            }
+            if let Some(locked) = arguments.get("locked").and_then(Value::as_bool) {
+                area["locked"] = json!(locked);
+            }
+            for key in ["x", "y", "width", "height"] {
+                if let Some(value) = arguments.get(key).and_then(Value::as_f64) {
+                    area[key] = json!(value);
+                }
+            }
+        }
+        let data = self.api.update(id, revision, diagram).await?;
+        slim_write_response(&data, id)
+    }
+
+    async fn update_note(&self, arguments: Value) -> Result<Value, ToolError> {
+        let id = required_str(&arguments, "id")?;
+        let note_id = required_str(&arguments, "note_id")?;
+        let action = arguments
+            .get("action")
+            .and_then(Value::as_str)
+            .unwrap_or("update");
+        if !matches!(action, "create" | "update" | "delete") {
+            return Err(ToolError::validation("action 必须是 create/update/delete"));
+        }
+        if action == "delete" {
+            // UT-MCP-53：delete 仅接受 id/note_id/action，内容字段任一出现即本地拒绝。
+            for key in ["content", "x", "y", "color"] {
+                if arguments.get(key).is_some() {
+                    return Err(ToolError::validation(format!(
+                        "update_note(action=delete) 不接受 {key}"
+                    )));
+                }
+            }
+        } else {
+            if action == "create" {
+                required_str(&arguments, "content")?;
+            }
+            if let Some(content) = arguments.get("content").and_then(Value::as_str) {
+                if content.is_empty() || content.chars().count() > 2000 {
+                    return Err(ToolError::validation("content 必须在 1～2000 字符之间"));
+                }
+            }
+            for key in ["x", "y"] {
+                if arguments.get(key).is_some_and(|value| !value.is_number()) {
+                    return Err(ToolError::validation(format!("{key} 必须是 number")));
+                }
+            }
+            if arguments
+                .get("color")
+                .and_then(Value::as_str)
+                .is_some_and(|value| value.chars().count() > 32)
+            {
+                return Err(ToolError::validation("color 最长 32 个字符"));
+            }
+        }
+
+        let result = self.api.get(id).await?;
+        let mut diagram = result
+            .get("diagram")
+            .cloned()
+            .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "响应缺少 diagram", false))?;
+        let revision = diagram
+            .get("revision")
+            .and_then(Value::as_i64)
+            .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "响应缺少 revision", false))?;
+
+        if action == "create" {
+            let note = json!({
+                "id": format!("auto-{}", uuid_simple()),
+                "content": required_str(&arguments, "content")?,
+                "x": arguments.get("x").and_then(Value::as_f64).unwrap_or(0.0),
+                "y": arguments.get("y").and_then(Value::as_f64).unwrap_or(0.0),
+                "color": arguments.get("color").and_then(Value::as_str).unwrap_or(""),
+            });
+            let actual_note_id = note["id"].as_str().unwrap_or_default().to_string();
+            let notes = ensure_section_array(&mut diagram, "notes")?;
+            notes.push(note);
+            let data = self.api.update(id, revision, diagram).await?;
+            let mut response = slim_write_response(&data, id)?;
+            response["note_id"] = json!(actual_note_id);
+            return Ok(response);
+        }
+
+        let notes = diagram
+            .get_mut("notes")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| ToolError::new("UPSTREAM_ERROR", "diagram 缺少 notes 数组", false))?;
+        let index = notes
+            .iter()
+            .position(|n| n.get("id").and_then(Value::as_str) == Some(note_id))
+            .ok_or_else(|| ToolError::validation(format!("note_id {note_id} 不存在")))?;
+        if action == "delete" {
+            notes.remove(index);
+        } else {
+            let note = &mut notes[index];
+            if let Some(content) = arguments.get("content").and_then(Value::as_str) {
+                note["content"] = json!(content);
+            }
+            if let Some(color) = arguments.get("color").and_then(Value::as_str) {
+                note["color"] = json!(color);
+            }
+            for key in ["x", "y"] {
+                if let Some(value) = arguments.get(key).and_then(Value::as_f64) {
+                    note[key] = json!(value);
+                }
+            }
+        }
+        let data = self.api.update(id, revision, diagram).await?;
+        slim_write_response(&data, id)
     }
 
     async fn update_field(&self, arguments: Value) -> Result<Value, ToolError> {
@@ -1084,6 +1392,23 @@ fn resolve_refs(value: &mut Value, schemas: &serde_json::Map<String, Value>) {
         }
         _ => {}
     }
+}
+
+/// fix-mcp-tool-gaps-issue76（#76）：section 数组缺失时补空数组（旧图/精简响应兼容），
+/// 供 update_area / update_note(action=create) 追加前确保容器存在。
+fn ensure_section_array<'a>(
+    diagram: &'a mut Value,
+    section: &str,
+) -> Result<&'a mut Vec<Value>, ToolError> {
+    if diagram.get(section).is_none() {
+        diagram[section] = json!([]);
+    }
+    diagram
+        .get_mut(section)
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| {
+            ToolError::new("UPSTREAM_ERROR", format!("diagram 缺少 {section} 数组"), false)
+        })
 }
 
 pub fn required_str<'a>(arguments: &'a Value, field: &str) -> Result<&'a str, ToolError> {

@@ -98,7 +98,7 @@ async fn ut_mcp_02_03_initialize_and_contract() {
     .await
     .unwrap();
     let tools = listed.pointer("/result/tools").unwrap().as_array().unwrap();
-    assert_eq!(tools.len(), 12); // mcp-dictionary-tools（2026-09-28）：+update_dictionary
+    assert_eq!(tools.len(), 14); // fix-mcp-tool-gaps-issue76：+update_area/update_note
     assert_eq!(
         tools
             .iter()
@@ -379,8 +379,80 @@ fn st_mcp_01_real_stdio_handshake() {
             .as_array()
             .unwrap()
             .len(),
-        12 // mcp-dictionary-tools（2026-09-28）：+update_dictionary
+        14 // fix-mcp-tool-gaps-issue76：+update_area/update_note
     );
     assert!(child.wait().unwrap().success());
     record(&["ST-MCP-01"], started);
+}
+
+// ── ST-MCP-22: 真实 stdio tools/list 14 工具与新工具 schema 平铺探针（fix-mcp-tool-gaps-issue76）──
+
+#[test]
+fn st_mcp_22_real_stdio_fourteen_tools_probe() {
+    let started = Instant::now();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_coldrawdb-mcp"))
+        .env("COLDRAWDB_BASE_URL", "http://127.0.0.1:9")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    writeln!(stdin, "{}", json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"openlogos-test","version":"1"}}})).unwrap();
+    writeln!(
+        stdin,
+        "{}",
+        json!({"jsonrpc":"2.0","method":"notifications/initialized","params":{}})
+    )
+    .unwrap();
+    writeln!(
+        stdin,
+        "{}",
+        json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}})
+    )
+    .unwrap();
+    drop(stdin);
+
+    let mut reader = BufReader::new(child.stdout.take().unwrap());
+    let mut first = String::new();
+    let mut second = String::new();
+    reader.read_line(&mut first).unwrap();
+    reader.read_line(&mut second).unwrap();
+    let _initialized: Value = serde_json::from_str(&first).unwrap();
+    let listed: Value = serde_json::from_str(&second).unwrap();
+    let tools = listed.pointer("/result/tools").unwrap().as_array().unwrap();
+    assert_eq!(tools.len(), 14, "真实 stdio tools/list 必须为 14 工具");
+    let by_name: std::collections::HashMap<String, &Value> = tools
+        .iter()
+        .map(|tool| {
+            (
+                tool.get("name").and_then(Value::as_str).unwrap_or_default().to_string(),
+                tool,
+            )
+        })
+        .collect();
+    // update_table action enum 含 delete
+    let table_actions = by_name["update_table"]
+        .pointer("/inputSchema/properties/action/enum")
+        .unwrap();
+    assert_eq!(table_actions, &json!(["create", "update", "delete"]));
+    // 新工具 schema 平铺结构（顶层 type/properties/required，无 $ref 残留）
+    for name in ["update_area", "update_note"] {
+        let tool = by_name[name];
+        assert_eq!(tool.pointer("/inputSchema/type"), Some(&json!("object")), "{name}");
+        assert!(
+            tool.pointer("/inputSchema/properties").unwrap().is_object(),
+            "{name} 必须有 properties"
+        );
+        assert!(
+            tool.pointer("/inputSchema/required").unwrap().is_array(),
+            "{name} 必须有 required"
+        );
+        assert!(
+            !serde_json::to_string(tool).unwrap().contains("#/schemas/"),
+            "{name} schema 不得残留未解析 $ref"
+        );
+    }
+    assert!(child.wait().unwrap().success());
+    record(&["ST-MCP-22"], started);
 }

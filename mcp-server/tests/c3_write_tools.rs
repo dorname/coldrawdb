@@ -84,7 +84,9 @@ async fn stateful_backend() -> (String, Arc<Mutex<Vec<(String, String, Value)>>>
     let captured = requests.clone();
     tokio::spawn(async move {
         let mut revision = 0_i64;
-        for _ in 0..8 {
+        // fix-mcp-tool-gaps-issue76：update_diagram 守护（UT-MCP-54）写前各加一次 GET，
+        // 主链请求数 8 → 10（create + get + 守护GET + PUT + 守护GET + PUT409 + export + import + delete×2）
+        for _ in 0..10 {
             let (mut stream, _) = listener.accept().await.unwrap();
             let (method, path, body) = read_request(&mut stream).await;
             captured
@@ -206,8 +208,11 @@ async fn write_chain_revision_and_request_shapes() {
         captured[0].2,
         json!({"name":"主链","database":"postgresql"})
     );
-    assert_eq!(captured[2].2["expected_revision"], 0);
-    assert!(captured[2].2["diagram"].is_object());
+    // captured[2] = UT-MCP-54 守护的写前 GET；captured[3] 才是 update_diagram 的 PUT
+    assert_eq!(captured[2].0, "GET");
+    assert_eq!(captured[2].1, "/api/v1/diagrams/d1");
+    assert_eq!(captured[3].2["expected_revision"], 0);
+    assert!(captured[3].2["diagram"].is_object());
     record(
         &[
             "UT-MCP-07",

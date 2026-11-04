@@ -7,8 +7,8 @@
 
 ## [code] 代码实现
 
-- [ ] `mcp-server/src/service.rs` — update_table delete 分支（移表 + 清理触碰 references + 禁字段校验 + 零写入错误）；新增 update_area / update_note 实现；update_diagram 守护（写前 GET base 比较缺失表，>10 或 >50% 需 allow_mass_delete=true）
-- [ ] `mcp-server/src/payload_limit.rs` — suggestion 文案补充增量工具提示
-- [ ] `mcp-server/tests/c6_write_contract.rs` — 交付 UT-MCP-51～54、扩展 UT-MCP-50（14 工具 + 新工具平铺断言），全部接 reporter
-- [ ] merge 后重建 `mcp-server/target/release/coldrawdb-mcp` 并以真实 stdio 探针复核 14 工具全部可见（ST-MCP-22 真实入账）
+- [x] `mcp-server/src/service.rs` — update_table delete 分支（移表 + 清理触碰 references + 禁字段校验 + 零写入错误）；新增 update_area / update_note 实现；update_diagram 守护（写前 GET base 比较缺失表，>10 或 >50% 需 allow_mass_delete=true）
+- [x] `mcp-server/src/payload_limit.rs` — suggestion 文案补充增量工具提示
+- [x] `mcp-server/tests/c6_write_contract.rs` — 交付 UT-MCP-51～54、扩展 UT-MCP-50（14 工具 + 新工具平铺断言），全部接 reporter（c2/c3/c5/c8 存量工具数与 mock 序列断言同步更新）
+- [x] merge 后重建 `mcp-server/target/release/coldrawdb-mcp` 并以真实 stdio 探针复核 14 工具全部可见（ST-MCP-22 真实入账）
 - [ ] mcp-server 全量测试 0 失败后重跑 `openlogos verify` 全量验收

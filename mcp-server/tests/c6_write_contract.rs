@@ -178,14 +178,21 @@ fn fat_put_data() -> Value {
 #[tokio::test]
 async fn ut_mcp23_write_tools_slim_response_contract() {
     let started = Instant::now();
+    // fix-mcp-tool-gaps-issue76：update_diagram 增加 UT-MCP-54 守护后写前先 GET base，
+    // mock 必须先应答 GET；desired 需覆盖 base 全部表（t1）以通过缺表守护。
+    let guard_safe_desired = json!({
+        "id":"d1","revision":5,
+        "tables":[{"id":"t1","name":"users","fields":[]}],
+        "references":[]
+    });
 
     // 1) update_diagram：上游 PUT 返回含额外字段的 data → 恰好 {id, revision}
-    let (base, _) = put_only_backend(fat_put_data()).await;
+    let (base, _) = get_put_backend(diagram_fixture(), fat_put_data()).await;
     let svc = service(base);
     let resp = svc
         .call(
             "update_diagram",
-            json!({"id":"d1","expected_revision":5,"diagram":{"id":"d1","revision":5}}),
+            json!({"id":"d1","expected_revision":5,"diagram":guard_safe_desired}),
         )
         .await
         .unwrap();
@@ -236,44 +243,44 @@ async fn ut_mcp23_write_tools_slim_response_contract() {
     assert_layout_output(&resp, "d1", 3);
 
     // 6) 上游 data 缺 id → 以请求路径 id 补齐
-    let (base, _) = put_only_backend(json!({"revision":7,"request_id":"r-no-id"})).await;
+    let (base, _) = get_put_backend(diagram_fixture(), json!({"revision":7,"request_id":"r-no-id"})).await;
     let resp = service(base)
         .call(
             "update_diagram",
-            json!({"id":"d1","expected_revision":5,"diagram":{"id":"d1"}}),
+            json!({"id":"d1","expected_revision":5,"diagram":guard_safe_desired}),
         )
         .await
         .unwrap();
     assert_update_output(&resp, "d1", 7);
 
     // 7) 上游 data 缺 revision → 错误映射，不得产出缺字段的成功响应
-    let (base, _) = put_only_backend(json!({"id":"d1","request_id":"r-no-rev"})).await;
+    let (base, _) = get_put_backend(diagram_fixture(), json!({"id":"d1","request_id":"r-no-rev"})).await;
     let error = service(base)
         .call(
             "update_diagram",
-            json!({"id":"d1","expected_revision":5,"diagram":{"id":"d1"}}),
+            json!({"id":"d1","expected_revision":5,"diagram":guard_safe_desired}),
         )
         .await
         .unwrap_err();
     assert_eq!(error.code, "UPSTREAM_ERROR");
 
     // 8) revision 非数 → 错误映射
-    let (base, _) = put_only_backend(json!({"id":"d1","revision":"6"})).await;
+    let (base, _) = get_put_backend(diagram_fixture(), json!({"id":"d1","revision":"6"})).await;
     let error = service(base)
         .call(
             "update_diagram",
-            json!({"id":"d1","expected_revision":5,"diagram":{"id":"d1"}}),
+            json!({"id":"d1","expected_revision":5,"diagram":guard_safe_desired}),
         )
         .await
         .unwrap_err();
     assert_eq!(error.code, "UPSTREAM_ERROR");
 
     // 9) revision = 0（不满足 outputSchema minimum:1）→ 错误映射
-    let (base, _) = put_only_backend(json!({"id":"d1","revision":0})).await;
+    let (base, _) = get_put_backend(diagram_fixture(), json!({"id":"d1","revision":0})).await;
     let error = service(base)
         .call(
             "update_diagram",
-            json!({"id":"d1","expected_revision":5,"diagram":{"id":"d1"}}),
+            json!({"id":"d1","expected_revision":5,"diagram":guard_safe_desired}),
         )
         .await
         .unwrap_err();
@@ -658,11 +665,14 @@ async fn ut_mcp50_tool_schema_client_compat_guard() {
     let started = Instant::now();
     let tools = McpService::tools().expect("tools/list 必须可解析");
 
-    // 断言 4：工具总数 12，且含两个曾被客户端丢弃的工具（回归锚点：不得再退化为 10）
-    assert_eq!(tools.len(), 12, "工具清单必须为 12 个，实际: {}", tools.len());
+    // 断言 4：工具总数 14（fix-mcp-tool-gaps-issue76 新增 update_area/update_note），
+    // 且含曾被客户端丢弃的两个工具（回归锚点：不得再退化为 10）
+    assert_eq!(tools.len(), 14, "工具清单必须为 14 个，实际: {}", tools.len());
     let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
     assert!(names.contains(&"update_table"), "update_table 必须在工具清单中");
     assert!(names.contains(&"update_reference"), "update_reference 必须在工具清单中");
+    assert!(names.contains(&"update_area"), "update_area 必须在工具清单中");
+    assert!(names.contains(&"update_note"), "update_note 必须在工具清单中");
 
     // 断言 1：全工具 inputSchema/outputSchema 整树无条件关键字
     for tool in &tools {
@@ -732,4 +742,313 @@ async fn ut_mcp50_tool_schema_client_compat_guard() {
     );
 
     record(&["UT-MCP-50"], started);
+}
+
+// ── UT-MCP-51: update_table action=delete 删表与引用清理（fix-mcp-tool-gaps-issue76）──
+
+#[tokio::test]
+async fn ut_mcp51_update_table_delete_cleans_references() {
+    let started = Instant::now();
+    // GIVEN：t1（f1/f2）+ t2，r1: t1→t2，r2: t2→t1
+    let get = json!({
+        "id":"d1","name":"删除契约","revision":5,
+        "tables":[
+            {"id":"t1","name":"users","x":0.0,"y":0.0,
+             "fields":[{"id":"f1","name":"id","type":"INT"},{"id":"f2","name":"name","type":"TEXT"}]},
+            {"id":"t2","name":"posts","x":10.0,"y":0.0,
+             "fields":[{"id":"f3","name":"id","type":"INT"}]}
+        ],
+        "references":[
+            {"id":"r1","start_table_id":"t1","start_field_id":"f1",
+             "end_table_id":"t2","end_field_id":"f3","cardinality":"one_to_many"},
+            {"id":"r2","start_table_id":"t2","start_field_id":"f3",
+             "end_table_id":"t1","end_field_id":"f1","cardinality":"many_to_one"}
+        ]
+    });
+
+    // 1) delete 成功：PUT 载荷只剩 t2、references 清空；响应含 deleted_* 清单
+    let (base, captured) = get_put_backend(get.clone(), fat_put_data()).await;
+    let resp = service(base)
+        .call("update_table", json!({"id":"d1","action":"delete","table_id":"t1"}))
+        .await
+        .unwrap();
+    assert_eq!(resp["deleted_table_id"], json!("t1"));
+    assert_eq!(
+        resp["deleted_reference_ids"],
+        json!(["r1", "r2"]),
+        "触碰 t1 的 r1/r2 必须被顺带清理"
+    );
+    {
+        let requests = captured.lock().unwrap();
+        let put = requests
+            .iter()
+            .find(|(method, _, _)| method == "PUT")
+            .expect("delete 必须发出一次 PUT");
+        let tables = put.2["diagram"]["tables"].as_array().unwrap();
+        assert_eq!(tables.len(), 1, "PUT 载荷只剩 t2");
+        assert_eq!(tables[0]["id"], json!("t2"));
+        let references = put.2["diagram"]["references"].as_array().unwrap();
+        assert!(references.is_empty(), "PUT 载荷 references 必须为空");
+    }
+
+    // 2) delete 携带 name → VALIDATION_ERROR，零写入（无 PUT）
+    let (base, captured) = get_put_backend(get.clone(), fat_put_data()).await;
+    let error = service(base)
+        .call("update_table", json!({"id":"d1","action":"delete","table_id":"t1","name":"x"}))
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, "VALIDATION_ERROR");
+    assert!(
+        captured.lock().unwrap().iter().all(|(method, _, _)| method != "PUT"),
+        "禁字段必须零写入"
+    );
+
+    // 3) delete 目标表不存在 → VALIDATION_ERROR，零写入
+    let (base, captured) = get_put_backend(get, fat_put_data()).await;
+    let error = service(base)
+        .call("update_table", json!({"id":"d1","action":"delete","table_id":"ghost"}))
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, "VALIDATION_ERROR");
+    assert!(
+        captured.lock().unwrap().iter().all(|(method, _, _)| method != "PUT"),
+        "目标不存在必须零写入"
+    );
+
+    record(&["UT-MCP-51"], started);
+}
+
+// ── UT-MCP-52: update_area create/update/delete 全动作（fix-mcp-tool-gaps-issue76）──
+
+#[tokio::test]
+async fn ut_mcp52_update_area_crud() {
+    let started = Instant::now();
+
+    // 1) create：必填 name，缺省字段落默认；服务端重键，响应 area_id 为实际 ID
+    let (base, captured) =
+        get_put_backend(json!({"id":"d1","name":"契约","revision":5,"tables":[],"references":[]}), fat_put_data())
+            .await;
+    let resp = service(base)
+        .call(
+            "update_area",
+            json!({"id":"d1","action":"create","area_id":"a-raw","name":"核心域","x":10.0,"y":20.0,"width":100.0}),
+        )
+        .await
+        .unwrap();
+    let actual_area_id = resp["area_id"].as_str().unwrap_or_default().to_string();
+    assert!(actual_area_id.starts_with("auto-"), "服务端必须重键，实际: {actual_area_id}");
+    {
+        let requests = captured.lock().unwrap();
+        let put = requests.iter().find(|(m, _, _)| m == "PUT").unwrap();
+        let areas = put.2["diagram"]["areas"].as_array().unwrap();
+        assert_eq!(areas.len(), 1);
+        assert_eq!(areas[0]["id"], json!(actual_area_id));
+        assert_eq!(areas[0]["name"], json!("核心域"));
+        assert_eq!(areas[0]["x"], json!(10.0));
+        assert_eq!(areas[0]["y"], json!(20.0));
+        assert_eq!(areas[0]["width"], json!(100.0));
+        assert_eq!(areas[0]["height"], json!(0.0), "未携带 height 落默认 0");
+        assert_eq!(areas[0]["locked"], json!(false), "未携带 locked 落默认 false");
+    }
+
+    // 2) update：改 name+width，未携带的 x/color/locked 保持原值
+    let area_fixture = json!({
+        "id":"d1","name":"契约","revision":5,"tables":[],"references":[],
+        "areas":[{"id":"a1","name":"旧名","x":1.0,"y":2.0,"width":50.0,"height":60.0,"color":"#0f0","locked":true}]
+    });
+    let (base, captured) = get_put_backend(area_fixture.clone(), fat_put_data()).await;
+    let resp = service(base)
+        .call("update_area", json!({"id":"d1","area_id":"a1","name":"新名","width":120.0}))
+        .await
+        .unwrap();
+    {
+        let mut keys: Vec<&str> = resp.as_object().unwrap().keys().map(String::as_str).collect();
+        keys.sort();
+        assert_eq!(keys, ["id", "revision"], "update 响应必须恰好只含 id/revision");
+        let requests = captured.lock().unwrap();
+        let put = requests.iter().find(|(m, _, _)| m == "PUT").unwrap();
+        let area = &put.2["diagram"]["areas"][0];
+        assert_eq!(area["name"], json!("新名"));
+        assert_eq!(area["width"], json!(120.0));
+        assert_eq!(area["x"], json!(1.0), "未携带的 x 必须保持原值");
+        assert_eq!(area["locked"], json!(true), "未携带的 locked 必须保持原值");
+    }
+
+    // 3) delete：区域消失；禁字段与不存在均 VALIDATION_ERROR 零写入
+    let (base, captured) = get_put_backend(area_fixture.clone(), fat_put_data()).await;
+    service(base)
+        .call("update_area", json!({"id":"d1","action":"delete","area_id":"a1"}))
+        .await
+        .unwrap();
+    {
+        let requests = captured.lock().unwrap();
+        let put = requests.iter().find(|(m, _, _)| m == "PUT").unwrap();
+        assert!(put.2["diagram"]["areas"].as_array().unwrap().is_empty());
+    }
+    let (base, captured) = get_put_backend(area_fixture.clone(), fat_put_data()).await;
+    let error = service(base)
+        .call("update_area", json!({"id":"d1","action":"delete","area_id":"a1","name":"x"}))
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, "VALIDATION_ERROR");
+    assert!(captured.lock().unwrap().iter().all(|(m, _, _)| m != "PUT"));
+    let (base, captured) = get_put_backend(area_fixture, fat_put_data()).await;
+    let error = service(base)
+        .call("update_area", json!({"id":"d1","action":"delete","area_id":"ghost"}))
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, "VALIDATION_ERROR");
+    assert!(captured.lock().unwrap().iter().all(|(m, _, _)| m != "PUT"));
+
+    record(&["UT-MCP-52"], started);
+}
+
+// ── UT-MCP-53: update_note create/update/delete 全动作（fix-mcp-tool-gaps-issue76）──
+
+#[tokio::test]
+async fn ut_mcp53_update_note_crud() {
+    let started = Instant::now();
+
+    // 1) create：必填 content，服务端重键，响应 note_id；PUT 载荷含新便签
+    let (base, captured) =
+        get_put_backend(json!({"id":"d1","name":"契约","revision":5,"tables":[],"references":[]}), fat_put_data())
+            .await;
+    let resp = service(base)
+        .call(
+            "update_note",
+            json!({"id":"d1","action":"create","note_id":"n-raw","content":"评审意见","x":5.0,"color":"#ff0"}),
+        )
+        .await
+        .unwrap();
+    let actual_note_id = resp["note_id"].as_str().unwrap_or_default().to_string();
+    assert!(actual_note_id.starts_with("auto-"), "服务端必须重键，实际: {actual_note_id}");
+    {
+        let requests = captured.lock().unwrap();
+        let put = requests.iter().find(|(m, _, _)| m == "PUT").unwrap();
+        let notes = put.2["diagram"]["notes"].as_array().unwrap();
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0]["id"], json!(actual_note_id));
+        assert_eq!(notes[0]["content"], json!("评审意见"));
+        assert_eq!(notes[0]["color"], json!("#ff0"));
+        assert_eq!(notes[0]["y"], json!(0.0));
+    }
+
+    // 2) update：改 content+color，x/y 保持原值
+    let note_fixture = json!({
+        "id":"d1","name":"契约","revision":5,"tables":[],"references":[],
+        "notes":[{"id":"n1","content":"旧便签","x":1.5,"y":2.5,"color":"#fff"}]
+    });
+    let (base, captured) = get_put_backend(note_fixture.clone(), fat_put_data()).await;
+    let resp = service(base)
+        .call("update_note", json!({"id":"d1","note_id":"n1","content":"新意见","color":"#000"}))
+        .await
+        .unwrap();
+    {
+        let mut keys: Vec<&str> = resp.as_object().unwrap().keys().map(String::as_str).collect();
+        keys.sort();
+        assert_eq!(keys, ["id", "revision"], "update 响应必须恰好只含 id/revision");
+        let requests = captured.lock().unwrap();
+        let put = requests.iter().find(|(m, _, _)| m == "PUT").unwrap();
+        let note = &put.2["diagram"]["notes"][0];
+        assert_eq!(note["content"], json!("新意见"));
+        assert_eq!(note["color"], json!("#000"));
+        assert_eq!(note["x"], json!(1.5), "未携带的 x 必须保持原值");
+        assert_eq!(note["y"], json!(2.5), "未携带的 y 必须保持原值");
+    }
+
+    // 3) delete：便签消失；禁字段与不存在均 VALIDATION_ERROR 零写入
+    let (base, captured) = get_put_backend(note_fixture.clone(), fat_put_data()).await;
+    service(base)
+        .call("update_note", json!({"id":"d1","action":"delete","note_id":"n1"}))
+        .await
+        .unwrap();
+    {
+        let requests = captured.lock().unwrap();
+        let put = requests.iter().find(|(m, _, _)| m == "PUT").unwrap();
+        assert!(put.2["diagram"]["notes"].as_array().unwrap().is_empty());
+    }
+    let (base, captured) = get_put_backend(note_fixture.clone(), fat_put_data()).await;
+    let error = service(base)
+        .call("update_note", json!({"id":"d1","action":"delete","note_id":"n1","content":"x"}))
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, "VALIDATION_ERROR");
+    assert!(captured.lock().unwrap().iter().all(|(m, _, _)| m != "PUT"));
+    let (base, captured) = get_put_backend(note_fixture, fat_put_data()).await;
+    let error = service(base)
+        .call("update_note", json!({"id":"d1","action":"delete","note_id":"ghost"}))
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, "VALIDATION_ERROR");
+    assert!(captured.lock().unwrap().iter().all(|(m, _, _)| m != "PUT"));
+
+    record(&["UT-MCP-53"], started);
+}
+
+// ── UT-MCP-54: update_diagram 防误删守护 allow_mass_delete（fix-mcp-tool-gaps-issue76）──
+
+#[tokio::test]
+async fn ut_mcp54_update_diagram_mass_delete_guard() {
+    let started = Instant::now();
+    // GIVEN：base 3 表 t1/t2/t3（revision 5）
+    let base_doc = json!({
+        "id":"d1","name":"守护契约","revision":5,
+        "tables":[
+            {"id":"t1","name":"a","fields":[]},
+            {"id":"t2","name":"b","fields":[]},
+            {"id":"t3","name":"c","fields":[]}
+        ],
+        "references":[]
+    });
+
+    // 1) desired 缺 1/3（≤50% 且 ≤10）→ 正常放行（GET + PUT）
+    let desired_partial = json!({
+        "id":"d1","revision":5,
+        "tables":[{"id":"t1","name":"a","fields":[]},{"id":"t3","name":"c","fields":[]}],
+        "references":[]
+    });
+    let (base, captured) = get_put_backend(base_doc.clone(), fat_put_data()).await;
+    let _ = service(base)
+        .call(
+            "update_diagram",
+            json!({"id":"d1","expected_revision":5,"diagram":desired_partial}),
+        )
+        .await
+        .unwrap();
+    assert!(captured.lock().unwrap().iter().any(|(m, _, _)| m == "PUT"));
+
+    // 2) desired 缺 2/3（>50%）且无 allow_mass_delete → VALIDATION_ERROR 零写入
+    let desired_mass = json!({
+        "id":"d1","revision":5,
+        "tables":[{"id":"t1","name":"a","fields":[]}],
+        "references":[]
+    });
+    let (base, captured) = scripted_backend(vec![json!({"code":0,"data":base_doc.clone()})]).await;
+    let error = service(base)
+        .call(
+            "update_diagram",
+            json!({"id":"d1","expected_revision":5,"diagram":desired_mass.clone()}),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, "VALIDATION_ERROR", "守护必须本地拦截");
+    assert_eq!(error.details.as_ref().and_then(|d| d["missing_count"].as_i64()), Some(2));
+    assert!(captured.lock().unwrap().iter().all(|(m, _, _)| m != "PUT"), "拦截必须零写入");
+
+    // 3) 同 desired 但 allow_mass_delete=true → 放行执行（GET + PUT）
+    let (base, captured) = get_put_backend(base_doc, fat_put_data()).await;
+    let _ = service(base)
+        .call(
+            "update_diagram",
+            json!({
+                "id":"d1","expected_revision":5,
+                "diagram":desired_mass,
+                "allow_mass_delete":true
+            }),
+        )
+        .await
+        .unwrap();
+    assert!(captured.lock().unwrap().iter().any(|(m, _, _)| m == "PUT"));
+
+    record(&["UT-MCP-54"], started);
 }
