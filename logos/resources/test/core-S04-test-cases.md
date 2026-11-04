@@ -334,3 +334,21 @@ UT-S04-16 使用 `PUBLIC_BASE_URL=http://192.168.1.10:3000` 仅验证「env 优�
 | UT-S04-21 | queryAll 聚合表/关系计数 | `backend/src/diagrams/mod.rs::list_active_diagrams` |
 | UT-S04-UI-19 | 图表候选搜索、排序与显示纯函数 | `frontend-rs/src/editor_panels.rs` |
 | ST-S04-UI-18 | 350+ 图表选择器与个人建模 | `frontend-rs/scripts/test-spec-parity-d.mjs` |
+
+## 合并自 fix-trash-restore-refresh（2026-11-04）
+
+## MODIFIED — ST-S04-UI-14 — 回收站恢复（断言增强）
+
+- **位置**：`frontend-rs/scripts/test-spec-parity-d.mjs`（既有用例增强，编号不变）。
+- **MODIFIED 断言**：恢复成功后，主房间列表必须**重新拉取**并包含恢复的房间——
+  installApi 启用动态主列表模式：初始 `roomsList` 不含 room-arch（真实恢复前
+  状态），恢复请求处理后 `GET /api/v1/rooms` 动态包含 room-arch。断言
+  「返回列表后房间重现」在静态 mock 下不再恒真，真正依赖 reload 刷新。
+- **不变断言**：恢复调 `POST /rooms/{id}/restore`；Toast「已恢复房间」；条目移出回收站。
+- **reporter**：真实运行后登记 `ST-S04-UI-14`（编号沿用，不新增 ID）。
+
+### 用例登记（fix-trash-restore-refresh）
+
+| ID | 层级 | 说明 |
+|---|---|---|
+| ST-S04-UI-14 | ST | 回收站恢复后主列表必须重拉重现（mock 时序化，断言真依赖刷新） |
