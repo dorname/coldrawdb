@@ -175,13 +175,30 @@ async function installApi(page, options = {}) {
         const archived = options.archivedRooms ?? [];
         return response(route, 200, { items: archived, total: archived.length });
       }
-      return response(route, 200, { items: options.roomsList ?? [], total: (options.roomsList ?? []).length });
+      let items = options.roomsList ?? [];
+      // fix-trash-restore-refresh（#75）：动态主列表模式——恢复后 GET /rooms 动态包含
+      // 恢复的房间（模拟真实后端「恢复前不含、恢复后含」时序），使「列表重现」断言
+      // 真正依赖前端 reload 刷新而非静态 mock。
+      if (options.dynamicRoomsAfterRestore) {
+        for (const [id, summary] of Object.entries(state.restoredRoomDetails ?? {})) {
+          if (!items.some(r => r.id === id)) items = [summary, ...items];
+        }
+      }
+      return response(route, 200, { items, total: items.length });
     }
     // feat-room-recycle-bin-dropdown-and-db-export：恢复归档房间（ST-S04-UI-14）
     if (url.pathname.startsWith("/api/v1/rooms/") && url.pathname.endsWith("/restore") && request.method() === "POST") {
       const roomId = url.pathname.split("/")[4];
       state.restoredRooms = state.restoredRooms ?? [];
       state.restoredRooms.push(roomId);
+      // fix-trash-restore-refresh（#75）：记录恢复房间摘要供动态主列表回放
+      state.restoredRoomDetails = state.restoredRoomDetails ?? {};
+      if (!state.restoredRoomDetails[roomId]) {
+        const archived = (options.archivedRooms ?? []).find(r => r.id === roomId);
+        state.restoredRoomDetails[roomId] = archived
+          ? { ...archived, archivedAt: undefined }
+          : { id: roomId, name: "归档评审室", diagramId: "diagram-arch", diagramTitle: "归档评审室", myRole: "owner", memberCount: 1 };
+      }
       return response(route, 200, {
         id: roomId, name: "归档评审室", diagramId: "diagram-arch", ownerId: "owner-1",
         diagramTitle: "归档评审室", myRole: "owner", memberCount: 1,
@@ -962,10 +979,10 @@ try {
   // ─── ST-S04-UI-14：回收站恢复（feat-room-recycle-bin-dropdown-and-db-export，core-S04 §2.4） ──
   await run(["ST-S04-UI-14"], "回收站 → 恢复归档房间 → Toast + 列表重现", async page => {
     const state = await installApi(page, {
-      roomsList: [
-        { id: "room-arch", name: "归档评审室", diagramId: "diagram-arch", diagramTitle: "归档评审室",
-          myRole: "owner", memberCount: 1, updatedAt: "2026-09-07T00:00:00Z" },
-      ],
+      // fix-trash-restore-refresh（#75）：初始主列表不含 room-arch（真实恢复前状态），
+      // 动态模式让恢复后的 GET /rooms 才包含它——「列表重现」断言真正依赖 reload 刷新。
+      roomsList: [],
+      dynamicRoomsAfterRestore: true,
       archivedRooms: [
         { id: "room-arch", name: "归档评审室", diagramId: "diagram-arch", diagramTitle: "归档评审室",
           myRole: "owner", memberCount: 1, updatedAt: "2026-09-06T00:00:00Z", archivedAt: "2026-09-07T12:00:00Z" },

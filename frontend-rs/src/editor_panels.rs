@@ -4675,6 +4675,11 @@ pub fn RoomsListPage(
                 match room_client.restore_room(&session.access_token, &room.id).await {
                     Ok(()) => {
                         trash_items.update(|list| list.retain(|r| r.id != room.id));
+                        // fix-trash-restore-refresh（#75）：恢复只改了回收站信号，主列表
+                        // rooms 信号仍是旧数据——已恢复房间在「返回列表」后不可见。与
+                        // 删除房间收尾（p0-fix 定点 1）同一机制：nonce 递增 → 加载 effect
+                        // 清 token 缓存 → 重新 GET /api/v1/rooms。
+                        reload_rooms.update(|n| *n += 1);
                         notice.set(Some(format!("已恢复房间「{}」", room.name)));
                     }
                     Err(ApiError::Server(409, _)) => {
