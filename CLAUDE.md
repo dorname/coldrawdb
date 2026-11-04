@@ -132,13 +132,13 @@ cd <项目根目录> && openlogos <command>
 
 ## 项目当前状态
 
-- 当前无活跃变更（无 guard 锁）；最近归档：`fix-mcp-tool-schema-client-compat`（2026-11-04，Claude Code 客户端丢弃含 allOf/if/then/else/oneOf 高级 schema 关键字的工具致 10/12——update_table/update_reference inputSchema 拍平、schemas 区死定义清理、契约登记顶层禁用条件关键字、UT-MCP-50 守卫入账；verify PASS 592/626、0 失败；含勘误：verify 暴露的 ST-PB-04 选中竞态 harness 缺陷按 #67 先例模式随批修复）。前批：`fix-issues-70-73`（MCP 大图鉴权与关系编辑）、`fix-floating-controls-statusbar-overlap`（issue #69）。
+- 当前无活跃变更（无 guard 锁）；最近归档：`fix-trash-restore-refresh`（issue #75 回收站恢复后主列表不刷新——restore_room_action 成功分支触发 reload_rooms 强刷；e2e mock 时序化使「房间重现」断言真依赖刷新，修复前 FAIL/修复后 PASS 判别力验证；verify PASS 631/631、0 失败）。前批：`fix-mcp-tool-gaps-issue76`（MCP 工具层缺口：update_table action=delete、update_area/update_note 增量写、update_diagram 防误删守护，工具 12→14）、`fix-mcp-tool-schema-client-compat`、`fix-issues-70-73`。
 - 场景范围 S01～S07；`align-unified-prototype-and-add-mcp` 已完成归档，S06 MCP stdio 服务已交付；S07 数据字典前后端已实现（含 UT-S07-01～11 入账）。
 - 唯一现行 HTML 主原型：`core-01-editor-prototype.html`；S03/S04/S05 独立原型仅作历史参考。
 - S01/S02 前后端已实现；S03～S05 后端 auth/rooms/collab REST、DB、WS 与测试已实现，生产前端尚未接入（独立后续项 F1）。
 - 生产后端路由：diagram v1 5 + bridge 5 + auth 5 + rooms 11 + collab REST 2 + WS 1；遗留 `/diagrams/*` 单列；diagram 已启用鉴权与 share_token 豁免。
-- S06 MCP：stdio 服务已实现，12 个 tools（list/get/create/update/delete/import/export + update_table/update_field/update_reference/layout_diagram/update_dictionary），支持 Claude、Codex、Cursor、OpenCode 四客户端；`mcp-dictionary-tools` 起正式支持数据字典管理（update_dictionary + update_field.dict_code）；Streamable HTTP / OAuth 为独立后续项（F2）。
-- #56 图表选择器与个人建模已交付（S04.1/S04.1A）：创建房间/个人建模共享可搜索选择器（搜索、最近修改倒序、ID 后缀、表/关系数、危险区隔离）；`.github/issue-drafts/` 有两份待提 issue：ST-PU-27 验收负载下进房立即拖拽的时序抖动、G 批 e2e goto 无字体 abort 假失败。
+- S06 MCP：stdio 服务已实现，14 个 tools（list/get/create/update/delete/import/export + update_table(action=delete)/update_field/update_reference/update_area/update_note + layout_diagram/update_dictionary + update_diagram 防误删守护 allow_mass_delete），支持 Claude、Codex、Cursor、OpenCode 四客户端；`mcp-dictionary-tools` 起正式支持数据字典管理（update_dictionary + update_field.dict_code）；Streamable HTTP / OAuth 为独立后续项（F2）。
+- #56 图表选择器与个人建模已交付（S04.1/S04.1A）：创建房间/个人建模共享可搜索选择器（搜索、最近修改倒序、ID 后缀、表/关系数、危险区隔离）。`.github/issue-drafts/` 现有 7 份 draft 待整理提交；其中回收站恢复刷新（#75）与 MCP 工具缺口（#76）两份对应的 issue 已修复归档，draft 可清理。
 
 ## Conventions
 - 遵循 OpenLogos 三层推进模型（Why → What → How）
