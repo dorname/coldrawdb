@@ -2,8 +2,8 @@
 
 ## [delta] 规格变更
 
-- [ ] 产出 `deltas/api/mcp-tools.yaml` — ① update_table action 扩为 create|update|delete（delete 禁携带其他字段，description 写明顺带清理触碰 references）；② 新增 update_area / update_note 工具（schema 平铺，遵守客户端兼容约束）；③ update_diagram 新增 allow_mass_delete 守护参数与「缺失 section = 删除」语义说明；④ PAYLOAD_TOO_LARGE 建议文案补充增量工具提示
-- [ ] 产出 `deltas/test/core-S06-test-cases.md` — ADDED UT-MCP-51～54 与 ST-MCP-22；MODIFIED UT-MCP-50（14 工具锚点 + 新工具平铺断言）；AC 追溯更新
+- [x] 产出 `deltas/api/mcp-tools.yaml` — ① update_table action 扩为 create|update|delete（delete 禁携带其他字段，description 写明顺带清理触碰 references）；② 新增 update_area / update_note 工具（schema 平铺，遵守客户端兼容约束）；③ update_diagram 新增 allow_mass_delete 守护参数与「缺失 section = 删除」语义说明；④ PAYLOAD_TOO_LARGE 建议文案补充增量工具提示
+- [x] 产出 `deltas/test/core-S06-test-cases.md` — ADDED UT-MCP-51～54 与 ST-MCP-22；MODIFIED UT-MCP-50（14 工具锚点 + 新工具平铺断言）；AC 追溯更新
 
 ## [code] 代码实现
 
