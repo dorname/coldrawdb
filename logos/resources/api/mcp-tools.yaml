@@ -37,7 +37,7 @@ server:
     delete_diagram 具有破坏性并需用户批准；禁止把本服务用于任意 SQL、文件或 HTTP 访问。
     静态 COLDRAWDB_ACCESS_TOKEN 与动态 COLDRAWDB_AUTH_EMAIL / COLDRAWDB_AUTH_PASSWORD
     两种凭据方式互斥；动态方式复用 S03 login/refresh，并只在内存保存 access token 与 refresh cookie。
-    diagram-api-auth：当后端开启 COLDRAWDB_DIAGRAMS_AUTH=on 时，全部 12 个工具均要求有效鉴权；
+    diagram-api-auth：当后端开启 COLDRAWDB_DIAGRAMS_AUTH=on 时，全部 14 个工具均要求有效鉴权；
     flag=off（默认过渡态）时仅 rooms/collab 写工具要求鉴权。普通 API 401 仍映射
     UNAUTHENTICATED；只有房间写回退的缺失/失效凭据映射 ROOMS_AUTH_REQUIRED。
 configuration:
@@ -167,12 +167,17 @@ tools:
     title: 更新图表
     description: >-
       使用 expected_revision 全量保存 diagram；409 时不自动覆盖。
+      语义为「缺失 section = 删除」：desired 中缺失的表/字段/关系/区域/便签会被
+      服务端删除（房间收编路径经 diff 生成对应 *。delete op；个人图直写为整文档覆盖）。
       单次参数体积软上限 256 KiB（COLDRAWDB_MCP_PAYLOAD_SOFT_LIMIT_BYTES 可调，
       fix-open-issues-26-33 / #26）：超限返回 PAYLOAD_TOO_LARGE 且不发送请求，
       details 给出当前体积与分片建议。大图（数十表/关系或含批量布局颜色变更）
-      请分批写入：按表用 update_table、按字段用 update_field、按关系用
-      update_reference、布局用 layout_diagram，每批携带最新 expected_revision
-      严格串行（并行分批必然 409）。
+      请分批写入：按表用 update_table（含 action=delete 删表）、按字段用 update_field、
+      按关系用 update_reference、区域用 update_area、便签用 update_note、布局用
+      layout_diagram，每批携带最新 expected_revision 严格串行（并行分批必然 409）。
+      防误删守护（fix-mcp-tool-gaps-issue76）：写前与当前文档比较，desired 缺失表数
+      > 10 或缺失比例 > 50%（其一即触发）时，必须显式携带 allow_mass_delete=true
+      才执行，否则 VALIDATION_ERROR（details 含缺失计数与样例）零写入。
     upstream:
       method: PUT
       path: /api/v1/diagrams/{id}
@@ -195,6 +200,10 @@ tools:
           minimum: 0
         diagram:
           $ref: "#/schemas/Diagram"
+        allow_mass_delete:
+          type: boolean
+          default: false
+          description: "防误删守护确认：desired 缺失表数 > 10 或 > 50% 时必须为 true 才执行"
     outputSchema:
       type: object
       required: [id, revision]
@@ -317,7 +326,7 @@ tools:
           type: string
 
   - name: update_table
-    title: 创建或更新表
+    title: 创建、更新或删除表
     description: >-
       action 缺省为 update，保持旧调用兼容；update 修改指定表属性且禁止携带 fields。
       create 一次追加一张含完整 fields 的表，fields[].id 与输入 table_id 作为调用方原始 ID，
@@ -327,6 +336,10 @@ tools:
       不是服务端保证。跨调用不提供整链原子性或回滚。
       action=create 必填 name 与 fields，action=update 禁止携带 fields；违反由服务端
       tools/call 强校验并返回 VALIDATION_ERROR（零写入）。
+      action=delete 按 table_id 删除整表：服务端顺带移除触碰该表的全部 references
+      （start_table_id / end_table_id 命中，返回清理清单），维持无悬空；delete 禁止携带
+      name/fields/comment/x/y/color/locked 任一字段，目标表不存在或携带禁字段均由
+      服务端 tools/call 强校验并返回 VALIDATION_ERROR（零写入）。
     upstream:
       method: GET + PUT
       path: /api/v1/diagrams/{id}
@@ -346,18 +359,18 @@ tools:
           minLength: 1
         action:
           type: string
-          enum: [create, update]
+          enum: [create, update, delete]
           default: update
-          description: "create=追加整表（必填 name+fields，服务端重键并回传实际 ID 映射）；缺省 update"
+          description: "create=追加整表（必填 name+fields，服务端重键并回传实际 ID 映射）；缺省 update；delete=按 table_id 删表并顺带清理触碰它的 references"
         table_id:
           type: string
           minLength: 1
-          description: "create：调用方原始表 ID；update：图中已存在的实际表 ID"
+          description: "create：调用方原始表 ID；update/delete：图中已存在的实际表 ID"
         name:
           type: string
           minLength: 1
           maxLength: 64
-          description: "action=create 时必填；update 可选"
+          description: "action=create 时必填；update 可选；delete 禁止携带"
         comment:
           type: string
           maxLength: 256
@@ -372,7 +385,7 @@ tools:
           type: boolean
         fields:
           type: array
-          description: "仅 action=create 允许携带（必填），一次传入完整字段数组；action=update 禁止携带，违者 VALIDATION_ERROR"
+          description: "仅 action=create 允许携带（必填），一次传入完整字段数组；action=update/delete 禁止携带，违者 VALIDATION_ERROR"
           items:
             $ref: "#/schemas/TableFieldInput"
     outputSchema:
@@ -394,7 +407,18 @@ tools:
           additionalProperties:
             type: string
             minLength: 1
-  # create 成功响应必须含 table_id 与完整 field_id_map；update 响应仍恰好为 {id, revision}。
+        deleted_table_id:
+          type: string
+          minLength: 1
+          description: "仅 action=delete 返回：被删除的表 ID"
+        deleted_reference_ids:
+          type: array
+          description: "仅 action=delete 返回：因触碰被删表而顺带清理的关系 ID 清单"
+          items:
+            type: string
+            minLength: 1
+  # create 成功响应必须含 table_id 与完整 field_id_map；update 响应仍恰好为 {id, revision}；
+  # delete 成功响应必须含 deleted_table_id 与 deleted_reference_ids。
 
   - name: update_field
     title: 更新字段属性
@@ -533,6 +557,134 @@ tools:
         revision:
           type: integer
           minimum: 1
+
+  - name: update_area
+    title: 创建、更新或删除区域
+    description: >-
+      对 diagram.areas 的细粒度增量写（区域此前唯一写入口是 update_diagram 全文档 PUT，
+      大图上受全文档体积约束）。通过 GET 全量读取 + PUT 全量写回实现，单次调用小载荷。
+      action 缺省 update：按 area_id 修改携带的属性（未携带属性保持原值）。
+      create 必填 name，服务端重键并回传实际 area_id，后续操作必须使用返回的实际 ID。
+      delete 按 area_id 删除区域；delete 禁止携带 name/x/y/width/height/color/locked
+      任一字段，目标区域不存在或携带禁字段均返回 VALIDATION_ERROR（零写入）。
+    upstream:
+      method: GET + PUT
+      path: /api/v1/diagrams/{id}
+      post_process: partial_update
+    annotations:
+      readOnlyHint: false
+      destructiveHint: false
+      idempotentHint: false
+      openWorldHint: false
+    inputSchema:
+      type: object
+      additionalProperties: false
+      required: [id, area_id]
+      properties:
+        id:
+          type: string
+          minLength: 1
+        action:
+          type: string
+          enum: [create, update, delete]
+          default: update
+          description: "create=追加区域（必填 name，服务端重键）；缺省 update；delete=按 area_id 删除"
+        area_id:
+          type: string
+          minLength: 1
+          description: "create：调用方原始区域 ID；update/delete：图中已存在的实际区域 ID"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: "action=create 时必填；update 可选；delete 禁止携带"
+        x:
+          type: number
+        y:
+          type: number
+        width:
+          type: number
+        height:
+          type: number
+        color:
+          type: string
+          maxLength: 32
+        locked:
+          type: boolean
+    outputSchema:
+      type: object
+      required: [id, revision]
+      properties:
+        id:
+          type: string
+        revision:
+          type: integer
+          minimum: 1
+        area_id:
+          type: string
+          minLength: 1
+          description: "仅 action=create 返回：服务端实际区域 ID"
+
+  - name: update_note
+    title: 创建、更新或删除便签
+    description: >-
+      对 diagram.notes 的细粒度增量写（便签此前唯一写入口是 update_diagram 全文档 PUT）。
+      通过 GET 全量读取 + PUT 全量写回实现，单次调用小载荷。
+      action 缺省 update：按 note_id 修改携带的属性（未携带属性保持原值）。
+      create 必填 content，服务端重键并回传实际 note_id。
+      delete 按 note_id 删除便签；delete 禁止携带 content/x/y/color 任一字段，
+      目标便签不存在或携带禁字段均返回 VALIDATION_ERROR（零写入）。
+    upstream:
+      method: GET + PUT
+      path: /api/v1/diagrams/{id}
+      post_process: partial_update
+    annotations:
+      readOnlyHint: false
+      destructiveHint: false
+      idempotentHint: false
+      openWorldHint: false
+    inputSchema:
+      type: object
+      additionalProperties: false
+      required: [id, note_id]
+      properties:
+        id:
+          type: string
+          minLength: 1
+        action:
+          type: string
+          enum: [create, update, delete]
+          default: update
+          description: "create=追加便签（必填 content，服务端重键）；缺省 update；delete=按 note_id 删除"
+        note_id:
+          type: string
+          minLength: 1
+          description: "create：调用方原始便签 ID；update/delete：图中已存在的实际便签 ID"
+        content:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: "action=create 时必填；update 可选；delete 禁止携带"
+        x:
+          type: number
+        y:
+          type: number
+        color:
+          type: string
+          maxLength: 32
+    outputSchema:
+      type: object
+      required: [id, revision]
+      properties:
+        id:
+          type: string
+        revision:
+          type: integer
+          minimum: 1
+        note_id:
+          type: string
+          minLength: 1
+          description: "仅 action=create 返回：服务端实际便签 ID"
 
   - name: layout_diagram
     title: 自动布局
