@@ -513,6 +513,71 @@ pub fn translate_tables(tables: &mut [Table], ids: &[String], dx: f64, dy: f64) 
     }
 }
 
+/// UT-CR-FOCUS-03：画布内容包围盒（世界坐标）——tables（按渲染尺寸）+ notes +
+/// areas 的 AABB 并集；空内容返回 None。
+/// fix-enter-diagram-fit-content：进入已有图后视口定位的内容锚（与 focus_table
+/// 的单表口径不同，这里是全内容口径）。
+pub fn content_bounds(
+    tables: &[Table],
+    notes: &[Note],
+    areas: &[Area],
+) -> Option<(f64, f64, f64, f64)> {
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for t in tables {
+        let (w, h) = compute_table_render_size(t);
+        min_x = min_x.min(t.x);
+        min_y = min_y.min(t.y);
+        max_x = max_x.max(t.x + w);
+        max_y = max_y.max(t.y + h);
+    }
+    for n in notes {
+        min_x = min_x.min(n.x);
+        min_y = min_y.min(n.y);
+        max_x = max_x.max(n.x + NOTE_WIDTH);
+        max_y = max_y.max(n.y + NOTE_HEIGHT);
+    }
+    for a in areas {
+        min_x = min_x.min(a.x);
+        min_y = min_y.min(a.y);
+        max_x = max_x.max(a.x + a.width);
+        max_y = max_y.max(a.y + a.height);
+    }
+    if min_x.is_infinite() {
+        return None;
+    }
+    Some((min_x, min_y, max_x - min_x, max_y - min_y))
+}
+
+/// UT-CR-FOCUS-03：fit-to-content 变换——内容包围盒整体缩放平移至视口内居中
+///（内容占视口 90%，四周留 10% padding）；zoom clamp [ZOOM_MIN, 1.0]（小图只
+/// 居中不放大超过 100%）。空内容 / 零尺寸 / 视口未就绪（0 尺寸）返回 None，
+/// 调用方保持现有 transform 不动（不产生 NaN / 除零）。
+pub fn fit_content_transform(
+    bounds: (f64, f64, f64, f64),
+    viewport_w: f64,
+    viewport_h: f64,
+) -> Option<Transform> {
+    let (bx, by, bw, bh) = bounds;
+    if bw <= 0.0 || bh <= 0.0 || viewport_w <= 0.0 || viewport_h <= 0.0 {
+        return None;
+    }
+    const FIT_CONTENT_RATIO: f64 = 0.9;
+    let zoom = ((viewport_w * FIT_CONTENT_RATIO) / bw)
+        .min((viewport_h * FIT_CONTENT_RATIO) / bh)
+        .min(1.0)
+        .max(ZOOM_MIN);
+    let center_x = bx + bw / 2.0;
+    let center_y = by + bh / 2.0;
+    Some(Transform {
+        pan_x: viewport_w / 2.0 - center_x * zoom,
+        pan_y: viewport_h / 2.0 - center_y * zoom,
+        zoom,
+    })
+}
+
 /// Idle 字段拖连 vs 框选/多表拖动：Shift 或「已多选集合内点中该表」时让路给选择手势。
 /// （修复 #5：Shift+拖被字段连线抢走；框选后拖表体又变成画线。）
 pub fn prefer_selection_over_field_rel(
@@ -9773,6 +9838,78 @@ mod tests {
         let inside = focus_transform(100.0, 100.0, 100.0, 80.0, 800.0, 600.0, &t, 40.0);
         assert_eq!(inside.pan_x, 0.0);
         assert_eq!(inside.pan_y, 0.0);
+    }
+
+    /// UT-CR-FOCUS-03 — fit_content_transform / content_bounds 内容适应三态
+    #[test]
+    fn ut_cr_focus_03_fit_content_transform() {
+        let mk_table = |x: f64, y: f64| Table {
+            id: "t".into(),
+            name: "t".into(),
+            x,
+            y,
+            color: "#000".into(),
+            comment: String::new(),
+            fields: vec![],
+            indices: vec![],
+            width: None,
+            min_height: None,
+        };
+        // 三态 3：空内容 → None（不产生 NaN / 不移动）
+        assert!(content_bounds(&[], &[], &[]).is_none(), "UT-CR-FOCUS-03: 空内容 None");
+        assert!(fit_content_transform((0.0, 0.0, 0.0, 0.0), 800.0, 600.0).is_none());
+        assert!(fit_content_transform((10.0, 10.0, 200.0, 100.0), 0.0, 0.0).is_none());
+
+        // content_bounds：表 + 便签 + 区域 AABB 并集
+        let note = Note {
+            id: "n".into(),
+            x: -50.0,
+            y: 20.0,
+            content: "c".into(),
+            color: "#fff".into(),
+        };
+        let area = Area {
+            id: "a".into(),
+            x: 100.0,
+            y: 100.0,
+            width: 300.0,
+            height: 200.0,
+            color: "#fff".into(),
+            name: "a".into(),
+            locked: false,
+        };
+        let tables = vec![mk_table(0.0, 0.0)];
+        let bounds = content_bounds(&tables, &[note], &[area]).expect("UT-CR-FOCUS-03: 有内容");
+        // 表在 (0,0)（渲染尺寸 ≥230×≥60）、便签左伸到 -50、区域右下到 (400,300)
+        assert_eq!(bounds.0, -50.0, "UT-CR-FOCUS-03: bounds x 取最左便签");
+        assert!(bounds.1 <= 0.0);
+        assert!((bounds.2 - 450.0).abs() < 1e-6, "UT-CR-FOCUS-03: w = 400-(-50)");
+        assert!((bounds.3 - 300.0).abs() < 1e-6, "UT-CR-FOCUS-03: h = 300-min_y");
+
+        // 三态 1：远处内容 → Some；内容中心映射到视口中心；zoom ≤ 1.0
+        let far = vec![mk_table(4000.0, 3000.0)];
+        let fb = content_bounds(&far, &[], &[]).expect("UT-CR-FOCUS-03: 远处内容");
+        let vp = (800.0, 600.0);
+        let tr = fit_content_transform(fb, vp.0, vp.1).expect("UT-CR-FOCUS-03: 远处 Some");
+        assert!(tr.zoom <= 1.0 && tr.zoom >= ZOOM_MIN, "UT-CR-FOCUS-03: clamp");
+        let cx_world = fb.0 + fb.2 / 2.0;
+        let cy_world = fb.1 + fb.3 / 2.0;
+        let screen_cx = cx_world * tr.zoom + tr.pan_x;
+        let screen_cy = cy_world * tr.zoom + tr.pan_y;
+        assert!((screen_cx - vp.0 / 2.0).abs() < 1e-6, "UT-CR-FOCUS-03: 内容中心→视口中心 x");
+        assert!((screen_cy - vp.1 / 2.0).abs() < 1e-6, "UT-CR-FOCUS-03: 内容中心→视口中心 y");
+
+        // 三态 2：小图在原点附近 → zoom 恰为 1.0（不放大超过 100%），仅居中
+        let near = vec![mk_table(0.0, 0.0)];
+        let nb = content_bounds(&near, &[], &[]).expect("UT-CR-FOCUS-03: 近处内容");
+        let ntr = fit_content_transform(nb, vp.0, vp.1).expect("UT-CR-FOCUS-03: 近处 Some");
+        assert_eq!(ntr.zoom, 1.0, "UT-CR-FOCUS-03: 小图不放大超 100%");
+
+        // 巨大内容：zoom 触碰下限 ZOOM_MIN，无 NaN
+        let huge = (0.0, 0.0, 1_000_000.0, 1_000_000.0);
+        let htr = fit_content_transform(huge, vp.0, vp.1).expect("UT-CR-FOCUS-03: 巨大 Some");
+        assert_eq!(htr.zoom, ZOOM_MIN, "UT-CR-FOCUS-03: 巨大内容钳到下限");
+        assert!(htr.pan_x.is_finite() && htr.pan_y.is_finite());
     }
 
     /// ST-CR-MULTI-01 辅助：Shift / 多选集合让路给选择手势，避免 Idle 字段连线抢走

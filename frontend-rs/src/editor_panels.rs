@@ -153,6 +153,79 @@ fn resolve_canvas_viewport(fallback: (f64, f64)) -> (f64, f64) {
     fallback
 }
 
+/// UT-CR-FOCUS-04（fix-enter-diagram-fit-content）：内容适应 fit 接线——按当前
+/// store 全内容（tables/notes/areas）计算 fit_transform 并落账。空内容 / 视口
+/// 未就绪返回 false（调用方保持现有 transform），与 focus_table 的单表口径互补。
+pub fn fit_to_content(store: &EditorStore, transform: RwSignal<crate::editor_render::Transform>) -> bool {
+    let bounds = {
+        let tables = store.tables.get_untracked();
+        let notes = store.notes.get_untracked();
+        let areas = store.areas.get_untracked();
+        crate::editor_render::content_bounds(&tables, &notes, &areas)
+    };
+    let Some(bounds) = bounds else {
+        return false;
+    };
+    let vp = resolve_canvas_viewport((1200.0, 720.0));
+    let Some(next) = crate::editor_render::fit_content_transform(bounds, vp.0, vp.1) else {
+        return false;
+    };
+    transform.set(next);
+    crate::editor_render::request_canvas_repaint();
+    true
+}
+
+/// UT-CR-FOCUS-04：加载挂点（进房 / 个人建模 / share 冷启动）专用延迟 fit——
+/// 切页当帧画布容器尚未完成布局，`resolve_canvas_viewport` 可能读到 0 尺寸；
+/// 双 rAF 排空两帧（#67 先例：双 rAF + 静默窗的挂载同步口径）后再执行 fit，
+/// 保证读到真实容器 CSS 尺寸。非 wasm / 无 window 环境退化为同步尽力 fit。
+pub fn schedule_fit_after_load(store: &EditorStore, transform: RwSignal<crate::editor_render::Transform>) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        use wasm_bindgen::JsCast;
+        type FrameCb = Rc<RefCell<Option<wasm_bindgen::closure::Closure<dyn FnMut()>>>>;
+        let run_fit = {
+            let store = store.clone();
+            move || {
+                fit_to_content(&store, transform);
+            }
+        };
+        let Some(window) = web_sys::window() else {
+            run_fit();
+            return;
+        };
+        let remaining = Rc::new(RefCell::new(2_u8));
+        let cb: FrameCb = Rc::new(RefCell::new(None));
+        let closure = Closure::wrap(Box::new({
+            let cb = cb.clone();
+            let window = window.clone();
+            move || {
+                let mut left = remaining.borrow_mut();
+                *left -= 1;
+                let last = *left == 0;
+                drop(left);
+                if last {
+                    run_fit();
+                    // 自断引用，闭包随帧结束释放
+                    *cb.borrow_mut() = None;
+                } else if let Some(c) = cb.borrow().as_ref() {
+                    let _ = window.request_animation_frame(c.as_ref().unchecked_ref());
+                }
+            }
+        }) as Box<dyn FnMut()>);
+        *cb.borrow_mut() = Some(closure);
+        if let Some(c) = cb.borrow().as_ref() {
+            let _ = window.request_animation_frame(c.as_ref().unchecked_ref());
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = (store, transform);
+    }
+}
+
 // ─── D 批：全局工具快捷键 + Esc 浮层层级（ST-KB-T-01 / R-01 / ESC-01 / VIEWER）──
 
 /// 快捷键目标检查：事件源自输入控件时不触发全局快捷键
@@ -2675,6 +2748,20 @@ pub fn FloatingControls(transform: RwSignal<Transform>, store: EditorStore) -> i
                 on:click=move |_| zoom_in(transform)
             >
                 <IconBox size="sm"><IconAdd /></IconBox>
+            </button>
+            // fix-enter-diagram-fit-content（UT-CR-FOCUS-04 / ST-S04-UI-20）：适应画布
+            // ——主原型 fit-canvas parity。以当前全内容包围盒为锚缩放居中（zoom 上限
+            // 100%），与 zoom_reset（无条件回 1x + 归零 pan）语义区分；只动视图信号，
+            // 不触碰 store / 保存链路。
+            <button
+                class="cdb-btn cdb-btn--ghost cdb-btn--small"
+                data-testid="btn-fit-canvas"
+                title="适应画布（全部内容缩放居中）"
+                on:click=move |_| {
+                    fit_to_content(&store, transform);
+                }
+            >
+                "适应画布"
             </button>
             // fix-remote-github-issues-7-18（issue #10，core-01a §1.5 / R-CMT-04）：
             // 画布注释显示三态开关（视图偏好：localStorage cdb.comment-display，
@@ -12174,6 +12261,10 @@ pub fn AppRoot(
                         current_title.set(diagram.name.clone());
                         current_room.set(Some(detail));
                         store.load(diagram);
+                        // fix-enter-diagram-fit-content（UT-CR-FOCUS-04）：加载完成后
+                        // 延迟 fit——双 rAF 等画布容器挂载布局，表坐标远离原点时进房
+                        // 即见内容，不再呈现空画布。
+                        schedule_fit_after_load(&store, canvas_transform);
                         // fix-collab-autosave-race：入房加载完成即建立 diff baseline（不等
                         // WS 首连）——首连前/连接失败时的本地编辑据此 diff 入离线队列，
                         // 连接恢复后 sync+flush 收敛；不再静默丢失。
@@ -12222,6 +12313,8 @@ pub fn AppRoot(
                         current_title.set(diagram.name.clone());
                         current_room.set(None);
                         store.load(diagram);
+                        // fix-enter-diagram-fit-content（UT-CR-FOCUS-04）：个人建模同口径
+                        schedule_fit_after_load(&store, canvas_transform);
                         collab_ctl.refresh_baseline();
                         let max_id = crate::editor_core::next_id_from_store(&store);
                         next_id.set(max_id + 1);
@@ -12267,6 +12360,9 @@ pub fn AppRoot(
                         current_page.set(PageState::RoomEditor);
                         current_title.set(diagram.name.clone());
                         store.load(diagram);
+                        // fix-enter-diagram-fit-content（UT-CR-FOCUS-04）：邀请接受进房
+                        // 同口径（与 on_enter_room 一致的空画布问题面）
+                        schedule_fit_after_load(&store, canvas_transform);
                         // fix-collab-autosave-race：同 on_enter_room——入房加载完成即
                         // 建立 diff baseline，首连前编辑入离线队列不丢失。
                         collab_ctl.refresh_baseline();
@@ -12427,6 +12523,9 @@ pub fn AppRoot(
                     Ok(diagram) => {
                         current_title.set(diagram.name.clone());
                         store.load(diagram);
+                        // fix-enter-diagram-fit-content（UT-CR-FOCUS-04）：share / 冷启动
+                        // 直链加载同口径
+                        schedule_fit_after_load(&store, canvas_transform);
                         share_loading.set(false);
                     }
                     Err(e) => {
@@ -19251,6 +19350,44 @@ CREATE INDEX idx_x ON users (id);";
         assert!(
             render.contains("canvas_cursor_css"),
             "ST-CR-MULTI-01: 拖实体时 cursor 不得锁死 crosshair"
+        );
+    }
+
+    /// UT-CR-FOCUS-04 锚点：加载挂点自动 fit 与适应画布按钮（fix-enter-diagram-fit-content）
+    #[test]
+    fn test_fit_to_content_anchor_ut_cr_focus_04() {
+        let src = include_str!("editor_panels.rs");
+        // fit 接线与延迟调度辅助存在
+        assert!(
+            src.contains("fn fit_to_content(") && src.contains("fn schedule_fit_after_load("),
+            "UT-CR-FOCUS-04: 必须存在 fit_to_content / schedule_fit_after_load 接线"
+        );
+        // 规格点名三挂点（on_enter_room / on_open_personal_diagram / share 冷启动）
+        // 均触发自动 fit；实现另覆盖 invite accept 进房（同根因面，四处）
+        assert!(
+            src.matches("schedule_fit_after_load(&store, canvas_transform)").count() >= 3,
+            "UT-CR-FOCUS-04: 加载挂点必须调用延迟 fit（≥3 处）"
+        );
+        assert!(
+            src.contains("加载完成后\n                        // 延迟 fit")
+                || src.contains("进房加载") && src.contains("延迟 fit")
+                || src.contains("UT-CR-FOCUS-04）：加载完成后"),
+            "UT-CR-FOCUS-04: on_enter_room 挂点注释锚点"
+        );
+        // 延迟 fit 经双 rAF 等容器布局（#67 先例口径），fit_to_content 内读容器尺寸
+        assert!(
+            src.contains("request_animation_frame") && src.contains("resolve_canvas_viewport"),
+            "UT-CR-FOCUS-04: 双 rAF 延迟 + 真实容器尺寸"
+        );
+        // FloatingControls 适应画布按钮（主原型 fit-canvas parity）
+        assert!(
+            src.contains("data-testid=\"btn-fit-canvas\"") && src.contains("适应画布"),
+            "UT-CR-FOCUS-04: FloatingControls 必须存在 btn-fit-canvas（适应画布）"
+        );
+        // fit 落账后请求重绘
+        assert!(
+            src.contains("request_canvas_repaint();") && src.contains("transform.set(next);"),
+            "UT-CR-FOCUS-04: fit 落账必须请求画布重绘"
         );
     }
 

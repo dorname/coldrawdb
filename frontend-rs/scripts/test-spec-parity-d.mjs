@@ -67,6 +67,9 @@
 //                    断言迁移为 tables 数组 + 表/列 comment 透传（mock 含 comment）
 //   UT-S04-UI-17     前端 base_url 同源派生（core-01-deployment-plan §12.2）：API 路由按 path 匹配，
 //                    不再锚定 BACKEND_URL host
+// fix-enter-diagram-fit-content 新增：
+//   ST-S04-UI-19     远坐标图进房自动适应内容：表无需平移即在视口内（fillText 坐标几何断言）+ zoom ≤100%
+//   ST-S04-UI-20     悬浮控件「适应画布」：重置缩放走失后一键找回 + 零保存副作用
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { reportOpenLogos } from "../tests/e2e/helpers/openlogos-reporter.mjs";
@@ -434,6 +437,58 @@ async function captureCanvasText(page) {
 
 async function resetCanvasText(page) {
   await page.evaluate(() => { window.__cdb_test_canvas_texts = []; });
+}
+
+// fix-enter-diagram-fit-content（ST-S04-UI-19/20）：fillText 采集含画布坐标，
+// 供「表已绘制在视口内」的几何断言（可见性以坐标落 canvas 尺寸内为准）。
+async function captureCanvasDraws(page) {
+  await page.addInitScript(() => {
+    window.__cdb_test_canvas_draws = [];
+    const original = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function(text, x, y, ...args) {
+      window.__cdb_test_canvas_draws.push({ text: String(text), x: Number(x) || 0, y: Number(y) || 0 });
+      if (window.__cdb_test_canvas_draws.length > 4000) {
+        window.__cdb_test_canvas_draws.splice(0, 2000);
+      }
+      return original.call(this, text, x, y, ...args);
+    };
+  });
+}
+
+// ST-S04-UI-19/20 共用：远坐标图（表在 (4000,3000) 附近）+ 预置 owner 房间直连 diagram-new
+function farDiagramScenario() {
+  const presetDiagram = {
+    tables: [
+      { id: "t-far-1", name: "users", x: 4000, y: 3000, color: "", comment: "",
+        fields: [{ id: "f1", name: "id", type_: "INT", default: "", check: "", primary: true,
+          unique: false, not_null: false, increment: false, comment: "" }], indices: [] },
+      { id: "t-far-2", name: "orders", x: 4400, y: 3160, color: "", comment: "",
+        fields: [{ id: "f2", name: "user_id", type_: "INT", default: "", check: "", primary: false,
+          unique: false, not_null: false, increment: false, comment: "" }], indices: [] },
+    ],
+    references: [], areas: [], notes: [],
+  };
+  return {
+    presetDiagram,
+    install: {
+      presetDiagram,
+      roomsList: [{
+        id: "room-far", name: "远坐标评审室", diagramId: "diagram-new", diagramTitle: "远坐标评审室",
+        myRole: "owner", memberCount: 1, updatedAt: "2026-11-01T00:00:00Z",
+      }],
+    },
+  };
+}
+
+// 断言某表名最近一次绘制坐标落在画布元素尺寸内（用户可见，无需平移）
+function tableDrawnInViewport(page, tableName) {
+  return page.evaluate(name => {
+    const canvas = document.querySelector('[data-testid="editor-canvas-container"] canvas');
+    if (!canvas) return false;
+    const box = canvas.getBoundingClientRect();
+    return (window.__cdb_test_canvas_draws ?? []).some(d =>
+      d.text.includes(name) && d.x >= 0 && d.x <= box.width && d.y >= 0 && d.y <= box.height);
+  }, tableName);
 }
 
 async function waitForCanvasLabel(page, id, text) {
@@ -1221,6 +1276,57 @@ try {
     await page.waitForTimeout(600);
     assert.equal(await page.locator('[data-testid="diagram-title"]').inputValue(), "最近修改");
     assert.equal(state.createdRooms, undefined);
+  });
+
+  // ─── ST-S04-UI-19：远坐标图进房自动适应内容（fix-enter-diagram-fit-content） ──
+  await run(["ST-S04-UI-19"], "远坐标表进房后无需平移即在视口内（自动 fit）", async page => {
+    const scenario = farDiagramScenario();
+    await captureCanvasDraws(page);
+    const state = await installApi(page, scenario.install);
+    state.doc = structuredClone(scenario.presetDiagram);
+    await login(page);
+
+    // 点预置房间卡片进房（真实 on_enter_room 加载路径）
+    await page.locator('[data-testid="room-list-item-room-far"]').click();
+    await page.locator('[data-testid="room-editor-page"]:visible').waitFor();
+    await waitForCanvasStable(page);
+    // 双 rAF fit + 重绘落帧（schedule_fit_after_load 两帧后执行）
+    await page.waitForTimeout(400);
+
+    // 几何断言：表名 fillText 坐标落在画布元素尺寸内——用户无需任何平移/缩放即可见
+    assert.ok(await tableDrawnInViewport(page, "users"), "进房后 users 表必须已绘制在视口内（自动 fit）");
+    assert.ok(await tableDrawnInViewport(page, "orders"), "进房后 orders 表必须已绘制在视口内（自动 fit）");
+    // fit zoom 上限 100%（悬浮控件缩放显示）
+    const zoomPct = parseInt(await page.locator(".cdb-floating-zoom-label").textContent(), 10);
+    assert.ok(zoomPct <= 100, `自动 fit 缩放不得放大超过 100%（实际 ${zoomPct}%）`);
+  });
+
+  // ─── ST-S04-UI-20：悬浮控件「适应画布」按钮（fix-enter-diagram-fit-content） ──
+  await run(["ST-S04-UI-20"], "重置缩放走失远坐标内容 → btn-fit-canvas 一键找回 + 零保存副作用", async page => {
+    const scenario = farDiagramScenario();
+    await captureCanvasDraws(page);
+    const state = await installApi(page, scenario.install);
+    state.doc = structuredClone(scenario.presetDiagram);
+    await login(page);
+    await page.locator('[data-testid="room-list-item-room-far"]').click();
+    await page.locator('[data-testid="room-editor-page"]:visible').waitFor();
+    await waitForCanvasStable(page);
+    await page.waitForTimeout(400);
+    assert.ok(await tableDrawnInViewport(page, "users"), "前置：进房自动 fit 后表可见");
+
+    // 制造走失：TopMenu 视图 → 重置缩放（identity：pan 0,0 zoom 1.0——远坐标表必然出视口）
+    await page.locator('[data-testid="cdb-menu-view"]').click();
+    await page.locator('[data-testid="cdb-menu-zoom-reset"]').click();
+    await page.waitForTimeout(250);
+    assert.ok(!(await tableDrawnInViewport(page, "users")), "重置缩放后远坐标表必须出视口（走失前置成立）");
+
+    // 一键找回：悬浮控件「适应画布」
+    await page.locator('[data-testid="btn-fit-canvas"]').click();
+    await page.waitForTimeout(250);
+    assert.ok(await tableDrawnInViewport(page, "users"), "点击适应画布后表必须重新出现在视口内");
+    // 视图信号操作零保存副作用（不触碰 store / 保存链路）
+    assert.equal(state.putCalls, 0, "适应画布不得触发文档 PUT");
+    assert.equal(state.sentOps?.length ?? 0, 0, "适应画布不得触发协作 op");
   });
 
   // ─── ST-PC-05：导出到数据库（feat-room-recycle-bin-dropdown-and-db-export，core-01d §5.4） ──
