@@ -68,8 +68,10 @@
 //   UT-S04-UI-17     前端 base_url 同源派生（core-01-deployment-plan §12.2）：API 路由按 path 匹配，
 //                    不再锚定 BACKEND_URL host
 // fix-enter-diagram-fit-content 新增：
-//   ST-S04-UI-19     远坐标图进房自动适应内容：表无需平移即在视口内（fillText 坐标几何断言）+ zoom ≤100%
-//   ST-S04-UI-20     悬浮控件「适应画布」：重置缩放走失后一键找回 + 零保存副作用
+//   ST-S04-UI-19     远坐标图进房自动适应内容：__cdb_fit_probe/__cdb_transform 数学断言
+//                    （内容中心映射视口中心 ±80px、zoom ≤100%）+ wheel 产帧后 fillText 视口内
+//   ST-S04-UI-20     悬浮控件「适应画布」：拖拽平移走失后一键找回
+//                    （transform 恢复定位 + 产帧视觉可见）+ 零保存副作用
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { reportOpenLogos } from "../tests/e2e/helpers/openlogos-reporter.mjs";
@@ -446,7 +448,15 @@ async function captureCanvasDraws(page) {
     window.__cdb_test_canvas_draws = [];
     const original = CanvasRenderingContext2D.prototype.fillText;
     CanvasRenderingContext2D.prototype.fillText = function(text, x, y, ...args) {
-      window.__cdb_test_canvas_draws.push({ text: String(text), x: Number(x) || 0, y: Number(y) || 0 });
+      // 记录 CTM 变换后的屏幕 CSS 坐标：渲染层先 translate(pan)/scale(zoom) 再
+      // fillText(世界坐标)——原始参数不含 transform，直接断言会永远 miss
+      let sx = Number(x) || 0, sy = Number(y) || 0;
+      try {
+        const m = this.getTransform();
+        sx = m.a * (Number(x) || 0) + m.e;
+        sy = m.d * (Number(y) || 0) + m.f;
+      } catch { /* fallback 原始坐标 */ }
+      window.__cdb_test_canvas_draws.push({ text: String(text), x: sx, y: sy });
       if (window.__cdb_test_canvas_draws.length > 4000) {
         window.__cdb_test_canvas_draws.splice(0, 2000);
       }
@@ -475,6 +485,9 @@ function farDiagramScenario() {
       roomsList: [{
         id: "room-far", name: "远坐标评审室", diagramId: "diagram-new", diagramTitle: "远坐标评审室",
         myRole: "owner", memberCount: 1, updatedAt: "2026-11-01T00:00:00Z",
+      }, {
+        id: "room-empty", name: "空图评审室", diagramId: "diagram-empty", diagramTitle: "空图评审室",
+        myRole: "owner", memberCount: 1, updatedAt: "2026-11-01T00:00:00Z",
       }],
     },
   };
@@ -489,6 +502,33 @@ function tableDrawnInViewport(page, tableName) {
     return (window.__cdb_test_canvas_draws ?? []).some(d =>
       d.text.includes(name) && d.x >= 0 && d.x <= box.width && d.y >= 0 && d.y <= box.height);
   }, tableName);
+}
+
+// headless 按需帧语义：已调度的 paint rAF 在无 BeginFrame 时悬挂；
+// 鼠标移动产生 input 事件强制 compositor 帧（不点击、无状态副作用），
+// 再截图 + 排空，让 repaint 落账。
+async function flushPaintFrames(page) {
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await page.mouse.move(8, 8);
+  await page.mouse.move(12, 10);
+  await page.mouse.move(8, 8);
+  await page.mouse.move(12, 10);
+  await page.waitForTimeout(250);
+  await page.screenshot({ clip: { x: 0, y: 0, width: 2, height: 2 } });
+  await page.waitForTimeout(120);
+}
+
+// ST-S04-UI-19/20：headless 按需帧语义下「单次 input 只产一帧（处理事件 + 排
+// repaint rAF），重绘要下一帧」——补第二次 wheel（一缩一放，净 zoom≈1.0，锚点在
+// 画布中心，视觉位置不变）触发下一帧跑第一次排队的重绘。实测 mouse.move/screenshot
+// 均不产帧，唯 wheel 这类 input 靠谱。
+async function paintViaWheel(page, box) {
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.wheel(0, 240);
+  await page.mouse.wheel(0, -240);
+  await page.waitForTimeout(120);
 }
 
 async function waitForCanvasLabel(page, id, text) {
@@ -1279,30 +1319,70 @@ try {
   });
 
   // ─── ST-S04-UI-19：远坐标图进房自动适应内容（fix-enter-diagram-fit-content） ──
-  await run(["ST-S04-UI-19"], "远坐标表进房后无需平移即在视口内（自动 fit）", async page => {
+  await run(["ST-S04-UI-19"], "远坐标表进房自动 fit：transform 定位数学断言 + 产帧后视口内可见", async page => {
     const scenario = farDiagramScenario();
     await captureCanvasDraws(page);
     const state = await installApi(page, scenario.install);
     state.doc = structuredClone(scenario.presetDiagram);
+    // 空图回归（规格 UI-19 第三断言）先行：冷启动直进 0 表房间，fit 不生效
+    // （content_bounds 为 None），transform 保持原点、不报错。放在远坐标流程之前，
+    // 避免 canvas_transform（AppRoot 级信号）残留上一房间视口导致断言前提失效。
+    await page.route("**/api/v1/diagrams/diagram-empty", route => route.fulfill({
+      status: 200, contentType: "application/json", headers: corsHeaders,
+      body: JSON.stringify({
+        code: 0, request_id: "load-diagram-empty",
+        data: { id: "diagram-empty", name: "空图评审室", database: "postgresql", revision: 3,
+          tables: [], references: [], areas: [], notes: [] },
+      }),
+    }));
     await login(page);
+    await page.locator('[data-testid="room-list-item-room-empty"]').click();
+    await page.locator('[data-testid="room-editor-page"]:visible').waitFor();
+    await page.waitForFunction(
+      () => window.__cdb_fit_probe && window.__cdb_fit_probe.applied === false,
+      null, { timeout: 6_000, polling: 100 },
+    );
+    const t0 = await page.evaluate(() => window.__cdb_transform);
+    assert.ok(
+      Math.abs(t0.pan_x) < 1 && Math.abs(t0.pan_y) < 1 && Math.abs(t0.zoom - 1) < 1e-6,
+      `空图进房 transform 须保持原点（实际 ${JSON.stringify(t0)}）`,
+    );
+    await page.locator('[data-testid="btn-back-to-rooms"]').click();
+    await page.locator('[data-testid="rooms-list-page"]:visible').waitFor();
 
-    // 点预置房间卡片进房（真实 on_enter_room 加载路径）
+    // 主流程：点预置远坐标房间卡片进房（真实 on_enter_room 加载路径）
     await page.locator('[data-testid="room-list-item-room-far"]').click();
     await page.locator('[data-testid="room-editor-page"]:visible').waitFor();
     await waitForCanvasStable(page);
-    // 双 rAF fit + 重绘落帧（schedule_fit_after_load 两帧后执行）
-    await page.waitForTimeout(400);
 
-    // 几何断言：表名 fillText 坐标落在画布元素尺寸内——用户无需任何平移/缩放即可见
-    assert.ok(await tableDrawnInViewport(page, "users"), "进房后 users 表必须已绘制在视口内（自动 fit）");
-    assert.ok(await tableDrawnInViewport(page, "orders"), "进房后 orders 表必须已绘制在视口内（自动 fit）");
-    // fit zoom 上限 100%（悬浮控件缩放显示）
-    const zoomPct = parseInt(await page.locator(".cdb-floating-zoom-label").textContent(), 10);
-    assert.ok(zoomPct <= 100, `自动 fit 缩放不得放大超过 100%（实际 ${zoomPct}%）`);
+    // 数学层：自动 fit 已执行（__cdb_fit_probe）且 transform 已定位（__cdb_transform
+    // 常驻探针订阅信号即时更新，不依赖 headless 帧语义——repaint rAF 在无 input 时悬挂）
+    await page.waitForFunction(
+      () => window.__cdb_fit_probe?.applied === true,
+      null, { timeout: 6_000, polling: 100 },
+    );
+    await page.waitForFunction(
+      () => window.__cdb_transform && window.__cdb_transform.pan_x < -1000,
+      null, { timeout: 6_000, polling: 100 },
+    );
+    const t = await page.evaluate(() => window.__cdb_transform);
+    const box = await page.locator('[data-testid="editor-canvas-container"] canvas').boundingBox();
+    // bounds 中心 (4000+315, 3000+136.5) 映射到视口中心（±80px 容差），zoom ≤ 100%
+    const cx = t.pan_x + 4315 * t.zoom;
+    const cy = t.pan_y + 3136.5 * t.zoom;
+    assert.ok(Math.abs(cx - box.width / 2) <= 80, `fit 后内容中心须映射到视口中心 x（偏移 ${(cx - box.width / 2).toFixed(1)}px）`);
+    assert.ok(Math.abs(cy - box.height / 2) <= 80, `fit 后内容中心须映射到视口中心 y（偏移 ${(cy - box.height / 2).toFixed(1)}px）`);
+    assert.ok(t.zoom <= 1.0001, `fit zoom 不得放大超过 100%（实际 ${(t.zoom * 100).toFixed(0)}%）`);
+
+    // 视觉层：wheel 产帧（headless 按需帧语义，见 paintViaWheel）后 repaint 消费
+    // 已定位的 transform——表名 fillText 坐标落进画布元素（用户可见）
+    await paintViaWheel(page, box);
+    assert.ok(await tableDrawnInViewport(page, "users"), "自动 fit 后 users 表必须绘制在视口内（wheel 产帧）");
+    assert.ok(await tableDrawnInViewport(page, "orders"), "自动 fit 后 orders 表必须绘制在视口内（wheel 产帧）");
   });
 
   // ─── ST-S04-UI-20：悬浮控件「适应画布」按钮（fix-enter-diagram-fit-content） ──
-  await run(["ST-S04-UI-20"], "重置缩放走失远坐标内容 → btn-fit-canvas 一键找回 + 零保存副作用", async page => {
+  await run(["ST-S04-UI-20"], "拖拽平移走失远坐标内容 → btn-fit-canvas 一键找回 + 零保存副作用", async page => {
     const scenario = farDiagramScenario();
     await captureCanvasDraws(page);
     const state = await installApi(page, scenario.install);
@@ -1311,18 +1391,42 @@ try {
     await page.locator('[data-testid="room-list-item-room-far"]').click();
     await page.locator('[data-testid="room-editor-page"]:visible').waitFor();
     await waitForCanvasStable(page);
-    await page.waitForTimeout(400);
-    assert.ok(await tableDrawnInViewport(page, "users"), "前置：进房自动 fit 后表可见");
+    await page.waitForFunction(
+      () => window.__cdb_fit_probe?.applied === true && window.__cdb_transform?.pan_x < -1000,
+      null, { timeout: 6_000, polling: 100 },
+    );
 
-    // 制造走失：TopMenu 视图 → 重置缩放（identity：pan 0,0 zoom 1.0——远坐标表必然出视口）
-    await page.locator('[data-testid="cdb-menu-view"]').click();
-    await page.locator('[data-testid="cdb-menu-zoom-reset"]').click();
-    await page.waitForTimeout(250);
-    assert.ok(!(await tableDrawnInViewport(page, "users")), "重置缩放后远坐标表必须出视口（走失前置成立）");
+    // 制造走失：空白处拖拽平移（默认选择/平移工具：editor_render 空白 pointerdown
+    // 回落 pan 模式）——3×400px 把内容拖出视口右下。拖拽 pointer 事件本身产帧，
+    // 不依赖 wheel；数学层断言拖拽落账（pan 相对 fit 值位移 +1200）
+    const box = await page.locator('[data-testid="editor-canvas-container"] canvas').boundingBox();
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    for (let i = 0; i < 3; i++) {
+      await page.mouse.move(cx, cy);
+      await page.mouse.down();
+      await page.mouse.move(cx + 400, cy + 400, { steps: 6 });
+      await page.mouse.up();
+    }
+    await page.waitForFunction(
+      () => window.__cdb_transform && window.__cdb_transform.pan_x > -2900,
+      null, { timeout: 4_000, polling: 100 },
+    );
+    // 走失视觉成立：拖拽帧已用新 pan 重绘——远坐标表出视口。先清累积采样
+    // （tableDrawnInViewport 用 some 扫全数组，不清会命中进房 fit 帧的旧坐标）
+    await page.evaluate(() => { window.__cdb_test_canvas_draws = []; });
+    await flushPaintFrames(page);
+    assert.ok(!(await tableDrawnInViewport(page, "users")), "拖拽平移后远坐标表必须出视口（走失成立）");
 
-    // 一键找回：悬浮控件「适应画布」
+    // 一键找回：悬浮控件「适应画布」——transform 恢复定位 + 产帧后视觉可见
     await page.locator('[data-testid="btn-fit-canvas"]').click();
-    await page.waitForTimeout(250);
+    await page.waitForFunction(
+      () => window.__cdb_transform && window.__cdb_transform.pan_x < -1000,
+      null, { timeout: 4_000, polling: 100 },
+    );
+    // click 是单帧 input（帧内 fit + 排 repaint，重绘要下一帧）——paintViaWheel 补帧
+    await page.evaluate(() => { window.__cdb_test_canvas_draws = []; });
+    await paintViaWheel(page, box);
     assert.ok(await tableDrawnInViewport(page, "users"), "点击适应画布后表必须重新出现在视口内");
     // 视图信号操作零保存副作用（不触碰 store / 保存链路）
     assert.equal(state.putCalls, 0, "适应画布不得触发文档 PUT");

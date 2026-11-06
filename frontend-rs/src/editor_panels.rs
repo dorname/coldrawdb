@@ -157,17 +157,32 @@ fn resolve_canvas_viewport(fallback: (f64, f64)) -> (f64, f64) {
 /// store 全内容（tables/notes/areas）计算 fit_transform 并落账。空内容 / 视口
 /// 未就绪返回 false（调用方保持现有 transform），与 focus_table 的单表口径互补。
 pub fn fit_to_content(store: &EditorStore, transform: RwSignal<crate::editor_render::Transform>) -> bool {
+    let tables_len = store.tables.get_untracked().len();
     let bounds = {
         let tables = store.tables.get_untracked();
         let notes = store.notes.get_untracked();
         let areas = store.areas.get_untracked();
         crate::editor_render::content_bounds(&tables, &notes, &areas)
     };
-    let Some(bounds) = bounds else {
-        return false;
-    };
     let vp = resolve_canvas_viewport((1200.0, 720.0));
-    let Some(next) = crate::editor_render::fit_content_transform(bounds, vp.0, vp.1) else {
+    let fit = bounds.and_then(|b| crate::editor_render::fit_content_transform(b, vp.0, vp.1));
+    // 常驻诊断探针：window.__cdb_fit_probe（记录最近一次 fit 的输入与结论，
+    // 供 e2e 数学层断言与线上排障；体积恒定，无性能影响）
+    #[cfg(target_arch = "wasm32")]
+    {
+        let msg = format!(
+            "window.__cdb_fit_probe = {{ tables: {}, bounds: {}, vp: [{},{}], applied: {} }}",
+            tables_len,
+            bounds
+                .map(|b| format!("[{},{},{},{}]", b.0, b.1, b.2, b.3))
+                .unwrap_or_else(|| "null".into()),
+            vp.0,
+            vp.1,
+            fit.is_some(),
+        );
+        let _ = js_sys::eval(&msg);
+    }
+    let Some(next) = fit else {
         return false;
     };
     transform.set(next);
@@ -182,10 +197,14 @@ pub fn fit_to_content(store: &EditorStore, transform: RwSignal<crate::editor_ren
 pub fn schedule_fit_after_load(store: &EditorStore, transform: RwSignal<crate::editor_render::Transform>) {
     #[cfg(target_arch = "wasm32")]
     {
-        use std::cell::RefCell;
+        use std::cell::{Cell, RefCell};
         use std::rc::Rc;
+        use wasm_bindgen::closure::Closure;
         use wasm_bindgen::JsCast;
-        type FrameCb = Rc<RefCell<Option<wasm_bindgen::closure::Closure<dyn FnMut()>>>>;
+        use wasm_bindgen::JsValue;
+        // rAF 回调签名与项目先例一致（editor_render raf_closure：FnMut(JsValue)）
+        let frame_cb: Rc<RefCell<Option<Closure<dyn FnMut(JsValue)>>>> = Rc::new(RefCell::new(None));
+        let remaining: Rc<Cell<u8>> = Rc::new(Cell::new(2));
         let run_fit = {
             let store = store.clone();
             move || {
@@ -196,28 +215,29 @@ pub fn schedule_fit_after_load(store: &EditorStore, transform: RwSignal<crate::e
             run_fit();
             return;
         };
-        let remaining = Rc::new(RefCell::new(2_u8));
-        let cb: FrameCb = Rc::new(RefCell::new(None));
         let closure = Closure::wrap(Box::new({
-            let cb = cb.clone();
+            let frame_cb = frame_cb.clone();
             let window = window.clone();
-            move || {
-                let mut left = remaining.borrow_mut();
-                *left -= 1;
-                let last = *left == 0;
-                drop(left);
-                if last {
+            let remaining = remaining.clone();
+            move |_: JsValue| {
+                let left = remaining.get() - 1;
+                remaining.set(left);
+                if left == 0 {
                     run_fit();
                     // 自断引用，闭包随帧结束释放
-                    *cb.borrow_mut() = None;
-                } else if let Some(c) = cb.borrow().as_ref() {
+                    *frame_cb.borrow_mut() = None;
+                } else if let Some(c) = frame_cb.borrow().as_ref() {
                     let _ = window.request_animation_frame(c.as_ref().unchecked_ref());
                 }
             }
-        }) as Box<dyn FnMut()>);
-        *cb.borrow_mut() = Some(closure);
-        if let Some(c) = cb.borrow().as_ref() {
-            let _ = window.request_animation_frame(c.as_ref().unchecked_ref());
+        }) as Box<dyn FnMut(JsValue)>);
+        *frame_cb.borrow_mut() = Some(closure);
+        // 首帧调度：Ref 限定在显式块内 drop，块尾不持有临时借用（E0597）
+        {
+            let cb_ref = frame_cb.borrow();
+            if let Some(c) = cb_ref.as_ref() {
+                let _ = window.request_animation_frame(c.as_ref().unchecked_ref());
+            }
         }
     }
     #[cfg(not(target_arch = "wasm32"))]
@@ -11735,6 +11755,20 @@ pub fn AppRoot(
     let palette_query: RwSignal<String> = create_rw_signal(String::new());
     let palette_highlight: RwSignal<usize> = create_rw_signal(0);
     let canvas_transform: RwSignal<Transform> = create_rw_signal(Transform::default());
+    // fix-enter-diagram-fit-content：画布 transform 常驻探针（同 editor_render
+    // __cdb_lod_probe 口径）——视图定位类断言读数学值，不与 headless 按需帧
+    // 语义耦合（paint rAF 在无 BeginFrame 时悬挂，fillText 断言需 wheel 产帧）。
+    #[cfg(target_arch = "wasm32")]
+    {
+        let transform_probe = canvas_transform;
+        create_effect(move |_| {
+            let t = transform_probe.get();
+            let _ = js_sys::eval(&format!(
+                "window.__cdb_transform = {{ pan_x: {}, pan_y: {}, zoom: {} }}",
+                t.pan_x, t.pan_y, t.zoom,
+            ));
+        });
+    }
     // fix-remote-github-issues / #5：多表 / 便签 / 区域框选集合
     let selected_table_ids: RwSignal<Vec<String>> = create_rw_signal(Vec::new());
     let selected_note_ids: RwSignal<Vec<String>> = create_rw_signal(Vec::new());

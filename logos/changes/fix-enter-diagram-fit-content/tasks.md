@@ -9,4 +9,4 @@
 
 - [x] `frontend-rs/src/editor_render.rs` — 新增 `content_bounds` / `fit_content_transform` 纯函数（zoom clamp [ZOOM_MIN, 1.0]、空内容 None）+ UT-CR-FOCUS-03 单测
 - [x] `frontend-rs/src/editor_panels.rs` — 三个加载挂点（on_enter_room / on_open_personal_diagram / share 冷启动）store.load 成功后双 rAF 自动 fit；FloatingControls 新增 btn-fit-canvas（复用 fit 纯函数）+ UT-CR-FOCUS-04 锚点（实现另覆盖 invite accept 进房第四挂点，同根因面）
-- [x] `frontend-rs/scripts/test-spec-parity-d.mjs` — ST-S04-UI-19/20 e2e（mock 表坐标远离原点，断言进房/点击按钮后表框在视口内可见）
+- [x] `frontend-rs/scripts/test-spec-parity-d.mjs` — ST-S04-UI-19/20 e2e（mock 表坐标远离原点；最终口径：`__cdb_fit_probe`/`__cdb_transform` 常驻探针数学断言 + fillText hook 记录 CTM 变换后屏幕坐标的视觉断言，`paintViaWheel` 双 wheel 补帧越过 headless 按需帧语义；UI-19 含空图冷启动回归）
