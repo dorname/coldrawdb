@@ -132,7 +132,7 @@ cd <项目根目录> && openlogos <command>
 
 ## 项目当前状态
 
-- 当前无活跃变更（无 guard 锁）；最近归档：`fix-trash-restore-refresh`（issue #75 回收站恢复后主列表不刷新——restore_room_action 成功分支触发 reload_rooms 强刷；e2e mock 时序化使「房间重现」断言真依赖刷新，修复前 FAIL/修复后 PASS 判别力验证；verify PASS 631/631、0 失败）。前批：`fix-mcp-tool-gaps-issue76`（MCP 工具层缺口：update_table action=delete、update_area/update_note 增量写、update_diagram 防误删守护，工具 12→14）、`fix-mcp-tool-schema-client-compat`、`fix-issues-70-73`。
+- 当前无活跃变更（无 guard 锁）；最近归档：`fix-enter-diagram-fit-content`（2026-11-07，进图自动适应内容 + 悬浮控件「适应画布」按钮——挂点（进房/个人图/邀请接受/share 冷启动）经 `content_offscreen` 判定仅内容**全出视口**才自动 fit、按钮无条件适应；verify 迭代修复首轮 14 个既有用例视口假设冲突（方案 A 收窄）；e2e 断言口径 = `__cdb_fit_probe`/`__cdb_transform` 常驻探针数学层 + fillText CTM 屏幕坐标视觉层 + `paintViaWheel` 双 wheel 补帧；verify PASS 634 全覆盖、0 失败）。前批：`fix-trash-restore-refresh`（issue #75）、`fix-mcp-tool-gaps-issue76`（工具 12→14）、`fix-mcp-tool-schema-client-compat`、`fix-issues-70-73`。
 - 场景范围 S01～S07；`align-unified-prototype-and-add-mcp` 已完成归档，S06 MCP stdio 服务已交付；S07 数据字典前后端已实现（含 UT-S07-01～11 入账）。
 - 唯一现行 HTML 主原型：`core-01-editor-prototype.html`；S03/S04/S05 独立原型仅作历史参考。
 - S01/S02 前后端已实现；S03～S05 后端 auth/rooms/collab REST、DB、WS 与测试已实现，生产前端尚未接入（独立后续项 F1）。
