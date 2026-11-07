@@ -57,6 +57,10 @@ const UT_PASS_IDS: &[&str] = &[
     // fix-remote-github-issues：聚焦 / 多表拖动
     "UT-CR-FOCUS-01",
     "UT-CR-FOCUS-02",
+    // fix-enter-diagram-fit-content：fit 纯函数三态 + 挂点/按钮接线锚点 + 全出视口触发前提
+    "UT-CR-FOCUS-03",
+    "UT-CR-FOCUS-04",
+    "UT-CR-FOCUS-05",
     "UT-CR-MULTI-01",
     // core-PE-design-system E3
     "UT-E3-01",

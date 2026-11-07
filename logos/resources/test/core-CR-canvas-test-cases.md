@@ -865,10 +865,25 @@
   1. `on_enter_room` / `on_open_personal_diagram` / share 冷启动三处 `store.load` 成功分支均触发自动 fit（调用 fit 辅助或等价符号）
   2. FloatingControls 存在 `data-testid="btn-fit-canvas"`（文案「适应画布」，对齐主原型 fit-canvas）
   3. fit 辅助函数经双 rAF 延迟读取容器尺寸后调用 `resolve_canvas_viewport` 与 `request_canvas_repaint`
+  4.（2026-11-07 verify 迭代修订）挂点路径 `fit_to_content(..., true)` / 按钮路径 `fit_to_content(..., false)` 双形态接线锚点
+
+## ADDED — UT-CR-FOCUS-05 — content_offscreen 自动 fit 触发前提（verify 迭代修订 2026-11-07）
+
+### UT-CR-FOCUS-05 — `content_offscreen` 三态
+
+- **位置**：`frontend-rs/src/editor_render.rs` 纯函数 + 内嵌 tests
+- **背景**：verify（2026-11-07）暴露自动 fit 无条件执行挪动了进图默认视口，14 个既有 D 批用例失败（inspector 点击坐标落空、FONT-02 visible_n 1→2、LOD 初始档位、hover 坐标错位、CR-02 follow-path）。收窄语义：**加载挂点仅在内容完全出视口时自动 fit；部分可见不动视口**。悬浮按钮保持无条件适应。
+- **步骤 / 断言**：
+  1. 远处内容（identity 视口下 screen AABB 与视口无交集）→ true（自动 fit 触发）
+  2. 原点附近可见内容 / 横跨视口边界的部分 overlap → false（不动视口）
+  3. 负方向完全出视口 / 贴边（screen 边 == 0）→ true
+  4. 空内容（bounds None）→ false（保持原点）
+  5. fit 落账后的 transform 下原远处内容 → false（fit 结果自检不重入）
 
 ## ADDED — 用例登记（追加）
 
 | ID | 层级 | 说明 |
 |---|---|---|
 | UT-CR-FOCUS-03 | UT | fit_content_transform 内容适应（远处/近处/空三态 + clamp） |
-| UT-CR-FOCUS-04 | UT | 三加载挂点自动 fit + btn-fit-canvas 锚点 |
+| UT-CR-FOCUS-04 | UT | 三加载挂点自动 fit + btn-fit-canvas 锚点（含双路径接线锚点） |
+| UT-CR-FOCUS-05 | UT | content_offscreen 全出视口触发前提（远处/部分可见/贴边/空/fit 后五态） |

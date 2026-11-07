@@ -156,7 +156,14 @@ fn resolve_canvas_viewport(fallback: (f64, f64)) -> (f64, f64) {
 /// UT-CR-FOCUS-04（fix-enter-diagram-fit-content）：内容适应 fit 接线——按当前
 /// store 全内容（tables/notes/areas）计算 fit_transform 并落账。空内容 / 视口
 /// 未就绪返回 false（调用方保持现有 transform），与 focus_table 的单表口径互补。
-pub fn fit_to_content(store: &EditorStore, transform: RwSignal<crate::editor_render::Transform>) -> bool {
+/// `only_if_offscreen`（UT-CR-FOCUS-05，verify 迭代收窄）：加载挂点传 true——
+/// 内容部分可见时不动视口（保既有用例 / 用户依赖的默认视口）；悬浮按钮传 false
+/// ——无条件适应（手动找回语义）。
+pub fn fit_to_content(
+    store: &EditorStore,
+    transform: RwSignal<crate::editor_render::Transform>,
+    only_if_offscreen: bool,
+) -> bool {
     let tables_len = store.tables.get_untracked().len();
     let bounds = {
         let tables = store.tables.get_untracked();
@@ -166,8 +173,16 @@ pub fn fit_to_content(store: &EditorStore, transform: RwSignal<crate::editor_ren
     };
     let vp = resolve_canvas_viewport((1200.0, 720.0));
     let fit = bounds.and_then(|b| crate::editor_render::fit_content_transform(b, vp.0, vp.1));
-    // 常驻诊断探针：window.__cdb_fit_probe（记录最近一次 fit 的输入与结论，
-    // 供 e2e 数学层断言与线上排障；体积恒定，无性能影响）
+    let mut applied = fit.is_some();
+    if applied && only_if_offscreen {
+        let t_now = transform.get_untracked();
+        if !crate::editor_render::content_offscreen(bounds, t_now, vp.0, vp.1) {
+            applied = false;
+        }
+    }
+    // 常驻诊断探针：window.__cdb_fit_probe（记录最近一次 fit 的输入与实际落账
+    // 结论；全路径写入——空内容 / 视口未就绪 / 收窄拒绝同样登记 applied=false，
+    // 供 e2e 空图回归断言与线上排障；体积恒定，无性能影响）
     #[cfg(target_arch = "wasm32")]
     {
         let msg = format!(
@@ -178,16 +193,18 @@ pub fn fit_to_content(store: &EditorStore, transform: RwSignal<crate::editor_ren
                 .unwrap_or_else(|| "null".into()),
             vp.0,
             vp.1,
-            fit.is_some(),
+            applied,
         );
         let _ = js_sys::eval(&msg);
     }
-    let Some(next) = fit else {
-        return false;
-    };
-    transform.set(next);
-    crate::editor_render::request_canvas_repaint();
-    true
+    match fit.filter(|_| applied) {
+        Some(next) => {
+            transform.set(next);
+            crate::editor_render::request_canvas_repaint();
+            true
+        }
+        None => false,
+    }
 }
 
 /// UT-CR-FOCUS-04：加载挂点（进房 / 个人建模 / share 冷启动）专用延迟 fit——
@@ -208,7 +225,8 @@ pub fn schedule_fit_after_load(store: &EditorStore, transform: RwSignal<crate::e
         let run_fit = {
             let store = store.clone();
             move || {
-                fit_to_content(&store, transform);
+                // UT-CR-FOCUS-05：挂点路径仅内容全出视口才 fit（部分可见不动视口）
+                fit_to_content(&store, transform, true);
             }
         };
         let Some(window) = web_sys::window() else {
@@ -2778,7 +2796,8 @@ pub fn FloatingControls(transform: RwSignal<Transform>, store: EditorStore) -> i
                 data-testid="btn-fit-canvas"
                 title="适应画布（全部内容缩放居中）"
                 on:click=move |_| {
-                    fit_to_content(&store, transform);
+                    // 按钮路径无条件适应（手动找回语义，UT-CR-FOCUS-05 收窄仅约束挂点）
+                    fit_to_content(&store, transform, false);
                 }
             >
                 "适应画布"
@@ -19422,6 +19441,14 @@ CREATE INDEX idx_x ON users (id);";
         assert!(
             src.contains("request_canvas_repaint();") && src.contains("transform.set(next);"),
             "UT-CR-FOCUS-04: fit 落账必须请求画布重绘"
+        );
+        // UT-CR-FOCUS-05（verify 迭代收窄）：挂点路径仅内容全出视口才 fit（true），
+        // 按钮路径无条件适应（false）——两种调用形态都必须接线
+        assert!(
+            src.contains("content_offscreen")
+                && src.contains("fit_to_content(&store, transform, true)")
+                && src.contains("fit_to_content(&store, transform, false)"),
+            "UT-CR-FOCUS-04/05: 挂点 only_if_offscreen=true / 按钮=false 双路径接线"
         );
     }
 

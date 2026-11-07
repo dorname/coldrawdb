@@ -578,6 +578,27 @@ pub fn fit_content_transform(
     })
 }
 
+/// UT-CR-FOCUS-05：内容包围盒经 transform 换算后是否**完全**落在视口外
+///（与视口矩形无交集）。fix-enter-diagram-fit-content verify 迭代收窄：进图
+/// 自动 fit 仅在内容全出视口（用户报障的「空白画布」形态）时触发，部分可见
+/// 不动视口——否则无条件 fit 会挪走既有用例 / 真实用户依赖的默认视口。
+/// bounds 为 None（空内容）返回 false；贴边（screen 边 == 0）视为出视口。
+pub fn content_offscreen(
+    bounds: Option<(f64, f64, f64, f64)>,
+    t: Transform,
+    viewport_w: f64,
+    viewport_h: f64,
+) -> bool {
+    let Some((x, y, w, h)) = bounds else {
+        return false;
+    };
+    let sx = x * t.zoom + t.pan_x;
+    let sy = y * t.zoom + t.pan_y;
+    let sw = w * t.zoom;
+    let sh = h * t.zoom;
+    sx >= viewport_w || sy >= viewport_h || sx + sw <= 0.0 || sy + sh <= 0.0
+}
+
 /// Idle 字段拖连 vs 框选/多表拖动：Shift 或「已多选集合内点中该表」时让路给选择手势。
 /// （修复 #5：Shift+拖被字段连线抢走；框选后拖表体又变成画线。）
 pub fn prefer_selection_over_field_rel(
@@ -9910,6 +9931,51 @@ mod tests {
         let htr = fit_content_transform(huge, vp.0, vp.1).expect("UT-CR-FOCUS-03: 巨大 Some");
         assert_eq!(htr.zoom, ZOOM_MIN, "UT-CR-FOCUS-03: 巨大内容钳到下限");
         assert!(htr.pan_x.is_finite() && htr.pan_y.is_finite());
+    }
+
+    /// UT-CR-FOCUS-05 — content_offscreen 自动 fit 触发前提三态（verify 迭代收窄：
+    /// 全出视口才 fit，部分可见不动视口）
+    #[test]
+    fn ut_cr_focus_05_content_offscreen() {
+        let identity = Transform::default();
+        let vp = (1008.0, 764.0);
+
+        // 远处内容（identity 视口下全出视口）→ 需要自动 fit（用户报障「空白画布」形态）
+        assert!(
+            content_offscreen(Some((4000.0, 3000.0, 630.0, 273.0)), identity, vp.0, vp.1),
+            "UT-CR-FOCUS-05: 远坐标全出视口必须判 true"
+        );
+        // 原点附近内容 → 部分可见，不动视口（既有用例视口假设回归的前提）
+        assert!(
+            !content_offscreen(Some((120.0, 120.0, 450.0, 250.0)), identity, vp.0, vp.1),
+            "UT-CR-FOCUS-05: 原点附近可见内容必须判 false"
+        );
+        // 横跨视口右边界（部分 overlap）→ 不 fit
+        assert!(
+            !content_offscreen(Some((900.0, 100.0, 600.0, 300.0)), identity, vp.0, vp.1),
+            "UT-CR-FOCUS-05: 跨边界部分可见必须判 false"
+        );
+        // 左侧完全出视口（负方向）→ true；贴边（screen 右边 == 0）→ true
+        assert!(
+            content_offscreen(Some((-2000.0, 0.0, 500.0, 400.0)), identity, vp.0, vp.1),
+            "UT-CR-FOCUS-05: 负方向完全出视口判 true"
+        );
+        assert!(
+            content_offscreen(Some((-500.0, 0.0, 500.0, 400.0)), identity, vp.0, vp.1),
+            "UT-CR-FOCUS-05: 贴边（右边==0）判 true"
+        );
+        // 空内容 → false（保持原点，与 fit_content_transform None 口径一致）
+        assert!(
+            !content_offscreen(None, identity, vp.0, vp.1),
+            "UT-CR-FOCUS-05: 空内容判 false"
+        );
+        // fit 后 transform 下远处内容回到视口 → false（fit 结果自检不重入）
+        let fit = fit_content_transform((4000.0, 3000.0, 630.0, 273.0), vp.0, vp.1)
+            .expect("UT-CR-FOCUS-05: fit Some");
+        assert!(
+            !content_offscreen(Some((4000.0, 3000.0, 630.0, 273.0)), fit, vp.0, vp.1),
+            "UT-CR-FOCUS-05: fit 后内容应在视口内（判 false）"
+        );
     }
 
     /// ST-CR-MULTI-01 辅助：Shift / 多选集合让路给选择手势，避免 Idle 字段连线抢走

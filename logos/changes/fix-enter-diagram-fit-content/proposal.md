@@ -46,3 +46,11 @@
 - `FloatingControls` 新增 `btn-fit-canvas`（ghost small 风格，文案「适应画布」，对齐原型 fit-canvas），点击对当前内容包围盒即时 fit（复用 A 的纯函数），随时手动找回内容；与 zoom_reset（回 100%）语义区分。
 
 测试：UT-CR-FOCUS-03（fit 纯函数三态：远处图/近处图/空图）、UT-CR-FOCUS-04（三挂点 + 按钮锚点断言）；ST-S04-UI-19（e2e：mock 远坐标表进房后无需平移即可见）、ST-S04-UI-20（e2e：btn-fit-canvas 点击后远处表可见）；verify 全量回归。
+
+## verify 迭代修订（2026-11-07）
+
+verify 首轮暴露 14 个既有 D 批用例失败，根因：A 方案自动 fit **无条件执行**挪动了进图默认视口（inspector 点击坐标落空 ×6、ST-CR-FONT-02 visible_n 1→2、ST-CR-LOD 初始档位、hover 坐标错位 ×4、ST-CR-02 follow-path）。经用户确认按方案 A 收窄：
+
+- **自动 fit 触发前提收窄**：加载挂点仅在内容**完全出视口**（screen AABB 与视口矩形无交集）时执行 fit——部分可见不动视口；悬浮按钮保持无条件适应。新增纯函数 `content_offscreen`（editor_render.rs）+ `fit_to_content(only_if_offscreen)` 参数化（挂点 true / 按钮 false）。
+- **新增 UT-CR-FOCUS-05**（content_offscreen 五态）+ UT-CR-FOCUS-04 补双路径接线锚点；`openlogos_reporter.rs` 白名单补登记 UT-CR-FOCUS-03/04/05（首轮 verify「未覆盖」的根因）。
+- 用例语义修订登记：core-CR-canvas-test-cases.md（FOCUS-04 断言 4 + ADDED FOCUS-05）、core-S04-test-cases.md（UI-19/20 触发前提与断言定稿）。
